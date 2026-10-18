@@ -1,0 +1,23 @@
+# Run SigSleuth: cp .env.example .env, set the MQTT settings, docker compose up -d.
+# See docs/deployment.md.
+services:
+  sigsleuth:
+    # Pulled when published; otherwise, or with --build, built from this directory.
+    image: ${SIGSLEUTH_IMAGE:-ghcr.io/joroses/sigsleuth:latest}
+    build: .
+    env_file: .env
+    # Inside the container; .env's database path, host and port are for running without Docker.
+    environment:
+      SIGSLEUTH_DATABASE_PATH: /data/sigsleuth.db
+      SIGSLEUTH_API_HOST: 0.0.0.0
+      SIGSLEUTH_API_PORT: "8000"
+    # .env's host and port say where the page is published, local only by default.
+    ports: ["${SIGSLEUTH_API_HOST:-127.0.0.1}:${SIGSLEUTH_API_PORT:-8000}:8000"]
+    volumes: [data:/data]
+    restart: unless-stopped
+    # Capture finishes the delivery it is saving.
+    stop_grace_period: 30s
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+volumes:
+  data:

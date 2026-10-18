@@ -1,0 +1,14 @@
+# Only what the image needs; .env and data/ hold passwords and databases.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src/
+src/frontend/node_modules
+src/frontend/dist
+src/frontend/perf-results
+src/frontend/test-results
+src/frontend/playwright-report
+**/__pycache__
+**/*.tsbuildinfo

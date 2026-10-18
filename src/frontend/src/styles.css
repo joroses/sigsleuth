@@ -1,0 +1,5168 @@
+/* Exploration settings: adjust the shared visual language here. */
+:root {
+  --canvas: #0e1311;
+  --surface: #171e1b;
+  --surface-subtle: #232c28;
+  /* Every other table row, between surface and surface-subtle. */
+  --surface-stripe: #1d2521;
+  --text: #edf2ee;
+  --muted: #aebcb4;
+  --border: #36423c;
+  --accent: #7dcb9f;
+  --accent-strong: #b0e6c6;
+  --accent-soft: #1e3a2b;
+  --blue: #8dbcd8;
+  --blue-soft: #1b2e3a;
+  --amber: #e6b664;
+  --amber-soft: #3b2f17;
+  --error: #f29380;
+  --error-soft: #401f19;
+  --focus: #6db8ec;
+  /* A ring around a map marker: bright with a dark edge, so it reads on light
+     and dark basemaps. */
+  --marker-ring: #ffd23f;
+  --marker-ring-edge: #111;
+  /* Chart series, in order; validated for colour-blind separation on --surface. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-other: #959c99;
+  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-base: 0.8125rem;
+  --text-lg: 1rem;
+  --text-title: 1.375rem;
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --radius-sm: 0.3rem;
+  --radius: 0.55rem;
+  --radius-pill: 999px;
+  --shadow: 0 1px 3px rgb(0 0 0 / 30%);
+  --shadow-overlay: 0 3px 16px rgb(0 0 0 / 50%);
+  --control-height: 2.125rem;
+  --topbar-height: 3.5rem;
+  --sidebar-width: 19rem;
+  --sidebar-collapsed-width: 0;
+  color-scheme: dark;
+  color: var(--text);
+  background: var(--canvas);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-synthesis: none;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: var(--text-title);
+  letter-spacing: -0.035em;
+  font-weight: 650;
+}
+
+h2 {
+  font-size: var(--text-base);
+  font-weight: 650;
+}
+
+h3 {
+  font-size: var(--text-base);
+}
+
+.icon {
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Permanent application frame. Each page owns its scrolling region. */
+.app-shell {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: var(--text-base);
+}
+
+.application-bar {
+  height: var(--topbar-height);
+  flex: 0 0 var(--topbar-height);
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  z-index: 3;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.brand-symbol {
+  display: grid;
+  place-items: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  color: var(--surface);
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+}
+
+.brand-symbol .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.instance-name {
+  color: var(--muted);
+  font-weight: 550;
+  letter-spacing: normal;
+}
+
+.application-bar nav {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  gap: var(--space-1);
+  /* Narrow screens scroll the tabs sideways rather than clipping them. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.application-bar nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 550;
+}
+
+.application-bar nav a:hover {
+  background: var(--canvas);
+  color: var(--accent);
+}
+
+.application-bar nav a[aria-current="page"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.application-bar nav a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: var(--space-4);
+  right: var(--space-4);
+  height: 2px;
+  background: var(--accent);
+}
+
+.application-bar nav a:focus-visible {
+  outline-offset: -4px;
+}
+
+.source-link {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.source-link:hover {
+  color: var(--accent);
+}
+
+/* On a phone the brand shrinks to its symbol so the tabs get the width; the
+   tab bar still scrolls if they do not all fit. */
+@media (max-width: 700px) {
+  .application-bar {
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
+  .brand-text,
+  .instance-name {
+    display: none;
+  }
+
+  .application-bar nav a {
+    flex: 0 0 auto;
+    gap: var(--space-1);
+    padding: 0 var(--space-3);
+  }
+
+  .application-bar nav a[aria-current="page"]::after {
+    left: var(--space-3);
+    right: var(--space-3);
+  }
+}
+
+/* Positioned, so absolutely positioned content (.visually-hidden) scrolls
+   with the page instead of stretching the window below it. */
+.app-content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.page-map {
+  overflow: hidden;
+}
+
+input,
+select {
+  min-width: 0;
+  max-width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+select {
+  padding-right: var(--space-6);
+  cursor: pointer;
+}
+
+input::placeholder {
+  color: var(--muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 0.1875rem var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 550;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+
+.badge-neutral {
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+
+.badge-green {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.badge-blue {
+  color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.badge-amber {
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.badge-red {
+  color: var(--error);
+  background: var(--error-soft);
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: transparent;
+}
+
+.icon-button:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--surface-subtle);
+}
+
+.icon-button[aria-disabled="true"] {
+  cursor: default;
+}
+
+.icon-button .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.copy-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.copy-value .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+.status-panel,
+.error-panel {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  background: var(--surface);
+  line-height: 1.5;
+}
+
+.error-panel {
+  color: var(--error);
+  border-color: var(--error);
+  background: var(--error-soft);
+}
+
+/* Wide enough for a four-character short name, the Meshtastic maximum. */
+.node-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  height: 2.75rem;
+  white-space: nowrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+
+.avatar-green {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Shared table styles: bold headings and striped rows for every table. */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+thead th {
+  color: var(--text);
+  background: var(--surface-subtle);
+  border-bottom: 2px solid var(--border);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.table-wrap tbody tr:nth-child(even) {
+  background: var(--surface-stripe);
+}
+
+/* Live map workspace; only the sidebar can scroll. */
+.map-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  height: 100%;
+  overflow: hidden;
+}
+
+.map-workspace.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-collapsed-width);
+}
+
+.map-surface {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map-surface > .map-canvas {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-subtle);
+}
+
+/* Status messages sit at the top centre, clear of the filter panel and the
+   layers button. */
+.map-overlays {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: var(--space-2);
+  width: max-content;
+  max-width: min(26rem, calc(100% - 2rem));
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* The filter panel floats over the map's top left and closes to a button.
+   It scrolls on its own if the map is too short for it. */
+.map-filter-panel {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  width: 17rem;
+  max-width: calc(100% - 2rem);
+  max-height: calc(100% - 2rem);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+  z-index: 2;
+}
+
+.map-filter-panel-closed {
+  width: auto;
+  border: 0;
+  background: none;
+}
+
+.map-filter-panel-closed > button {
+  background: var(--surface);
+}
+
+.map-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-1) 0 var(--space-4);
+}
+
+.map-filter-body {
+  display: grid;
+  gap: var(--space-2);
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+/* A label on the left, its menu on the right. */
+.map-filter-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.map-filter-row label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.2;
+}
+
+.map-filter-row select {
+  width: 100%;
+}
+
+.map-filter-checks {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.map-filter-checks legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.map-filter-checks label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+/* Like the share badges on the map. */
+.text-reach-swatch {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  background: #4ade80;
+  color: #1e293b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* The coverage layer's swatch and margin scale; the colours match MARGIN_STOPS
+   in coverageLayer.ts. */
+.coverage-swatch {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  background: linear-gradient(to right, #d0453a, #e0a526, #8fc04a, #1f7a3f);
+  opacity: 0.8;
+}
+
+.coverage-legend {
+  display: grid;
+  gap: 2px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.coverage-legend-bar {
+  height: 0.5rem;
+  border-radius: 2px;
+  opacity: 0.8;
+}
+
+.coverage-legend-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.coverage-popup .maplibregl-popup-content,
+.history-popup .maplibregl-popup-content {
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.coverage-popup .maplibregl-popup-tip,
+.history-popup .maplibregl-popup-tip {
+  display: none;
+}
+
+.node-spider {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+
+.node-spider-backdrop {
+  position: absolute;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 75%);
+  box-shadow: 0 1px 6px rgb(15 23 42 / 25%);
+  transform: translate(-50%, -50%);
+}
+
+.node-spider-legs {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.node-spider-legs line {
+  stroke: #334155;
+  stroke-width: 1.5;
+}
+
+.node-spider-leaf {
+  position: absolute;
+  top: -11px;
+  left: -11px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1e293b;
+  font: 700 11px var(--font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.node-spider-dot {
+  position: absolute;
+  inset: 3px;
+  box-sizing: border-box;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgb(15 23 42 / 70%);
+}
+
+.node-spider-label {
+  position: absolute;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 85%);
+  line-height: 16px;
+}
+
+.node-spider-leaf.right .node-spider-label {
+  top: 3px;
+  left: calc(100% + 2px);
+}
+
+.node-spider-leaf.left .node-spider-label {
+  top: 3px;
+  right: calc(100% + 2px);
+}
+
+.node-spider-leaf.up .node-spider-label {
+  bottom: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.node-spider-leaf.down .node-spider-label {
+  top: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.node-spider-leaf:hover .node-spider-dot,
+.node-spider-leaf:focus-visible .node-spider-dot {
+  transform: scale(1.25);
+}
+
+.node-spider-leaf:focus-visible {
+  outline: none;
+}
+
+.node-spider-leaf:focus-visible .node-spider-label {
+  outline: 2px solid #f5a623;
+}
+
+.coverage-heard {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.coverage-heard li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+.coverage-margin-dot {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-right: 0.3em;
+  border-radius: 50%;
+}
+
+.coverage-how {
+  flex-basis: 100%;
+  font-size: var(--text-xs);
+}
+
+.coverage-switch {
+  margin-bottom: var(--space-3);
+}
+
+.coverage-switch .section-label {
+  margin: 0 0 var(--space-1);
+}
+
+.coverage-switch [role="radiogroup"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.coverage-switch label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.coverage-switch input {
+  height: auto;
+  margin: 0;
+}
+
+.coverage-switch .sidebar-note {
+  margin-bottom: 0;
+}
+
+.map-filter-checks .link-swatch,
+.map-filter-checks .node-swatch {
+  transform: none;
+}
+
+.map-filter-checks input {
+  height: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.map-filter-name {
+  flex: 1 1 auto;
+}
+
+.map-filter-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.map-filter-checks .min-observations {
+  cursor: default;
+}
+
+.map-filter-checks .min-observations input {
+  width: 4.5em;
+  height: 1.75rem;
+  padding: 0 var(--space-2);
+  cursor: text;
+}
+
+.map-filter-checks .min-km {
+  cursor: default;
+}
+
+.map-filter-checks .min-km input {
+  flex: 1 1 4rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+}
+
+.map-filter-checks .min-km input:disabled {
+  cursor: default;
+}
+
+.map-filter-checks .min-km output {
+  min-width: 4.5em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.link-quality-legend,
+.coverage-line-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.link-quality-legend li,
+.coverage-line-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.link-quality-legend .link-swatch {
+  width: 1rem;
+  transform: none;
+}
+
+/* A layers button at the map's top right opens the background map menu. */
+.basemap-switcher {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: grid;
+  justify-items: end;
+  gap: var(--space-2);
+  z-index: 2;
+}
+
+.basemap-switcher > button {
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.basemap-menu {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+
+.basemap-menu label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.basemap-menu input {
+  height: auto;
+  margin: 0;
+}
+
+.map-overlays .status-panel {
+  box-shadow: var(--shadow-overlay);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-sm);
+}
+
+.map-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+
+/* The collapse button sits on the sidebar's left edge, half over the map,
+   so it takes no row and stays on the map's edge when the sidebar is closed. */
+.sidebar-handle {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
+
+.sidebar-handle > button {
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.sidebar-collapsed .map-sidebar {
+  border-left: none;
+}
+
+.sidebar-collapsed .sidebar-handle {
+  transform: translate(calc(-100% - var(--space-2)), -50%);
+}
+
+/* On a phone the map fills the screen and the sidebar is a sheet over its
+   bottom; the handle sits on the sheet's top edge, or the map's bottom edge
+   when closed. Keep the width in step with isNarrowScreen in ui.tsx. */
+@media (max-width: 700px) {
+  .map-workspace,
+  .map-workspace.sidebar-collapsed {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .map-sidebar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: 55%;
+    border-top: 1px solid var(--border);
+    border-left: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    box-shadow: var(--shadow-overlay);
+    z-index: 3;
+  }
+
+  .sidebar-collapsed .map-sidebar {
+    border-top: none;
+    box-shadow: none;
+  }
+
+  .sidebar-handle {
+    top: 0;
+    left: 50%;
+  }
+
+  .sidebar-collapsed .sidebar-handle {
+    transform: translate(-50%, calc(-100% - var(--space-8)));
+  }
+
+  /* The arrows point down to close and up to open. */
+  .sidebar-handle svg {
+    transform: rotate(90deg);
+  }
+
+  .sidebar-scroll {
+    padding: var(--space-5) var(--space-4) var(--space-4);
+  }
+}
+
+/* The selected link or node, then search, then Chatty nodes taking the
+   height left, then the clicked coverage cell. The list shrinks first; the
+   whole sidebar scrolls only once the list is at its smallest. */
+.sidebar-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: var(--space-5);
+}
+
+.sidebar-scroll > * {
+  flex: none;
+}
+
+.sidebar-scroll[hidden] {
+  display: none;
+}
+
+.section-label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+.sidebar-note {
+  margin: var(--space-2) 0 var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* Results sit in the sidebar under the box and push the rest down. */
+.node-search {
+  margin: 0 0 var(--space-5);
+}
+
+.node-search input {
+  width: 100%;
+}
+
+.node-search ul {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.node-search li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.node-search li[aria-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.node-search .node-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.node-search-names {
+  display: grid;
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.node-search-names .mono {
+  font-size: var(--text-xs);
+}
+
+.node-search-empty {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.selected-node {
+  margin: 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* A selected link, node or coverage cell sits above search, so it is ruled
+   off below instead. */
+.sidebar-selection {
+  padding: 0 0 var(--space-4);
+  margin-bottom: var(--space-4);
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.selected-node-heading {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin: var(--space-4) 0 var(--space-5);
+  overflow-wrap: anywhere;
+}
+
+.selected-node-heading > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.selected-node-heading h3 {
+  font-size: var(--text-lg);
+}
+
+.node-page-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--space-5);
+  text-decoration: none;
+}
+
+.selected-node .section-label {
+  margin: 0 0 var(--space-2);
+}
+
+.selected-node .selected-node-heading {
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+/* A selected link's direction, with the close button beside the first. */
+.link-direction-heading {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  overflow-wrap: anywhere;
+}
+
+.selected-node .link-direction-heading .section-label {
+  margin: 0;
+}
+
+/* A solid arrow: a text arrow is hard to see in the small section label. */
+.link-arrow {
+  width: 2em;
+  height: 1em;
+  vertical-align: -0.15em;
+  fill: var(--blue);
+}
+
+.selected-node .link-direction-heading {
+  margin-bottom: var(--space-2);
+}
+
+.selected-node .node-summary {
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.selected-node .node-summary > div {
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+}
+
+/* A value and its link share a line when they fit. */
+.selected-node .node-summary dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+/* Label and value side by side; a value may stack a few lines, such as a time and its packet link. */
+.node-summary {
+  margin: 0 0 var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.node-summary:last-child {
+  margin-bottom: 0;
+}
+
+.node-summary > div {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.node-summary dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.node-summary dd {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* Pages of text and tables: diagnostics and packet detail. */
+.page-document {
+  padding: var(--space-8);
+}
+
+.page-document > section,
+.diagnostics-page {
+  max-width: 76rem;
+  margin: 0 auto;
+}
+
+.page-document h2 {
+  font-size: var(--text-title);
+}
+
+.page-document h3 {
+  font-size: var(--text-lg);
+}
+
+.page-document dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.page-document p {
+  line-height: 1.6;
+}
+
+.page-document .status-panel,
+.page-document .error-panel {
+  margin: var(--space-4) 0;
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: var(--space-2);
+}
+
+.secondary-button {
+  min-height: var(--control-height);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.secondary-button {
+  color: var(--accent);
+  background: var(--surface);
+}
+
+/* One quiet hover for the secondary controls: tabs, chips, sort headings and
+   secondary buttons. A selected one keeps its own look. */
+.secondary-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.chat-channel-chip:not([aria-pressed="true"]):hover,
+.zones-tabs button:not([aria-pressed="true"]):hover,
+.chat-fold:hover,
+.filter-chip:hover {
+  color: var(--text);
+  background: var(--surface-subtle);
+}
+
+.sort-button:not(.is-active):hover {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.section-intro,
+.detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-5);
+}
+
+/* The node page's links to the same node on the map and the links pages,
+   and its Add contact button. */
+.node-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.node-links a,
+.node-links > button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.node-links a:hover,
+.node-links > button:hover {
+  background: var(--accent-soft);
+}
+
+/* Add contact's dialog: the node's Meshtastic contact link and its QR code. */
+.contact-dialog {
+  width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  max-width: none;
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+  overscroll-behavior: contain;
+}
+
+.contact-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+  backdrop-filter: blur(2px);
+}
+
+.contact-dialog-body {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.contact-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
+}
+
+.contact-dialog-header h2 {
+  font-size: var(--text-lg);
+}
+
+.contact-dialog-header p {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.contact-dialog-header .icon-button {
+  margin: calc(-1 * var(--space-1)) calc(-1 * var(--space-2)) 0 0;
+}
+
+.contact-qr {
+  display: block;
+  width: 100%;
+  max-width: 15rem;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: var(--radius);
+}
+
+.contact-dialog-hint {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.contact-link {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.contact-link input {
+  flex: 1 1 auto;
+  text-overflow: ellipsis;
+  background: var(--canvas);
+}
+
+.contact-link button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  /* Fits "Copied" too, so the field does not shift. */
+  min-width: 6.5rem;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  color: var(--canvas);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.contact-link button:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.contact-link button.is-copied {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.contact-open {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.contact-open:hover {
+  background: var(--accent-soft);
+}
+
+.contact-open .icon {
+  width: 14px;
+  height: 14px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .contact-dialog[open] {
+    animation: contact-dialog-in 0.18s cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+
+  .contact-dialog[open]::backdrop {
+    animation: contact-backdrop-in 0.18s ease-out;
+  }
+
+  .contact-link button,
+  .contact-open {
+    transition:
+      background-color 0.15s,
+      border-color 0.15s,
+      color 0.15s;
+  }
+}
+
+@keyframes contact-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.97);
+  }
+}
+
+@keyframes contact-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .detail-heading:has(.node-links) {
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .node-links {
+    justify-content: flex-start;
+  }
+}
+
+.section-intro.compact {
+  display: block;
+  margin-top: var(--space-8);
+}
+
+/* A section heading with its filter beside it. */
+.section-intro.heading-with-filter {
+  display: flex;
+  justify-content: flex-start;
+  gap: var(--space-4);
+}
+
+.section-intro.heading-with-filter .nodes-toolbar {
+  margin-bottom: 0;
+}
+
+.section-intro p {
+  color: var(--muted);
+  margin-top: var(--space-2);
+}
+
+.table-wrap {
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.packet-table .gateway-count {
+  text-align: center;
+}
+
+/*
+ * Underlined text goes to another page (a link); a text button changes this
+ * page (selects, expands, scrolls), so it is not underlined.
+ */
+.text-button {
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+button.text-button {
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+button.text-button:hover:not(:disabled) {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.page-button {
+  display: block;
+  margin: var(--space-6) auto 0;
+}
+
+.end-note {
+  margin-top: var(--space-6);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.diagnostic-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.diagnostics-page > section + section,
+.diagnostics-page section + section {
+  margin-top: 2.75rem;
+}
+
+.diagnostic-lede {
+  max-width: 48rem;
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.diagnostic-skipped {
+  margin-top: 1rem;
+}
+
+.diagnostic-facts code {
+  display: inline;
+  padding: 0;
+  background: transparent;
+}
+
+.longest-links-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.longest-links {
+  margin: 0;
+  padding-left: 2rem;
+}
+
+.longest-links > li + li {
+  margin-top: var(--space-2);
+}
+
+.longest-link summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.longest-link-km {
+  min-width: 5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.longest-link-names {
+  overflow-wrap: anywhere;
+}
+
+.longest-link[open] {
+  padding-bottom: var(--space-4);
+}
+
+.longest-link .diagnostic-facts {
+  margin: var(--space-3) 0;
+}
+
+.longest-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* A node filter: its label, then a search or the chosen node. */
+.diagnostic-node-filter {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: min(20rem, 100%);
+}
+
+.diagnostic-node-filter-label {
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: var(--control-height);
+  white-space: nowrap;
+}
+
+.diagnostic-node-filter .node-search {
+  flex: 1;
+  margin: 0;
+}
+
+/* The port select brings its own toolbar. */
+.nodes-toolbar .nodes-toolbar {
+  margin: 0;
+}
+
+.longest-link-checks {
+  margin: 0;
+  padding: 0.6rem 1rem 0.6rem 2rem;
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-left: 0.3rem solid var(--amber);
+  line-height: 1.45;
+}
+
+.diagnostics-page h4 {
+  margin: 1.25rem 0 0.65rem;
+  color: var(--text);
+}
+
+.reason-link {
+  display: block;
+  margin-top: 0.35rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.empty-inline {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0.3rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+/* Several short facts stacked in one card, such as a node's position. */
+.data-line {
+  display: block;
+}
+
+.data-line + .data-line {
+  margin-top: 0.2rem;
+}
+
+/* Packet page: identity and payload side by side, then the reception
+   table and the minimap; both pairs stack on narrow screens. */
+/* A link or button back to where this view was opened from. */
+.return-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: none;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.return-link:hover {
+  text-decoration: underline;
+}
+
+.packet-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-bottom: var(--space-5);
+  color: var(--muted);
+}
+
+.packet-heading > span::before {
+  content: "· ";
+}
+
+.packet-top,
+.packet-lower,
+.node-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.packet-top {
+  align-items: stretch;
+}
+
+.packet-lower {
+  margin-top: var(--space-6);
+}
+
+.packet-identity,
+.packet-payload,
+.node-facts > dl,
+.diagnostic-facts > dl {
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.packet-identity,
+.node-facts > dl,
+.diagnostic-facts > dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+}
+
+.packet-identity > div,
+.node-facts > dl > div,
+.diagnostic-facts > dl > div {
+  display: contents;
+}
+
+.packet-identity dd,
+.node-facts dd,
+.diagnostic-facts dd {
+  margin: 0;
+}
+
+.packet-payload h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+/* Side by side, the payload takes the facts card's height and scrolls;
+   with no height of its own it cannot make the row taller. */
+.packet-payload {
+  display: flex;
+  flex-direction: column;
+}
+
+.packet-payload code {
+  flex-grow: 1;
+  height: 0;
+  overflow: auto;
+}
+
+.reception-table th,
+.reception-table td {
+  padding: var(--space-2) var(--space-3);
+}
+
+.reception-table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every column but Gateway shrinks to its content, so the gateway gets the
+   rest; a name longer than that is cut with an ellipsis (full name on hover)
+   and the node ID stays visible. */
+.reception-table :is(thead th, td):not(:first-child) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.reception-table td.gateway-cell {
+  width: 100%;
+  max-width: 0;
+}
+
+.reception-table td.pin-cell {
+  padding-block: 0;
+}
+
+.pin-cell .icon-button[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.gateway-cell > div {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+}
+
+.gateway-cell a {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-cell .mono {
+  flex: none;
+}
+
+.hop-group-row th {
+  background: var(--surface-subtle);
+  font-size: var(--text-sm);
+}
+
+/* A packet opened on a hop: what is listed first, and the toggle for the
+   reports without it. */
+.hop-note {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.others-row td {
+  text-align: center;
+}
+
+/* One colour per hop group, shared by its heading and its minimap markers. */
+.hop-tone-sender {
+  --hop-colour: var(--text);
+}
+
+.hop-tone-direct {
+  --hop-colour: var(--accent);
+}
+
+.hop-tone-0 {
+  --hop-colour: #5bb8b3;
+}
+
+.hop-tone-1 {
+  --hop-colour: var(--blue);
+}
+
+.hop-tone-2 {
+  --hop-colour: var(--amber);
+}
+
+.hop-tone-3 {
+  --hop-colour: var(--error);
+}
+
+.hop-tone-unknown {
+  --hop-colour: var(--muted);
+}
+
+.hop-group-row th::before {
+  content: "";
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-right: var(--space-2);
+  border-radius: 50%;
+  background: var(--hop-colour);
+}
+
+.packet-minimap {
+  position: sticky;
+  top: var(--space-4);
+  margin: 0;
+}
+
+.minimap-canvas {
+  height: min(34rem, 75vh);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface-subtle);
+}
+
+/* Position packets sent from a clicked spot on a node's minimap. */
+.history-popup ul {
+  margin: 0;
+  padding: 0 var(--space-4) 0 0;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.history-popup p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+}
+
+/* The node minimap, a card as tall as the facts beside it: a head with its
+   switches, the map filling the rest, and the notes at the foot. */
+.node-facts {
+  align-items: stretch;
+}
+
+.node-facts > dl {
+  align-content: start;
+}
+
+.node-position {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.node-position-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.node-position-head h3 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.node-position-map {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 20rem;
+  background: var(--surface-subtle);
+}
+
+.node-position-map > p {
+  margin: 0;
+  padding: var(--space-4);
+}
+
+.node-position .minimap-canvas {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.node-position figcaption {
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-sm);
+}
+
+/* The node minimap's switches for its contacts and coverage, as pills in the
+   channel chips' style. */
+.minimap-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.minimap-toggles button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0.125rem var(--space-3) 0.125rem var(--space-2);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.minimap-toggles .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.minimap-toggles button[aria-pressed="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.minimap-toggles button:not([aria-pressed="true"]):hover {
+  color: var(--text);
+}
+
+.minimap-toggle-hint {
+  font-size: var(--text-xs);
+  opacity: 0.75;
+}
+
+/* The minimap contacts' key, in the map's bottom-left corner. */
+.minimap-key {
+  position: absolute;
+  bottom: var(--space-2);
+  left: var(--space-2);
+  z-index: 1;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.minimap-key li:first-child svg {
+  color: var(--accent);
+}
+
+.contacts-legend-hops {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--hop-colour);
+  color: var(--surface);
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+/* A contact's links, listed on its popup. */
+.history-popup strong {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.packet-minimap figcaption {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.minimap-marker {
+  display: grid;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--hop-colour);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+  color: var(--surface);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* The gateway of the hovered or pinned reception, or the pinned relay. The
+   shadows put a dark edge on both sides of the outline. */
+.minimap-marker.focused {
+  z-index: 1;
+  outline: 3px solid var(--marker-ring);
+  outline-offset: 1px;
+  box-shadow:
+    0 0 0 1px var(--marker-ring-edge),
+    0 0 0 5px var(--marker-ring-edge);
+}
+
+/* A node hovered or focused in the route text or on the minimap: the same
+   ring, drawn larger and above the rest so it stands apart from a focused one.
+   It grows by size, not scale: MapLibre places markers with a transform, which
+   a scale would stretch too, moving the marker off its position. */
+.minimap-marker.highlighted {
+  z-index: 2;
+  width: 2rem;
+  min-width: 2rem;
+  height: 2rem;
+  font-size: var(--text-sm);
+  outline: 3px solid var(--marker-ring);
+  outline-offset: 1px;
+  box-shadow:
+    0 0 0 1px var(--marker-ring-edge),
+    0 0 0 5px var(--marker-ring-edge);
+}
+
+/* A traceroute relay: blank, or its places on the focused route ("1·5").
+   Clicking it shows the routes through it. */
+.minimap-relay {
+  width: auto;
+  min-width: 1.375rem;
+  padding: 0 0.3125rem;
+  border-radius: 999px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.hop-tone-relay {
+  --hop-colour: var(--muted);
+}
+
+/* A node drawn at an estimate from its neighbours is hollow, as on the map. */
+.minimap-marker.estimated {
+  border-color: var(--hop-colour);
+  background: var(--surface);
+  color: var(--hop-colour);
+}
+
+/* A relay off the focused route. */
+.minimap-marker.off-route {
+  display: none;
+}
+
+/* A pin whose point marks the sender's position; a traceroute's target is
+   the same square without the pin. */
+.minimap-sender,
+.minimap-target {
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--radius-sm);
+}
+
+.minimap-sender::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  border: 6px solid transparent;
+  border-bottom: 0;
+  border-top-color: var(--hop-colour);
+}
+
+/* Hovering a reception, or its gateway on the minimap, previews it; clicking
+   the row pins it. Both take the minimap ring's yellow as a tint, and a pinned
+   row adds an edge on its first cell. The table-wrap prefix outranks the row
+   stripes. */
+.reception-row {
+  cursor: pointer;
+}
+
+.table-wrap .reception-row.hovered,
+.table-wrap .reception-row.pinned {
+  background: color-mix(in srgb, var(--marker-ring) 22%, var(--surface));
+}
+
+.reception-row.pinned > td:first-child {
+  box-shadow: inset 4px 0 0 var(--marker-ring);
+}
+
+.route-row td {
+  padding-left: var(--space-8);
+}
+
+.route-row dl,
+.route-row dd {
+  margin: 0;
+}
+
+/* A reply's route to the target, shared by its reports, above their table. */
+.shared-route {
+  margin: 0 0 var(--space-3);
+}
+
+.shared-route dd {
+  margin: 0;
+}
+
+.route-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  align-items: baseline;
+}
+
+@media (max-width: 900px) {
+  .packet-top,
+  .packet-lower,
+  .node-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .packet-payload code {
+    height: 10rem;
+  }
+
+  /* Stacked, the map comes before the receptions; after a long table it
+     would be thousands of pixels down. */
+  .packet-minimap {
+    position: static;
+    order: -1;
+  }
+
+  .minimap-canvas {
+    height: 22rem;
+  }
+}
+
+.route-path {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A route node: its marker chip, then its name. */
+.route-node {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+
+/* A node's minimap marker label in the route text, in the marker's colours;
+   a dashed outline when the node has no marker, so the fill still tells an
+   end from a relay. */
+.route-chip {
+  flex: none;
+  min-width: 1.125rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--hop-colour);
+  border-radius: 999px;
+  background: var(--hop-colour);
+  color: var(--surface);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1rem;
+  text-align: center;
+}
+
+.route-chip.unplaced {
+  outline: 1px dashed var(--muted);
+  outline-offset: 1px;
+}
+
+/* The node highlighted on the minimap. */
+.route-node.highlighted {
+  border-radius: var(--radius-sm);
+  background: var(--marker-ring);
+  box-shadow: 0 0 0 2px var(--marker-ring);
+}
+
+.route-node.highlighted a {
+  color: var(--marker-ring-edge);
+}
+
+.route-hop {
+  margin-right: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+/* A ring around a node the traceroute explorer's search matched, and around
+   both nodes of the hop a link asked for. */
+.route-node.searched-node,
+.route-node.hop-end {
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--marker-ring);
+}
+
+code {
+  display: block;
+  padding: 0.65rem;
+  overflow-x: auto;
+  color: var(--text);
+  background: var(--surface-subtle);
+  border-radius: 0.15rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The selected node's hop depth: a slider and its value. */
+.hop-depth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.selected-node .hop-depth .section-label {
+  margin: 0;
+}
+
+.hop-depth-note {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.hop-depth input {
+  flex: 1 1 4rem;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.hop-depth input:disabled {
+  cursor: default;
+}
+
+.hop-depth output {
+  min-width: 1ch;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+/* Link swatches in the filter panel and link details. */
+.link-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A short line in the tier's colour, set through `color`. */
+.link-swatch {
+  flex: 0 0 auto;
+  width: 1.25rem;
+  height: 0;
+  border-top: 4px solid currentcolor;
+  border-radius: 2px;
+  transform: translateY(-0.2em);
+}
+
+.node-swatch {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 70%);
+  transform: translateY(0.1em);
+}
+
+.link-swatch-dashed {
+  border-top-style: dashed;
+}
+
+.link-swatch-dotted {
+  border-top-style: dotted;
+}
+
+.link-swatch-dash-dot {
+  height: 4px;
+  border-top: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    currentcolor 0 6px,
+    transparent 6px 8px,
+    currentcolor 8px 10px,
+    transparent 10px 12px
+  );
+}
+
+.link-swatch-faint {
+  opacity: 0.7;
+}
+
+/* A node ID that opens the node's page, with the arrow that says so. */
+.node-open {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.node-open .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.table-wrap .clickable-row:hover {
+  background: var(--accent-soft);
+}
+
+/* How recently a node was active, on the node page; other ages keep the
+   text colour, so a link does not look like a recent one. */
+.age-plain {
+  color: inherit;
+}
+
+.age-green {
+  color: var(--accent);
+}
+
+.age-amber {
+  color: var(--amber);
+}
+
+.age-red {
+  color: var(--error);
+}
+
+/* A packet's port, tinted with its colour in the node page's packets chart. */
+.port-cell {
+  background: color-mix(in srgb, var(--port-color) 22%, transparent);
+}
+
+/* Chat: a page-filling frame with a toolbar, a scrolling message column and a footer. */
+.page-chat {
+  display: flex;
+  overflow: hidden;
+}
+
+.chat-frame {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-toolbar h2 {
+  margin: 0 var(--space-4) 0 0;
+  font-size: var(--text-lg);
+}
+
+.chat-scroller {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.chat-column {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-6) var(--space-6);
+  font-size: var(--text-base);
+}
+
+.chat-column .status-panel,
+.chat-column .error-panel {
+  margin: var(--space-4) 0;
+}
+
+.chat-day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 550;
+}
+
+.chat-day::before,
+.chat-day::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--border);
+}
+
+.chat-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 0.125rem var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.chat-line:hover {
+  background: var(--surface);
+}
+
+.chat-replies {
+  margin-left: 4.75rem;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+}
+
+.chat-time {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.chat-body {
+  overflow-wrap: anywhere;
+}
+
+.chat-body a {
+  text-decoration: none;
+}
+
+.chat-body a:hover {
+  text-decoration: underline;
+}
+
+.chat-sender {
+  font-weight: 650;
+}
+
+/* Shown on the line under the pointer, and always where nothing hovers. */
+.chat-mute {
+  display: inline-flex;
+  margin-left: 0.125rem;
+  padding: 0;
+  color: var(--muted);
+  vertical-align: -0.2em;
+  background: none;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chat-mute .icon {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.chat-line:hover .chat-mute,
+.chat-mute:focus-visible {
+  opacity: 1;
+}
+
+.chat-mute:hover {
+  color: var(--error);
+}
+
+@media (hover: none) {
+  .chat-mute {
+    opacity: 0.6;
+  }
+}
+
+.chat-recipient,
+.chat-recipient a {
+  color: var(--muted);
+}
+
+.chat-recipient {
+  margin-left: var(--space-1);
+}
+
+.chat-quote {
+  display: inline-block;
+  max-width: 100%;
+  margin-right: var(--space-2);
+  padding: 0 var(--space-2);
+  color: var(--muted);
+  background: var(--surface-subtle);
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+button.chat-quote {
+  cursor: pointer;
+}
+
+.chat-quote-missing {
+  font-style: italic;
+}
+
+a.chat-quote:hover,
+button.chat-quote:hover {
+  color: var(--text);
+}
+
+.chat-quote-open {
+  display: block;
+  margin: 0.125rem 0;
+  white-space: pre-wrap;
+}
+
+.chat-quote-packet {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: 0.125rem;
+  font-size: var(--text-sm);
+}
+
+.chat-quote-packet .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.chat-text {
+  white-space: pre-wrap;
+}
+
+.chat-reaction,
+.chat-fold {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.chat-fold {
+  color: var(--muted);
+  font-weight: 550;
+}
+
+.chat-more {
+  margin: 0 0 var(--space-1) var(--space-2);
+  padding: 0;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  font-size: var(--text-sm);
+}
+
+.chat-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.chat-meta a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* On a phone the message takes the full width, with its time and metadata on
+   a row beneath it. */
+@media (max-width: 700px) {
+  .chat-column {
+    padding: var(--space-2) var(--space-3) var(--space-4);
+  }
+
+  .chat-line {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "body body"
+      "time meta";
+    row-gap: 0.125rem;
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .chat-body {
+    grid-area: body;
+  }
+
+  .chat-time {
+    grid-area: time;
+  }
+
+  .chat-meta {
+    grid-area: meta;
+  }
+
+  .chat-replies {
+    margin-left: var(--space-2);
+  }
+
+  /* The badge now sits at the left, so open its popover rightwards. */
+  .chat-popover {
+    right: auto;
+    left: 0;
+    max-width: calc(100vw - 2 * var(--space-4));
+  }
+}
+
+.chat-meta a:hover {
+  color: var(--accent);
+}
+
+.chat-open {
+  display: inline-flex;
+  align-self: center;
+  padding: 0.1875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.chat-open .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.chat-meta .chat-open:hover,
+.chat-meta .chat-open:focus-visible {
+  border-color: currentColor;
+  background: var(--surface-subtle);
+}
+
+.chat-channel {
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-rx {
+  position: relative;
+}
+
+.chat-rx-badge {
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  cursor: default;
+}
+
+.chat-rx-lone {
+  color: var(--error);
+}
+
+.chat-popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  min-width: 17rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+  white-space: nowrap;
+}
+
+.chat-popover-above {
+  top: auto;
+  bottom: 100%;
+}
+
+.chat-popover p {
+  margin: 0 0 var(--space-2);
+}
+
+.chat-popover a {
+  color: var(--accent);
+}
+
+.chat-popover table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.chat-popover th {
+  color: var(--muted);
+  font-weight: 550;
+  text-align: left;
+}
+
+.chat-popover th,
+.chat-popover td {
+  padding: 0.0625rem var(--space-2) 0.0625rem 0;
+}
+
+.chat-popover .number {
+  text-align: right;
+}
+
+.chat-popover-error {
+  color: var(--error);
+}
+
+.chat-older {
+  display: block;
+  margin: var(--space-2) auto;
+}
+
+.chat-channel-chip,
+.zones-tabs button {
+  padding: 0.125rem var(--space-3);
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+}
+
+.chat-channel-chip[aria-pressed="true"],
+.zones-tabs button[aria-pressed="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.chat-channel-more {
+  height: auto;
+  padding-block: 0.125rem;
+  color: var(--muted);
+  border-radius: var(--radius-pill);
+}
+
+.chat-channel-more[data-active="true"] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.chat-search {
+  width: 14rem;
+  height: auto;
+  padding-block: 0.125rem;
+  border-radius: var(--radius-pill);
+}
+
+.chat-muted {
+  position: relative;
+  font-size: var(--text-sm);
+}
+
+.chat-muted summary {
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chat-muted ul {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 10;
+  min-width: 14rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-2);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-overlay);
+}
+
+.chat-muted li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0.125rem 0;
+}
+
+@media (max-width: 700px) {
+  /* "88 gateways, up to 817 km" leaves room for the channel. */
+  .chat-rx-lead {
+    display: none;
+  }
+
+  .chat-search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .chat-muted ul {
+    right: auto;
+    left: 0;
+  }
+}
+
+.chat-new-pill {
+  position: sticky;
+  bottom: var(--space-3);
+  display: block;
+  margin: 0 auto;
+  padding: var(--space-1) var(--space-4);
+  color: var(--surface);
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+/* Nodes: a toolbar over a paged table. */
+.nodes-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.nodes-toolbar input[type="search"] {
+  width: 18rem;
+}
+
+.nodes-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.opened-at {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.nodes-toolbar input[type="checkbox"] {
+  height: auto;
+}
+
+.table-wrap.is-loading {
+  opacity: 0.6;
+}
+
+.node-table td,
+.node-table th {
+  padding-inline: 0.625rem;
+  white-space: nowrap;
+}
+
+/* Long names and hardware models are cut short with an ellipsis; hover shows all of it. */
+.node-table .node-long-name,
+.node-table .node-hardware {
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-table .node-hardware {
+  max-width: 12ch;
+}
+
+.node-table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Map, Gateway, and Traceroute through AirUtil center their headings and values. */
+.nodes-page
+  .node-table
+  :is(th, td):is(
+    :nth-child(4),
+    :nth-child(7),
+    :nth-child(n + 9):nth-child(-n + 13)
+  ) {
+  text-align: center;
+}
+
+.sort-button {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sort-button:not(.is-active) {
+  opacity: 0.75;
+}
+
+.sort-button.is-active {
+  color: var(--text);
+}
+
+.sort-button:not(.is-active) .sort-arrow {
+  opacity: 0.4;
+}
+
+.sort-arrow {
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+.heading-note {
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.gateway-badge {
+  display: inline-flex;
+  padding: 2px 8px;
+  color: var(--surface);
+  background: var(--blue);
+  border-radius: var(--radius-pill);
+}
+
+.map-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+}
+
+.map-pin .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.map-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.map-pin-old {
+  color: var(--amber);
+}
+
+.map-pin-none {
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.nodes-paging {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 900px) {
+  .node-table .wide-only {
+    display: none;
+  }
+}
+
+/* Chatty nodes: a scrollable list of senders, each row a button, as tall as
+   the sidebar allows. */
+.sidebar-scroll > .chatty-nodes {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 7rem;
+  margin: 0 0 var(--space-4);
+}
+
+.sidebar-scroll > .chatty-nodes-closed {
+  min-height: 0;
+}
+
+/* The heading folds the list; a triangle shows which way. */
+.chatty-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.chatty-toggle::before {
+  content: "▾ ";
+}
+
+.chatty-toggle[aria-expanded="false"]::before {
+  content: "▸ ";
+}
+
+.chatty-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.chatty-hint {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.chatty-nodes ul {
+  min-height: 0;
+  overflow-y: auto;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-1);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.chatty-nodes li button {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.chatty-nodes li button:hover,
+.chatty-nodes li button[aria-pressed="true"] {
+  background: var(--accent-soft);
+}
+
+/* The name shortens first so the no-position mark after it stays visible. */
+.chatty-region,
+.chatty-name > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatty-name {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.chatty-unplaced {
+  flex: none;
+  color: var(--muted);
+}
+
+.chatty-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Node page charts */
+.activity-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.activity-chart {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.activity-chart h3 {
+  margin: 0;
+}
+
+.activity-chart figcaption p {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.chart-swatch {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 2px;
+  vertical-align: -0.05em;
+}
+
+.chart-frame {
+  position: relative;
+}
+
+.chart-frame svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-frame .is-hovered rect:not([fill="transparent"]) {
+  filter: brightness(1.2);
+}
+
+.chart-crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart-point {
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-tooltip {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-overlay);
+  font-size: var(--text-sm);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.chart-tooltip table {
+  margin-top: var(--space-1);
+  border-collapse: collapse;
+}
+
+.chart-tooltip td {
+  padding: 0 var(--space-2) 0 0;
+}
+
+.chart-tooltip .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 960px) {
+  .activity-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Links page */
+/* Wide tables use the full window width rather than the 76rem column. */
+.page-document > .links-page,
+.page-document > .nodes-page {
+  max-width: none;
+}
+
+/* Line of sight: two node pickers, a summary, then the map and profile side
+   by side, stacked on narrow screens. */
+.los-pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.los-end {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: min(20rem, 100%);
+}
+
+.los-end .node-search {
+  flex: 1;
+  margin: 0;
+}
+
+.los-end-marker {
+  --hop-colour: var(--blue);
+  flex: none;
+}
+
+.los-chosen {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+}
+
+.los-chosen .node-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: var(--text-xs);
+}
+
+.los-pickers > .text-button {
+  align-self: center;
+}
+
+.los-summary {
+  margin-bottom: var(--space-4);
+}
+
+.los-verdict {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.los-facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.los-facts div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+}
+
+.los-facts dt {
+  color: var(--muted);
+}
+
+.los-facts dd {
+  margin: 0;
+}
+
+.los-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.los-map {
+  margin: 0;
+}
+
+.los-map .minimap-canvas {
+  height: min(26rem, 60vh);
+}
+
+.los-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.los-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.los-profile {
+  margin: 0;
+}
+
+.los-terrain {
+  fill: #7a6a4c;
+}
+
+.los-ground {
+  fill: none;
+  stroke: #e2cfa6;
+  stroke-width: 1.5;
+}
+
+.los-fresnel {
+  fill: var(--blue);
+  fill-opacity: 0.14;
+}
+
+.los-fresnel-edge {
+  fill: none;
+  stroke: var(--blue);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.los-sight {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2;
+}
+
+.los-blocked {
+  fill: #d0453a;
+}
+
+/* The small elevation-profile link beside a Links table distance. */
+.los-link {
+  margin-left: var(--space-2);
+  color: var(--accent);
+}
+
+.los-link .icon,
+.text-button .icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+
+.los-caveat {
+  max-width: 60rem;
+  margin-top: var(--space-4);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 900px) {
+  .los-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The table's own scrollbar is hidden; the one below it sticks to the bottom
+   of the window instead. */
+/* A container, so a row's contents can size to the visible width (cqw). */
+.wide-table {
+  container-type: inline-size;
+  scrollbar-width: none;
+}
+
+.wide-table::-webkit-scrollbar {
+  display: none;
+}
+
+/* The page's bottom padding would otherwise hold it above the window's edge. */
+.wide-table-scrollbar {
+  position: sticky;
+  bottom: calc(-1 * var(--space-8));
+  z-index: 2;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface);
+}
+
+/* Firefox; Chrome ignores the rules below when this is set. */
+@supports not selector(::-webkit-scrollbar) {
+  .wide-table-scrollbar {
+    scrollbar-color: var(--muted) var(--surface-subtle);
+  }
+}
+
+.wide-table-scrollbar::-webkit-scrollbar {
+  height: 0.75rem;
+}
+
+.wide-table-scrollbar::-webkit-scrollbar-track {
+  background: var(--surface-subtle);
+}
+
+.wide-table-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 0.375rem;
+}
+
+.wide-table-scrollbar > div {
+  height: 1px;
+}
+
+.links-page .small-number {
+  width: 5rem;
+}
+
+.links-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  align-items: start;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* The traceroute explorer's busiest lists, closed together down to one heading. */
+.busiest-list {
+  margin-bottom: var(--space-4);
+}
+
+.busiest-list .links-charts {
+  margin: var(--space-3) 0 0;
+}
+
+.busiest-list h4 {
+  margin: 0;
+}
+
+.busiest-list summary {
+  cursor: pointer;
+}
+
+.busiest-list summary h3 {
+  display: inline;
+}
+
+.busiest-hint {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.links-table td,
+.traceroute-table td {
+  vertical-align: top;
+}
+
+/* Every column but the two node names is centered; an expanded row's details are not. */
+.links-table > thead > tr > th:nth-child(n + 3),
+.links-table > tbody > tr:not(.links-expanded) > td:not(.link-node) {
+  text-align: center;
+}
+
+/* A long node name is cut short so it does not widen the table; hover shows all of it. */
+.links-table .link-node {
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tier-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+}
+
+.links-expanded > td {
+  background: var(--canvas);
+  white-space: normal;
+}
+
+/* The traceroute packets that reported a hop: time, SNR, run and a reply tag,
+   wrapping in the narrow map sidebar. */
+.hop-observations {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.hop-observations li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-2);
+}
+
+/* The map sidebar's version: a count that opens a list of time and SNR. */
+.hop-observations-toggle {
+  width: 100%;
+}
+
+.hop-observations-toggle summary {
+  cursor: pointer;
+}
+
+.hop-observations-toggle[open] summary {
+  margin-bottom: var(--space-1);
+}
+
+.hop-observations .number {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A Links table row's two directions side by side, stacked when narrow; as
+   wide as the page, not the scrolling table. */
+.hop-lists {
+  position: sticky;
+  left: var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
+  max-width: min(60rem, 80vw);
+  padding: var(--space-3) 0;
+}
+
+.hop-lists .section-label {
+  margin: 0 0 var(--space-1);
+}
+
+.hop-lists-all {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+.hop-lists-all .icon {
+  margin-right: var(--space-1);
+}
+
+/* A Links row opened: the pair's map on the left, each direction's hours and
+   packets beside it; stacked on narrow screens. As wide as the page, not the
+   scrolling table it sits in. */
+.link-details {
+  position: sticky;
+  left: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(18rem, 2fr) minmax(0, 3fr);
+  gap: var(--space-3) var(--space-6);
+  align-items: start;
+  max-width: min(84rem, 90vw);
+  padding: var(--space-3) 0;
+}
+
+.link-details-map .minimap-canvas {
+  height: 18rem;
+}
+
+.link-details-map > p {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+}
+
+.link-details-side {
+  display: grid;
+  gap: var(--space-4);
+  justify-items: stretch;
+}
+
+.link-details-side .section-label {
+  margin: 0 0 var(--space-1);
+}
+
+.link-details-side .hop-lists-all {
+  justify-self: start;
+}
+
+.hour-strip {
+  margin: 0 0 var(--space-2);
+}
+
+.hour-strip svg {
+  display: block;
+  width: 100%;
+  height: 0.875rem;
+  border-radius: var(--radius-sm);
+}
+
+.hour-strip-track {
+  fill: var(--surface-subtle);
+}
+
+.hour-strip-axis {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 900px) {
+  .link-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.expand-cell .icon-button[aria-expanded="true"] .icon {
+  rotate: 90deg;
+}
+
+@media (max-width: 900px) {
+  .hop-lists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.top-list {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.top-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.top-list li::marker {
+  color: var(--muted);
+}
+
+/* A whole busiest-list row searches for its node; the searched one stays lit. */
+.top-list-row {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0 var(--space-1);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.top-list-row:hover,
+.top-list-row[aria-pressed="true"] {
+  background: var(--accent-soft);
+}
+
+.top-list-row[aria-pressed="true"] .top-list-name {
+  font-weight: 600;
+}
+
+.top-list-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Every heading and run cell is centered but the route; the expanded row is not. */
+.traceroute-table > thead > tr > th,
+.traceroute-table .clickable-row > td {
+  text-align: center;
+}
+
+/* The Apart cell's badges sit under its km, on one line. */
+.traceroute-table .cell-badges {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.traceroute-table .cell-badges:empty {
+  display: none;
+}
+
+.traceroute-table > thead > tr > th.run-route,
+.traceroute-table .clickable-row > td.run-route {
+  min-width: 28rem;
+  text-align: left;
+  white-space: normal;
+}
+
+.run-route dl,
+.run-route dd {
+  margin: 0;
+}
+
+.run-route dt {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* In a route, the requester and target stand out as bold links after square
+   chips, as their minimap markers are squares; relays are plain text after
+   hollow round chips, and the SNR between them is quiet. */
+.route-chip.hop-tone-sender {
+  min-width: 1.25rem;
+  border-radius: var(--radius-sm);
+}
+
+.run-route .route-chip.hop-tone-relay {
+  background: transparent;
+  color: var(--muted);
+}
+
+/* A hollow relay with no marker dashes its own ring instead. */
+.run-route .route-chip.hop-tone-relay.unplaced {
+  border-style: dashed;
+  outline: none;
+}
+
+.run-route .route-node:not(.route-end) a {
+  color: var(--text);
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.run-route .route-node:not(.route-end) a:hover {
+  text-decoration: underline;
+}
+
+/* A highlighted relay keeps the dark text the yellow needs. */
+.run-route .route-node.highlighted a {
+  color: var(--marker-ring-edge);
+}
+
+.run-route .route-hop {
+  margin-right: 0;
+  font-size: var(--text-xs);
+}
+
+/* Each run is a tbody; stripe runs, not rows, and keep a run's rows joined. */
+.table-wrap .traceroute-table tbody tr {
+  background: none;
+}
+
+.table-wrap .traceroute-table tbody:nth-of-type(even) tr {
+  background: var(--surface-stripe);
+}
+
+.table-wrap .traceroute-table tbody:nth-of-type(even) .clickable-row:hover,
+.table-wrap .traceroute-table tbody:nth-of-type(odd) .clickable-row:hover {
+  background: var(--accent-soft);
+}
+
+.traceroute-run > tr:not(:last-child) > td:not(.run-marker) {
+  border-bottom: 0;
+}
+
+.traceroute-table .run-marker {
+  width: 1%;
+  padding-inline: var(--space-2);
+  text-align: center;
+  border-left: 3px solid var(--accent);
+}
+
+.run-number {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-marker .icon-button[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+.filter-chip {
+  margin-left: var(--space-1);
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* As wide as the page, not the scrolling table it sits in. */
+.traceroute-map {
+  position: sticky;
+  left: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+  max-width: min(60rem, 80vw);
+  padding: var(--space-3) 0;
+}
+
+.traceroute-map .minimap-canvas {
+  height: 26rem;
+}
+
+/* The hop list sits beside the map when there is room, under it otherwise. */
+@media (min-width: 64rem) {
+  .traceroute-map {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    max-width: min(84rem, 90vw);
+  }
+}
+
+/* The hop list with the link to all routes under it. */
+.traceroute-hops {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.hop-list {
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.hop-list th,
+.hop-list td {
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.hop-list th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.hop-list .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hop-list tbody tr {
+  border-top: 1px solid var(--border);
+}
+
+.hop-list tbody tr.highlighted {
+  background: var(--surface-subtle);
+}
+
+.hop-list .route-node a {
+  font-weight: 400;
+}
+
+.hop-list .route-node:not(.highlighted) a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.hop-list .route-node a {
+  display: inline-block;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.hop-list .longest {
+  font-weight: 650;
+}
+
+.hop-list .badge {
+  margin-left: var(--space-1);
+}
+
+/* Zones: settings on top, then the zone map with a side panel,
+   stacked on narrow screens. */
+.page-document > .zones-page {
+  max-width: 90rem;
+  margin: 0 auto;
+}
+
+.zones-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
+  gap: var(--space-5);
+}
+
+/* The settings span only the map's column, so the zones beside the map
+   start and end with it and stay in view with it. */
+.zones-settings {
+  grid-area: 1 / 1;
+}
+
+.zones-main-column {
+  grid-area: 2 / 1;
+}
+
+.zones-side-column {
+  grid-area: 2 / 2;
+}
+
+.zones-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.zones-panel {
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.zones-panel h3 {
+  margin: 0;
+}
+
+.zones-panel h4 {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-base);
+}
+
+.zones-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+}
+
+.zones-controls label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.zones-note {
+  margin: var(--space-3) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* The map stays in view while a longer zone list or zone beside it scrolls
+   by with the page. */
+.zones-zone-map {
+  position: sticky;
+  top: 0;
+  height: 36rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.zones-zone-map-canvas {
+  height: 100%;
+}
+
+/* The Map and Graph tabs, joined to the top of the settings panel below
+   them: the open one shares the panel's background and has no edge between.
+   The window and channel sit beside them, and wrap above them rather than
+   between the tabs and the panel. */
+.zones-head {
+  display: flex;
+  flex-wrap: wrap-reverse;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  min-width: 0;
+}
+
+.zones-view-tabs,
+.links-tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+}
+
+.zones-view-tabs button,
+.links-tabs a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: -1px;
+  padding: var(--space-2) var(--space-4);
+  color: var(--muted);
+  text-align: left;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  cursor: pointer;
+}
+
+.zones-view-tabs strong,
+.links-tabs strong {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.zones-view-tabs .icon,
+.links-tabs .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.zones-view-tabs button[aria-pressed="true"],
+.links-tabs a[aria-current="page"] {
+  position: relative;
+  color: var(--text);
+  background: var(--surface);
+  border-bottom-color: var(--surface);
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.zones-view-tabs button[aria-pressed="true"] .icon,
+.links-tabs a[aria-current="page"] .icon {
+  color: var(--accent);
+}
+
+.zones-view-tabs button:not([aria-pressed="true"]):hover,
+.links-tabs a:not([aria-current="page"]):hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+/* The Links views as tabs in the Zones view tabs' style, on a line over the
+   page rather than over a panel. */
+.links-tabs {
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.links-tabs a {
+  text-decoration: none;
+}
+
+.links-tabs a[aria-current="page"] {
+  background: var(--canvas);
+  border-bottom-color: var(--canvas);
+}
+
+.zones-tabbed {
+  border-top-left-radius: 0;
+}
+
+/* The rules the graph is built from, as numbered steps: the number, the
+   step's name, then its rule with any sliders and what it gave. */
+.zones-steps {
+  font-size: var(--text-sm);
+}
+
+.zones-steps summary {
+  cursor: pointer;
+}
+
+.zones-panel .zones-steps summary h3 {
+  display: inline;
+  font-size: var(--text-base);
+}
+
+.zones-steps-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-2);
+}
+
+/* The closed steps: only their sliders, in a row beside the heading. */
+.zones-steps.is-closed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+}
+
+.zones-steps.is-closed .zones-steps-sliders {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+
+.zones-steps-sliders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-5);
+  margin-top: var(--space-2);
+}
+
+.zones-steps-sliders label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.zones-steps-sliders .text-button {
+  margin-left: auto;
+}
+
+.zones-steps-heading .text-button {
+  margin-left: auto;
+}
+
+.zones-steps ol {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.zones-steps li {
+  display: grid;
+  grid-template-columns: 1.375rem 6.5rem minmax(0, 1fr);
+  column-gap: var(--space-2);
+  align-items: baseline;
+  counter-increment: step;
+}
+
+.zones-steps li::before {
+  display: grid;
+  grid-row: span 2;
+  place-items: center;
+  width: 1.375rem;
+  height: 1.375rem;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 50%;
+  content: counter(step);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.zones-steps li > strong {
+  grid-row: span 2;
+}
+
+.zones-steps li p {
+  grid-column: 3;
+  margin: 0;
+  line-height: 1.7;
+}
+
+.zones-step-result {
+  color: var(--muted);
+}
+
+.zones-step-result::before {
+  content: "→ ";
+}
+
+.zones-step-slider {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.zones-step-slider input {
+  width: 5.5rem;
+  accent-color: var(--accent);
+}
+
+.zones-step-slider output {
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .zones-steps li {
+    grid-template-columns: 1.375rem minmax(0, 1fr);
+  }
+
+  .zones-steps li::before {
+    grid-row: span 3;
+  }
+
+  .zones-steps li > strong {
+    grid-row: auto;
+  }
+
+  .zones-steps li p {
+    grid-column: 2;
+  }
+}
+
+/* The graph view in place of the map: each island's groups as boxes and
+   the lines between them; a wide island scrolls inside its own box. */
+/* The graph, with the grouping rule beside it; below it on narrow screens. */
+.zones-graph {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.zones-graph-island {
+  min-width: 0;
+}
+
+.zones-graph-island h4 {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-base);
+}
+
+.zones-graph-island h4 small {
+  margin-left: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
+.zones-graph-scroll {
+  overflow-x: auto;
+}
+
+.zones-graph-scroll svg {
+  display: block;
+}
+
+.zones-graph svg text {
+  font-family: var(--font-sans);
+}
+
+.zones-graph-group,
+.zones-graph-line {
+  cursor: pointer;
+  outline: none;
+}
+
+.zones-graph-box {
+  fill: var(--surface-subtle);
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.zones-graph-group.selected .zones-graph-box,
+.zones-graph-group:focus-visible .zones-graph-box {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+/* Hovering marks only the group or line under the pointer; selecting one
+   dims the rest. */
+.zones-graph-group:hover:not(.selected) .zones-graph-box {
+  stroke: var(--muted);
+}
+
+.zones-graph-caption {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.zones-graph-note {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.zones-graph-zone text {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  stroke: rgb(0 0 0 / 55%);
+  stroke-width: 2px;
+  paint-order: stroke;
+}
+
+.zones-graph-zone.selected rect:first-child {
+  stroke: var(--marker-ring);
+  stroke-width: 2;
+}
+
+.zones-graph-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+/* As the map's zone lines (ZoneMap.tsx): wide with 2+ solid links, thin with
+   one, thin and dashed with none. */
+.zones-graph-stroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+
+.zones-graph-stroke.wide {
+  stroke-width: 7;
+}
+
+.zones-graph-stroke.dashed {
+  stroke-dasharray: 5 3.75;
+  stroke-linecap: butt;
+}
+
+.zones-graph-line.selected .zones-graph-stroke,
+.zones-graph-line:hover .zones-graph-stroke,
+.zones-graph-line:focus-visible .zones-graph-stroke {
+  stroke-width: 4.5;
+}
+
+.zones-graph-line.selected .zones-graph-stroke.wide,
+.zones-graph-line:hover .zones-graph-stroke.wide,
+.zones-graph-line:focus-visible .zones-graph-stroke.wide {
+  stroke-width: 10;
+}
+
+/* A line's text reach, on a pill of the line's colour; the share colours are
+   all light, so the text is dark in both themes. */
+.zones-graph-label text {
+  fill: #1c1f1d;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.zones-graph-label rect {
+  stroke: rgb(0 0 0 / 25%);
+  stroke-width: 1;
+}
+
+.zones-graph-label.selected rect {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.zones-graph .dim {
+  opacity: 0.25;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zones-graph-group,
+  .zones-graph-line {
+    transition: opacity 0.15s;
+  }
+}
+
+.zones-graph-alone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zones-graph-alone .zones-zone-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.zones-graph-alone-zone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.2rem;
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 650;
+  text-shadow: 0 0 2px rgb(0 0 0 / 60%);
+}
+
+.zones-graph-term {
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+/* The zone map's popups, in the page's colours rather than MapLibre's white. */
+.zones-popup .maplibregl-popup-content {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.zones-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.zones-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.zones-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--border);
+}
+
+.zones-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.zones-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.zones-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--border);
+}
+
+.zones-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--border);
+}
+
+.zones-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--border);
+}
+
+/* The node name that follows the pointer over the zone map's node markers. */
+.zones-node-hover {
+  pointer-events: none;
+}
+
+.zones-node-hover .maplibregl-popup-content {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* A clicked pair link's details sit above the pair's links, ruled off below. */
+.zones-open-link {
+  padding: 0 0 var(--space-4);
+  margin-bottom: var(--space-4);
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.zones-map-message {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+/* Beside the map: the zone list or one zone's details. The column is as tall
+   as the map, never taller: its panel fills it, and the panel's list shows
+   only the rows that fit (useRowsThatFit in ZonesView.tsx) rather than
+   scrolling, so the wheel always scrolls the page. */
+.zones-side-column {
+  position: relative;
+}
+
+.zones-side-column > .zones-side {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* A graph group's or line's details are a few rows: the panel grows to show
+   them all and makes the page longer instead. */
+.zones-side-column > .zones-side.is-whole {
+  position: static;
+  flex: 1;
+}
+
+/* The graph is as tall as the map, so the column beside it has as much room
+   in both views and switching between them keeps the page's height. */
+.zones-graph-panel {
+  min-height: 36rem;
+}
+
+/* A selected group's zones, wrapping like words. */
+.zones-group-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zones-list {
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zones-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.zones-list li:last-child {
+  border-bottom: 0;
+}
+
+/* A key relay beside the map: the row centres the map on it. */
+.zones-list li.zones-relay-row {
+  cursor: pointer;
+}
+
+.zones-list li.is-selected,
+.zones-relays tbody tr.is-selected,
+.zones-list li.zones-relay-row:hover {
+  background: var(--surface-subtle);
+}
+
+.zones-value {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.zones-late,
+.zones-value.zones-late {
+  color: var(--amber);
+}
+
+/* Beside the map with nothing selected: the network in one line, then tabs. */
+.zones-summary {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.zones-tabs {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.zones-tabs button {
+  padding-inline: var(--space-2);
+  cursor: pointer;
+}
+
+/* A side list's heading, with how many of its rows fit and the link to its
+   table at the right. */
+.zones-side-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.zones-panel .zones-side-heading h4 {
+  margin: 0;
+}
+
+.zones-more {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+/* The zones, a line each: the name takes the room left over and is cut
+   short when there is too little. */
+.zones-side-table {
+  width: 100%;
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.zones-side-table th,
+.zones-side-table td {
+  padding: var(--space-1) var(--space-2);
+}
+
+.zones-side-table thead th {
+  font-size: var(--text-sm);
+}
+
+.zones-side-table th:first-child,
+.zones-side-table td:first-child {
+  padding-left: 0;
+}
+
+.zones-side-table td:first-child {
+  width: 100%;
+  max-width: 0;
+}
+
+.zones-side-table .zones-zone-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zones-side-table tbody tr.zones-pair-row:hover {
+  background: var(--surface-subtle);
+}
+
+/* Side rows that select a zone pair: the whole row is the button. */
+.zones-pick-list {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.zones-pick-list li {
+  border-bottom: 1px solid var(--border);
+}
+
+.zones-pick-list li:last-child {
+  border-bottom: 0;
+}
+
+.zones-pick-list button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-1);
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.zones-pick-list button:hover {
+  background: var(--surface-subtle);
+}
+
+/* A side row's dots and name; the name is cut short rather than wrapped. */
+.zones-pick-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* A row under another row's pair, such as one of its solid links. */
+.zones-pick-sub {
+  padding-left: var(--space-6);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.zones-pick-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The table link under a pair's figures beside the map, at the right. */
+.zones-pair-more {
+  display: flex;
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+/* A selected zone's or pair's heading. */
+.zones-panel .zones-zone-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.zones-panel .zones-zone-title h3 {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.zones-swatch {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: var(--space-1);
+  border-radius: 50%;
+  vertical-align: -0.1em;
+}
+
+.zones-zone-chip {
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.zones-zone-chip:hover {
+  text-decoration: underline;
+}
+
+.zones-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+}
+
+.zones-facts > div {
+  display: contents;
+}
+
+.zones-facts dt {
+  color: var(--muted);
+}
+
+.zones-facts dd {
+  margin: 0;
+}
+
+.zones-margin,
+.margin-value {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A figure for each direction of a link or zone pair, on one line around ⇄. */
+.both-ways {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The key relay's mast on the map, beside its name, and a zone's warning triangle. */
+.zones-relays .zones-relay-mark,
+.zones-side-table .zones-relay-mark {
+  margin-right: var(--space-1);
+  vertical-align: middle;
+}
+
+.zones-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.zones-table td,
+.zones-table th {
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+}
+
+.zones-table .zones-badges {
+  flex-wrap: nowrap;
+}
+
+.zones-table .number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Between zones: values centred except the zone pair. Only this table's own
+   cells, not the links table an expanded row holds. */
+.zones-between > * > tr > td,
+.zones-between > * > tr > th,
+.zones-between > * > tr > .number {
+  text-align: center;
+}
+
+.zones-between > * > tr > td:first-child,
+.zones-between > * > tr > th:first-child {
+  text-align: left;
+}
+
+/* Key relays: tight columns, values centred except the node's name. */
+.zones-relays td,
+.zones-relays th {
+  padding: var(--space-1) var(--space-2);
+  text-align: center;
+}
+
+.zones-relays.zones-table .number {
+  text-align: center;
+}
+
+.zones-relays td:first-child,
+.zones-relays th:first-child {
+  text-align: left;
+}
+
+.zones-relay-zone {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Several zones in one cell, wrapping when the column is narrow. */
+.zones-relay-zones {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+/* A zone's colour with its number inside. */
+.zones-number-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.2rem;
+  color: #fff;
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 2px rgb(0 0 0 / 60%);
+}
+
+.zones-pair-row {
+  cursor: pointer;
+}
+
+.table-wrap tbody tr.zones-pair-row:hover,
+.table-wrap tbody tr.zones-pair-row.is-selected,
+.zones-pair-side tbody tr.zones-pair-row:hover,
+.zones-pair-side tbody tr.zones-pair-row.is-selected {
+  background: var(--surface-subtle);
+}
+
+/* A link with a node that has no position: not on the map, so not openable. */
+.zones-pair-side tbody tr.zones-unplaced-row {
+  background: var(--amber-soft);
+}
+
+.zones-toggle {
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.table-wrap tbody tr.zones-pair-detail {
+  background: var(--canvas);
+}
+
+.zones-pair-detail > td {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.zones-pair-links {
+  width: 100%;
+  font-size: var(--text-sm);
+}
+
+/* Under a pair's row: as wide as the visible table, not the scrolling one,
+   so opening a link's details moves no column. */
+.zones-pair-detail .zones-pair-links {
+  position: sticky;
+  left: var(--space-4);
+  width: calc(100cqw - 2 * var(--space-4));
+}
+
+.zones-pair-links thead th {
+  font-size: var(--text-sm);
+}
+
+/* Every column centred but the two zone sides; not an opened link's details. */
+.zones-pair-links > thead > tr > th:nth-child(n + 3),
+.zones-pair-links > tbody > tr:not(.links-expanded) > td:nth-child(n + 3) {
+  text-align: center;
+}
+
+.zones-solid-mark {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.zones-map-link {
+  margin-left: var(--space-2);
+  color: var(--accent);
+}
+
+.zones-map-link .icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+
+/* Between zones and Key relays: the heading with its Show all beside it. */
+.zones-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-5) 0 var(--space-2);
+}
+
+.zones-show-all {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.zones-show-all .secondary-button {
+  min-height: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* Active nodes by channel: horizontal bars with the count at the tip. */
+.zones-bars {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.zones-bars li {
+  display: contents;
+}
+
+.zones-bar-label {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zones-bar-track {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.zones-bar {
+  min-width: 2px;
+  height: 14px;
+  border-radius: 0 4px 4px 0;
+}
+
+.zones-bar-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  /* One column: settings, the map, then the zones. */
+  .zones-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .zones-settings,
+  .zones-main-column,
+  .zones-side-column {
+    grid-area: auto;
+  }
+
+  .zones-side-column > .zones-side {
+    position: static;
+  }
+
+  .zones-zone-map {
+    position: relative;
+    top: auto;
+    height: 26rem;
+  }
+
+  .zones-graph-panel {
+    min-height: 0;
+  }
+}
+
+.zones-legend {
+  margin-top: var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.zones-legend summary {
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+}
+
+.zones-legend:not([open]) summary {
+  margin-bottom: 0;
+}
+
+/* The closed legend's one-line key. */
+.zones-legend-key {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  vertical-align: middle;
+}
+
+/* What the key's first marks stand for, such as the graph's line colour. */
+.zones-legend-heading {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.zones-legend p {
+  margin: 0 0 var(--space-2);
+}
+
+.zones-legend-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.zones-legend svg {
+  vertical-align: middle;
+}
+
+.zones-legend-swatch {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+/* A node at an estimated position, as the map draws it: white, ringed. */
+.zones-legend-hollow {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: #fff;
+  vertical-align: middle;
+}
+
+/* A selected pair's links beside the map: as narrow as the column allows. */
+.zones-pair-side {
+  width: 100%;
+}
+
+.zones-pair-side th,
+.zones-pair-side td {
+  padding-inline: var(--space-1);
+}
+
+/* A guessed relay under its relay byte in a reception table. */
+.relay-guess {
+  display: inline-block;
+  max-width: 10rem;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 0.85em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}

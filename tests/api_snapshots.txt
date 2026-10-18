@@ -1,0 +1,4118 @@
+## Capture
+
+deliveries: 110722
+packets: 31095
+receptions: 106266
+copies: 106275
+skipped: {}
+
+## GET /api/v1/packets?limit=50
+
+packets: 50 items
+  - packet_row_id: 31095
+    first_received_at: "2026-10-11T16:24:30.324000Z"
+    last_received_at: "2026-10-11T16:24:30.812000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 96879053
+    recipient_node_id: 4294967295
+    packet_id: 1918924485
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 41cd"
+    recipient_name: null
+  - packet_row_id: 31094
+    first_received_at: "2026-10-11T16:23:57.248000Z"
+    last_received_at: "2026-10-11T16:23:57.334000Z"
+    reception_count: 3
+    channel: "ShortFast"
+    sender_node_id: 1128076540
+    recipient_node_id: 4294967295
+    packet_id: 3986061399
+    portnum: "POSITION_APP"
+    sender_name: "Node 14fc"
+    recipient_name: null
+  - packet_row_id: 31093
+    first_received_at: "2026-10-11T16:23:51.720000Z"
+    last_received_at: "2026-10-11T16:23:52.252000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3306575460
+    recipient_node_id: 4294967295
+    packet_id: 1777314734
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 5664"
+    recipient_name: null
+next_before_id: 31046
+
+## GET /api/v1/packets?limit=50&port=1
+
+packets: 50 items
+  - packet_row_id: 31057
+    first_received_at: "2026-10-11T16:18:10.738000Z"
+    last_received_at: "2026-10-11T16:18:11.143000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 2740683528
+    recipient_node_id: 4294967295
+    packet_id: 3819716113
+    portnum: "TEXT_MESSAGE_APP"
+    sender_name: "Node 8308"
+    recipient_name: null
+  - packet_row_id: 31054
+    first_received_at: "2026-10-11T16:17:52.588000Z"
+    last_received_at: "2026-10-11T16:17:53.670000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 2740683528
+    recipient_node_id: 4294967295
+    packet_id: 4050667024
+    portnum: "TEXT_MESSAGE_APP"
+    sender_name: "Node 8308"
+    recipient_name: null
+  - packet_row_id: 31050
+    first_received_at: "2026-10-11T16:17:41.118000Z"
+    last_received_at: "2026-10-11T16:17:41.429000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 2740683528
+    recipient_node_id: 4294967295
+    packet_id: 624712207
+    portnum: "TEXT_MESSAGE_APP"
+    sender_name: "Node 8308"
+    recipient_name: null
+next_before_id: 29065
+
+## GET /api/v1/packets?limit=50&port=-1
+
+packets: 50 items
+  - packet_row_id: 31059
+    first_received_at: "2026-10-11T16:18:20.010000Z"
+    last_received_at: "2026-10-11T16:18:21.078000Z"
+    reception_count: 2
+    channel: "ShortFast"
+    sender_node_id: 541855504
+    recipient_node_id: 4294967295
+    packet_id: 2733300927
+    portnum: null
+    sender_name: "Node 0f10"
+    recipient_name: null
+  - packet_row_id: 31015
+    first_received_at: "2026-10-11T16:11:19.563000Z"
+    last_received_at: "2026-10-11T16:11:20.279000Z"
+    reception_count: 4
+    channel: "PKI"
+    sender_node_id: 2896845136
+    recipient_node_id: 1128113964
+    packet_id: 1019664752
+    portnum: null
+    sender_name: "Node 5950"
+    recipient_name: null
+  - packet_row_id: 31014
+    first_received_at: "2026-10-11T16:11:14.362000Z"
+    last_received_at: "2026-10-11T16:11:15.584000Z"
+    reception_count: 4
+    channel: "PKI"
+    sender_node_id: 2749076957
+    recipient_node_id: 1128113964
+    packet_id: 4239568585
+    portnum: null
+    sender_name: "Node 95dd"
+    recipient_name: null
+next_before_id: 30154
+
+## GET /api/v1/packets?limit=50&sender=3655149723
+
+packets: 50 items
+  - packet_row_id: 30361
+    first_received_at: "2026-10-11T14:52:44.526000Z"
+    last_received_at: "2026-10-11T14:52:44.847000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 2490384298
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30360
+    first_received_at: "2026-10-11T14:52:33.427000Z"
+    last_received_at: "2026-10-11T14:52:33.616000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 279989161
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30291
+    first_received_at: "2026-10-11T14:42:46.499000Z"
+    last_received_at: "2026-10-11T14:42:47.546000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 3753400232
+    portnum: "NODEINFO_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+next_before_id: 13660
+
+## GET /api/v1/packets?limit=50&sender=3655149723&heard_directly_by=2658555076
+
+packets: 50 items
+  - packet_row_id: 30361
+    first_received_at: "2026-10-11T14:52:44.526000Z"
+    last_received_at: "2026-10-11T14:52:44.847000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 2490384298
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30360
+    first_received_at: "2026-10-11T14:52:33.427000Z"
+    last_received_at: "2026-10-11T14:52:33.616000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 279989161
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30291
+    first_received_at: "2026-10-11T14:42:46.499000Z"
+    last_received_at: "2026-10-11T14:42:47.546000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 3753400232
+    portnum: "NODEINFO_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+next_before_id: 12598
+
+## GET /api/v1/packets/ports
+
+ports: 10 items
+  - portnum: 71
+    port: "NEIGHBORINFO_APP"
+  - portnum: 4
+    port: "NODEINFO_APP"
+  - portnum: 36
+    port: "NODE_STATUS_APP"
+
+## GET /api/v1/packets/1
+
+packet:
+  packet_row_id: 1
+  first_received_at: "2026-10-08T15:57:19.369000Z"
+  last_received_at: "2026-10-08T15:57:21.045000Z"
+  reception_count: 4
+  channel: "ShortFast"
+  sender_node_id: 2821549666
+  recipient_node_id: 4294967295
+  packet_id: 757138468
+  portnum: "NODEINFO_APP"
+  sender_name: "Node 6e62"
+  recipient_name: null
+receptions: 4 items
+  - reception_id: 1
+    received_at: "2026-10-08T15:57:19.369000Z"
+    gateway_node_id: 2658512488
+    gateway_name: "Node ae68"
+    gateway_short_name: "ae68"
+    gateway_latitude: 51.7669
+    gateway_longitude: 19.5232
+    gateway_estimated: false
+    rx_snr: 1
+    rx_rssi: -107
+    hop_start: 7
+    hop_limit: 3
+    relay_byte: 69
+    paths: null
+    hops: []
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 702832197
+      name: "Node 5e45"
+      candidates: 2
+      how: "heard_directly"
+    relay_maybe: []
+    km: 222.7
+  - reception_id: 2
+    received_at: "2026-10-08T15:57:19.505000Z"
+    gateway_node_id: 1770149960
+    gateway_name: "Node 5848"
+    gateway_short_name: "5848"
+    gateway_latitude: 51.7734
+    gateway_longitude: 19.4773
+    gateway_estimated: false
+    rx_snr: 8
+    rx_rssi: -85
+    hop_start: 7
+    hop_limit: 2
+    relay_byte: 60
+    paths: null
+    hops: []
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 1770269756
+      name: "Node 2c3c"
+      candidates: 11
+      how: "heard_directly"
+    relay_maybe: []
+    km: 223
+  - reception_id: 3
+    received_at: "2026-10-08T15:57:19.516000Z"
+    gateway_node_id: 1128130436
+    gateway_name: "Node e784"
+    gateway_short_name: "e784"
+    gateway_latitude: 51.7669
+    gateway_longitude: 19.4183
+    gateway_estimated: false
+    rx_snr: -1
+    rx_rssi: -110
+    hop_start: 7
+    hop_limit: 2
+    relay_byte: 60
+    paths: null
+    hops: []
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 1770269756
+      name: "Node 2c3c"
+      candidates: 11
+      how: "heard_directly"
+    relay_maybe: []
+    km: 221.9
+payload: "{\"id\": \"!a82d6e62\", \"long_name\": \"Node 6e62\", \"short_name\": \"6e62\", \"macaddr\": \"+rSoLW5i\", \"hw_model\": \"RAK4631\", \"public_key\": \"yLJ9KYJEbBXOrcDH7q7Qh183NuPHy7WEt/pvHAyPPxU=\", \"is_unmessagable\": false}"
+sender_latitude: 49.7811
+sender_longitude: 19.1103
+sender_estimated: false
+unreadable_reason: null
+unreadable_reason_description: null
+hops: []
+route_nodes: []
+spreading_factor: 7
+traceroute: null
+reply_route: null
+
+## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0
+
+items: 20 items
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:24:30.324000Z"
+    last_sent_packet_row_id: 31095
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:18:40.349000Z"
+    altitude_meters: 514
+    traceroute_hops: 431
+    traceroute_neighbours: 27
+    packets: 57
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:34:23.790000Z"
+    channel_utilization: 18.4817
+    air_util_tx: 1.74681
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 1128076540
+    long_name: "Node 14fc"
+    short_name: "14fc"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:23:57.248000Z"
+    last_sent_packet_row_id: 31094
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:23:57.248000Z"
+    altitude_meters: 287
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 19
+    broadcast_texts: 0
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 3306575460
+    long_name: "Node 5664"
+    short_name: "5664"
+    role: "ROUTER_LATE"
+    hardware_model: "HELTEC_MESH_NODE_T114"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:23:51.720000Z"
+    last_sent_packet_row_id: 31093
+    last_gateway_at: "2026-10-09T08:57:38.101000Z"
+    position_observed_at: "2026-10-11T08:58:47.100000Z"
+    altitude_meters: 215
+    traceroute_hops: 21
+    traceroute_neighbours: 7
+    packets: 20
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T16:22:51.204000Z"
+    channel_utilization: 4.69167
+    air_util_tx: 0.753778
+    firmware_version: null
+    firmware:
+      minimum: "2.8.1"
+      reason: "its routing replies carry a delivery proof"
+total: 666
+
+## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0
+
+items: 20 items
+  - node_id: 2483997066
+    long_name: "Node c98a"
+    short_name: "c98a"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:46:08.491000Z"
+    last_sent_packet_row_id: 30827
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T09:41:20.113000Z"
+    altitude_meters: 1366
+    traceroute_hops: 257
+    traceroute_neighbours: 32
+    packets: 53
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:46:08.491000Z"
+    channel_utilization: 23.4
+    air_util_tx: 1.75406
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 3596185440
+    long_name: "Node 6f60"
+    short_name: "6f60"
+    role: "ROUTER"
+    hardware_model: "NANO_G2_ULTRA"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:17:50.252000Z"
+    last_sent_packet_row_id: 31053
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T13:42:29.507000Z"
+    altitude_meters: 1257
+    traceroute_hops: 226
+    traceroute_neighbours: 30
+    packets: 17
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T13:54:17.967000Z"
+    channel_utilization: 28.8667
+    air_util_tx: 1.45817
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:24:30.324000Z"
+    last_sent_packet_row_id: 31095
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:18:40.349000Z"
+    altitude_meters: 514
+    traceroute_hops: 431
+    traceroute_neighbours: 27
+    packets: 57
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:34:23.790000Z"
+    channel_utilization: 18.4817
+    air_util_tx: 1.74681
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 666
+
+## GET /api/v1/nodes?sort=packets&limit=20&offset=0
+
+items: 20 items
+  - node_id: 3562709820
+    long_name: "Node a33c"
+    short_name: "a33c"
+    role: "CLIENT"
+    hardware_model: "SEEED_XIAO_S3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T01:39:55.779000Z"
+    last_sent_packet_row_id: 25076
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T01:39:55.779000Z"
+    altitude_meters: 256
+    traceroute_hops: 19
+    traceroute_neighbours: 4
+    packets: 262
+    broadcast_texts: 0
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 1128130436
+    long_name: "Node e784"
+    short_name: "e784"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_WSL_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:21:59.269000Z"
+    last_sent_packet_row_id: 31079
+    last_gateway_at: "2026-10-11T16:24:30.812000Z"
+    position_observed_at: "2026-10-11T16:21:59.269000Z"
+    altitude_meters: 185
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 258
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T16:13:22.947000Z"
+    channel_utilization: 1.515
+    air_util_tx: 0
+    firmware_version: null
+    firmware:
+      minimum: "2.7.9"
+      reason: "it uses the Client base role"
+  - node_id: 4269814177
+    long_name: "Node 31a1"
+    short_name: "31a1"
+    role: "CLIENT_BASE"
+    hardware_model: "RAK3401"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:56:32.706000Z"
+    last_sent_packet_row_id: 30918
+    last_gateway_at: null
+    position_observed_at: null
+    altitude_meters: null
+    traceroute_hops: 225
+    traceroute_neighbours: 10
+    packets: 231
+    broadcast_texts: 18
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.8.0"
+      reason: "its node number is derived from its public key"
+total: 666
+
+## GET /api/v1/nodes?sort=texts&limit=20&offset=0
+
+items: 20 items
+  - node_id: 2740683528
+    long_name: "Node 8308"
+    short_name: "8308"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_V4"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:18:10.738000Z"
+    last_sent_packet_row_id: 31057
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T12:42:26.295000Z"
+    altitude_meters: 270
+    traceroute_hops: 8
+    traceroute_neighbours: 5
+    packets: 60
+    broadcast_texts: 20
+    utilization_observed_at: "2026-10-11T14:37:21.227000Z"
+    channel_utilization: 11.7517
+    air_util_tx: 0.293417
+    firmware_version: null
+    firmware:
+      minimum: "2.7.9"
+      reason: "it uses the Client base role"
+  - node_id: 1128132236
+    long_name: "Node ee8c"
+    short_name: "ee8c"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_WSL_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:06:16.023000Z"
+    last_sent_packet_row_id: 30470
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T15:06:16.023000Z"
+    altitude_meters: 283
+    traceroute_hops: 2
+    traceroute_neighbours: 1
+    packets: 24
+    broadcast_texts: 20
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.7.9"
+      reason: "it uses the Client base role"
+  - node_id: 4269814177
+    long_name: "Node 31a1"
+    short_name: "31a1"
+    role: "CLIENT_BASE"
+    hardware_model: "RAK3401"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:56:32.706000Z"
+    last_sent_packet_row_id: 30918
+    last_gateway_at: null
+    position_observed_at: null
+    altitude_meters: null
+    traceroute_hops: 225
+    traceroute_neighbours: 10
+    packets: 231
+    broadcast_texts: 18
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.8.0"
+      reason: "its node number is derived from its public key"
+total: 666
+
+## GET /api/v1/nodes?sort=channel_utilization&limit=20&offset=0
+
+items: 20 items
+  - node_id: 3596185440
+    long_name: "Node 6f60"
+    short_name: "6f60"
+    role: "ROUTER"
+    hardware_model: "NANO_G2_ULTRA"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:17:50.252000Z"
+    last_sent_packet_row_id: 31053
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T13:42:29.507000Z"
+    altitude_meters: 1257
+    traceroute_hops: 226
+    traceroute_neighbours: 30
+    packets: 17
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T13:54:17.967000Z"
+    channel_utilization: 28.8667
+    air_util_tx: 1.45817
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 2285796188
+    long_name: "Node 7b5c"
+    short_name: "7b5c"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:08:34.844000Z"
+    last_sent_packet_row_id: 30987
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T15:29:05.366000Z"
+    altitude_meters: 350
+    traceroute_hops: 75
+    traceroute_neighbours: 25
+    packets: 49
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:30:32.329000Z"
+    channel_utilization: 25.1967
+    air_util_tx: 1.37467
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 3472072206
+    long_name: "Node 9e0e"
+    short_name: "9e0e"
+    role: "ROUTER"
+    hardware_model: "NANO_G2_ULTRA"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T14:30:10.125000Z"
+    last_sent_packet_row_id: 30171
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T07:45:17.940000Z"
+    altitude_meters: 443
+    traceroute_hops: 286
+    traceroute_neighbours: 19
+    packets: 27
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:30:10.125000Z"
+    channel_utilization: 24.8017
+    air_util_tx: 1.53278
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 666
+
+## GET /api/v1/nodes?sort=air_util_tx&limit=20&offset=0
+
+items: 20 items
+  - node_id: 2483997066
+    long_name: "Node c98a"
+    short_name: "c98a"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:46:08.491000Z"
+    last_sent_packet_row_id: 30827
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T09:41:20.113000Z"
+    altitude_meters: 1366
+    traceroute_hops: 257
+    traceroute_neighbours: 32
+    packets: 53
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:46:08.491000Z"
+    channel_utilization: 23.4
+    air_util_tx: 1.75406
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:24:30.324000Z"
+    last_sent_packet_row_id: 31095
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:18:40.349000Z"
+    altitude_meters: 514
+    traceroute_hops: 431
+    traceroute_neighbours: 27
+    packets: 57
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:34:23.790000Z"
+    channel_utilization: 18.4817
+    air_util_tx: 1.74681
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 848645925
+    long_name: "Node 4f25"
+    short_name: "4f25"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T14:39:34.538000Z"
+    last_sent_packet_row_id: 30262
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T13:09:19.704000Z"
+    altitude_meters: 259
+    traceroute_hops: 8
+    traceroute_neighbours: 5
+    packets: 18
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:29:33.361000Z"
+    channel_utilization: 16.1983
+    air_util_tx: 1.72608
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 666
+
+## GET /api/v1/nodes?sort=firmware&limit=20&offset=0
+
+items: 20 items
+  - node_id: 3306575460
+    long_name: "Node 5664"
+    short_name: "5664"
+    role: "ROUTER_LATE"
+    hardware_model: "HELTEC_MESH_NODE_T114"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:23:51.720000Z"
+    last_sent_packet_row_id: 31093
+    last_gateway_at: "2026-10-09T08:57:38.101000Z"
+    position_observed_at: "2026-10-11T08:58:47.100000Z"
+    altitude_meters: 215
+    traceroute_hops: 21
+    traceroute_neighbours: 7
+    packets: 20
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T16:22:51.204000Z"
+    channel_utilization: 4.69167
+    air_util_tx: 0.753778
+    firmware_version: null
+    firmware:
+      minimum: "2.8.1"
+      reason: "its routing replies carry a delivery proof"
+  - node_id: 3049857552
+    long_name: "Node 2210"
+    short_name: "2210"
+    role: "CLIENT_MUTE"
+    hardware_model: "SEEED_XIAO_S3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:41:25.459000Z"
+    last_sent_packet_row_id: 30790
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T13:40:08.991000Z"
+    altitude_meters: null
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 16
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:41:25.459000Z"
+    channel_utilization: 0
+    air_util_tx: 0.00272222
+    firmware_version: null
+    firmware:
+      minimum: "2.8.1"
+      reason: "its routing replies carry a delivery proof"
+  - node_id: 408545373
+    long_name: "Node e85d"
+    short_name: "e85d"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:06:14.007000Z"
+    last_sent_packet_row_id: 30469
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T15:06:14.007000Z"
+    altitude_meters: 320
+    traceroute_hops: 6
+    traceroute_neighbours: 3
+    packets: 14
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T09:41:07.409000Z"
+    channel_utilization: 10.1467
+    air_util_tx: 0.206472
+    firmware_version: null
+    firmware:
+      minimum: "2.8.1"
+      reason: "its routing replies carry a delivery proof"
+total: 666
+
+## GET /api/v1/nodes?sort=firmware_oldest&limit=20&offset=0
+
+items: 20 items
+  - node_id: 1128076540
+    long_name: "Node 14fc"
+    short_name: "14fc"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:23:57.248000Z"
+    last_sent_packet_row_id: 31094
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:23:57.248000Z"
+    altitude_meters: 287
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 19
+    broadcast_texts: 0
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 409975644
+    long_name: "Node bb5c"
+    short_name: "bb5c"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V2_0"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:20:39.758000Z"
+    last_sent_packet_row_id: 31071
+    last_gateway_at: null
+    position_observed_at: null
+    altitude_meters: null
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 132
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-10T22:33:47.973000Z"
+    channel_utilization: 0.708333
+    air_util_tx: 0.00497222
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 2224795636
+    long_name: "Node aff4"
+    short_name: "aff4"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:20:37.220000Z"
+    last_sent_packet_row_id: 31070
+    last_gateway_at: null
+    position_observed_at: null
+    altitude_meters: null
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 12
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T13:49:28.787000Z"
+    channel_utilization: 3.97833
+    air_util_tx: 0.244083
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+total: 666
+
+## GET /api/v1/nodes?sort=altitude&limit=20&offset=0
+
+items: 20 items
+  - node_id: 2593780688
+    long_name: "Node f3d0"
+    short_name: "f3d0"
+    role: "CLIENT_MUTE"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:21:53.585000Z"
+    last_sent_packet_row_id: 30636
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T15:19:57.965000Z"
+    altitude_meters: 1982
+    traceroute_hops: 3
+    traceroute_neighbours: 1
+    packets: 7
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:21:28.567000Z"
+    channel_utilization: 1.72833
+    air_util_tx: 0.00702778
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 2718938342
+    long_name: "Node b4e6"
+    short_name: "b4e6"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:22:57.964000Z"
+    last_sent_packet_row_id: 31090
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:22:57.964000Z"
+    altitude_meters: 1539
+    traceroute_hops: 159
+    traceroute_neighbours: 24
+    packets: 48
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T13:38:34.275000Z"
+    channel_utilization: 19.875
+    air_util_tx: 1.54933
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 2483997066
+    long_name: "Node c98a"
+    short_name: "c98a"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:46:08.491000Z"
+    last_sent_packet_row_id: 30827
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T09:41:20.113000Z"
+    altitude_meters: 1366
+    traceroute_hops: 257
+    traceroute_neighbours: 32
+    packets: 53
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:46:08.491000Z"
+    channel_utilization: 23.4
+    air_util_tx: 1.75406
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 666
+
+## GET /api/v1/nodes?sort=altitude_lowest&limit=20&offset=0
+
+items: 20 items
+  - node_id: 2989118786
+    long_name: "Node 5542"
+    short_name: "5542"
+    role: "CLIENT_MUTE"
+    hardware_model: "SEEED_WIO_TRACKER_L1"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:05:03.524000Z"
+    last_sent_packet_row_id: 30960
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:05:03.524000Z"
+    altitude_meters: -40
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 29
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:38:02.753000Z"
+    channel_utilization: 0.311667
+    air_util_tx: 0.00258333
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 1884143107
+    long_name: "Node be03"
+    short_name: "be03"
+    role: "CLIENT_MUTE"
+    hardware_model: "HELTEC_MESH_NODE_T114"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T15:09:43.499000Z"
+    last_sent_packet_row_id: 30503
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T14:39:26.441000Z"
+    altitude_meters: -35
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 21
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T15:09:43.499000Z"
+    channel_utilization: 0.988333
+    air_util_tx: 0.00369444
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 1236696576
+    long_name: "Node 7e00"
+    short_name: "7e00"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V4"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T13:28:39.650000Z"
+    last_sent_packet_row_id: 29683
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T12:25:19.627000Z"
+    altitude_meters: -33
+    traceroute_hops: 2
+    traceroute_neighbours: 1
+    packets: 21
+    broadcast_texts: 0
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 666
+
+## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0&q=289b&channel=ShortFast&gateway=true
+
+items: []
+total: 0
+
+## GET /api/v1/nodes/channels
+
+channels: 2 items
+  - channel: "ShortFast"
+    nodes: 576
+  - channel: "MediumFast"
+    nodes: 5
+
+## GET /api/v1/nodes/3655149723
+
+node:
+  node_id: 3655149723
+  long_name: "Node 289b"
+  short_name: "289b"
+  role: "ROUTER"
+  hardware_model: "RAK4631"
+  last_sent_at: "2026-10-11T14:52:44.526000Z"
+  last_sent_packet_row_id: 30361
+  last_seen_at: "2026-10-11T16:21:06.845000Z"
+  channel: "ShortFast"
+  last_gateway_at: null
+  node_info_observed_at: "2026-10-11T14:42:46.499000Z"
+  node_info_packet_row_id: 30291
+  position:
+    observed_at: "2026-10-11T11:47:22.037000Z"
+    device_time: null
+    latitude: 51.78
+    longitude: 19.5101
+    altitude_meters: 310
+    packet_row_id: 28933
+    precision_km: null
+  location_source: "LOC_MANUAL"
+  estimate: null
+  firmware:
+    minimum: "2.6.8"
+    reason: "its NodeInfo says whether it accepts messages"
+  map_report: null
+  contact_url: "https://meshtastic.org/v/#CJvR9M4NEkwKCSFkOWRkMjg5YhIJTm9kZSAyODliGgQyODliIgbMYNndKJsoCTgCQiDtWG2TTxJy1RBW65W54GkXvOOQ8IlmMLy6Fay-YVRzfEgB"
+ports: 4 items
+  - portnum: 67
+    port: "TELEMETRY_APP"
+  - portnum: 4
+    port: "NODEINFO_APP"
+  - portnum: 3
+    port: "POSITION_APP"
+
+## GET /api/v1/nodes/3655149723/packets?limit=50
+
+packets: 50 items
+  - packet_row_id: 30361
+    first_received_at: "2026-10-11T14:52:44.526000Z"
+    last_received_at: "2026-10-11T14:52:44.847000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 2490384298
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30360
+    first_received_at: "2026-10-11T14:52:33.427000Z"
+    last_received_at: "2026-10-11T14:52:33.616000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 279989161
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+  - packet_row_id: 30291
+    first_received_at: "2026-10-11T14:42:46.499000Z"
+    last_received_at: "2026-10-11T14:42:47.546000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 3753400232
+    portnum: "NODEINFO_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+next_before_id: 13660
+
+## GET /api/v1/nodes/3655149723/packets?limit=50&port=1
+
+packets: []
+next_before_id: null
+
+## GET /api/v1/nodes/3655149723/charts?since=2026-10-04T16:25:30.812000Z
+
+node_id: 3655149723
+hours: 59 items
+  - hour_start: "2026-10-08T17:00:00Z"
+    portnum: 4
+    port: "NODEINFO_APP"
+    packets: 1
+  - hour_start: "2026-10-08T17:00:00Z"
+    portnum: 67
+    port: "TELEMETRY_APP"
+    packets: 2
+  - hour_start: "2026-10-08T19:00:00Z"
+    portnum: 4
+    port: "NODEINFO_APP"
+    packets: 1
+utilization: 25 items
+  - observed_at: "2026-10-08T17:51:25.273000Z"
+    packet_row_id: 924
+    channel_utilization: 6.61
+    air_util_tx: 1.09703
+  - observed_at: "2026-10-08T20:51:26.357000Z"
+    packet_row_id: 2471
+    channel_utilization: 16.9167
+    air_util_tx: 1.35786
+  - observed_at: "2026-10-08T23:51:29.551000Z"
+    packet_row_id: 3849
+    channel_utilization: 9.72667
+    air_util_tx: 0.986861
+
+## GET /api/v1/nodes/3655149723/positions
+
+node_id: 3655149723
+items: 6 items
+  - packet_row_id: 28933
+    observed_at: "2026-10-11T11:47:22.037000Z"
+    latitude: 51.78
+    longitude: 19.5101
+    altitude_meters: 310
+  - packet_row_id: 24265
+    observed_at: "2026-10-10T23:47:20.208000Z"
+    latitude: 51.78
+    longitude: 19.5101
+    altitude_meters: 310
+  - packet_row_id: 18991
+    observed_at: "2026-10-10T11:47:16.109000Z"
+    latitude: 51.78
+    longitude: 19.5101
+    altitude_meters: 310
+invalid: 0
+limited: false
+
+## GET /api/v1/nodes/3655149723/contacts?since=2026-10-04T16:25:30.812000Z
+
+node_id: 3655149723
+since: "2026-10-04T16:25:30.812000Z"
+items: 40 items
+  - node_id: 3562709820
+    node:
+      node_id: 3562709820
+      long_name: "Node a33c"
+      short_name: "a33c"
+      role: "CLIENT"
+      latitude: 51.78
+      longitude: 19.5232
+      estimated: false
+    links: 1 items
+      - kind: "traceroute"
+        observations: 6
+        min_km: 0.9
+        max_km: 0.9
+        last_seen_at: "2026-10-10T20:12:38.139000Z"
+    heard_packets: 0
+    fewest_hops: null
+    km: 0.9
+  - node_id: 2658555076
+    node:
+      node_id: 2658555076
+      long_name: "Node 54c4"
+      short_name: "54c4"
+      role: "CLIENT"
+      latitude: 51.7734
+      longitude: 19.5297
+      estimated: false
+    links: 2 items
+      - kind: "direct"
+        observations: 85
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T14:52:44.526000Z"
+      - kind: "traceroute"
+        observations: 1049
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T16:21:06.845000Z"
+    heard_packets: 86
+    fewest_hops: 0
+    km: 1.5
+  - node_id: 3408176084
+    node:
+      node_id: 3408176084
+      long_name: "Node a3d4"
+      short_name: "a3d4"
+      role: "CLIENT"
+      latitude: 51.7734
+      longitude: 19.5297
+      estimated: false
+    links: 1 items
+      - kind: "traceroute"
+        observations: 34
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T01:30:38.419000Z"
+    heard_packets: 0
+    fewest_hops: null
+    km: 1.5
+packets: 87
+limited: false
+
+## GET /api/v1/nodes/3655149723/links?since=2026-10-04T16:25:30.812000Z
+
+items: 46 items
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 440
+      snr_samples: 440
+      average_snr: -3.03
+    link_kind: "traceroute"
+    distance_km: 2.4
+    unlikely: false
+    pending: false
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+    b_to_a:
+      observations: 1048
+      snr_samples: 1048
+      average_snr: 12.25
+    link_kind: "traceroute"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+  - node_a: 2933499666
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 609
+      snr_samples: 609
+      average_snr: -3
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -6.5
+    link_kind: "traceroute"
+    distance_km: 64.4
+    unlikely: false
+    pending: false
+nodes: 41 items
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+  - node_id: 313596380
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 51.7603
+    longitude: 19.4773
+    estimated: true
+  - node_id: 383887127
+    long_name: "Node a717"
+    short_name: "a717"
+    role: "CLIENT_MUTE"
+    latitude: 51.7931
+    longitude: 19.4576
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/map/nodes
+
+items: 479 items
+  - node_id: 1128130436
+    long_name: "Node e784"
+    short_name: "e784"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_WSL_V3"
+    last_sent_at: "2026-10-11T16:21:59.269000Z"
+    last_sent_packet_row_id: 31079
+    last_seen_at: "2026-10-11T16:24:30.812000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.812000Z"
+    latitude: 51.7669
+    longitude: 19.4183
+    position:
+      observed_at: "2026-10-11T16:21:59.269000Z"
+      device_time: "2026-10-11T16:21:58Z"
+      latitude: 51.7669
+      longitude: 19.4183
+      altitude_meters: 185
+      packet_row_id: 31079
+      precision_km: null
+    estimate: null
+  - node_id: 2658512488
+    long_name: "Node ae68"
+    short_name: "ae68"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    last_sent_at: "2026-10-11T15:21:46.276000Z"
+    last_sent_packet_row_id: 30632
+    last_seen_at: "2026-10-11T16:24:30.772000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.772000Z"
+    latitude: 51.7669
+    longitude: 19.5232
+    position:
+      observed_at: "2026-10-11T15:21:46.276000Z"
+      device_time: "2026-10-11T15:21:45Z"
+      latitude: 51.7669
+      longitude: 19.5232
+      altitude_meters: 243
+      packet_row_id: 30632
+      precision_km: null
+    estimate: null
+  - node_id: 1770149960
+    long_name: "Node 5848"
+    short_name: "5848"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_V4"
+    last_sent_at: "2026-10-11T15:43:12.998000Z"
+    last_sent_packet_row_id: 30806
+    last_seen_at: "2026-10-11T16:24:30.429000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.429000Z"
+    latitude: 51.7734
+    longitude: 19.4773
+    position:
+      observed_at: "2026-10-11T10:35:54.860000Z"
+      device_time: "2026-10-11T10:35:53Z"
+      latitude: 51.7734
+      longitude: 19.4773
+      altitude_meters: null
+      packet_row_id: 28424
+      precision_km: null
+    estimate: null
+truncated: false
+
+## GET /api/v1/map/nodes?seen_since=2026-10-10T16:25:30.812000Z&position_since=2026-10-04T16:25:30.812000Z
+
+items: 426 items
+  - node_id: 1128130436
+    long_name: "Node e784"
+    short_name: "e784"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_WSL_V3"
+    last_sent_at: "2026-10-11T16:21:59.269000Z"
+    last_sent_packet_row_id: 31079
+    last_seen_at: "2026-10-11T16:24:30.812000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.812000Z"
+    latitude: 51.7669
+    longitude: 19.4183
+    position:
+      observed_at: "2026-10-11T16:21:59.269000Z"
+      device_time: "2026-10-11T16:21:58Z"
+      latitude: 51.7669
+      longitude: 19.4183
+      altitude_meters: 185
+      packet_row_id: 31079
+      precision_km: null
+    estimate: null
+  - node_id: 2658512488
+    long_name: "Node ae68"
+    short_name: "ae68"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    last_sent_at: "2026-10-11T15:21:46.276000Z"
+    last_sent_packet_row_id: 30632
+    last_seen_at: "2026-10-11T16:24:30.772000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.772000Z"
+    latitude: 51.7669
+    longitude: 19.5232
+    position:
+      observed_at: "2026-10-11T15:21:46.276000Z"
+      device_time: "2026-10-11T15:21:45Z"
+      latitude: 51.7669
+      longitude: 19.5232
+      altitude_meters: 243
+      packet_row_id: 30632
+      precision_km: null
+    estimate: null
+  - node_id: 1770149960
+    long_name: "Node 5848"
+    short_name: "5848"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_V4"
+    last_sent_at: "2026-10-11T15:43:12.998000Z"
+    last_sent_packet_row_id: 30806
+    last_seen_at: "2026-10-11T16:24:30.429000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.429000Z"
+    latitude: 51.7734
+    longitude: 19.4773
+    position:
+      observed_at: "2026-10-11T10:35:54.860000Z"
+      device_time: "2026-10-11T10:35:53Z"
+      latitude: 51.7734
+      longitude: 19.4773
+      altitude_meters: null
+      packet_row_id: 28424
+      precision_km: null
+    estimate: null
+truncated: false
+
+## GET /api/v1/map/nodes?seen_since=2026-10-08T16:25:30.812000Z&position_since=2026-10-04T16:25:30.812000Z
+
+items: 479 items
+  - node_id: 1128130436
+    long_name: "Node e784"
+    short_name: "e784"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_WSL_V3"
+    last_sent_at: "2026-10-11T16:21:59.269000Z"
+    last_sent_packet_row_id: 31079
+    last_seen_at: "2026-10-11T16:24:30.812000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.812000Z"
+    latitude: 51.7669
+    longitude: 19.4183
+    position:
+      observed_at: "2026-10-11T16:21:59.269000Z"
+      device_time: "2026-10-11T16:21:58Z"
+      latitude: 51.7669
+      longitude: 19.4183
+      altitude_meters: 185
+      packet_row_id: 31079
+      precision_km: null
+    estimate: null
+  - node_id: 2658512488
+    long_name: "Node ae68"
+    short_name: "ae68"
+    role: "CLIENT"
+    hardware_model: "HELTEC_V3"
+    last_sent_at: "2026-10-11T15:21:46.276000Z"
+    last_sent_packet_row_id: 30632
+    last_seen_at: "2026-10-11T16:24:30.772000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.772000Z"
+    latitude: 51.7669
+    longitude: 19.5232
+    position:
+      observed_at: "2026-10-11T15:21:46.276000Z"
+      device_time: "2026-10-11T15:21:45Z"
+      latitude: 51.7669
+      longitude: 19.5232
+      altitude_meters: 243
+      packet_row_id: 30632
+      precision_km: null
+    estimate: null
+  - node_id: 1770149960
+    long_name: "Node 5848"
+    short_name: "5848"
+    role: "CLIENT_BASE"
+    hardware_model: "HELTEC_V4"
+    last_sent_at: "2026-10-11T15:43:12.998000Z"
+    last_sent_packet_row_id: 30806
+    last_seen_at: "2026-10-11T16:24:30.429000Z"
+    channel: "ShortFast"
+    last_gateway_at: "2026-10-11T16:24:30.429000Z"
+    latitude: 51.7734
+    longitude: 19.4773
+    position:
+      observed_at: "2026-10-11T10:35:54.860000Z"
+      device_time: "2026-10-11T10:35:53Z"
+      latitude: 51.7734
+      longitude: 19.4773
+      altitude_meters: null
+      packet_row_id: 28424
+      precision_km: null
+    estimate: null
+truncated: false
+
+## GET /api/v1/map/links?link_kind=traceroute&since=2026-10-08T16:25:30.812000Z
+
+items: 932 items
+  - node_a: 702832197
+    node_b: 2933499666
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 4
+      snr_samples: 4
+      average_snr: -4.94
+    b_to_a:
+      observations: 642
+      snr_samples: 642
+      average_snr: 1.72
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 440
+      snr_samples: 440
+      average_snr: -3.03
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+    b_to_a:
+      observations: 1048
+      snr_samples: 1048
+      average_snr: 12.25
+truncated: false
+
+## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
+
+items: 49 items
+  - node_id: 2740683528
+    short_name: "8308"
+    long_name: "Node 8308"
+    region: "Śląskie"
+    messages: 43
+    last_sent_at: "2026-10-11T16:18:10.738000Z"
+  - node_id: 1128132236
+    short_name: "ee8c"
+    long_name: "Node ee8c"
+    region: "Śląskie"
+    messages: 40
+    last_sent_at: "2026-10-11T14:26:38.332000Z"
+  - node_id: 715507060
+    short_name: "c574"
+    long_name: "Node c574"
+    region: "Śląskie"
+    messages: 18
+    last_sent_at: "2026-10-11T12:46:04.013000Z"
+truncated: false
+
+## GET /api/v1/map/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
+
+items: 499 items
+  - node_a: 702832197
+    node_b: 2933499666
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 2
+      snr_samples: 2
+      average_snr: -3.62
+    b_to_a:
+      observations: 303
+      snr_samples: 303
+      average_snr: 3.16
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 217
+      snr_samples: 217
+      average_snr: -2.51
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 425
+      snr_samples: 425
+      average_snr: 12.16
+truncated: false
+
+## GET /api/v1/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
+
+items: 501 items
+  - node_a: 702832197
+    node_b: 2933499666
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 2
+      snr_samples: 2
+      average_snr: -3.62
+    b_to_a:
+      observations: 303
+      snr_samples: 303
+      average_snr: 3.16
+    link_kind: "traceroute"
+    distance_km: 39.7
+    unlikely: false
+    pending: false
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 217
+      snr_samples: 217
+      average_snr: -2.51
+    link_kind: "traceroute"
+    distance_km: 2.4
+    unlikely: false
+    pending: false
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 425
+      snr_samples: 425
+      average_snr: 12.16
+    link_kind: "traceroute"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+nodes: 224 items
+  - node_id: 14234932
+    long_name: "Node 3534"
+    short_name: "3534"
+    role: "ROUTER_LATE"
+    latitude: 49.5387
+    longitude: 20.5586
+    estimated: true
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 67438552
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 49.8205
+    longitude: 19.1562
+    estimated: true
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/links?link_kind=traceroute&since=2026-10-04T16:25:30.812000Z
+
+items: 946 items
+  - node_a: 702832197
+    node_b: 2933499666
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 4
+      snr_samples: 4
+      average_snr: -4.94
+    b_to_a:
+      observations: 642
+      snr_samples: 642
+      average_snr: 1.72
+    link_kind: "traceroute"
+    distance_km: 39.7
+    unlikely: false
+    pending: false
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 440
+      snr_samples: 440
+      average_snr: -3.03
+    link_kind: "traceroute"
+    distance_km: 2.4
+    unlikely: false
+    pending: false
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+    b_to_a:
+      observations: 1048
+      snr_samples: 1048
+      average_snr: 12.25
+    link_kind: "traceroute"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+nodes: 359 items
+  - node_id: 14234932
+    long_name: "Node 3534"
+    short_name: "3534"
+    role: "ROUTER_LATE"
+    latitude: 49.5387
+    longitude: 20.5586
+    estimated: true
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 48914920
+    long_name: "Node 61e8"
+    short_name: "61e8"
+    role: "CLIENT_BASE"
+    latitude: 50.5676
+    longitude: 19.6346
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/map/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
+
+items: 24 items
+  - node_a: 1770149960
+    node_b: 3306575460
+    last_seen_at: "2026-10-11T16:23:51.720000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 10
+      snr_samples: 10
+      average_snr: -6.3
+  - node_a: 2224775088
+    node_b: 2658512488
+    last_seen_at: "2026-10-11T16:11:49.096000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 16
+      snr_samples: 16
+      average_snr: 2.98
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+  - node_a: 1550505660
+    node_b: 1770149960
+    last_seen_at: "2026-10-11T16:05:23.256000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 50
+      snr_samples: 50
+      average_snr: 4.8
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+truncated: false
+
+## GET /api/v1/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
+
+items: 24 items
+  - node_a: 1770149960
+    node_b: 3306575460
+    last_seen_at: "2026-10-11T16:23:51.720000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 10
+      snr_samples: 10
+      average_snr: -6.3
+    link_kind: "direct"
+    distance_km: 2.6
+    unlikely: false
+    pending: false
+  - node_a: 2224775088
+    node_b: 2658512488
+    last_seen_at: "2026-10-11T16:11:49.096000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 16
+      snr_samples: 16
+      average_snr: 2.98
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "direct"
+    distance_km: 15.3
+    unlikely: false
+    pending: false
+  - node_a: 1550505660
+    node_b: 1770149960
+    last_seen_at: "2026-10-11T16:05:23.256000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 50
+      snr_samples: 50
+      average_snr: 4.8
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "direct"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+nodes: 20 items
+  - node_id: 383887127
+    long_name: "Node a717"
+    short_name: "a717"
+    role: "CLIENT_MUTE"
+    latitude: 51.7931
+    longitude: 19.4576
+    estimated: false
+  - node_id: 415923532
+    long_name: "Node 7d4c"
+    short_name: "7d4c"
+    role: "CLIENT_BASE"
+    latitude: 51.7669
+    longitude: 19.5232
+    estimated: false
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/links?link_kind=direct&since=2026-10-04T16:25:30.812000Z
+
+items: 35 items
+  - node_a: 1770149960
+    node_b: 3306575460
+    last_seen_at: "2026-10-11T16:23:51.720000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 16
+      snr_samples: 16
+      average_snr: -6.42
+    link_kind: "direct"
+    distance_km: 2.6
+    unlikely: false
+    pending: false
+  - node_a: 2224775088
+    node_b: 2658512488
+    last_seen_at: "2026-10-11T16:11:49.096000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 35
+      snr_samples: 35
+      average_snr: 2.69
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "direct"
+    distance_km: 15.3
+    unlikely: false
+    pending: false
+  - node_a: 1550505660
+    node_b: 1770149960
+    last_seen_at: "2026-10-11T16:05:23.256000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 125
+      snr_samples: 124
+      average_snr: 5.03
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "direct"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+nodes: 27 items
+  - node_id: 383887127
+    long_name: "Node a717"
+    short_name: "a717"
+    role: "CLIENT_MUTE"
+    latitude: 51.7931
+    longitude: 19.4576
+    estimated: false
+  - node_id: 415923532
+    long_name: "Node 7d4c"
+    short_name: "7d4c"
+    role: "CLIENT_BASE"
+    latitude: 51.7669
+    longitude: 19.5232
+    estimated: false
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/map/links?link_kind=neighbor&since=2026-10-10T16:25:30.812000Z
+
+items: 242 items
+  - node_a: 82017300
+    node_b: 173442116
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 3
+      snr_samples: 3
+      average_snr: 11.92
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+  - node_a: 173442116
+    node_b: 423423344
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: 6.92
+  - node_a: 173442116
+    node_b: 463896892
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -4.83
+truncated: false
+
+## GET /api/v1/links?link_kind=neighbor&since=2026-10-10T16:25:30.812000Z
+
+items: 242 items
+  - node_a: 82017300
+    node_b: 173442116
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 3
+      snr_samples: 3
+      average_snr: 11.92
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "neighbor"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+  - node_a: 173442116
+    node_b: 423423344
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: 6.92
+    link_kind: "neighbor"
+    distance_km: 2.3
+    unlikely: false
+    pending: false
+  - node_a: 173442116
+    node_b: 463896892
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -4.83
+    link_kind: "neighbor"
+    distance_km: 5.2
+    unlikely: false
+    pending: false
+nodes: 134 items
+  - node_id: 67438552
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 49.8205
+    longitude: 19.1562
+    estimated: true
+  - node_id: 80035968
+    long_name: "Node 4080"
+    short_name: "4080"
+    role: "CLIENT"
+    latitude: 50.1154
+    longitude: 18.9858
+    estimated: false
+  - node_id: 82017300
+    long_name: "Node 7c14"
+    short_name: "7c14"
+    role: "CLIENT"
+    latitude: 51.354
+    longitude: 19.3724
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/links?link_kind=neighbor&since=2026-10-04T16:25:30.812000Z
+
+items: 405 items
+  - node_a: 82017300
+    node_b: 173442116
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 9
+      snr_samples: 9
+      average_snr: 11.81
+    b_to_a:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    link_kind: "neighbor"
+    distance_km: 1.5
+    unlikely: false
+    pending: false
+  - node_a: 173442116
+    node_b: 423423344
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 11
+      snr_samples: 11
+      average_snr: 6.7
+    link_kind: "neighbor"
+    distance_km: 2.3
+    unlikely: false
+    pending: false
+  - node_a: 173442116
+    node_b: 463896892
+    last_seen_at: "2026-10-11T16:22:08.338000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 9
+      snr_samples: 9
+      average_snr: -3.53
+    link_kind: "neighbor"
+    distance_km: 5.2
+    unlikely: false
+    pending: false
+nodes: 181 items
+  - node_id: 67438552
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 49.8205
+    longitude: 19.1562
+    estimated: true
+  - node_id: 80035968
+    long_name: "Node 4080"
+    short_name: "4080"
+    role: "CLIENT"
+    latitude: 50.1154
+    longitude: 18.9858
+    estimated: false
+  - node_id: 82017300
+    long_name: "Node 7c14"
+    short_name: "7c14"
+    role: "CLIENT"
+    latitude: 51.354
+    longitude: 19.3724
+    estimated: false
+doubtful_node_ids: []
+airborne_node_ids: []
+truncated: false
+
+## GET /api/v1/map/links?link_kind=traceroute
+
+items: 932 items
+  - node_a: 702832197
+    node_b: 2933499666
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 4
+      snr_samples: 4
+      average_snr: -4.94
+    b_to_a:
+      observations: 642
+      snr_samples: 642
+      average_snr: 1.72
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+    b_to_a:
+      observations: 440
+      snr_samples: 440
+      average_snr: -3.03
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+    b_to_a:
+      observations: 1048
+      snr_samples: 1048
+      average_snr: 12.25
+truncated: false
+
+## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
+
+items: 24 items
+  - node_id: 2740683528
+    short_name: "8308"
+    long_name: "Node 8308"
+    region: "Śląskie"
+    messages: 20
+    last_sent_at: "2026-10-11T16:18:10.738000Z"
+  - node_id: 1128132236
+    short_name: "ee8c"
+    long_name: "Node ee8c"
+    region: "Śląskie"
+    messages: 20
+    last_sent_at: "2026-10-11T14:26:38.332000Z"
+  - node_id: 715507060
+    short_name: "c574"
+    long_name: "Node c574"
+    region: "Śląskie"
+    messages: 15
+    last_sent_at: "2026-10-11T12:46:04.013000Z"
+truncated: false
+
+## GET /api/v1/map/text-reach/1128132236?since=2026-10-10T16:25:30.812000Z
+
+node_id: 1128132236
+messages: 20
+channels: ["ShortFast"]
+gateways: 5 items
+  - node_id: 2658555076
+    receptions: 19
+  - node_id: 2658512488
+    receptions: 18
+  - node_id: 1128130436
+    receptions: 17
+
+## GET /api/v1/chat
+
+messages: 100 items
+  - packet_row_id: 26865
+    packet_id: 1018630922
+    received_at: "2026-10-11T06:31:57.764000Z"
+    sender_node_id: 4136877088
+    sender_short_name: "bc20"
+    sender_long_name: "Node bc20"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "lima bravo e"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 49.5175
+  - packet_row_id: 26884
+    packet_id: 186204045
+    received_at: "2026-10-11T06:35:18.423000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "👋"
+    is_reaction: true
+    reply_id: 1018630922
+    reply_to:
+      packet_row_id: 26865
+      sender_node_id: 4136877088
+      sender_short_name: "bc20"
+      sender_long_name: "Node bc20"
+      text: "lima bravo e"
+    reception_count: 4
+    farthest_km: 112.857
+  - packet_row_id: 26893
+    packet_id: 122804756
+    received_at: "2026-10-11T06:36:48.071000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "juliet bravo delta alpha golf hotel juliet alpha echo alpha lima juliet g"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+next_before_id: 26865
+has_newer: false
+
+## GET /api/v1/chat?channel=ShortFast
+
+messages: 100 items
+  - packet_row_id: 26785
+    packet_id: 40491488
+    received_at: "2026-10-11T06:19:40.231000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "india echo hotel hotel golf"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+  - packet_row_id: 26789
+    packet_id: 1730798033
+    received_at: "2026-10-11T06:20:02.483000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "lima bravo india foxtro"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+  - packet_row_id: 26816
+    packet_id: 186204043
+    received_at: "2026-10-11T06:24:09.228000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "🙂"
+    is_reaction: true
+    reply_id: 1956668341
+    reply_to:
+      packet_row_id: 26737
+      sender_node_id: 715507060
+      sender_short_name: "c574"
+      sender_long_name: "Node c574"
+      text: "golf lima alpha hotel alpha h"
+    reception_count: 3
+    farthest_km: 112.104
+next_before_id: 26785
+has_newer: false
+
+## GET /api/v1/chat?channel=ShortFast&after_id=1
+
+messages: 100 items
+  - packet_row_id: 2
+    packet_id: 1669678159
+    received_at: "2026-10-08T15:57:25.450000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "india delta echo bravo"
+    is_reaction: false
+    reply_id: 271769072
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+  - packet_row_id: 5
+    packet_id: 2860971532
+    received_at: "2026-10-08T15:57:41.886000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "bra"
+    is_reaction: true
+    reply_id: 829392292
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+  - packet_row_id: 7
+    packet_id: 2860971533
+    received_at: "2026-10-08T15:58:01.387000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "bra"
+    is_reaction: true
+    reply_id: 2044752695
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+next_before_id: null
+has_newer: true
+
+## GET /api/v1/chat?before_id=100
+
+messages: 4 items
+  - packet_row_id: 2
+    packet_id: 1669678159
+    received_at: "2026-10-08T15:57:25.450000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "india delta echo bravo"
+    is_reaction: false
+    reply_id: 271769072
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+  - packet_row_id: 5
+    packet_id: 2860971532
+    received_at: "2026-10-08T15:57:41.886000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "bra"
+    is_reaction: true
+    reply_id: 829392292
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+  - packet_row_id: 7
+    packet_id: 2860971533
+    received_at: "2026-10-08T15:58:01.387000Z"
+    sender_node_id: 1128132236
+    sender_short_name: "ee8c"
+    sender_long_name: "Node ee8c"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "bra"
+    is_reaction: true
+    reply_id: 2044752695
+    reply_to: null
+    reception_count: 4
+    farthest_km: 170.596
+next_before_id: null
+has_newer: false
+
+## GET /api/v1/chat?search=zzqx
+
+messages: []
+next_before_id: null
+has_newer: false
+
+## GET /api/v1/chat?hide=1128132236
+
+messages: 100 items
+  - packet_row_id: 26699
+    packet_id: 1003996044
+    received_at: "2026-10-11T06:08:09.030000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "echo lima delta delta i"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+  - packet_row_id: 26708
+    packet_id: 849307010
+    received_at: "2026-10-11T06:09:00.448000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "delta india lima golf lima echo charlie"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+  - packet_row_id: 26720
+    packet_id: 912041180
+    received_at: "2026-10-11T06:10:55.849000Z"
+    sender_node_id: 715507060
+    sender_short_name: "c574"
+    sender_long_name: "Node c574"
+    recipient_node_id: null
+    recipient_short_name: null
+    recipient_long_name: null
+    channel: "ShortFast"
+    text: "foxtrot india juliet lima foxtrot hotel i"
+    is_reaction: false
+    reply_id: null
+    reply_to: null
+    reception_count: 4
+    farthest_km: 112.857
+next_before_id: 26699
+has_newer: false
+
+## GET /api/v1/chat/channels
+
+channels: 3 items
+  - channel: "ShortFast"
+    messages: 473
+  - channel: "MediumFast"
+    messages: 4
+  - channel: "lodzkie"
+    messages: 2
+
+## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
+
+items: 50 items
+  - requester_node_id: 2666580684
+    target_node_id: 2933499666
+    first_received_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: null
+    request_receptions: null
+    reply_packet_row_id: 31074
+    reply_receptions: 4
+    distance_km: 13.1
+    distance_pending: false
+    route:
+      packet_row_id: 31074
+      is_return: false
+      hops: 1
+      km: 13.1
+      reached: true
+      path:
+        nodes: [2666580684, 2933499666]
+        snr_db: [3]
+      path_hops: 1 items
+        - from_node_id: 2666580684
+          to_node_id: 2933499666
+          snr_db: 3
+      hop: null
+      unlikely: false
+    positions: 2 items
+      - node_id: 2666580684
+        latitude: 51.0853
+        longitude: 19.4314
+        altitude_meters: 233
+      - node_id: 2933499666
+        latitude: 51.2033
+        longitude: 19.4314
+        altitude_meters: 411
+  - requester_node_id: 4269814177
+    target_node_id: 3079613937
+    first_received_at: "2026-10-11T15:56:32.706000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 30918
+    request_receptions: 3
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 30918
+      is_return: false
+      hops: 8
+      km: 233.4
+      reached: false
+      path:
+        nodes: [4269814177, 181026324, 1266979693, 2882539815, 3472072206, 1128130340, 2933499666, 702832197, 1770269756, 3079613937]
+        snr_db: [12.5, -10.5, -3.5, -1.5, 8.25, -3, 4.5, 6.25]
+      path_hops: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 181026324
+          snr_db: 12.5
+        - from_node_id: 181026324
+          to_node_id: 1266979693
+          snr_db: -10.5
+        - from_node_id: 1266979693
+          to_node_id: 2882539815
+          snr_db: -3.5
+      hop: null
+      unlikely: false
+    positions: 8 items
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 1128130340
+        latitude: 50.7576
+        longitude: 19.3004
+        altitude_meters: 340
+      - node_id: 1266979693
+        latitude: 49.768
+        longitude: 19.1758
+        altitude_meters: 898
+  - requester_node_id: 4269814177
+    target_node_id: 3665045164
+    first_received_at: "2026-10-11T15:55:55.822000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 30914
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 30914
+      is_return: false
+      hops: 6
+      km: 253.3
+      reached: false
+      path:
+        nodes: [4269814177, 2483997066, 3472072206, 1128130340, 2933499666, 3655149723, 1770149960, 3665045164]
+        snr_db: [-8.75, -8.75, 9.5, 0.5, -6.5, -0.25]
+      path_hops: 6 items
+        - from_node_id: 4269814177
+          to_node_id: 2483997066
+          snr_db: -8.75
+        - from_node_id: 2483997066
+          to_node_id: 3472072206
+          snr_db: -8.75
+        - from_node_id: 3472072206
+          to_node_id: 1128130340
+          snr_db: 9.5
+      hop: null
+      unlikely: false
+    positions: 6 items
+      - node_id: 1128130340
+        latitude: 50.7576
+        longitude: 19.3004
+        altitude_meters: 340
+      - node_id: 1770149960
+        latitude: 51.7734
+        longitude: 19.4773
+        altitude_meters: null
+      - node_id: 2483997066
+        latitude: 49.5649
+        longitude: 19.2479
+        altitude_meters: 1366
+nodes: 80 items
+  - node_id: 80052368
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 50.0694
+    longitude: 19.9646
+    estimated: true
+  - node_id: 80062684
+    long_name: "Node a8dc"
+    short_name: "a8dc"
+    role: "CLIENT_BASE"
+    latitude: 49.8139
+    longitude: 18.6712
+    estimated: false
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+matched_node_ids: []
+doubtful_node_ids: []
+airborne_node_ids: []
+has_more: true
+
+## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
+
+items: 50 items
+  - requester_node_id: 4269814177
+    target_node_id: 2224739564
+    first_received_at: "2026-10-11T13:21:47.100000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 29629
+    request_receptions: 2
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 29629
+      is_return: false
+      hops: 8
+      km: 495.2
+      reached: false
+      path:
+        nodes: [4269814177, 603288811, 848645925, 2718938342, 96879053, 1128130340, 2933499666, 3655149723, 1770149960, 2224739564]
+        snr_db: [-9, -2.75, 0.75, -8.75, -6, 3.5, -1.25, -3.5]
+      path_hops: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 603288811
+          snr_db: -9
+        - from_node_id: 603288811
+          to_node_id: 848645925
+          snr_db: -2.75
+        - from_node_id: 848645925
+          to_node_id: 2718938342
+          snr_db: 0.75
+      hop: null
+      unlikely: false
+    positions: 8 items
+      - node_id: 96879053
+        latitude: 50.561
+        longitude: 19.5232
+        altitude_meters: 542
+      - node_id: 603288811
+        latitude: 49.5387
+        longitude: 19.2348
+        altitude_meters: 1322
+      - node_id: 848645925
+        latitude: 50.4693
+        longitude: 18.5139
+        altitude_meters: 259
+  - requester_node_id: 3238048054
+    target_node_id: 3677317560
+    first_received_at: "2026-10-11T15:16:29.244000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 30572
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: 17
+    distance_pending: false
+    route:
+      packet_row_id: 30572
+      is_return: false
+      hops: 8
+      km: 368.2
+      reached: false
+      path:
+        nodes: [3238048054, 603288811, 3596185440, 4110175258, 1128130340, 2933499666, 702832197, 1770269756, 3655149723, 3677317560]
+        snr_db: [-5.25, -1, -6.25, 6.25, -1.5, 5.5, 0.5, 8.5]
+      path_hops: 8 items
+        - from_node_id: 3238048054
+          to_node_id: 603288811
+          snr_db: -5.25
+        - from_node_id: 603288811
+          to_node_id: 3596185440
+          snr_db: -1
+        - from_node_id: 3596185440
+          to_node_id: 4110175258
+          snr_db: -6.25
+      hop: null
+      unlikely: false
+    positions: 10 items
+      - node_id: 603288811
+        latitude: 49.5387
+        longitude: 19.2348
+        altitude_meters: 1322
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 1128130340
+        latitude: 50.7576
+        longitude: 19.3004
+        altitude_meters: 340
+  - requester_node_id: 4269814177
+    target_node_id: 3909797273
+    first_received_at: "2026-10-11T13:34:03.991000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 29711
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 29711
+      is_return: false
+      hops: 8
+      km: 356.4
+      reached: false
+      path:
+        nodes: [4269814177, 3679571780, 1516587721, 2483997066, 3596185440, 4110175258, 2933499666, 702832197, 3655149723, 3909797273]
+        snr_db: [-9, -5.25, -5.75, 9.25, -4.25, -8.25, 7, -3.25]
+      path_hops: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 3679571780
+          snr_db: -9
+        - from_node_id: 3679571780
+          to_node_id: 1516587721
+          snr_db: -5.25
+        - from_node_id: 1516587721
+          to_node_id: 2483997066
+          snr_db: -5.75
+      hop: null
+      unlikely: false
+    positions: 8 items
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 1516587721
+        latitude: 50.0957
+        longitude: 19.9492
+        altitude_meters: 278
+      - node_id: 2483997066
+        latitude: 49.5649
+        longitude: 19.2479
+        altitude_meters: 1366
+nodes: 87 items
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 70873456
+    long_name: null
+    short_name: null
+    role: "CLIENT"
+    latitude: 49.8663
+    longitude: 18.9727
+    estimated: false
+  - node_id: 80052368
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 50.0694
+    longitude: 19.9646
+    estimated: true
+matched_node_ids: []
+doubtful_node_ids: []
+airborne_node_ids: []
+has_more: true
+
+## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
+
+items: 50 items
+  - requester_node_id: 3417804839
+    target_node_id: 702832197
+    first_received_at: "2026-10-10T21:01:23.075000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 23090
+    request_receptions: 4
+    reply_packet_row_id: 23091
+    reply_receptions: 4
+    distance_km: 222.6
+    distance_pending: false
+    route:
+      packet_row_id: 23091
+      is_return: false
+      hops: 5
+      km: 263.8
+      reached: true
+      path:
+        nodes: [3417804839, 829910553, 2749076957, 96879053, 2933499666, 702832197]
+        snr_db: [6.75, 0.25, -1.75, -6.25, 0.5]
+      path_hops: 5 items
+        - from_node_id: 3417804839
+          to_node_id: 829910553
+          snr_db: 6.75
+        - from_node_id: 829910553
+          to_node_id: 2749076957
+          snr_db: 0.25
+        - from_node_id: 2749076957
+          to_node_id: 96879053
+          snr_db: -1.75
+      hop: null
+      unlikely: false
+    positions: 6 items
+      - node_id: 96879053
+        latitude: 50.561
+        longitude: 19.5232
+        altitude_meters: 492
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 829910553
+        latitude: 49.6173
+        longitude: 19.0644
+        altitude_meters: 1034
+  - requester_node_id: 3417804839
+    target_node_id: 96879053
+    first_received_at: "2026-10-11T07:17:14.361000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: null
+    request_receptions: null
+    reply_packet_row_id: 27147
+    reply_receptions: 4
+    distance_km: 114.7
+    distance_pending: false
+    route:
+      packet_row_id: 27147
+      is_return: false
+      hops: 5
+      km: 120.4
+      reached: true
+      path:
+        nodes: [3417804839, 829910553, 2997305080, 2285796188, 1127903344, 96879053]
+        snr_db: [11.25, 1.5, 7.75, -4.25, -0.75]
+      path_hops: 5 items
+        - from_node_id: 3417804839
+          to_node_id: 829910553
+          snr_db: 11.25
+        - from_node_id: 829910553
+          to_node_id: 2997305080
+          snr_db: 1.5
+        - from_node_id: 2997305080
+          to_node_id: 2285796188
+          snr_db: 7.75
+      hop: null
+      unlikely: false
+    positions: 6 items
+      - node_id: 96879053
+        latitude: 50.561
+        longitude: 19.5232
+        altitude_meters: 459
+      - node_id: 829910553
+        latitude: 49.6173
+        longitude: 19.0644
+        altitude_meters: 1034
+      - node_id: 1127903344
+        latitude: 50.3382
+        longitude: 19.3266
+        altitude_meters: 420
+  - requester_node_id: 3417804839
+    target_node_id: 2749076957
+    first_received_at: "2026-10-10T20:59:37.997000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 23073
+    request_receptions: 4
+    reply_packet_row_id: 23074
+    reply_receptions: 3
+    distance_km: 113.7
+    distance_pending: false
+    route:
+      packet_row_id: 23074
+      is_return: false
+      hops: 3
+      km: 169.6
+      reached: true
+      path:
+        nodes: [3417804839, 2483997066, 3472072206, 2749076957]
+        snr_db: [11.25, 2, -7.5]
+      path_hops: 3 items
+        - from_node_id: 3417804839
+          to_node_id: 2483997066
+          snr_db: 11.25
+        - from_node_id: 2483997066
+          to_node_id: 3472072206
+          snr_db: 2
+        - from_node_id: 3472072206
+          to_node_id: 2749076957
+          snr_db: -7.5
+      hop: null
+      unlikely: false
+    positions: 4 items
+      - node_id: 2483997066
+        latitude: 49.5649
+        longitude: 19.2479
+        altitude_meters: 1366
+      - node_id: 2749076957
+        latitude: 50.6003
+        longitude: 18.9858
+        altitude_meters: 369
+      - node_id: 3417804839
+        latitude: 49.578
+        longitude: 19.0382
+        altitude_meters: 520
+nodes: 101 items
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 80052368
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 50.0694
+    longitude: 19.9646
+    estimated: true
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+matched_node_ids: []
+doubtful_node_ids: []
+airborne_node_ids: []
+has_more: true
+
+## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z&node=289b&next_to=!9e7654c4&channel=ShortFast&min_hops=1&successful=true
+
+items: []
+nodes: []
+matched_node_ids: []
+doubtful_node_ids: []
+airborne_node_ids: []
+has_more: false
+
+## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!d9dd289b
+
+items: 50 items
+  - requester_node_id: 4269814177
+    target_node_id: 2224739564
+    first_received_at: "2026-10-11T13:21:47.100000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 29629
+    request_receptions: 2
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 29629
+      is_return: false
+      hops: 8
+      km: 495.2
+      reached: false
+      path:
+        nodes: [4269814177, 603288811, 848645925, 2718938342, 96879053, 1128130340, 2933499666, 3655149723, 1770149960, 2224739564]
+        snr_db: [-9, -2.75, 0.75, -8.75, -6, 3.5, -1.25, -3.5]
+      path_hops: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 603288811
+          snr_db: -9
+        - from_node_id: 603288811
+          to_node_id: 848645925
+          snr_db: -2.75
+        - from_node_id: 848645925
+          to_node_id: 2718938342
+          snr_db: 0.75
+      hop: null
+      unlikely: false
+    positions: 8 items
+      - node_id: 96879053
+        latitude: 50.561
+        longitude: 19.5232
+        altitude_meters: 542
+      - node_id: 603288811
+        latitude: 49.5387
+        longitude: 19.2348
+        altitude_meters: 1322
+      - node_id: 848645925
+        latitude: 50.4693
+        longitude: 18.5139
+        altitude_meters: 259
+  - requester_node_id: 4269814177
+    target_node_id: 2715019224
+    first_received_at: "2026-10-11T13:40:40.353000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 29760
+    request_receptions: 4
+    reply_packet_row_id: 29761
+    reply_receptions: 4
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 29761
+      is_return: true
+      hops: 8
+      km: 404.4
+      reached: false
+      path:
+        nodes: [2715019224, 3019100365, 848645925, 2483997066, 2749076957, 4110175258, 2933499666, 3655149723, 2658555076, 4269814177]
+        snr_db: [2, 2.25, -0.75, -6, -6, -4.5, -1, 11.5]
+      path_hops: 8 items
+        - from_node_id: 2715019224
+          to_node_id: 3019100365
+          snr_db: 2
+        - from_node_id: 3019100365
+          to_node_id: 848645925
+          snr_db: 2.25
+        - from_node_id: 848645925
+          to_node_id: 2483997066
+          snr_db: -0.75
+      hop: null
+      unlikely: false
+    positions: 9 items
+      - node_id: 848645925
+        latitude: 50.4693
+        longitude: 18.5139
+        altitude_meters: 259
+      - node_id: 2483997066
+        latitude: 49.5649
+        longitude: 19.2479
+        altitude_meters: 1366
+      - node_id: 2658555076
+        latitude: 51.7734
+        longitude: 19.5297
+        altitude_meters: 273
+  - requester_node_id: 4269814177
+    target_node_id: 1129708344
+    first_received_at: "2026-10-09T14:26:24.768000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 9796
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    distance_pending: false
+    route:
+      packet_row_id: 9796
+      is_return: false
+      hops: 8
+      km: 402.8
+      reached: false
+      path:
+        nodes: [4269814177, 2151687975, 554127139, 2718938342, 3596185440, 4110175258, 2933499666, 3655149723, 1770149960, 1129708344]
+        snr_db: [-10, -10.5, -2.75, -0.5, -6.5, -2.75, -2, 0.75]
+      path_hops: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 2151687975
+          snr_db: -10
+        - from_node_id: 2151687975
+          to_node_id: 554127139
+          snr_db: -10.5
+        - from_node_id: 554127139
+          to_node_id: 2718938342
+          snr_db: -2.75
+      hop: null
+      unlikely: false
+    positions: 8 items
+      - node_id: 554127139
+        latitude: 50.194
+        longitude: 19.5363
+        altitude_meters: 504
+      - node_id: 1770149960
+        latitude: 51.7734
+        longitude: 19.4773
+        altitude_meters: null
+      - node_id: 2151687975
+        latitude: 49.9581
+        longitude: 20.0868
+        altitude_meters: 440
+nodes: 104 items
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 48914920
+    long_name: "Node 61e8"
+    short_name: "61e8"
+    role: "CLIENT_BASE"
+    latitude: 50.5676
+    longitude: 19.6346
+    estimated: false
+  - node_id: 80052368
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 50.0694
+    longitude: 19.9646
+    estimated: true
+matched_node_ids: [3655149723]
+doubtful_node_ids: []
+airborne_node_ids: []
+has_more: true
+
+## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z
+
+a_to_b: 10 items
+  - packet_row_id: 31074
+    first_received_at: "2026-10-11T16:21:06.845000Z"
+    snr_db: 12.5
+    requester_node_id: 2666580684
+    target_node_id: 2933499666
+    is_reply: true
+  - packet_row_id: 30914
+    first_received_at: "2026-10-11T15:55:55.822000Z"
+    snr_db: 12.25
+    requester_node_id: 4269814177
+    target_node_id: 3665045164
+    is_reply: false
+  - packet_row_id: 30910
+    first_received_at: "2026-10-11T15:55:23.414000Z"
+    snr_db: 13
+    requester_node_id: 4269814177
+    target_node_id: 1568501544
+    is_reply: false
+b_to_a: []
+nodes: 12 items
+  - node_id: 218747206
+    long_name: "Node d146"
+    short_name: "d146"
+    role: "ROUTER"
+    latitude: 49.6173
+    longitude: 20.7028
+    estimated: false
+  - node_id: 1568501544
+    long_name: "Node 6f28"
+    short_name: "6f28"
+    role: "ROUTER_LATE"
+    latitude: 50.1023
+    longitude: 20.0212
+    estimated: false
+  - node_id: 1770330420
+    long_name: "Node 1934"
+    short_name: "1934"
+    role: "CLIENT"
+    latitude: 50.1023
+    longitude: 20.1785
+    estimated: false
+
+## GET /api/v1/links/positions?node_a=3655149723&node_b=2658555076&at=2026-10-11T16:25:30.812000Z
+
+items: 2 items
+  - node_id: 2658555076
+    latitude: 51.7734
+    longitude: 19.5297
+    altitude_meters: 273
+  - node_id: 3655149723
+    latitude: 51.78
+    longitude: 19.5101
+    altitude_meters: 310
+
+## GET /api/v1/links/hours?node_a=2658555076&node_b=3655149723&channel=ShortFast&since=2026-10-04T16:25:30.812000Z
+
+a_to_b: 1 items
+  - hour_start: "2026-10-09T21:00:00Z"
+    observations: 1
+    average_snr: 11
+b_to_a: 63 items
+  - hour_start: "2026-10-08T16:00:00Z"
+    observations: 11
+    average_snr: 12.27
+  - hour_start: "2026-10-08T17:00:00Z"
+    observations: 12
+    average_snr: 11.96
+  - hour_start: "2026-10-08T18:00:00Z"
+    observations: 11
+    average_snr: 12.14
+
+## GET /api/v1/traceroutes/busiest?since=2026-10-10T16:25:30.812000Z
+
+requesters: 10 items
+  - node_id: 4269814177
+    count: 185
+  - node_id: 181026324
+    count: 90
+  - node_id: 2896439572
+    count: 23
+targets: 10 items
+  - node_id: 1130037880
+    count: 13
+  - node_id: 2410091772
+    count: 9
+  - node_id: 1378407909
+    count: 8
+relays: 10 items
+  - node_id: 3655149723
+    count: 453
+  - node_id: 1770149960
+    count: 441
+  - node_id: 2933499666
+    count: 440
+channels: 1 items
+  - channel: "ShortFast"
+    count: 501
+nodes: 27 items
+  - node_id: 77393344
+    long_name: "Node edc0"
+    short_name: "edc0"
+    role: "CLIENT_BASE"
+    latitude: null
+    longitude: null
+    estimated: false
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+  - node_id: 181026324
+    long_name: "Node 3e14"
+    short_name: "3e14"
+    role: "CLIENT_BASE"
+    latitude: 49.768
+    longitude: 19.1758
+    estimated: true
+
+## GET /api/v1/traceroutes/busiest?since=2026-10-04T16:25:30.812000Z
+
+requesters: 10 items
+  - node_id: 4269814177
+    count: 533
+  - node_id: 181026324
+    count: 90
+  - node_id: 3417804839
+    count: 38
+targets: 10 items
+  - node_id: 2151687975
+    count: 29
+  - node_id: 1130037880
+    count: 17
+  - node_id: 173442116
+    count: 16
+relays: 10 items
+  - node_id: 3655149723
+    count: 1150
+  - node_id: 2933499666
+    count: 1123
+  - node_id: 2658555076
+    count: 1094
+channels: 2 items
+  - channel: "ShortFast"
+    count: 1317
+  - channel: "MediumFast"
+    count: 2
+nodes: 27 items
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+  - node_id: 104072574
+    long_name: "Node 057e"
+    short_name: "057e"
+    role: "CLIENT"
+    latitude: 50.3835
+    longitude: 19.127
+    estimated: true
+  - node_id: 173442116
+    long_name: "Node 8444"
+    short_name: "8444"
+    role: "CLIENT_BASE"
+    latitude: 51.3606
+    longitude: 19.3528
+    estimated: false
+
+## GET /api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2
+
+generated_at: "2026-10-11T16:25:30.812000Z"
+window_hours: 72
+channel: "ShortFast"
+per_day: 2
+min_margin_db: 4
+join_links: 2
+days: 3
+link_count: 521
+solid_link_count: 3
+channels: 2 items
+  - channel: "ShortFast"
+    links: 945
+  - channel: "MediumFast"
+    links: 1
+truncated: false
+zones: 8 items
+  - zone_id: 1
+    island: 1
+    name: "Node 41cd"
+    place: "Częstochowa"
+    region: "Śląskie"
+    hub_node_id: 96879053
+    members: [48914920, 55052681, 96879053, 104072574, 116759056, 164931732, 292857186, 408545373, 409975644, 507476722, 511336077, 522999951, … 53 items]
+    internal_links: 100
+    text_gateways: 0
+    text_senders: 0
+    text_count: 0
+    latitude: 50.7584
+    longitude: 19.1169
+    solid_paths: []
+  - zone_id: 2
+    island: 1
+    name: "Node 2c3c"
+    place: "Łódź"
+    region: "Łódzkie"
+    hub_node_id: 1770269756
+    members: [313596380, 322100324, 383887127, 415923532, 457653058, 463827708, 697746102, 702832197, 797780884, 797781208, 861938604, 873566524, … 50 items]
+    internal_links: 108
+    text_gateways: 5
+    text_senders: 3
+    text_count: 4
+    latitude: 51.7669
+    longitude: 19.4773
+    solid_paths: []
+  - zone_id: 3
+    island: 1
+    name: "Node 4ac9"
+    place: "Kraków"
+    region: "Małopolskie"
+    hub_node_id: 1516587721
+    members: [38226422, 67531564, 80052368, 181005552, 327609422, 473145185, 475108345, 732186524, 741062051, 798200156, 799425484, 834572433, … 49 items]
+    internal_links: 87
+    text_gateways: 0
+    text_senders: 0
+    text_count: 0
+    latitude: 50.0236
+    longitude: 19.9688
+    solid_paths: []
+zone_pairs: 21 items
+  - zone_a: 2
+    zone_b: 3
+    observations: 0
+    strongest_margin_db: null
+    hub_hops: 4
+    km: 196.9
+    through_nodes_a: 0
+    through_nodes_b: 0
+    solid_links: 0
+    way_round_links: null
+    way_round_zones: []
+    single_link: false
+    hanging_zones: []
+    warnings: ["no solid route", "long route"]
+    sole_relay: null
+    links: []
+  - zone_a: 2
+    zone_b: 7
+    observations: 0
+    strongest_margin_db: null
+    hub_hops: 5
+    km: 168.3
+    through_nodes_a: 0
+    through_nodes_b: 0
+    solid_links: 0
+    way_round_links: null
+    way_round_zones: []
+    single_link: false
+    hanging_zones: []
+    warnings: ["no solid route", "long route"]
+    sole_relay: null
+    links: []
+  - zone_a: 6
+    zone_b: 7
+    observations: 0
+    strongest_margin_db: null
+    hub_hops: 4
+    km: 122.4
+    through_nodes_a: 0
+    through_nodes_b: 0
+    solid_links: 0
+    way_round_links: null
+    way_round_zones: []
+    single_link: false
+    hanging_zones: []
+    warnings: ["no solid route", "long route"]
+    sole_relay: null
+    links: []
+groups: 8 items
+  - key: 1
+    island: 1
+    zones: [1]
+    nodes: 53
+    longitude: 19.1169
+    texts_inside: null
+    single_links: []
+    farthest: []
+    fewest_texts: []
+  - key: 2
+    island: 1
+    zones: [2]
+    nodes: 50
+    longitude: 19.4773
+    texts_inside: null
+    single_links: []
+    farthest: []
+    fewest_texts: []
+  - key: 3
+    island: 1
+    zones: [3]
+    nodes: 49
+    longitude: 19.9688
+    texts_inside: null
+    single_links: []
+    farthest: []
+    fewest_texts: []
+group_lines: 10 items
+  - a: 1
+    b: 2
+    pairs: 1 items
+      - [1, 2]
+    solid_links: 0
+    single_link: false
+    texts: null
+    text_count: null
+    worst_texts: null
+  - a: 1
+    b: 3
+    pairs: 1 items
+      - [1, 3]
+    solid_links: 0
+    single_link: false
+    texts: null
+    text_count: null
+    worst_texts: null
+  - a: 1
+    b: 4
+    pairs: 1 items
+      - [1, 4]
+    solid_links: 0
+    single_link: false
+    texts: null
+    text_count: null
+    worst_texts: null
+rules:
+  weak_margin_db: 4
+  long_route_hops: 4
+  few_texts: 5
+  key_relay_cut: 2
+path_links: []
+text_reach: []
+text_reach_truncated: false
+key_relays: 40 items
+  - node_id: 1770269756
+    zone_id: 2
+    impact: 7
+    cuts_off: 7
+    no_solid_backup: 0
+    carries: 41
+    only_solid_link_to: []
+    weak_only_solid_link_to: []
+    side_panel: true
+    neighbours: 34
+    last_seen_at: "2026-10-11T15:56:32.706000Z"
+    battery_level: 101
+    battery_observed_at: "2026-10-11T15:27:46.309000Z"
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+  - node_id: 1094571126
+    zone_id: 5
+    impact: 6
+    cuts_off: 6
+    no_solid_backup: 0
+    carries: 18
+    only_solid_link_to: []
+    weak_only_solid_link_to: []
+    side_panel: true
+    neighbours: 8
+    last_seen_at: "2026-10-11T16:02:16.184000Z"
+    battery_level: 92
+    battery_observed_at: "2026-10-11T16:02:16.184000Z"
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+  - node_id: 3596185440
+    zone_id: 4
+    impact: 5
+    cuts_off: 5
+    no_solid_backup: 0
+    carries: 93
+    only_solid_link_to: []
+    weak_only_solid_link_to: []
+    side_panel: true
+    neighbours: 30
+    last_seen_at: "2026-10-11T16:17:50.252000Z"
+    battery_level: 100
+    battery_observed_at: "2026-10-11T13:54:17.967000Z"
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
+text_hours: 60 items
+  - hour_start: "2026-10-08T15:00:00Z"
+    count: 3
+  - hour_start: "2026-10-08T16:00:00Z"
+    count: 7
+  - hour_start: "2026-10-08T17:00:00Z"
+    count: 18
+active_channels: 2 items
+  - channel: "ShortFast"
+    nodes: 497
+  - channel: "MediumFast"
+    nodes: 3
+nodes: 245 items
+  - node_id: 38226422
+    long_name: "Node 49f6"
+    short_name: "49f6"
+    role: "CLIENT_BASE"
+    latitude: 50.0892
+    longitude: 19.995
+    estimated: false
+  - node_id: 48914920
+    long_name: "Node 61e8"
+    short_name: "61e8"
+    role: "CLIENT_BASE"
+    latitude: 50.5676
+    longitude: 19.6346
+    estimated: false
+  - node_id: 55052681
+    long_name: "Node 0989"
+    short_name: "0989"
+    role: "CLIENT_MUTE"
+    latitude: null
+    longitude: null
+    estimated: false
+
+## GET /api/v1/diagnostics/summary
+
+capture: null
+api_started_at: "2026-10-11T16:25:30.812000Z"
+api_uptime_seconds: 0
+database:
+  facts_version: 2
+  row_counts:
+    reception: 106266
+    packet: 31095
+    node_current: 666
+    map_report: 5
+  oldest_packet_at: "2026-10-08T15:57:19.369000Z"
+  newest_packet_at: "2026-10-11T16:24:30.812000Z"
+  retention_days: 14
+skipped: []
+
+## GET /api/v1/diagnostics/doubtful-nodes
+
+items: []
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=30
+
+items: 30 items
+  - node_a:
+      node:
+        node_id: 173442116
+        long_name: "Node 8444"
+        short_name: "8444"
+        role: "CLIENT_BASE"
+        latitude: 51.3606
+        longitude: 19.3528
+        estimated: false
+      altitude_meters: 219
+      position_observed_at: "2026-10-11T14:35:41.545000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    node_b:
+      node:
+        node_id: 2718938342
+        long_name: "Node b4e6"
+        short_name: "b4e6"
+        role: "ROUTER"
+        latitude: 49.5256
+        longitude: 19.3135
+        estimated: false
+      altitude_meters: 1539
+      position_observed_at: "2026-10-11T16:22:57.964000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 161
+    longest_km: 204.1
+    longest_at: "2026-10-11T16:22:08.338000Z"
+    long_heard_at: null
+    shortest_km: 204.1
+    latest_km: 204.1
+    pending: true
+    now_km: 204.1
+    drawn_km: 204.1
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "neighbor"
+        a_to_b: 0
+        b_to_a: 1
+        hours: 1
+        average_snr: -4.75
+        zero_snr: false
+        first_hour_at: "2026-10-11T16:00:00Z"
+        last_seen_at: "2026-10-11T16:22:08.338000Z"
+        longest_km: 204.1
+        map_hidden_because: null
+    terrain: null
+    checks: ["Heard only once."]
+  - node_a:
+      node:
+        node_id: 2718938342
+        long_name: "Node b4e6"
+        short_name: "b4e6"
+        role: "ROUTER"
+        latitude: 49.5256
+        longitude: 19.3135
+        estimated: false
+      altitude_meters: 1539
+      position_observed_at: "2026-10-11T16:22:57.964000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 161
+    node_b:
+      node:
+        node_id: 3288624448
+        long_name: "Node 6d40"
+        short_name: "6d40"
+        role: "CLIENT_BASE"
+        latitude: 51.3475
+        longitude: 19.3528
+        estimated: false
+      altitude_meters: 208
+      position_observed_at: "2026-10-11T15:49:56.160000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    longest_km: 202.6
+    longest_at: "2026-10-10T16:21:57.277000Z"
+    long_heard_at: null
+    shortest_km: 202.6
+    latest_km: 202.6
+    pending: false
+    now_km: 202.6
+    drawn_km: 202.6
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "neighbor"
+        a_to_b: 1
+        b_to_a: 0
+        hours: 1
+        average_snr: 7.75
+        zero_snr: false
+        first_hour_at: "2026-10-10T16:00:00Z"
+        last_seen_at: "2026-10-10T16:21:57.277000Z"
+        longest_km: 202.6
+        map_hidden_because: null
+    terrain: null
+    checks: ["Heard only once."]
+  - node_a:
+      node:
+        node_id: 2933499666
+        long_name: "Node a712"
+        short_name: "a712"
+        role: "ROUTER"
+        latitude: 51.2033
+        longitude: 19.4314
+        estimated: false
+      altitude_meters: 411
+      position_observed_at: "2026-10-11T15:23:01.992000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    node_b:
+      node:
+        node_id: 3596185440
+        long_name: "Node 6f60"
+        short_name: "6f60"
+        role: "ROUTER"
+        latitude: 49.6828
+        longitude: 19.0382
+        estimated: false
+      altitude_meters: 1257
+      position_observed_at: "2026-10-11T13:42:29.507000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    longest_km: 171.3
+    longest_at: "2026-10-11T07:00:58.905000Z"
+    long_heard_at: null
+    shortest_km: 171.3
+    latest_km: 171.3
+    pending: false
+    now_km: 171.3
+    drawn_km: 171.3
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 2 items
+      - link_kind: "neighbor"
+        a_to_b: 0
+        b_to_a: 1
+        hours: 1
+        average_snr: -6.25
+        zero_snr: false
+        first_hour_at: "2026-10-11T03:00:00Z"
+        last_seen_at: "2026-10-11T03:10:44.666000Z"
+        longest_km: 171.3
+        map_hidden_because: null
+      - link_kind: "traceroute"
+        a_to_b: 0
+        b_to_a: 11
+        hours: 3
+        average_snr: -6.64
+        zero_snr: false
+        first_hour_at: "2026-10-11T05:00:00Z"
+        last_seen_at: "2026-10-11T07:00:58.905000Z"
+        longest_km: 171.3
+        map_hidden_because: null
+    terrain: null
+    checks: []
+looked_through: 30
+lowest_km: 110.8
+oldest_hour_at: null
+next_offset: 30
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=30&order=latest
+
+items: []
+looked_through: 0
+lowest_km: null
+oldest_hour_at: null
+next_offset: null
+
+## GET /api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely
+
+items: []
+looked_through: 330
+lowest_km: 16.4
+oldest_hour_at: null
+next_offset: 330
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=300&node=3655149723
+
+items: 25 items
+  - node_a:
+      node:
+        node_id: 96879053
+        long_name: "Node 41cd"
+        short_name: "41cd"
+        role: "ROUTER"
+        latitude: 50.561
+        longitude: 19.5232
+        estimated: false
+      altitude_meters: 514
+      position_observed_at: "2026-10-11T16:18:40.349000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    node_b:
+      node:
+        node_id: 3655149723
+        long_name: "Node 289b"
+        short_name: "289b"
+        role: "ROUTER"
+        latitude: 51.78
+        longitude: 19.5101
+        estimated: false
+      altitude_meters: 310
+      position_observed_at: "2026-10-11T11:47:22.037000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 4
+      nearest_partner_km: 1.5
+      median_partner_km: 2
+      doubt_limit_km: 150
+    longest_km: 135.5
+    longest_at: "2026-10-11T13:56:10.833000Z"
+    long_heard_at: null
+    shortest_km: 135.5
+    latest_km: 135.5
+    pending: false
+    now_km: 135.5
+    drawn_km: 135.5
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "traceroute"
+        a_to_b: 3
+        b_to_a: 0
+        hours: 3
+        average_snr: -3.25
+        zero_snr: false
+        first_hour_at: "2026-10-08T19:00:00Z"
+        last_seen_at: "2026-10-11T13:56:10.833000Z"
+        longest_km: 135.5
+        map_hidden_because: null
+    terrain: null
+    checks: ["Only traceroutes report it: no direct reception or neighbour report."]
+  - node_a:
+      node:
+        node_id: 2933499666
+        long_name: "Node a712"
+        short_name: "a712"
+        role: "ROUTER"
+        latitude: 51.2033
+        longitude: 19.4314
+        estimated: false
+      altitude_meters: 411
+      position_observed_at: "2026-10-11T15:23:01.992000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    node_b:
+      node:
+        node_id: 3655149723
+        long_name: "Node 289b"
+        short_name: "289b"
+        role: "ROUTER"
+        latitude: 51.78
+        longitude: 19.5101
+        estimated: false
+      altitude_meters: 310
+      position_observed_at: "2026-10-11T11:47:22.037000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 4
+      nearest_partner_km: 1.5
+      median_partner_km: 2
+      doubt_limit_km: 150
+    longest_km: 64.4
+    longest_at: "2026-10-11T16:21:06.845000Z"
+    long_heard_at: null
+    shortest_km: 64.4
+    latest_km: 64.4
+    pending: false
+    now_km: 64.4
+    drawn_km: 64.4
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 2 items
+      - link_kind: "neighbor"
+        a_to_b: 0
+        b_to_a: 4
+        hours: 4
+        average_snr: -6.06
+        zero_snr: false
+        first_hour_at: "2026-10-08T21:00:00Z"
+        last_seen_at: "2026-10-11T15:10:45.192000Z"
+        longest_km: 64.4
+        map_hidden_because: null
+      - link_kind: "traceroute"
+        a_to_b: 609
+        b_to_a: 3
+        hours: 60
+        average_snr: -3.02
+        zero_snr: false
+        first_hour_at: "2026-10-08T16:00:00Z"
+        last_seen_at: "2026-10-11T16:21:06.845000Z"
+        longest_km: 64.4
+        map_hidden_because: null
+    terrain: null
+    checks: []
+  - node_a:
+      node:
+        node_id: 1130037880
+        long_name: "Node 0278"
+        short_name: "0278"
+        role: "CLIENT"
+        latitude: 51.5637
+        longitude: 20.054
+        estimated: false
+      altitude_meters: 268
+      position_observed_at: "2026-10-11T08:47:06.789000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 0
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+    node_b:
+      node:
+        node_id: 3655149723
+        long_name: "Node 289b"
+        short_name: "289b"
+        role: "ROUTER"
+        latitude: 51.78
+        longitude: 19.5101
+        estimated: false
+      altitude_meters: 310
+      position_observed_at: "2026-10-11T11:47:22.037000Z"
+      position_from_map_report: false
+      moved_at: null
+      airborne_at: null
+      flight_packet_row_id: null
+      doubtful: false
+      direct_partners: 4
+      nearest_partner_km: 1.5
+      median_partner_km: 2
+      doubt_limit_km: 150
+    longest_km: 44.6
+    longest_at: "2026-10-11T07:46:48.599000Z"
+    long_heard_at: null
+    shortest_km: 44.6
+    latest_km: 44.6
+    pending: false
+    now_km: 44.6
+    drawn_km: 44.6
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "traceroute"
+        a_to_b: 13
+        b_to_a: 0
+        hours: 11
+        average_snr: 0.4
+        zero_snr: false
+        first_hour_at: "2026-10-09T03:00:00Z"
+        last_seen_at: "2026-10-11T07:46:48.599000Z"
+        longest_km: 44.6
+        map_hidden_because: null
+    terrain: null
+    checks: ["Only traceroutes report it: no direct reception or neighbour report."]
+looked_through: 25
+lowest_km: 0.9
+oldest_hour_at: null
+next_offset: null

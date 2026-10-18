@@ -1,0 +1,1037 @@
+## capture
+
+ingest.group_reception
+  SEARCH packet USING INDEX packet_identity_time
+ingest.group_reception
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+ingest.save_application_data
+  SEARCH packet USING PRIMARY KEY
+ingest._save_reception
+  SEARCH packet USING PRIMARY KEY
+derive.derive_delivery
+  SEARCH reception USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+derive._update_sender
+  SEARCH node_current USING PRIMARY KEY
+derive._replace_position
+  SEARCH node_current USING PRIMARY KEY
+ingest.group_reception
+  SEARCH packet USING PRIMARY KEY
+derive._update_device_telemetry
+  SEARCH node_current USING PRIMARY KEY
+derive.raise_firmware
+  SEARCH node_current USING PRIMARY KEY
+derive._count_link
+  SEARCH node_current USING PRIMARY KEY
+derive._mark_airborne
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+derive._derive_route
+  SEARCH node_current USING PRIMARY KEY
+derive._save_traceroute
+  SEARCH traceroute_packet USING PRIMARY KEY
+derive._save_hops
+  SEARCH traceroute_hop USING PRIMARY KEY
+
+## POST /api/v1/coverage/uploads
+
+db.rederive_pending
+  SCAN derived_state
+relays.nodes_by_byte
+  SCAN node_current
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+coverage._mqtt_reports
+  SEARCH packet USING INDEX packet_identity_time
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+coverage.save_upload
+  SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
+coverage.refresh_survey_links
+  SEARCH coverage_session USING PRIMARY KEY
+  SCAN coverage_session
+coverage.refresh_survey_links
+  SEARCH coverage_session USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+  SEARCH coverage_relay USING PRIMARY KEY
+
+## GET /api/v1/packets?limit=50
+
+packets.packet_rows
+  SEARCH packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/packets?limit=50&port=1
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_port
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/packets?limit=50&port=-1
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_port
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/packets?limit=50&sender=168430090
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_sender
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/packets?limit=50&sender=168430090&heard_directly_by=185273099
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_sender
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/packets/ports
+
+packets.packet_ports
+  SEARCH packet USING INDEX packet_port
+  SEARCH packet USING INDEX packet_port
+
+## GET /api/v1/packets/1
+
+packets.packet_detail
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+packets.packet_detail
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+packets.packet_detail
+  SEARCH traceroute_hop USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=packets&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=texts&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=channel_utilization&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=air_util_tx&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=firmware&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=firmware_oldest&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=altitude&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=altitude_lowest&limit=20&offset=0
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0&q=hill&channel=LongFast&gateway=true
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/nodes/channels
+
+nodes.node_channels
+  SCAN node_current
+
+## GET /api/v1/nodes/168430090
+
+nodes.node_overview
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+nodes._location_source
+  SEARCH packet USING PRIMARY KEY
+nodes._contact_url
+  SEARCH packet USING PRIMARY KEY
+nodes.node_overview
+  SEARCH node_activity_hour USING INDEX node_activity_node
+
+## GET /api/v1/nodes/168430090/packets?limit=50
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_sender
+  SEARCH packet USING INDEX packet_direct_recipient
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/nodes/168430090/packets?limit=50&port=1
+
+packets.packet_rows
+  SEARCH packet USING INDEX packet_sender
+  SEARCH packet USING INDEX packet_direct_recipient
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/nodes/168430090/charts?since=<time>
+
+nodes.node_charts
+  SEARCH node_activity_hour USING INDEX node_activity_node
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+nodes.node_charts
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/nodes/168430090/positions
+
+nodes.node_position_history
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/nodes/168430090/contacts?since=<time>
+
+nodes.node_contacts
+  SEARCH link_hour USING PRIMARY KEY
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+nodes.node_contacts
+  SEARCH packet USING INDEX packet_sender
+nodes.node_contacts
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+
+## GET /api/v1/nodes/168430090/links?since=<time>
+
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/map/nodes
+
+map_nodes.map_nodes
+  SCAN node_current
+  SEARCH node_estimate USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/map/nodes?seen_since=<time>&position_since=<time>
+
+map_nodes.map_nodes
+  SCAN node_current
+  SEARCH node_estimate USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+
+## GET /api/v1/map/links?link_kind=traceroute&since=<time>
+
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+
+## GET /api/v1/map/text-senders?since=<time>
+
+map_nodes.text_senders
+  SEARCH node_activity_hour USING INDEX node_activity_text
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/links?link_kind=traceroute&since=<time>
+
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/map/links?link_kind=direct&since=<time>
+
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+
+## GET /api/v1/links?link_kind=direct&since=<time>
+
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/map/links?link_kind=neighbor&since=<time>
+
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+
+## GET /api/v1/links?link_kind=neighbor&since=<time>
+
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/map/links?link_kind=traceroute
+
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+
+## GET /api/v1/map/text-reach/168430090?since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+map_nodes.text_reach
+  SEARCH packet USING INDEX packet_sender
+map_nodes.text_reach
+  SEARCH packet USING INDEX packet_sender
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+
+## GET /api/v1/chat
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+chat._farthest_gateways
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+chat._chat_parents
+  SEARCH packet USING INDEX text_message_packet
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat?channel=LongFast
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message_channel
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+chat._farthest_gateways
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+chat._chat_parents
+  SEARCH packet USING INDEX text_message_packet
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat?channel=LongFast&after_id=1
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message_channel
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+chat._farthest_gateways
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+chat._chat_parents
+  SEARCH packet USING INDEX text_message_packet
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat?before_id=100
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+chat._farthest_gateways
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+chat._chat_parents
+  SEARCH packet USING INDEX text_message_packet
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat?search=zzqx
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat?hide=168430090
+
+chat.chat_messages
+  SEARCH packet USING INDEX text_message
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+chat._farthest_gateways
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+chat._chat_parents
+  SEARCH packet USING INDEX text_message_packet
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/chat/channels
+
+chat.chat_channels
+  SCAN packet USING INDEX text_message_channel
+
+## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.unlikely_links
+  SCAN long_link
+links.position_reports
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.unlikely_links
+  SCAN long_link
+links.position_reports
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.unlikely_links
+  SCAN long_link
+links.position_reports
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=<time>&node=hill&next_to=!0b0b0b0b&channel=LongFast&min_hops=1&successful=true
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer._matching_nodes
+  SCAN node_current
+traceroute_explorer._hop_routes
+  SEARCH traceroute_hop USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.unlikely_links
+  SCAN long_link
+links.position_reports
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!0a0a0a0a
+
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer._matching_nodes
+  SCAN node_current
+traceroute_explorer._hop_routes
+  SEARCH traceroute_hop USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.airborne_nodes
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.unlikely_links
+  SCAN long_link
+links.position_reports
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH packet USING INDEX packet_sender
+
+## GET /api/v1/traceroutes/hops?node_a=168430090&node_b=185273099&since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.hop_observations.<locals>.direction
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING INDEX packet_identity_time
+  SEARCH traceroute_hop USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+
+## GET /api/v1/links/positions?node_a=168430090&node_b=185273099&at=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+positions.positions_when_heard
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/links/hours?node_a=168430090&node_b=185273099&channel=LongFast&since=<time>
+
+links.link_hours.<locals>.heard
+  SEARCH link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/traceroutes/busiest?since=<time>
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.busiest_traceroutes.<locals>.busiest
+  SEARCH traceroute_packet USING PRIMARY KEY
+traceroute_explorer.busiest_traceroutes.<locals>.busiest
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+traceroute_explorer.busiest_traceroutes
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+
+## GET /api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2
+
+zones._channel_links
+  SEARCH link_hour USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+zones._days
+  SEARCH link_hour USING PRIMARY KEY
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+zones._text_start
+  SEARCH packet USING INDEX text_message_channel
+zones._text_reach
+  SEARCH packet USING INDEX text_message_channel
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+zones._key_relays
+  SEARCH node_current USING PRIMARY KEY
+zones._text_hours
+  SEARCH node_activity_hour USING INDEX node_activity_text
+zones._active_channels
+  SCAN node_current
+
+## GET /api/v1/diagnostics/summary
+
+diagnostics.diagnostics_summary
+  SCAN packet
+  SCAN packet
+diagnostics.diagnostics_summary
+  SCAN reception USING INDEX sqlite_autoindex_reception_1
+diagnostics.diagnostics_summary
+  SCAN packet USING INDEX packet_port
+diagnostics.diagnostics_summary
+  SCAN node_current
+diagnostics.diagnostics_summary
+  SCAN map_report
+
+## GET /api/v1/diagnostics/doubtful-nodes
+
+diagnostics.doubtful_node_list
+  SCAN long_link
+diagnostics.doubtful_node_list
+  SCAN node_current
+  SEARCH packet USING INDEX packet_sender
+links.doubtful_nodes
+  SCAN node_doubtful
+diagnostics._long_link_ends
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH packet USING INDEX packet_sender
+diagnostics._direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=30
+
+diagnostics.longest_links
+  SCAN link_hour USING INDEX link_hour_pair
+diagnostics._long_links
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH link_hour USING INDEX link_hour_pair
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+diagnostics._long_link_ends
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH packet USING INDEX packet_sender
+links.doubtful_nodes
+  SCAN node_doubtful
+diagnostics._direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+diagnostics._long_links
+  SCAN long_link
+diagnostics._long_links
+  SEARCH long_link USING PRIMARY KEY
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=30&order=latest
+
+diagnostics.longest_links
+  SCAN link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely
+
+diagnostics.longest_links
+  SCAN link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=300&node=168430090
+
+diagnostics.longest_links
+  SEARCH link_hour USING INDEX link_hour_pair
+  SCAN link_hour USING INDEX link_hour_pair
+diagnostics._long_links
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH link_hour USING INDEX link_hour_pair
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+diagnostics._long_link_ends
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH packet USING INDEX packet_sender
+links.doubtful_nodes
+  SCAN node_doubtful
+diagnostics._direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+links.link_trust
+  SCAN node_current
+diagnostics._long_links
+  SCAN long_link
+diagnostics._long_links
+  SEARCH long_link USING PRIMARY KEY
+
+## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12
+
+coverage.coverage_cells
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+
+## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12&since=<time>&node=168430090&channel=LongFast
+
+coverage.coverage_cells
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SCAN node_current
+  SCAN coverage_session
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+
+## GET /api/v1/coverage/extent?node=168430090
+
+coverage.coverage_extent
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+coverage.coverage_cells
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+
+## GET /api/v1/coverage/cells/17/67320/43265
+
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+coverage._measurement_row
+  SEARCH packet USING INDEX packet_identity_time
+
+## GET /api/v1/coverage/cells/17/67320/43265?node=168430090
+
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
+coverage.coverage_cell
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH node_current USING PRIMARY KEY
+
+## retention and estimates
+
+retention._prune_current_state
+  SCAN node_current
+retention._prune_current_state
+  SCAN map_report
+retention._prune_current_state
+  SEARCH link_hour USING PRIMARY KEY
+retention._prune_current_state
+  SEARCH node_activity_hour USING PRIMARY KEY
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+retention._delete_oldest_packets
+  SEARCH packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_current
+  SCAN node_current
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+retention._delete_old_measurements
+  SEARCH coverage_measurement USING INDEX coverage_measurement_time
+  SEARCH coverage_relay USING PRIMARY KEY
+retention._delete_old_measurements
+  SCAN coverage_session
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+positions.refresh_estimates.<locals>.<genexpr>
+  SEARCH link_hour USING PRIMARY KEY
+positions._doubtful
+  SEARCH link_hour USING PRIMARY KEY
+positions._doubtful
+  SCAN node_current
+positions._estimates
+  SCAN node_current
+links.link_trust
+  SCAN node_current
+links.doubtful_nodes
+  SCAN node_doubtful
+positions._estimates
+  SEARCH link_hour USING PRIMARY KEY

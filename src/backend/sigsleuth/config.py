@@ -45,6 +45,9 @@ class Settings:
     admin_password: str | None = field(default=None, repr=False)
     # Guards survey uploads; without one, uploads are refused.
     upload_password: str | None = field(default=None, repr=False)
+    # Hide nodes that turned OK to MQTT off (opt_out.py); off, every page
+    # shows every node.
+    hide_opted_out: bool = True
     # The API's clock, stopped here, for a demo of a saved database; the page
     # reads the same setting when it is built.
     fixed_now: datetime | None = None
@@ -109,6 +112,10 @@ def settings_from_environment(environment: Mapping[str, str], *, capture: bool) 
         default_preset=_preset(environment.get("SIGSLEUTH_DEFAULT_PRESET", DEFAULT_PRESET)),
         admin_password=_optional(environment.get("SIGSLEUTH_ADMIN_PASSWORD")),
         upload_password=_optional(environment.get("SIGSLEUTH_UPLOAD_PASSWORD")),
+        hide_opted_out=_boolean(
+            environment.get("SIGSLEUTH_HIDE_OPTED_OUT", "").strip() or "true",
+            "SIGSLEUTH_HIDE_OPTED_OUT",
+        ),
         fixed_now=fixed_now,
     )
 

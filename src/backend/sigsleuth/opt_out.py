@@ -14,11 +14,17 @@ Pages leave out an opted-out node's own rows (the node, its packets and
 links) and show its place in other nodes' data (route hops, neighbour
 lists, relays) as an unknown node's. It reads like a node never heard;
 nothing says why.
+
+With SIGSLEUTH_HIDE_OPTED_OUT off, node_opt_out stays empty, so every page
+shows every node. Startup refills the table, as the setting may have changed.
 """
 
 import json
 import sqlite3
 from collections.abc import Iterable
+
+# SIGSLEUTH_HIDE_OPTED_OUT, set at startup.
+hiding = True
 
 
 def opted_out_sql(node: str) -> str:
@@ -71,9 +77,11 @@ def is_opted_out(connection: sqlite3.Connection, node: int) -> bool:
 
 def refresh_opt_outs(connection: sqlite3.Connection, nodes: Iterable[int] | None) -> None:
     """Decide again whether each of nodes opted out; every node when None.
-    The caller holds the transaction."""
+    Without hiding, none ever is. The caller holds the transaction."""
     if nodes is None:
         connection.execute("DELETE FROM node_opt_out")
+        if not hiding:
+            return
         # Only a node with a packet that had the bit off can have opted out.
         nodes = [
             int(row[0])
@@ -84,6 +92,8 @@ def refresh_opt_outs(connection: sqlite3.Connection, nodes: Iterable[int] | None
                 """
             )
         ]
+    elif not hiding:
+        return
     for node in nodes:
         if _newest_bit(connection, node) == 0 and not _is_gateway(connection, node):
             connection.execute("INSERT OR IGNORE INTO node_opt_out (node_id) VALUES (?)", (node,))

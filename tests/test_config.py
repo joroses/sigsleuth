@@ -125,3 +125,14 @@ def test_fixed_now_needs_an_offset_and_no_capture() -> None:
         settings_from_environment(
             capture | {"SIGSLEUTH_FIXED_NOW": "2026-10-12T16:46Z"}, capture=True
         )
+
+
+def test_hide_opted_out_is_on_unless_turned_off() -> None:
+    def hide(value: str | None) -> bool:
+        environment = {} if value is None else {"SIGSLEUTH_HIDE_OPTED_OUT": value}
+        return settings_from_environment(environment, capture=False).hide_opted_out
+
+    assert hide(None) and hide("") and hide("true")
+    assert not hide("false") and not hide("off")
+    with pytest.raises(ConfigurationError, match="SIGSLEUTH_HIDE_OPTED_OUT"):
+        hide("maybe")

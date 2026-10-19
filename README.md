@@ -50,7 +50,7 @@ To update: `git pull && docker compose pull && docker compose up -d`.
 
 - History is kept 14 days (`SIGSLEUTH_RETENTION_DAYS`): about 1.2 GB for a busy region, plus [working space](docs/deployment.md#retention-and-disk).
 - **Diagnostics** is linked only in a browser that has opened it: open http://127.0.0.1:8000/#diagnostics once, and the bar shows it from then on. It shows what capture saved and skipped and why, nodes with doubtful positions, long links to review and recent packets.
-- Nodes with OK to MQTT off are kept in history but never shown; turning it on shows them again, history included.
+- Nodes with OK to MQTT off are kept in history but never shown; turning it on shows them again, history included. `SIGSLEUTH_HIDE_OPTED_OUT=false` shows them anyway.
 - There are no accounts: anyone who can reach the page sees everything but Diagnostics. Passwords are sent in the clear, so serve SigSleuth over HTTPS before using them from another machine: see [running and deploying](docs/deployment.md).
 
 ## Coverage

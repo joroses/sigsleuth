@@ -10,13 +10,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from meshtastic_fixtures import application_envelope, ingest
 from page_requests import Subjects, page_requests, pick_subjects
 from recorded_sample import Sample
-from sigsleuth import db
+from sigsleuth import __main__ as commands
+from sigsleuth import db, opt_out
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import (
@@ -120,6 +122,32 @@ def test_a_node_is_hidden_while_its_newest_packet_says_ok_to_mqtt_off(tmp_path: 
     assert shown(client)
     rebuild(path)
     assert shown(client)
+
+
+def test_hiding_turned_off_shows_every_node_and_startup_follows_the_setting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    send(path, 0, 0)
+    client = TestClient(create_app(Settings(path)))
+    assert not shown(client)
+    # Restored after the test; main sets it.
+    monkeypatch.setattr(opt_out, "hiding", True)
+    monkeypatch.setattr(uvicorn, "run", lambda *_args, **_options: None)
+
+    def start(hide: str) -> None:
+        environment = {"SIGSLEUTH_DATABASE_PATH": str(path), "SIGSLEUTH_HIDE_OPTED_OUT": hide}
+        monkeypatch.setattr(commands, "load_environment", lambda: environment)
+        assert commands.main(["api"]) == 0
+
+    start("false")
+    assert shown(client)
+    # Capture hides no one either.
+    send(path, 1, 0)
+    assert shown(client)
+    start("true")
+    assert not shown(client)
 
 
 def test_a_shown_nodes_packets_to_an_opted_out_one_keep_their_times_but_no_links(

@@ -12,7 +12,7 @@ This app is not an audit system:
 
 History is disposable (14 days at most). Missed messages, approximate grouping, stale or partial results and a recreated database are fine; showing something beats showing nothing. Add complexity only after a real problem in normal use, not for auditability, reproducibility, consistency, hostile users, large installations, compatibility or hypothetical failures.
 
-No security model beyond the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). Everything from the subscription may be shown, except [opted-out nodes](docs/glossary.md#nodes-and-positions).
+No security model beyond the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). Everything from the subscription may be shown, except [opted-out nodes](docs/glossary.md#nodes-and-positions) (unless `SIGSLEUTH_HIDE_OPTED_OUT=false`).
 
 ## Data volume
 

@@ -26,6 +26,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Node | A radio's node number, such as `!aabbccdd`. It does not prove one physical device: numbers can collide. |
 | Gateway | The node that uploaded a reception to MQTT. It may not be a node SigSleuth has heard itself. |
 | NodeInfo | A node's broadcast of its names, hardware and role. |
+| Opted-out node | One whose newest packet that told its OK to MQTT setting, captured or surveyed, had it off; a node reporting to MQTT as a gateway never is (`opt_out.py`). Its history is kept, but no page names it: its own node, the packets to or from it and its links are left out (another node's packet to it keeps its time, without a link), and other nodes' routes, neighbour lists and relays show it as unknown. Its survey measurements read as an unknown relay's ([coverage](coverage.md#nodes-that-do-not-allow-mqtt)). Turning the setting on shows its whole history again. |
 | Last sent / last seen | When the node last originated a packet / that, or when it last reported as a gateway or appeared in a traceroute hop. |
 | Valid position | Coordinates in range and not near 0,0. An invalid one never replaces the latest valid one. |
 | Estimated position | Where a node that reports no position probably is, from its placed radio neighbours (`positions.py`). Drawn hollow; never used for km. |

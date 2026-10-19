@@ -1620,12 +1620,15 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                     ) : (
                       <dd>
                         <Timestamp value={selectedNode.last_sent_at} />
-                        <a
-                          className="text-button"
-                          href={`#packets/${selectedNode.last_sent_packet_row_id}`}
-                        >
-                          Latest packet
-                        </a>
+                        {selectedNode.last_sent_packet_row_id ===
+                        null ? null : (
+                          <a
+                            className="text-button"
+                            href={`#packets/${selectedNode.last_sent_packet_row_id}`}
+                          >
+                            Latest packet
+                          </a>
+                        )}
                       </dd>
                     )}
                   </div>
@@ -1634,7 +1637,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                       <dt>Position</dt>
                       <dd>{estimateText(selectedNode.estimate)}</dd>
                     </div>
-                  ) : selectedNode.position?.packet_row_id === null ? (
+                  ) : selectedNode.position?.from_map_report ? (
                     <div>
                       <dt>Position</dt>
                       <dd>

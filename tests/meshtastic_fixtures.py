@@ -59,6 +59,7 @@ def application_envelope(
     request_id: int = 0,
     reply_id: int = 0,
     emoji: int = 0,
+    bitfield: int | None = None,
     encrypted: bool = False,
     key: bytes = DEFAULT_CHANNEL_KEY,
     channel_id: str = "LongFast",
@@ -67,6 +68,7 @@ def application_envelope(
 ) -> bytes:
     """Build a supported official application envelope, optionally AES-CTR encrypted.
 
+    bitfield is Data.bitfield (bit 0 is OK to MQTT), left out when None.
     header sets MeshPacket header fields such as rx_snr, hop_start or relay_node.
     """
     data = mesh_pb2.Data(
@@ -75,6 +77,7 @@ def application_envelope(
         request_id=request_id,
         reply_id=reply_id,
         emoji=emoji,
+        bitfield=bitfield,
     )
     packet = mesh_pb2.MeshPacket(
         to=recipient,

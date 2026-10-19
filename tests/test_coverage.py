@@ -487,6 +487,29 @@ def test_a_packet_page_names_relays_by_the_survey_rules(
     assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
 
 
+@pytest.mark.usefixtures("known_nodes")
+def test_a_packet_page_never_names_a_relay_that_opted_out(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
+    link(connection, NEAR, RECEIVER, observations=1)
+    assert packet_relays(client, connection) == {
+        RECEIVER: (NEAR, "heard_directly"),
+        GATEWAY: (LINKED_TO_GATEWAY, "heard_directly"),
+    }
+
+    # Named directly or by a guess, a node that opted out reads as an
+    # undecided relay, and no list offers it.
+    connection.executemany(
+        "INSERT INTO node_opt_out (node_id) VALUES (?)", [(NEAR,), (LINKED_TO_GATEWAY,)]
+    )
+    relays = packet_relays(client, connection)
+    assert relays[RECEIVER] == [(LINKED_TO_SENDER, 11.1)]
+    assert [node for node, _ in relays[GATEWAY]] == [LINKED_TO_SENDER]
+
+
 def test_a_gateway_uploading_its_own_rebroadcast_names_no_relay(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
@@ -906,3 +929,137 @@ def test_rederive_refills_survey_links(client: TestClient, connection: sqlite3.C
     assert rederive(connection, lambda: False)
 
     assert links(connection) == [(1, RELAY)]
+
+
+OPTED_OUT, UNDECODED = 0x0E0E0E01, 0x0E0E0E02
+
+
+def opt_outs(connection: sqlite3.Connection) -> list[int]:
+    return [int(row[0]) for row in connection.execute("SELECT node_id FROM node_opt_out")]
+
+
+def unknown_relays(detail: dict[str, Any]) -> list[tuple[int, int]]:
+    return [(relay["relay_byte"], relay["measurements"]) for relay in detail["unknown_relays"]]
+
+
+def test_a_node_that_turns_ok_to_mqtt_off_reads_as_an_unknown_relay(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    now = now_ms()
+    upload(
+        client,
+        direct(1, OPTED_OUT, ok_to_mqtt=True, heard_at_ms=now - 2 * DAY_MS),
+        direct(2, OPTED_OUT, ok_to_mqtt=False, heard_at_ms=now - DAY_MS),
+        # No survey decoded its packets: named.
+        direct(3, UNDECODED, heard_at_ms=now - DAY_MS),
+    )
+
+    # Its newest bit is off: all its measurements colour the cell, earlier
+    # ones too, as an unknown relay's with its byte, and nothing names it.
+    cells = client.get("/api/v1/coverage/cells", params={**AREA, "zoom": 6}).json()["cells"]
+    assert [(cell["measurements"], cell["nodes"]) for cell in cells] == [(3, 1)]
+    assert cell_measurements(client, node=OPTED_OUT) == 0
+    assert client.get("/api/v1/coverage/extent", params={"node": OPTED_OUT}).json() is None
+    detail = fine_cell_detail(client, *PHONE)
+    assert [n["node_id"] for n in detail["heard_nodes"]] == [UNDECODED]
+    assert unknown_relays(detail) == [(OPTED_OUT & 0xFF, 2)]
+    newest = [
+        (row["relay_byte"], row["heard_node_id"], row["heard_how"]) for row in detail["newest"]
+    ]
+    assert sorted(newest, key=lambda row: row[0]) == [
+        (0x01, None, "unknown"),
+        (0x01, None, "unknown"),
+        (0x02, UNDECODED, "direct"),
+    ]
+    assert "opted_out" not in detail and "opted_out" not in detail["newest"][0]
+
+    # Turned back on, it is named again; an older upload arriving later does
+    # not override the newest bit.
+    upload(client, direct(4, OPTED_OUT, ok_to_mqtt=True, heard_at_ms=now - 60_000))
+    upload(client, direct(5, OPTED_OUT, ok_to_mqtt=False, heard_at_ms=now - 3 * DAY_MS))
+    assert opt_outs(connection) == []
+    assert cell_measurements(client, node=OPTED_OUT) == 4
+    assert unknown_relays(fine_cell_detail(client, *PHONE)) == []
+
+
+def test_relayed_packets_follow_the_relays_own_bit(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    upload(
+        client,
+        direct(1, OPTED_OUT, ok_to_mqtt=False, heard_at_ms=at),
+        # OPTED_OUT's packet relayed by RELAY, heard directly a minute later.
+        measurement(2, sender_node_id=OPTED_OUT, ok_to_mqtt=False, heard_at_ms=at),
+        direct(3, RELAY, ok_to_mqtt=True, heard_at_ms=at + 60_000),
+    )
+    assert links(connection) == [(2, RELAY)]
+    assert cell_measurements(client, node=RELAY) == 2
+
+    # RELAY turns it off: the link still names it, and its measurements join
+    # the unknown relay with its byte.
+    upload(client, direct(4, RELAY, ok_to_mqtt=False, heard_at_ms=at + 120_000))
+    assert links(connection) == [(2, RELAY)]
+    assert sorted(opt_outs(connection)) == [RELAY, OPTED_OUT]
+    detail = fine_cell_detail(client, *PHONE)
+    assert detail["heard_nodes"] == []
+    assert unknown_relays(detail) == [(0x1A, 3), (0x01, 1)]
+
+
+def test_a_packet_from_a_sender_that_opted_out_is_not_linked(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
+    at = now_ms() - 60_000
+    upload(
+        client,
+        measurement(1, sender_node_id=SENDER, packet_id=77, heard_at_ms=at),
+        direct(2, RELAY, heard_at_ms=at),
+    )
+
+    def relayed() -> tuple[Any, ...]:
+        newest = fine_cell_detail(client, *PHONE)["newest"]
+        row = next(r for r in newest if r["heard_how"] == "survey_link")
+        return (row["heard_node_id"], row["packet_row_id"] is not None)
+
+    assert relayed() == (RELAY, True)
+    # The relay is still named, but the packet page would name the sender.
+    upload(client, direct(3, SENDER, ok_to_mqtt=False, heard_at_ms=at))
+    assert relayed() == (RELAY, False)
+
+
+@pytest.mark.usefixtures("known_nodes")
+def test_an_opted_out_node_is_not_suggested_as_a_cells_relay(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    heard(client, connection)
+    connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (NEAR,))
+
+    relays = fine_cell_detail(client, *PHONE)["unknown_relays"]
+
+    assert [[c["node_id"] for c in relay["candidates"]] for relay in relays] == [
+        [LINKED_TO_SENDER, LINKED_TO_GATEWAY]
+    ]
+
+
+def test_retention_and_rederive_refill_opt_outs(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    now = datetime.now(UTC)
+    old = int((now - timedelta(days=13)).timestamp() * 1000)
+    upload(
+        client,
+        direct(1, OPTED_OUT, ok_to_mqtt=False),
+        direct(2, UNDECODED, ok_to_mqtt=False, heard_at_ms=old),
+        direct(3, UNDECODED),
+    )
+    assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]
+
+    # The only decoded bit left the database with its measurement.
+    apply_retention(connection, retention_days=7, now=now)
+    assert opt_outs(connection) == [OPTED_OUT]
+
+    recreate_derived(connection)
+    assert opt_outs(connection) == []
+    assert rederive(connection, lambda: False)
+    assert opt_outs(connection) == [OPTED_OUT]

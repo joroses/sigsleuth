@@ -1,6 +1,10 @@
 """The packet list in Diagnostics and a packet's page: saved packets newest
 first, and one packet with its receptions, hops and traceroute routes.
-packet_rows is also the Nodes page's packet table."""
+packet_rows is also the Nodes page's packet table.
+
+A packet to or from a node that turned OK to MQTT off is never shown, and
+its routes, hops and payload show such a node as unknown (opt_out.py).
+"""
 
 import sqlite3
 from dataclasses import dataclass, replace
@@ -13,6 +17,7 @@ from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, optional_text,
 from sigsleuth.decode import describe_payload, portnum_name
 from sigsleuth.derive import is_direct_reception
 from sigsleuth.diagnostics import describe_reason
+from sigsleuth.opt_out import SHOWN_PACKET, opted_out
 from sigsleuth.positions import positions_when_heard
 from sigsleuth.radio import distance_km, relay_byte_of, relay_byte_sql, spreading_factor
 from sigsleuth.relays import (
@@ -36,6 +41,7 @@ from sigsleuth.traceroute import (
     read_traceroute_report,
     report_hops,
     requester_and_target,
+    without_nodes,
 )
 
 # A packet has one reception per gateway that heard it, so its page lists
@@ -219,7 +225,7 @@ def packet_detail(
     connection: sqlite3.Connection, packet_row_id: int, *, default_preset: str
 ) -> PacketDetail | None:
     """Return the packet and its receptions, nearest the sender first, or None
-    if it does not exist."""
+    if it does not exist or is not shown."""
     row = connection.execute(
         """
         SELECT t.*,
@@ -232,7 +238,8 @@ def packet_detail(
         """,
         (packet_row_id,),
     ).fetchone()
-    if row is None:
+    hidden = opted_out(connection)
+    if row is None or not hidden.isdisjoint((row["sender_node_id"], row["recipient_node_id"])):
         return None
     reception_rows = connection.execute(
         """
@@ -257,7 +264,7 @@ def packet_detail(
     receptions = sorted(
         (
             _packet_reception(
-                item, row, places.get(int(item["gateway_node_id"])), places.get(sender)
+                item, row, places.get(int(item["gateway_node_id"])), places.get(sender), hidden
             )
             for item in reception_rows
         ),
@@ -269,11 +276,12 @@ def packet_detail(
         sender,
         at=int(row["first_received_at"]),
         spreading_factor=channel_spreading_factor(str(row["channel"])),
+        hidden=hidden,
     )
     payload = (
         None
         if row["application_payload"] is None or row["portnum"] is None
-        else describe_payload(int(row["portnum"]), row["application_payload"])
+        else describe_payload(int(row["portnum"]), row["application_payload"], hidden)
     )
     reason = row["unreadable_reason"]
     hops = tuple(
@@ -285,6 +293,7 @@ def packet_detail(
             """,
             (packet_row_id,),
         )
+        if hop["from_node_id"] not in hidden and hop["to_node_id"] not in hidden
     )
     traceroute = (
         TracerouteEnds(
@@ -296,7 +305,7 @@ def packet_detail(
         else None
     )
     reply_route = (
-        _reply_route(connection, traceroute.requester_node_id, int(row["packet_id"]))
+        _reply_route(connection, traceroute.requester_node_id, int(row["packet_id"]), hidden)
         if traceroute is not None and row["request_id"] is None
         else None
     )
@@ -320,7 +329,7 @@ def packet_detail(
 
 
 def _reply_route(
-    connection: sqlite3.Connection, requester: int, request_packet_id: int
+    connection: sqlite3.Connection, requester: int, request_packet_id: int, hidden: set[int]
 ) -> ReplyRoute | None:
     # The traceroute_packet table is small (one row per traceroute packet), so it is
     # read without an index on the run. The reply is found first so that its
@@ -349,7 +358,7 @@ def _reply_route(
     report = None if row is None else _traceroute_report(row["route_payload"], reply, None)
     if report is None:
         return None
-    path = report.paths.forward
+    path = without_nodes(report, hidden).paths.forward
     return ReplyRoute(int(reply["id"]), int(row["id"]), path, _hops(path_hops(path)))
 
 
@@ -396,6 +405,7 @@ def _with_relays(
     *,
     at: int,
     spreading_factor: int | None,
+    hidden: set[int],
 ) -> list[PacketReception]:
     """The receptions with relay_node or relay_maybe filled in where a relay
     byte is neither the sender's nor the gateway's (a gateway sending its own
@@ -406,6 +416,9 @@ def _with_relays(
        COHEARER_WINDOW_MS of the packet, whatever the rule-outs say;
     2. else relays.name_relay on the candidates_left;
     3. else relay_maybe: up to RELAY_MAYBE of those left, nearest first.
+
+    A hidden node (opted out) is never named or listed: a copy it is named
+    for reads as undecided, as any other.
 
     Links count either side of the packet (at), where upload has only those
     before: the oldest packets would otherwise outlive their evidence, which
@@ -477,24 +490,30 @@ def _with_relays(
         )
         every = evidence.candidates(copy)
         heard = [node for node in every if direct.get((node, gateway), 0) > 0]
+        left = None
+        relay = None
         if len(heard) == 1:
             relay = RelayNode(heard[0], name(heard[0]), len(every), "heard_directly")
+        else:
+            left = candidates_left(evidence, copy)
+            cohearers = copy.cohearers()
+            vouched = {
+                node
+                for node in left
+                if any(direct.get((node, other), 0) >= COHEARER_RECEPTIONS for other in cohearers)
+            }
+            guess = name_relay(evidence, copy, left, vouched)
+            if guess is not None:
+                relay = RelayNode(guess[0], name(guess[0]), len(left), guess[1])
+        if relay is not None and relay.node_id not in hidden:
             named.append(replace(reception, relay_node=relay))
             continue
-        left = candidates_left(evidence, copy)
-        cohearers = copy.cohearers()
-        vouched = {
-            node
-            for node in left
-            if any(direct.get((node, other), 0) >= COHEARER_RECEPTIONS for other in cohearers)
-        }
-        guess = name_relay(evidence, copy, left, vouched)
-        if guess is not None:
-            relay = RelayNode(guess[0], name(guess[0]), len(left), guess[1])
-            named.append(replace(reception, relay_node=relay))
-            continue
+        if left is None:
+            left = candidates_left(evidence, copy)
         maybe = []
         for node in left:
+            if node in hidden:
+                continue
             km = None if position is None else node_km(evidence.placed.get(node), position)
             maybe.append(RelayMaybe(node, name(node), None if km is None else round(km, 1)))
         maybe.sort(key=lambda node: (node.km is None, node.km or 0, node.node_id))
@@ -514,10 +533,16 @@ def _hop_order(reception: PacketReception) -> tuple[bool, bool, int, bool, int]:
 
 
 def _packet_reception(
-    item: sqlite3.Row, packet: sqlite3.Row, gateway: NodeSummary | None, sender: NodeSummary | None
+    item: sqlite3.Row,
+    packet: sqlite3.Row,
+    gateway: NodeSummary | None,
+    sender: NodeSummary | None,
+    hidden: set[int],
 ) -> PacketReception:
     gateway_node_id = int(item["gateway_node_id"])
     report = _traceroute_report(item["route_payload"], packet, gateway_node_id)
+    if report is not None:
+        report = without_nodes(report, hidden)
     detail = PacketReception(
         reception_id=int(item["id"]),
         received_at=from_epoch_ms(item["received_at"]),
@@ -651,7 +676,7 @@ def packet_list(
             )
     packets, next_before_id = packet_rows(
         connection,
-        f"SELECT id FROM packet WHERE id < :before {' '.join(filters)} "
+        f"SELECT id FROM packet WHERE id < :before {' '.join(filters)} AND {SHOWN_PACKET} "
         "ORDER BY id DESC LIMIT :limit",
         {"port": portnum, "sender": sender, "gateway": heard_directly_by},
         limit=limit,
@@ -702,7 +727,8 @@ def packet_rows(
 ) -> tuple[tuple[PacketRow, ...], int | None]:
     """A page of packet-table rows, newest first, and the next page's before_id.
 
-    picked_ids is a query of packet row IDs below :before, at most :limit of them.
+    picked_ids is a query of packet row IDs below :before, at most :limit of
+    them, all shown (SHOWN_PACKET).
     """
     rows = connection.execute(
         f"""

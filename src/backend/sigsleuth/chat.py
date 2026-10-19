@@ -1,4 +1,6 @@
-"""The Chat page: readable text messages as a conversation, and their channels."""
+"""The Chat page: readable text messages as a conversation, and their channels.
+A message to or from a node that turned OK to MQTT off is left out, and
+counts as unsaved when quoted (opt_out.py)."""
 
 import json
 import sqlite3
@@ -7,7 +9,11 @@ from datetime import datetime
 
 from sigsleuth.db import fold, from_epoch_ms, optional_text
 from sigsleuth.links import link_trust
+from sigsleuth.opt_out import SHOWN_PACKET, shown_sql
 from sigsleuth.radio import great_circle_km
+
+# A message pages may show, for a query on packet AS t.
+_SHOWN_MESSAGE = f"{shown_sql('t.sender_node_id')} AND {shown_sql('t.recipient_node_id')}"
 
 # A quoted parent's text is cut to about this many characters.
 CHAT_SNIPPET_LENGTH = 80
@@ -89,7 +95,7 @@ def chat_messages(
     senders are left out."""
     # portnum = 1 (text messages) is written out in these queries, as in the
     # partial indexes, so SQLite can use them.
-    filters = ["t.portnum = 1", "t.application_payload IS NOT NULL"]
+    filters = ["t.portnum = 1", "t.application_payload IS NOT NULL", _SHOWN_MESSAGE]
     if channel is not None:
         filters.append("t.channel = :channel")
     if search is not None and search.strip():
@@ -225,7 +231,7 @@ def _chat_parents(connection: sqlite3.Connection, packet_ids: set[int]) -> dict[
         FROM packet AS t
         LEFT JOIN node_current AS node ON node.node_id = t.sender_node_id
         WHERE t.portnum = 1 AND t.packet_id IN ({",".join("?" * len(packet_ids))})
-          AND t.application_payload IS NOT NULL
+          AND t.application_payload IS NOT NULL AND {_SHOWN_MESSAGE}
         ORDER BY t.id
         """,
         tuple(packet_ids),
@@ -251,11 +257,12 @@ def _unreadable_parent(
     """The nearest saved packet with packet_id shortly before a reply, readable or
     not. Without a packet_id index over all ports this reads a bounded window."""
     row = connection.execute(
-        """
+        f"""
         SELECT t.id, t.sender_node_id, node.short_name, node.long_name
         FROM packet AS t
         LEFT JOIN node_current AS node ON node.node_id = t.sender_node_id
         WHERE t.id BETWEEN :first AND :last AND t.packet_id = :packet_id
+          AND {_SHOWN_MESSAGE}
         ORDER BY t.id DESC
         LIMIT 1
         """,
@@ -292,12 +299,12 @@ class ChatChannelList:
 
 
 def chat_channels(connection: sqlite3.Connection) -> ChatChannelList:
-    """Text message counts per channel, from the (channel, id) text index alone."""
+    """Text message counts per channel, along the (channel, id) text index."""
     rows = connection.execute(
-        """
+        f"""
         SELECT channel, count(*) AS messages
         FROM packet
-        WHERE portnum = 1
+        WHERE portnum = 1 AND {SHOWN_PACKET}
         GROUP BY channel
         ORDER BY messages DESC, channel
         """

@@ -361,10 +361,12 @@ function NodeRow({ node, now }: { node: NodeListItem; now: number }) {
         ) : null}
       </td>
       <td>
-        {node.last_sent_at === null || node.last_sent_packet_row_id === null ? (
+        {node.last_sent_at === null ? (
           <span className="muted" title="No own packet observed">
             none
           </span>
+        ) : node.last_sent_packet_row_id === null ? (
+          <ShortTime value={node.last_sent_at} />
         ) : (
           <a
             className="text-button"

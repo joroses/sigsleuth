@@ -1,5 +1,6 @@
 """The Map page's nodes: their latest valid positions or estimated ones,
-Chatty nodes and a node's text reach. The map's links are in links.py."""
+Chatty nodes and a node's text reach. The map's links are in links.py.
+Nodes that turned OK to MQTT off are left out (opt_out.py)."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -13,7 +14,8 @@ from sigsleuth.db import (
     to_epoch_ms,
 )
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.nodes import NodePosition, node_position
+from sigsleuth.nodes import NodePosition, node_position, shown_link
+from sigsleuth.opt_out import is_opted_out, shown_sql, unshown_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
 
@@ -32,7 +34,7 @@ class MapNode:
     # When the node last sent a packet of its own; None for a node known only
     # as a gateway or from links, which only an estimate can place.
     last_sent_at: datetime | None
-    # The packet that set last_sent_at.
+    # The packet that set last_sent_at; None when pages do not show it.
     last_sent_packet_row_id: int | None
     # The latest of last_sent_at and the node reporting as gateway or in a traceroute hop.
     last_seen_at: datetime
@@ -68,7 +70,7 @@ def map_nodes(
     reported positions only: an estimate is as recent as the links it comes
     from."""
     placed = ["n.latitude IS NOT NULL"]
-    filters = []
+    filters = [shown_sql("n.node_id")]
     values: list[object] = []
     if position_since is not None:
         placed.append("n.position_observed_at >= ?")
@@ -95,6 +97,14 @@ def map_nodes(
         (*values, limit + 1),
     ).fetchall()
     items = []
+    unshown = unshown_packets(
+        connection,
+        (
+            packet
+            for row in rows[:limit]
+            for packet in (row["last_sent_packet_row_id"], row["position_packet_row_id"])
+        ),
+    )
     for row in rows[:limit]:
         node_id = int(row["node_id"])
         estimate = (
@@ -117,13 +127,13 @@ def map_nodes(
                 role=optional_text(row["role"]),
                 hardware_model=optional_text(row["hardware_model"]),
                 last_sent_at=optional_from_epoch_ms(row["last_sent_at"]),
-                last_sent_packet_row_id=row["last_sent_packet_row_id"],
+                last_sent_packet_row_id=shown_link(row["last_sent_packet_row_id"], unshown),
                 last_seen_at=from_epoch_ms(row["last_seen_at"]),
                 channel=optional_text(row["channel"]),
                 last_gateway_at=optional_from_epoch_ms(row["last_gateway_at"]),
                 latitude=row["latitude"] if estimate is None else estimate.latitude,
                 longitude=row["longitude"] if estimate is None else estimate.longitude,
-                position=None if estimate is not None else node_position(row),
+                position=None if estimate is not None else node_position(row, unshown),
                 estimate=estimate,
             )
         )
@@ -160,7 +170,7 @@ def text_senders(
     whole hour, so it can include up to an hour more, like the map's links."""
     since_hour = 0 if since is None else to_epoch_ms(since) - to_epoch_ms(since) % HOUR_MS
     rows = connection.execute(
-        """
+        f"""
         SELECT sent.node_id, sent.messages, sent.last_sent_at,
                node.short_name, node.long_name, node.latitude, node.longitude
         FROM (
@@ -171,7 +181,7 @@ def text_senders(
             HAVING messages > 0
         ) AS sent
         JOIN node_current AS node USING (node_id)
-        WHERE node.latitude IS NOT NULL
+        WHERE node.latitude IS NOT NULL AND {shown_sql("node.node_id")}
         ORDER BY sent.messages DESC, sent.last_sent_at DESC
         LIMIT ?
         """,
@@ -229,6 +239,8 @@ def text_reach(
     like text_senders, so a sender's listed count and this one agree. Reads the
     sender index from the window's first ID, then each message's receptions by
     their unique key."""
+    if is_opted_out(connection, node_id):
+        return TextReach(node_id, 0, (), ())
     since_ms = None if since is None else to_epoch_ms(since)
     since_id = (
         0

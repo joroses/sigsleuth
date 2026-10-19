@@ -2,7 +2,8 @@
 and the relays everything depends on.
 
 Computed per request from the map's traceroute links (links.map_links with
-link_trust, so it hides what the map hides); no table or cache of its own.
+link_trust, so it hides what the map hides, opted-out nodes included); no
+table or cache of its own.
 Positions are reported, else estimated. One channel at a time: presets cannot
 hear each other, so each is a separate network.
 
@@ -50,6 +51,7 @@ from sigsleuth.db import (
     optional_from_epoch_ms,
     reported_km,
 )
+from sigsleuth.decode import UNKNOWN_NODE
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import FirmwareEstimate, estimate
 from sigsleuth.links import (
@@ -60,9 +62,9 @@ from sigsleuth.links import (
     link_trust,
     map_links,
 )
+from sigsleuth.opt_out import shown_sql
 from sigsleuth.places import City, cities_near, nearest_city
 from sigsleuth.radio import distance_km, fade_margin, great_circle_km
-from sigsleuth.traceroute import UNKNOWN_NODE
 
 # Links longer than this count less toward zones, in proportion to their length.
 ZONE_NEAR_KM = 50
@@ -528,7 +530,7 @@ def _channel_links(connection: sqlite3.Connection, since_ms: int) -> tuple[Chann
     most first, counted apart from the links so a busy channel cannot hide a
     quiet one."""
     rows = connection.execute(
-        """
+        f"""
         SELECT channel, count(*) AS links FROM (
             SELECT DISTINCT min(from_node_id, to_node_id) AS node_a,
                    max(from_node_id, to_node_id) AS node_b, channel
@@ -536,6 +538,7 @@ def _channel_links(connection: sqlite3.Connection, since_ms: int) -> tuple[Chann
             WHERE link_kind = 'traceroute' AND hour_start >= ?1
               AND from_node_id NOT IN (0, ?2) AND to_node_id NOT IN (0, ?2)
         )
+        WHERE {shown_sql("node_a")} AND {shown_sql("node_b")}
         GROUP BY channel ORDER BY links DESC, channel
         """,
         (since_ms - since_ms % HOUR_MS, UNKNOWN_NODE),
@@ -1291,10 +1294,10 @@ def _active_channels(connection: sqlite3.Connection, now: int) -> tuple[ChannelN
     return tuple(
         ChannelNodes(str(row[0]), int(row[1]))
         for row in connection.execute(
-            """
+            f"""
             SELECT channel, count(*) AS nodes
             FROM node_current
-            WHERE last_seen_at >= ? AND channel IS NOT NULL
+            WHERE last_seen_at >= ? AND channel IS NOT NULL AND {shown_sql("node_id")}
             GROUP BY channel ORDER BY nodes DESC, channel
             """,
             (now - ACTIVE_HOURS * HOUR_MS,),

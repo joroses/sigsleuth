@@ -30,10 +30,21 @@ A measurement counts unless it is proven stale, and only while its node is known
 
 Not being seen by MQTT does not mean a node is gone: surveys matter most where no gateway listens. A doubtful position does not hide a node's measurements, since a wrong position does not make a reception wrong. Measurements that do not count are hidden, not deleted.
 
+## Nodes that do not allow MQTT
+
+A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bit 0). No page names a node that turned it off (an [opted-out node](glossary.md#nodes-and-positions)), wherever its packets came from. A survey node hears its packets over the air, so each measurement keeps the bit, unknown when the survey node could not decode the packet. A missing bit counts as off, as in the firmware. Capture keeps the bit of each packet too, and the newer packet decides, captured or surveyed.
+
+- A node whose newest decoded packet has it off is never named, but its measurements still colour the squares, past ones included. A square's details list them as an unknown relay with its relay byte, like any other, and say nothing of the setting. Selecting the node ("Heard from it", its minimap) shows none. Turning the bit back on names them again.
+- The bit is the sender's, and a square measures the node heard. So a packet from a node that opted out, relayed by one that did not, is named by the relay, without a link to the packet, whose page names the sender.
+- A node no packet has told the bit of is named, and so is a node reporting to MQTT as a gateway, which uploads its own packets whatever the bit.
+- A node that opted out is not suggested as a possible relay for its byte. Survey links still name it as a relay, so the packets it relayed are not credited to another node.
+- Packet pages, and the gateway reports in chat, never name it as a gateway's relay either: a copy it relayed reads as undecided, with the other possible relays.
+
 ## Limits
 
 - A node that stops working keeps its squares for up to 14 days.
 - Moves are noticed only while MQTT sees the node. One that moved while unseen, or in steps under 25 km, keeps its old squares.
 - The survey link bounds (30 km, one hour, 60 days) are not checked against known relays. `scripts/coverage-backtest.py DATABASE` shows how much the rules hide and how other bounds compare.
-- Surveys record packets from nodes that do not allow MQTT too. Each measurement keeps that setting, but the map shows them all.
+- A node that turns OK to MQTT off stays named until a survey or a gateway reports one of its packets with the bit, and one that turns it back on stays unnamed until then. Gateways on firmware 2.7.20 and newer upload no packet with the bit off, so a node behind them is named until a survey hears it.
+- A node that opted out shows its relay byte, the last byte of its number, which about 1 in 256 nodes share.
 - Anyone who can reach the page sees the squares and when they were measured. A survey is a track of where the surveyor was.

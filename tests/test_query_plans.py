@@ -216,7 +216,8 @@ def capture_some_history(connection: sqlite3.Connection, start: datetime) -> Non
     send(portnums_pb2.PortNum.POSITION_APP, moved.SerializeToString(), sender=REQUESTER)
 
     for number, (portnum, payload, fields) in enumerate(deliveries, start=1):
-        header = {"packet_id": number, **fields}
+        # OK to MQTT on: refreshes whether the sender opted out, hiding none.
+        header = {"packet_id": number, "bitfield": 1, **fields}
         for gateway in GATEWAYS:
             envelope = application_envelope(portnum, payload, gateway_id=gateway, **header)  # type: ignore[arg-type]
             received_at = to_epoch_ms(start + timedelta(seconds=number))
@@ -247,6 +248,7 @@ def survey_upload(now: datetime) -> dict[str, object]:
         "hop_start": 3,
         "hop_limit": 2,
         "relay_byte": RELAY & 0xFF,
+        "ok_to_mqtt": True,
     }
     # RELAY heard directly names the relay of the first (a survey link).
     direct = {

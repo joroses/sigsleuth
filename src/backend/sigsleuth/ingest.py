@@ -25,7 +25,8 @@ the whole write path apart from retention and rederive.
   kept.
 - Grouping and node decoding are best effort: a decoder crash skips the delivery
   as 'decoder_failed'. Application data comes from the reception that starts a
-  packet; a later readable report replaces an unreadable result.
+  packet; a later readable report replaces an unreadable result. The sender's
+  OK to MQTT bit comes from the first report that carries one.
 - A gateway's report is saved once per packet. MQTT repeats of it only
   add to the reception's copies; the MQTT topic, flags and bytes are not kept,
   apart from a traceroute's route, which each gateway reports differently. A
@@ -101,8 +102,17 @@ def ingest_delivery(connection: sqlite3.Connection, delivery: MqttDelivery) -> I
         reception_id, new_reception, route_added = _save_reception(
             connection, parsed, parsed.gateway_node_id, packet_row_id, delivery.received_at
         )
+        ok_to_mqtt_learned = save_ok_to_mqtt(
+            connection, packet_row_id, parsed.application.ok_to_mqtt
+        )
         saved = SavedDelivery(
-            reception_id, new_packet, port_learned, application_saved, new_reception, route_added
+            reception_id,
+            new_packet,
+            port_learned,
+            application_saved,
+            new_reception,
+            route_added,
+            ok_to_mqtt_learned,
         )
         error = derive_or_undo(connection, lambda: derive_delivery(connection, saved))
     if error is not None:
@@ -286,6 +296,20 @@ def save_application_data(
         ),
     )
     return True
+
+
+def save_ok_to_mqtt(connection: sqlite3.Connection, packet_row_id: int, bit: bool | None) -> bool:
+    """Save the sender's OK to MQTT bit on its packet unless an earlier report
+    told it; return whether this one did. Runs inside the caller's transaction."""
+    if bit is None:
+        return False
+    return (
+        connection.execute(
+            "UPDATE packet SET ok_to_mqtt = ? WHERE id = ? AND ok_to_mqtt IS NULL",
+            (int(bit), packet_row_id),
+        ).rowcount
+        == 1
+    )
 
 
 def _too_large_reason(delivery: MqttDelivery) -> str | None:

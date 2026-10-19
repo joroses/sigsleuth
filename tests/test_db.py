@@ -18,7 +18,7 @@ from sigsleuth.db import (
 def test_unsupported_facts_version_requires_reset(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     connection = sqlite3.connect(path)
-    connection.execute("PRAGMA user_version = 3")
+    connection.execute(f"PRAGMA user_version = {FACTS_VERSION + 1}")
     connection.close()
 
     with pytest.raises(DatabaseVersionError, match="delete the disposable database"):
@@ -40,6 +40,7 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
         + f"""
         ALTER TABLE coverage_measurement DROP COLUMN ok_to_mqtt;
         ALTER TABLE coverage_measurement DROP COLUMN default_key;
+        ALTER TABLE packet DROP COLUMN ok_to_mqtt;
         INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1);
         PRAGMA user_version = 1;
         INSERT INTO coverage_session (uuid, receiver_node_id, first_uploaded_at, last_uploaded_at)
@@ -64,9 +65,10 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
     assert connection.execute("SELECT rebuilt FROM derived_state").fetchone() == (0,)
     # A later rebuild copies columns in order, so upgraded and new tables match.
     new = sqlite3.connect(new_path)
-    for pragma in ("table_info", "index_list"):
-        query = f"PRAGMA {pragma}(coverage_measurement)"
-        assert connection.execute(query).fetchall() == new.execute(query).fetchall()
+    for table in ("coverage_measurement", "packet"):
+        for pragma in ("table_info", "index_list"):
+            query = f"PRAGMA {pragma}({table})"
+            assert connection.execute(query).fetchall() == new.execute(query).fetchall()
     new.close()
     connection.close()
 

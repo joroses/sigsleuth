@@ -16,6 +16,7 @@ from sigsleuth.db import (
     utc_now,
 )
 from sigsleuth.derive import HOUR_MS
+from sigsleuth.opt_out import refresh_opt_outs
 
 RETENTION_INTERVAL_SECONDS = 5 * 60
 RETENTION_BATCH_SIZE = 5_000
@@ -83,10 +84,16 @@ def _delete_old_measurements(connection: sqlite3.Connection, cutoff: int) -> int
     never be repeated, so measurements have a longer limit than packets.
     Uploads are a few thousand a day, so one transaction is short."""
     with transaction(connection):
-        deleted = connection.execute(
-            "DELETE FROM coverage_measurement WHERE heard_at < ?", (cutoff,)
-        ).rowcount
+        senders = [
+            int(row[0])
+            for row in connection.execute(
+                "DELETE FROM coverage_measurement WHERE heard_at < ? RETURNING sender_node_id",
+                (cutoff,),
+            )
+        ]
+        deleted = len(senders)
         if deleted:
+            refresh_opt_outs(connection, set(senders))
             connection.execute(
                 """
                 DELETE FROM coverage_session WHERE NOT EXISTS (

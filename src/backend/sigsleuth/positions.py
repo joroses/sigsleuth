@@ -28,11 +28,11 @@ from typing import Literal
 from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import first_packet_row_id_since, now_ms, to_epoch_ms, transaction
-from sigsleuth.decode import interpret_payload
+from sigsleuth.decode import UNKNOWN_NODE, interpret_payload
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import LONG_LINK_KM, TRUSTED_LINK_HOURS, link_trust, trust_json
+from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
-from sigsleuth.traceroute import UNKNOWN_NODE
 
 # Estimates come from this many days of links; perf.py budgets the refill.
 ESTIMATE_DAYS = 7
@@ -252,9 +252,10 @@ def positions_at(
 ) -> HeardPositionList:
     """Where the nodes were at `at`, as positions_when_heard places them at
     the last packet first received by then, for line of sight between a link's
-    nodes when it was last heard."""
+    nodes when it was last heard. Opted-out nodes are left out (opt_out.py)."""
     packet = first_packet_row_id_since(connection, to_epoch_ms(at) + 1) - 1
-    heard = positions_when_heard(connection, {(node_id, packet) for node_id in node_ids})
+    shown = set(node_ids) - opted_out(connection)
+    heard = positions_when_heard(connection, {(node_id, packet) for node_id in shown})
     return HeardPositionList(tuple(heard[pair] for pair in sorted(heard)))
 
 

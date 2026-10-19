@@ -18,6 +18,8 @@ Two views of where a link's nodes are:
   with no distance come last. A distance of PENDING_KM or more also ranks
   apart while it is pending: until both ends have reported a position since
   it was heard, without moving (CONFIRMED_HOUR).
+
+No page shows a link with an end that turned OK to MQTT off (opt_out.py).
 """
 
 import json
@@ -29,6 +31,7 @@ from typing import Literal
 
 from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
+from sigsleuth.opt_out import is_opted_out, shown_sql
 from sigsleuth.radio import distance_km, spreading_factor
 
 MAX_LINK_ROWS = 20_000
@@ -249,6 +252,7 @@ def _hourly_links(
             GROUP BY from_node_id, to_node_id, channel
         )
         GROUP BY node_a, node_b, channel
+        HAVING {shown_sql("node_a")} AND {shown_sql("node_b")}
         ORDER BY last_seen_at DESC, node_a, node_b, channel
         LIMIT :limit
         """,
@@ -315,6 +319,8 @@ def link_hours(
     """The hours from since's hour, as the Links page sums them, that the
     pair heard each other on channel. At most an hour per retained hour and
     direction."""
+    if is_opted_out(connection, node_a) or is_opted_out(connection, node_b):
+        return LinkHours((), ())
     # By pair: the primary key would read every link's hours in the window.
     since_ms = 0 if since is None else to_epoch_ms(since)
 

@@ -1,6 +1,11 @@
 """The Nodes page and a node's page: the node list, its channels, one node's
 current state, packets, charts, position history and contacts. NodePosition is also
-the map's."""
+the map's.
+
+A node that turned OK to MQTT off is left out of every list, and its own
+pages answer as for a node never heard (opt_out.py). A packet pages do not
+show (one sent to such a node) keeps its time but loses its link.
+"""
 
 import base64
 import json
@@ -28,6 +33,7 @@ from sigsleuth.decode import interpret_payload, portnum_name, read_device_teleme
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import FirmwareEstimate, estimate
 from sigsleuth.links import LinkKind
+from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unshown_packets
 from sigsleuth.packets import PacketPage, PacketPort, packet_rows
 from sigsleuth.positions import EstimatedPosition, node_estimate
 
@@ -66,26 +72,35 @@ class NodePosition:
     latitude: float
     longitude: float
     altitude_meters: int | None
-    # The position packet; None when the position comes from a map report.
+    # The position packet; None when the position comes from a map report or
+    # pages do not show the packet.
     packet_row_id: int | None
+    from_map_report: bool
     # How far from a map report's position the node may be, about; None when
     # the position is exact or from the node's own packet.
     precision_km: float | None
 
 
-def node_position(row: sqlite3.Row) -> NodePosition:
+def node_position(row: sqlite3.Row, unshown: set[int]) -> NodePosition:
     """The position part of a node_current row that has a valid position. The
-    row also holds the node's map report's position_precision, NULL without one."""
-    from_packet = row["position_packet_row_id"] is not None
+    row also holds the node's map report's position_precision, NULL without one.
+    unshown are packets not to link (opt_out.unshown_packets)."""
+    packet = row["position_packet_row_id"]
     return NodePosition(
         observed_at=from_epoch_ms(row["position_observed_at"]),
         device_time=optional_from_epoch_ms(row["device_time"]),
         latitude=float(row["latitude"]),
         longitude=float(row["longitude"]),
         altitude_meters=None if row["altitude_meters"] is None else int(row["altitude_meters"]),
-        packet_row_id=int(row["position_packet_row_id"]) if from_packet else None,
-        precision_km=None if from_packet else precision_km(row["position_precision"]),
+        packet_row_id=None if packet is None or packet in unshown else int(packet),
+        from_map_report=packet is None,
+        precision_km=None if packet is not None else precision_km(row["position_precision"]),
     )
+
+
+def shown_link(packet_row_id: int | None, unshown: set[int]) -> int | None:
+    """packet_row_id, or None when pages do not show that packet."""
+    return None if packet_row_id in unshown else packet_row_id
 
 
 def precision_km(bits: int | None) -> float | None:
@@ -128,6 +143,7 @@ class NodeDetail:
     # None when no packet of the node's own has been saved: it is known only as
     # a gateway or from traceroute hops.
     last_sent_at: datetime | None
+    # None too when pages do not show that packet, as node_info_packet_row_id.
     last_sent_packet_row_id: int | None
     last_seen_at: datetime
     # The node's radio channel (node_current.channel); None while unknown.
@@ -166,6 +182,8 @@ class NodeOverview:
 
 def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
     """The node's current state and the ports it has sent on."""
+    if is_opted_out(connection, node_id):
+        return NodeOverview(None, ())
     row = connection.execute(
         """
         SELECT node_current.*,
@@ -177,6 +195,18 @@ def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
         """,
         (node_id,),
     ).fetchone()
+    unshown = (
+        set()
+        if row is None
+        else unshown_packets(
+            connection,
+            (
+                row["last_sent_packet_row_id"],
+                row["node_info_packet_row_id"],
+                row["position_packet_row_id"],
+            ),
+        )
+    )
     node = (
         None
         if row is None
@@ -187,13 +217,13 @@ def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
             role=optional_text(row["role"]),
             hardware_model=optional_text(row["hardware_model"]),
             last_sent_at=optional_from_epoch_ms(row["last_sent_at"]),
-            last_sent_packet_row_id=row["last_sent_packet_row_id"],
+            last_sent_packet_row_id=shown_link(row["last_sent_packet_row_id"], unshown),
             last_seen_at=from_epoch_ms(row["last_seen_at"]),
             channel=optional_text(row["channel"]),
             last_gateway_at=optional_from_epoch_ms(row["last_gateway_at"]),
             node_info_observed_at=optional_from_epoch_ms(row["node_info_observed_at"]),
-            node_info_packet_row_id=row["node_info_packet_row_id"],
-            position=None if row["position_observed_at"] is None else node_position(row),
+            node_info_packet_row_id=shown_link(row["node_info_packet_row_id"], unshown),
+            position=None if row["position_observed_at"] is None else node_position(row, unshown),
             location_source=_location_source(connection, row["position_packet_row_id"]),
             estimate=None if row["latitude"] is not None else node_estimate(connection, node_id),
             firmware=estimate(row["firmware_minimum"], row["firmware_trait"]),
@@ -248,20 +278,22 @@ def node_packets(
     # here so SQLite uses it. A port filter checks each of the node's packets
     # newest first until a page matches; a (sender_node_id, portnum) index
     # would help if a busy node's filtered page gets slow.
+    if is_opted_out(connection, node_id):
+        return PacketPage((), None)
     port_filter = "" if portnum is None else "AND portnum = :port"
     packets, next_before_id = packet_rows(
         connection,
         f"""
         SELECT id FROM (
             SELECT id FROM packet
-            WHERE sender_node_id = :node AND id < :before {port_filter}
+            WHERE sender_node_id = :node AND id < :before {port_filter} AND {SHOWN_PACKET}
             ORDER BY id DESC LIMIT :limit
         )
         UNION
         SELECT id FROM (
             SELECT id FROM packet
             WHERE recipient_node_id = :node AND recipient_node_id != 4294967295
-              AND id < :before {port_filter}
+              AND id < :before {port_filter} AND {SHOWN_PACKET}
             ORDER BY id DESC LIMIT :limit
         )
         """,
@@ -287,10 +319,11 @@ class NodeChartsHour:
 
 @dataclass(frozen=True)
 class NodeUtilization:
-    """One device telemetry packet's ChUtil and AirUtil, in percent."""
+    """One device telemetry packet's ChUtil and AirUtil, in percent;
+    packet_row_id is None when pages do not show the packet."""
 
     observed_at: datetime
-    packet_row_id: int
+    packet_row_id: int | None
     channel_utilization: float | None
     air_util_tx: float | None
 
@@ -307,6 +340,8 @@ def node_charts(connection: sqlite3.Connection, node_id: int, *, since: datetime
     first. Broadcast and direct packets are added together. Telemetry is read
     through the sender index from the window's first packet and decoded
     here; packets without device metrics are skipped."""
+    if is_opted_out(connection, node_id):
+        return NodeCharts(node_id, (), ())
     since_ms = to_epoch_ms(since)
     hours = connection.execute(
         """
@@ -334,6 +369,7 @@ def node_charts(connection: sqlite3.Connection, node_id: int, *, since: datetime
         ),
     ).fetchall()
     utilization = []
+    unshown = unshown_packets(connection, (packet["id"] for packet in telemetry))
     for packet in reversed(telemetry):
         util = read_device_telemetry(packet["application_payload"])
         if util is not None and (
@@ -342,7 +378,7 @@ def node_charts(connection: sqlite3.Connection, node_id: int, *, since: datetime
             utilization.append(
                 NodeUtilization(
                     observed_at=from_epoch_ms(packet["first_received_at"]),
-                    packet_row_id=int(packet["id"]),
+                    packet_row_id=shown_link(int(packet["id"]), unshown),
                     channel_utilization=util.channel_utilization,
                     air_util_tx=util.air_util_tx,
                 )
@@ -396,7 +432,8 @@ def _contact_url(
 
 @dataclass(frozen=True)
 class NodeHistoricPosition:
-    packet_row_id: int
+    # None when pages do not show the packet.
+    packet_row_id: int | None
     observed_at: datetime
     latitude: float
     longitude: float
@@ -417,6 +454,8 @@ class NodePositionHistory:
 
 def node_position_history(connection: sqlite3.Connection, node_id: int) -> NodePositionHistory:
     """Where the node's own position packets placed it, decoded here."""
+    if is_opted_out(connection, node_id):
+        return NodePositionHistory(node_id, (), 0, False)
     # portnum = 3 is written out so SQLite keeps the packet_sender index.
     rows = connection.execute(
         """
@@ -427,6 +466,7 @@ def node_position_history(connection: sqlite3.Connection, node_id: int) -> NodeP
         (node_id, MAX_NODE_POSITIONS),
     ).fetchall()
     items = []
+    unshown = unshown_packets(connection, (row["id"] for row in rows))
     for row in rows:
         position = interpret_payload(
             portnums_pb2.PortNum.POSITION_APP, bytes(row["application_payload"])
@@ -436,7 +476,7 @@ def node_position_history(connection: sqlite3.Connection, node_id: int) -> NodeP
         assert position.latitude is not None and position.longitude is not None
         items.append(
             NodeHistoricPosition(
-                packet_row_id=int(row["id"]),
+                packet_row_id=shown_link(int(row["id"]), unshown),
                 observed_at=from_epoch_ms(row["first_received_at"]),
                 latitude=position.latitude,
                 longitude=position.longitude,
@@ -504,6 +544,8 @@ def node_contacts(
     """The node's links and the gateways that heard it since `since`, for
     checking its position by hand. Links come from the window's link_hour
     rows; gateways from its newest MAX_CONTACT_PACKETS packets."""
+    if is_opted_out(connection, node_id):
+        return NodeContactList(node_id, since, (), 0, False)
     since_ms = to_epoch_ms(since)
     links: dict[int, list[ContactLink]] = defaultdict(list)
     # link_kind is listed so SQLite reads the window through the primary key.
@@ -546,7 +588,7 @@ def node_contacts(
         (json.dumps([row[0] for row in packets]),),
     ):
         heard[int(gateway)] = (int(count), None if hops is None else max(0, int(hops)))
-    contact_ids = (set(links) | set(heard)) - {node_id}
+    contact_ids = (set(links) | set(heard)) - {node_id} - opted_out(connection)
     summaries = nodes_by_id(connection, contact_ids | {node_id})
     here = summaries.get(node_id)
     items = [
@@ -592,6 +634,7 @@ class NodeListItem:
     channel: str | None
     # None when no packet of the node's own has been saved.
     last_sent_at: datetime | None
+    # None too when pages do not show that packet.
     last_sent_packet_row_id: int | None
     # When the node last reported a reception as a gateway; None if it has not.
     last_gateway_at: datetime | None
@@ -630,7 +673,7 @@ def node_list(
 ) -> NodeListPage:
     """A page of node_current, filtered and sorted. The table stays at thousands
     to tens of thousands of rows, so scanning it for each request is fast."""
-    filters = ["1"]
+    filters = [shown_sql("node_id")]
     values: dict[str, object] = {}
     if query.strip():
         condition, values = node_search(query)
@@ -714,6 +757,7 @@ def node_list(
         f"{node_table} SELECT count(*) FROM node WHERE {where}",
         {**values, "since": since - since % HOUR_MS},
     ).fetchone()[0]
+    unshown = unshown_packets(connection, (row["last_sent_packet_row_id"] for row in rows))
     items = tuple(
         NodeListItem(
             node_id=int(row["node_id"]),
@@ -723,7 +767,7 @@ def node_list(
             hardware_model=optional_text(row["hardware_model"]),
             channel=optional_text(row["channel"]),
             last_sent_at=optional_from_epoch_ms(row["last_sent_at"]),
-            last_sent_packet_row_id=row["last_sent_packet_row_id"],
+            last_sent_packet_row_id=shown_link(row["last_sent_packet_row_id"], unshown),
             last_gateway_at=optional_from_epoch_ms(row["last_gateway_at"]),
             position_observed_at=optional_from_epoch_ms(row["position_observed_at"]),
             altitude_meters=row["altitude_meters"],
@@ -756,10 +800,10 @@ class NodeChannelList:
 def node_channels(connection: sqlite3.Connection) -> NodeChannelList:
     """Node counts per radio channel (node_current.channel)."""
     rows = connection.execute(
-        """
+        f"""
         SELECT channel, count(*) AS nodes
         FROM node_current
-        WHERE channel IS NOT NULL
+        WHERE channel IS NOT NULL AND {shown_sql("node_id")}
         GROUP BY channel
         ORDER BY nodes DESC, channel
         """

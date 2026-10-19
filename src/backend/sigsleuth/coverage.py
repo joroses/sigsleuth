@@ -12,7 +12,8 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
   a fix worse than MAX_ACCURACY_M or older than MAX_FIX_AGE_MS, or a time
   outside the age limit or more than MAX_FUTURE_MS ahead.
 - Everything is read before the write transaction opens, so it holds the
-  write lock, which capture also needs, only to insert.
+  write lock, which capture also needs, only to insert and to refresh its
+  senders' opt-outs (opt_out.refresh_opt_outs, a few seeks each).
 - Each measurement is saved with its cell, its SNR margin and the node it
   heard (heard_node), decided once, at upload (schema.sql says why). A survey
   link (refresh_survey_links), from survey evidence alone, can name a relay
@@ -47,6 +48,7 @@ from sigsleuth.db import (
 )
 from sigsleuth.decode import known_hop_start
 from sigsleuth.derive import HOUR_MS, SavedHeader, is_direct_reception
+from sigsleuth.opt_out import SHOWN_PACKET, opted_out, opted_out_sql, refresh_opt_outs
 from sigsleuth.positions import own_reach
 from sigsleuth.radio import PRESET_SPREADING_FACTORS, fade_margin, great_circle_km, preset_name
 from sigsleuth.relays import (
@@ -184,11 +186,14 @@ def save_upload(
     skipped: Counter[str] = Counter()
     session = upload.session
     rows = []
+    decoded_senders = set()
     for m in upload.measurements:
         reason = skip_reason(m, now=now, max_age_days=max_age_days)
         if reason is not None:
             skipped[reason] += 1
             continue
+        if m.ok_to_mqtt is not None and m.sender_node_id:
+            decoded_senders.add(m.sender_node_id)
         # As capture reads MQTT headers: an unknown hop start leaves both
         # hop fields unknown.
         hop_start = None
@@ -279,6 +284,7 @@ def save_upload(
                     "margin_db": point.margin_db,
                 },
             ).rowcount
+        refresh_opt_outs(connection, decoded_senders)
     # Already saved rows too: when a refresh fails after the insert commits,
     # the phone gets a 503 and resends the batch, which saves nothing.
     if points:
@@ -667,12 +673,21 @@ _NODE_SQL = f""" AND (m.heard_node_id = :node
   AND {_HEARD} = :node"""
 
 
+# A node that turned OK to MQTT off (opt_out.py) is never named, past
+# measurements included: they colour cells and read as any unknown relay's,
+# by relay byte (_SHOWN, _SHOWN_HOW), and selecting the node shows none.
+_HEARD_OPTED_OUT = opted_out_sql(_HEARD)
+_SHOWN = f"CASE WHEN {_HEARD_OPTED_OUT} THEN NULL ELSE {_HEARD} END"
+_SHOWN_HOW = f"CASE WHEN {_HEARD_OPTED_OUT} THEN 'unknown' ELSE {_HOW} END"
+_SHOWN_GUESSED = f"({_SHOWN_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
+
+
 def _point_filters(node: int | None, channel: str | None) -> str:
     """SQL conditions on _MEASUREMENTS for the map's filters and _ALIVE_SQL,
     shared by the cell list, one cell and a node's extent so they agree."""
     filters = _ALIVE_SQL
     if node is not None:
-        filters += _NODE_SQL
+        filters += f"{_NODE_SQL} AND NOT {_HEARD_OPTED_OUT}"
     if channel is not None:
         filters += _CHANNEL_SQL
     return filters
@@ -755,7 +770,7 @@ def coverage_cells(
         f"""
         SELECT m.cell_x >> :shift AS x, m.cell_y >> :shift AS y, count(*) AS measurements,
                avg(m.margin_db) AS average_margin, max(m.margin_db) AS best_margin,
-               count(DISTINCT {_HEARD}) AS nodes, sum({_GUESSED_SQL}) AS guessed
+               count(DISTINCT {_SHOWN}) AS nodes, sum({_SHOWN_GUESSED}) AS guessed
         FROM {_MEASUREMENTS}
         WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
           AND m.heard_at >= :since{filters}
@@ -870,8 +885,8 @@ class CoverageUnknownRelay:
 class CoverageMeasurementRow:
     """One measurement in a cell, named by the node heard, not the sender.
     packet_row_id is the packet MQTT saved with the same sender and packet
-    ID, when there is one. margin is rx_snr above the survey node's floor,
-    None when either is unknown."""
+    ID, when there is one that pages show (opt_out.SHOWN_PACKET). margin is
+    rx_snr above the survey node's floor, None when either is unknown."""
 
     heard_at: datetime
     heard_node_id: int | None
@@ -980,7 +995,7 @@ def coverage_cell(
                max(m.candidates) AS candidates,
                (SELECT channel FROM node_current WHERE node_id = {_HEARD}) AS channel
         FROM {_MEASUREMENTS}
-        WHERE {where} AND {_HEARD} IS NOT NULL
+        WHERE {where} AND {_HEARD} IS NOT NULL AND NOT {_HEARD_OPTED_OUT}
         GROUP BY 1
         ORDER BY measurements DESC, 1
         LIMIT {CELL_MAX_NODES}
@@ -991,15 +1006,16 @@ def coverage_cell(
         f"""
         SELECT m.relay_byte, count(*) AS measurements
         FROM {_MEASUREMENTS}
-        WHERE {where} AND {_HEARD} IS NULL
+        WHERE {where} AND {_SHOWN} IS NULL
         GROUP BY m.relay_byte ORDER BY measurements DESC, m.relay_byte
         """,
         values,
     ).fetchall()
     newest = connection.execute(
         f"""
-        SELECT m.heard_at, m.sender_node_id, {_HEARD} AS heard_node_id, {_HOW} AS heard_how,
-               m.packet_id, m.relay_byte, m.rx_snr, m.rx_rssi, m.margin_db
+        SELECT m.heard_at, m.sender_node_id, {_SHOWN} AS heard_node_id,
+               {_SHOWN_HOW} AS heard_how, m.packet_id, m.relay_byte, m.rx_snr, m.rx_rssi,
+               m.margin_db
         FROM {_MEASUREMENTS}
         WHERE {where}
         ORDER BY m.heard_at DESC LIMIT {CELL_NEWEST}
@@ -1064,11 +1080,15 @@ def relay_candidates(
     """For each relay byte, up to CELL_CANDIDATES placed nodes sending it,
     nearest first, that could have relayed a packet heard at the cell's
     centre on one of its spreading factors (relays.cannot_relay_at): a hint for
-    the cell's unknown relays, not a name."""
+    the cell's unknown relays, not a name. Nodes that turned OK to MQTT off
+    are left out, as they are never named."""
     if not relay_bytes:
         return {}
     by_byte = nodes_by_byte(connection, relay_bytes)
     nodes = {node for found in by_byte.values() for node in found}
+    hidden = opted_out(connection)
+    by_byte = {byte: [n for n in found if n not in hidden] for byte, found in by_byte.items()}
+    nodes -= hidden
     placed, radios = nodes_by_id(connection, nodes), node_radios(connection, nodes)
     reach = own_reach(connection, nodes, from_km=RULE_OUT_KM)
     found: dict[int, tuple[CoverageCandidate, ...]] = {}
@@ -1126,11 +1146,11 @@ def _measurement_row(
     packet = None
     if row["packet_id"] is not None:
         packet = connection.execute(
-            """
+            f"""
             SELECT id FROM packet INDEXED BY packet_identity_time
             WHERE sender_node_id = :sender AND packet_id = :packet
               AND last_received_at >= :heard_at - :window
-              AND first_received_at <= :heard_at + :window
+              AND first_received_at <= :heard_at + :window AND {SHOWN_PACKET}
             ORDER BY id LIMIT 1
             """,
             {

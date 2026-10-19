@@ -33,6 +33,7 @@ from sigsleuth.links import (
     map_misfit,
 )
 from sigsleuth.mqtt import CaptureStatus
+from sigsleuth.opt_out import opted_out, shown_sql, unshown_packets
 from sigsleuth.positions import ESTIMATE_DAYS, doubt_limit_km
 from sigsleuth.radio import distance_km
 from sigsleuth.terrain import LongLinkCheck
@@ -194,7 +195,8 @@ class LongLinkEnd:
     rounded on purpose, rather than the node's own packet. moved_at is
     node_current's. airborne_at is too, and flight_packet_row_id the packet
     that showed it (links.FLIGHT_PACKET); both are None once that packet is
-    gone. doubtful is node_doubtful's flag.
+    gone, and the packet alone when pages do not show it (opt_out.py).
+    doubtful is node_doubtful's flag.
     direct_partners counts the placed nodes it had direct receptions with over
     the last positions.ESTIMATE_DAYS of links, each at its shortest distance
     when heard; nearest_partner_km and median_partner_km are over those.
@@ -354,8 +356,9 @@ def longest_links(
     )
     rows = connection.execute(
         f"""
-        SELECT min(a, b), max(a, b), max(rank) FROM ({directions})
-        GROUP BY 1, 2 ORDER BY 3 DESC, 1, 2 LIMIT :count OFFSET :offset
+        SELECT min(a, b) AS node_a, max(a, b) AS node_b, max(rank) FROM ({directions})
+        GROUP BY 1, 2 HAVING {shown_sql("node_a")} AND {shown_sql("node_b")}
+        ORDER BY 3 DESC, 1, 2 LIMIT :count OFFSET :offset
         """,
         {"node": node, "count": count + 1, "offset": offset, "long_km": LONG_LINK_KM},
     ).fetchall()
@@ -469,6 +472,7 @@ def doubtful_node_list(connection: sqlite3.Connection) -> DoubtfulNodeList:
         )
     }
     ids = doubtful_nodes(connection) | airborne | {node for node, n in unlikely.items() if n >= 2}
+    ids -= opted_out(connection)
     ends = _long_link_ends(connection, sorted(ids))
     return DoubtfulNodeList(
         tuple(
@@ -503,6 +507,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
     }
     doubtful = doubtful_nodes(connection)
     partners = _direct_partners(connection, ids)
+    unshown = unshown_packets(connection, (row["flight_packet_row_id"] for row in current.values()))
     ends = {}
     for node_id in ids:
         row = current.get(node_id)
@@ -521,7 +526,9 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             airborne_at=None
             if row is None or row["flight_packet_row_id"] is None
             else from_epoch_ms(row["airborne_at"]),
-            flight_packet_row_id=None if row is None else row["flight_packet_row_id"],
+            flight_packet_row_id=None
+            if row is None or row["flight_packet_row_id"] in unshown
+            else row["flight_packet_row_id"],
             doubtful=node_id in doubtful,
             direct_partners=len(found),
             nearest_partner_km=found[0] if found else None,

@@ -47,12 +47,11 @@ groups, orders and draws what the API sends.
 """
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from sigsleuth.decode import RouteDiscovery, read_route_discovery
+from sigsleuth.decode import UNKNOWN_NODE, RouteDiscovery, read_route_discovery
 from sigsleuth.radio import great_circle_km
 
-UNKNOWN_NODE = 0xFFFFFFFF
 UNKNOWN_SNR = -128  # quarter decibels, i.e. -32 dB
 MAX_SNR_DB = 30.0
 # A node that received the traceroute from MQTT downlink adds itself with the
@@ -160,6 +159,24 @@ def read_traceroute_report(
     requester, target = requester_and_target(sender, recipient, request_id)
     return TracerouteReport(
         report_paths(discovery, sender, recipient, request_id), requester, target, gateway
+    )
+
+
+def without_nodes(report: TracerouteReport, hidden: Collection[int]) -> TracerouteReport:
+    """The report with hidden nodes as gaps, as relays that could not add
+    themselves, so no hop names them."""
+    if not hidden:
+        return report
+
+    def path(found: RoutePath) -> RoutePath:
+        return replace(found, nodes=tuple(None if n in hidden else n for n in found.nodes))
+
+    paths = report.paths
+    return replace(
+        report,
+        paths=ReportPaths(
+            path(paths.forward), None if paths.return_path is None else path(paths.return_path)
+        ),
     )
 
 

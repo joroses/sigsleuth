@@ -7,8 +7,9 @@ code path serves both callers:
   delivery added, in the same transaction.
 - Rederive: after a DERIVED_VERSION change, rederive refills the emptied
   tables oldest first, each packet just before its first reception, as
-  capture derived it. Survey measurements keep what upload decided; their
-  survey links (coverage_relay) are refilled from them first.
+  capture derived it. Opted-out nodes (node_opt_out) are refilled first.
+  Survey measurements keep what upload decided; their survey links
+  (coverage_relay) are refilled from them first.
 
 Rederive matches capture except that a packet first heard unreadable is
 counted at its readable port from the start, a km when heard can use a map
@@ -44,6 +45,7 @@ from sigsleuth.decode import (
     read_neighbors,
 )
 from sigsleuth.firmware import TRAITS, newest, payload_trait
+from sigsleuth.opt_out import refresh_opt_outs
 from sigsleuth.radio import great_circle_km, preset_name, relay_byte_of
 from sigsleuth.traceroute import (
     Hop,
@@ -101,6 +103,8 @@ class SavedDelivery:
       not an MQTT repeat (a copy).
     route_added: it was a copy that added the traceroute route its
       gateway's earlier, unreadable copies lacked.
+    ok_to_mqtt_learned: it was the first report to tell the sender's OK to
+      MQTT bit.
     """
 
     reception_id: int
@@ -109,6 +113,7 @@ class SavedDelivery:
     application_saved: bool
     new_reception: bool
     route_added: bool
+    ok_to_mqtt_learned: bool = False
 
 
 def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> None:
@@ -129,6 +134,8 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
         _derive_reception(connection, row)
     elif delivery.route_added:
         _derive_route(connection, row)
+    if delivery.ok_to_mqtt_learned:
+        refresh_opt_outs(connection, [int(row["sender_node_id"])])
 
 
 def derive_or_undo(connection: sqlite3.Connection, derive: Callable[[], None]) -> Exception | None:
@@ -167,6 +174,10 @@ def rederive(
     started_at = logged_at = time.monotonic()
     recreate_derived(connection)
     apply_all_map_reports(connection)
+    # Before the rest, so pages never name an opted-out node while it runs.
+    # Gateways leave node_opt_out again as their reports are derived.
+    with transaction(connection):
+        refresh_opt_outs(connection, None)
     # coverage.py reads this module's helpers.
     from sigsleuth.coverage import refresh_survey_links
 
@@ -828,9 +839,10 @@ def _mark_seen(connection: sqlite3.Connection, node_id: int, seen_at: int) -> No
 
 def _mark_gateway(connection: sqlite3.Connection, node_id: int, reported_at: int) -> None:
     """Add the gateway to node_current, or move its last_seen_at and
-    last_gateway_at forward."""
+    last_gateway_at forward. A gateway never counts as opted out (opt_out.py)."""
     if not 1 <= node_id < BROADCAST_NODE_ID:
         return
+    connection.execute("DELETE FROM node_opt_out WHERE node_id = ?", (node_id,))
     connection.execute(
         """
         INSERT INTO node_current (node_id, last_seen_at, last_gateway_at) VALUES (?1, ?2, ?2)

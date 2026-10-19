@@ -575,14 +575,18 @@ function addHistoryLayers(
 }
 
 // The position packets under a click, newest first, each with its date
-// linked to its packet page.
+// linked to its packet page when it has one.
 function popupContent(features: maplibregl.MapGeoJSONFeature[]): HTMLElement {
   const packets = features
     .map((feature) => ({
-      id: Number(feature.properties.packetRowId),
+      // Map features may drop a null property.
+      id:
+        typeof feature.properties.packetRowId === "number"
+          ? feature.properties.packetRowId
+          : null,
       at: String(feature.properties.observedAt),
     }))
-    .sort((a, b) => b.id - a.id);
+    .sort((a, b) => b.at.localeCompare(a.at));
   const content = document.createElement("div");
   const list = document.createElement("ul");
   for (const packet of packets.slice(0, POPUP_PACKETS)) {
@@ -590,10 +594,13 @@ function popupContent(features: maplibregl.MapGeoJSONFeature[]): HTMLElement {
     const time = document.createElement("time");
     time.dateTime = packet.at;
     time.textContent = new Date(packet.at).toLocaleString();
-    const link = document.createElement("a");
-    link.href = `#packets/${packet.id}`;
-    link.textContent = "Position packet";
-    item.append(time, " · ", link);
+    item.append(time);
+    if (packet.id !== null) {
+      const link = document.createElement("a");
+      link.href = `#packets/${packet.id}`;
+      link.textContent = "Position packet";
+      item.append(" · ", link);
+    }
     list.append(item);
   }
   content.append(list);

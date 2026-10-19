@@ -151,8 +151,7 @@ function NodeSummary({ node, now }: { node: NodeDetail; now: number }) {
         <DataItem
           label="Last packet sent"
           value={
-            node.last_sent_at === null ||
-            node.last_sent_packet_row_id === null ? (
+            node.last_sent_at === null ? (
               "No own packet observed"
             ) : (
               <Age
@@ -167,8 +166,7 @@ function NodeSummary({ node, now }: { node: NodeDetail; now: number }) {
         <DataItem
           label="NodeInfo received"
           value={
-            node.node_info_observed_at === null ||
-            node.node_info_packet_row_id === null ? (
+            node.node_info_observed_at === null ? (
               "Not reported"
             ) : (
               <Age
@@ -265,7 +263,7 @@ function PositionText({ node, now }: { node: NodeDetail; now: number }) {
   if (node.position === null) {
     return "Not reported";
   }
-  if (node.position.packet_row_id === null) {
+  if (node.position.from_map_report) {
     return (
       <>
         <span className="data-line mono">

@@ -31,6 +31,7 @@ function mapNode(node_id: number, latitude: number, longitude: number) {
       longitude,
       altitude_meters: null,
       packet_row_id: 1,
+      from_map_report: false,
       precision_km: null,
     },
   } satisfies MapNode;

@@ -1007,8 +1007,8 @@ export interface components {
      * CoverageMeasurementRow
      * @description One measurement in a cell, named by the node heard, not the sender.
      *     packet_row_id is the packet MQTT saved with the same sender and packet
-     *     ID, when there is one. margin is rx_snr above the survey node's floor,
-     *     None when either is unknown.
+     *     ID, when there is one that pages show (opt_out.SHOWN_PACKET). margin is
+     *     rx_snr above the survey node's floor, None when either is unknown.
      */
     CoverageMeasurementRow: {
       /** Format: date-time */
@@ -1375,7 +1375,8 @@ export interface components {
      *     rounded on purpose, rather than the node's own packet. moved_at is
      *     node_current's. airborne_at is too, and flight_packet_row_id the packet
      *     that showed it (links.FLIGHT_PACKET); both are None once that packet is
-     *     gone. doubtful is node_doubtful's flag.
+     *     gone, and the packet alone when pages do not show it (opt_out.py).
+     *     doubtful is node_doubtful's flag.
      *     direct_partners counts the placed nodes it had direct receptions with over
      *     the last positions.ESTIMATE_DAYS of links, each at its shortest distance
      *     when heard; nearest_partner_km and median_partner_km are over those.
@@ -1621,7 +1622,7 @@ export interface components {
     };
     /** NodeHistoricPosition */
     NodeHistoricPosition: {
-      packet_row_id: number;
+      packet_row_id: number | null;
       /** Format: date-time */
       observed_at: string;
       latitude: number;
@@ -1706,6 +1707,7 @@ export interface components {
       longitude: number;
       altitude_meters: number | null;
       packet_row_id: number | null;
+      from_map_report: boolean;
       precision_km: number | null;
     };
     /**
@@ -1744,12 +1746,13 @@ export interface components {
     };
     /**
      * NodeUtilization
-     * @description One device telemetry packet's ChUtil and AirUtil, in percent.
+     * @description One device telemetry packet's ChUtil and AirUtil, in percent;
+     *     packet_row_id is None when pages do not show the packet.
      */
     NodeUtilization: {
       /** Format: date-time */
       observed_at: string;
-      packet_row_id: number;
+      packet_row_id: number | null;
       channel_utilization: number | null;
       air_util_tx: number | null;
     };

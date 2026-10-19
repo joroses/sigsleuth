@@ -24,7 +24,7 @@ from pathlib import Path
 from sigsleuth.radio import distance_km
 
 DATABASE_BUSY_TIMEOUT_MS = 5_000
-FACTS_VERSION = 2
+FACTS_VERSION = 3
 # Each takes facts from its version to the next. Survey measurements are kept
 # across them: a phone cannot resend what it has deleted.
 _FACTS_UPGRADES = {
@@ -77,8 +77,10 @@ _FACTS_UPGRADES = {
     CREATE INDEX coverage_measurement_heard ON coverage_measurement (heard_node_id, heard_at);
     CREATE INDEX coverage_measurement_sender ON coverage_measurement (sender_node_id, heard_at);
     """,
+    # Packets gain their sender's OK to MQTT bit; older ones never learn it.
+    2: "ALTER TABLE packet ADD COLUMN ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1));",
 }
-DERIVED_VERSION = 35
+DERIVED_VERSION = 37
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

@@ -1053,6 +1053,7 @@ node:
     longitude: 19.5101
     altitude_meters: 310
     packet_row_id: 28933
+    from_map_report: false
     precision_km: null
   location_source: "LOC_MANUAL"
   estimate: null
@@ -1333,6 +1334,7 @@ items: 479 items
       longitude: 19.4183
       altitude_meters: 185
       packet_row_id: 31079
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 2658512488
@@ -1354,6 +1356,7 @@ items: 479 items
       longitude: 19.5232
       altitude_meters: 243
       packet_row_id: 30632
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 1770149960
@@ -1375,6 +1378,7 @@ items: 479 items
       longitude: 19.4773
       altitude_meters: null
       packet_row_id: 28424
+      from_map_report: false
       precision_km: null
     estimate: null
 truncated: false
@@ -1401,6 +1405,7 @@ items: 426 items
       longitude: 19.4183
       altitude_meters: 185
       packet_row_id: 31079
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 2658512488
@@ -1422,6 +1427,7 @@ items: 426 items
       longitude: 19.5232
       altitude_meters: 243
       packet_row_id: 30632
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 1770149960
@@ -1443,6 +1449,7 @@ items: 426 items
       longitude: 19.4773
       altitude_meters: null
       packet_row_id: 28424
+      from_map_report: false
       precision_km: null
     estimate: null
 truncated: false
@@ -1469,6 +1476,7 @@ items: 479 items
       longitude: 19.4183
       altitude_meters: 185
       packet_row_id: 31079
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 2658512488
@@ -1490,6 +1498,7 @@ items: 479 items
       longitude: 19.5232
       altitude_meters: 243
       packet_row_id: 30632
+      from_map_report: false
       precision_km: null
     estimate: null
   - node_id: 1770149960
@@ -1511,6 +1520,7 @@ items: 479 items
       longitude: 19.4773
       altitude_meters: null
       packet_row_id: 28424
+      from_map_report: false
       precision_km: null
     estimate: null
 truncated: false
@@ -3666,7 +3676,7 @@ capture: null
 api_started_at: "2026-10-11T16:25:30.812000Z"
 api_uptime_seconds: 0
 database:
-  facts_version: 2
+  facts_version: 3
   row_counts:
     reception: 106266
     packet: 31095

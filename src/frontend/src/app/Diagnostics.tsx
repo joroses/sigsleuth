@@ -1096,9 +1096,10 @@ function EndRow({
           title={formatNodeId(node.node_id)}
         />{" "}
         {end.doubtful ? <DoubtfulBadge suspects={[endName(end)]} /> : null}
+        {end.airborne_at !== null ? <AirborneBadge /> : null}
         {end.flight_packet_row_id !== null ? (
           <>
-            <AirborneBadge />{" "}
+            {" "}
             <a
               className="text-button"
               href={`#packets/${end.flight_packet_row_id}`}

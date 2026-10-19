@@ -12,7 +12,7 @@ This app is not an audit system:
 
 History is disposable (14 days at most). Missed messages, approximate grouping, stale or partial results and a recreated database are fine; showing something beats showing nothing. Add complexity only after a real problem in normal use, not for auditability, reproducibility, consistency, hostile users, large installations, compatibility or hypothetical failures.
 
-No security model beyond the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). Everything from the subscription may be shown.
+No security model beyond the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). Everything from the subscription may be shown, except [opted-out nodes](docs/glossary.md#nodes-and-positions).
 
 ## Data volume
 
@@ -33,6 +33,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 - A packet's observed channel is not the node's advertised primary channel.
 - Unavailable-measurement sentinels are missing, not weak values.
 - Label approximations as approximations.
+- No response names an opted-out node, nor hints that one exists: filter new node, packet and link queries with `opt_out.py`, and list new requests in `tests/page_requests.py`, which `tests/test_opt_out.py` checks.
 - Keep malformed input when easy; otherwise skip it.
 
 ## Code

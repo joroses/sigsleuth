@@ -70,6 +70,14 @@ CREATE TABLE coverage_relay (
 
 CREATE INDEX coverage_relay_node ON coverage_relay (node_id);
 
+-- Nodes that turned OK to MQTT off, which no page names (opt_out.py).
+-- Refreshed for a sender when one of its packets or survey measurements
+-- tells its bit, after survey retention, and wholly by rederive; a node
+-- reporting as a gateway leaves it.
+CREATE TABLE node_opt_out (
+    node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295)
+) STRICT;
+
 -- Estimated positions of linked nodes that report none (positions.py),
 -- refilled wholesale by refresh_estimates. A reported position always wins.
 CREATE TABLE node_estimate (

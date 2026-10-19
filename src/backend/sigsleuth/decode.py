@@ -1,7 +1,7 @@
 """Read one MQTT delivery: the gateway, header facts, grouping facts and application data."""
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, replace
 from typing import Literal
 
@@ -25,6 +25,10 @@ HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 DEFAULT_CHANNEL_KEY = bytes.fromhex("d4f1bb3a20290759f0bcffabcf4e6901")
 # Firmware's RouteDiscovery holds at most this many relays, and SNRs, per direction.
 MAX_ROUTE_ENTRIES = 8
+# Data.bitfield's OK to MQTT flag.
+OK_TO_MQTT_BIT = 1
+# How a route lists a relay that could not add itself.
+UNKNOWN_NODE = 0xFFFFFFFF
 
 PayloadKind = Literal["decoded", "encrypted"]
 
@@ -151,6 +155,9 @@ class ApplicationInterpretation:
     the text message this one replies to, None when it is not a reply; is_reaction
     marks a reply whose text is an emoji reaction (Data.emoji is set).
     is_signed marks data the sender signed (firmware 2.8.0 and newer).
+    ok_to_mqtt is the sender's OK to MQTT setting, None when the report
+    carries none: senders older than 2.5 leave it out, and so do copies from
+    some older gateways.
     Telemetry is read later, from the saved payload (read_device_telemetry),
     so a fault in reading it cannot cost capture the delivery.
     """
@@ -164,6 +171,7 @@ class ApplicationInterpretation:
     position: Position | None = None
     discovery: RouteDiscovery | None = None
     is_signed: bool = False
+    ok_to_mqtt: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -269,6 +277,7 @@ def _interpret_application(data: mesh_pb2.Data | None, reason: str) -> Applicati
         reply_id=int(data.reply_id) or None,
         is_reaction=bool(data.emoji),
         is_signed=is_signed(data),
+        ok_to_mqtt=bool(data.bitfield & OK_TO_MQTT_BIT) if data.HasField("bitfield") else None,
     )
 
 
@@ -352,12 +361,13 @@ MAX_PAYLOAD_TEXT = 2_000
 MAX_PAYLOAD_HEX_BYTES = 64
 
 
-def describe_payload(portnum: int, payload: bytes) -> str:
+def describe_payload(portnum: int, payload: bytes, hidden: Collection[int] = ()) -> str:
     """A short readable form of application bytes for display.
 
     Text ports give their text, known message ports give compact JSON (bytes
     fields in base64), and anything else gives the leading bytes in hex. Long
-    results are cut off with an ellipsis.
+    results are cut off with an ellipsis. A route or neighbour list shows the
+    hidden nodes as unknown (_hide_nodes).
     """
     text: str | None = None
     if portnum in _TEXT_PORTS:
@@ -369,6 +379,7 @@ def describe_payload(portnum: int, payload: bytes) -> str:
         message = _MESSAGE_PORTS[portnum]()
         try:
             message.ParseFromString(payload)
+            _hide_nodes(message, hidden)
             text = json.dumps(
                 MessageToDict(message, preserving_proto_field_name=True), ensure_ascii=False
             )
@@ -381,6 +392,22 @@ def describe_payload(portnum: int, payload: bytes) -> str:
     if len(text) > MAX_PAYLOAD_TEXT:
         text = text[:MAX_PAYLOAD_TEXT] + "…"
     return text
+
+
+def _hide_nodes(message: Message, hidden: Collection[int]) -> None:
+    """A route's hidden relays become unknown ones, as firmware lists a relay
+    that could not add itself, and a neighbour list leaves hidden nodes out."""
+    if isinstance(message, mesh_pb2.RouteDiscovery):
+        for route in (message.route, message.route_back):
+            for index, node in enumerate(route):
+                if node in hidden:
+                    route[index] = UNKNOWN_NODE
+    elif isinstance(message, mesh_pb2.NeighborInfo):
+        kept = [neighbor for neighbor in message.neighbors if neighbor.node_id not in hidden]
+        del message.neighbors[:]
+        message.neighbors.extend(kept)
+        if message.last_sent_by_id in hidden:
+            message.last_sent_by_id = 0
 
 
 def read_device_telemetry(payload: bytes) -> DeviceTelemetry | None:

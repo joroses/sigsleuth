@@ -31,6 +31,9 @@ CREATE TABLE packet (
     reply_id INTEGER CHECK (reply_id IS NULL OR reply_id BETWEEN 1 AND 4294967295),
     is_reaction INTEGER NOT NULL DEFAULT 0 CHECK (is_reaction IN (0, 1)),
     is_signed INTEGER NOT NULL DEFAULT 0 CHECK (is_signed IN (0, 1)),
+    -- The sender's OK to MQTT bit, from the first report that carried it;
+    -- NULL when none did (opt_out.py).
+    ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1)),
     CHECK (has_decoded_report = 1 OR has_encrypted_report = 1)
 ) STRICT;
 

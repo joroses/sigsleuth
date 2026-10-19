@@ -5,7 +5,9 @@ for gateways' receptions on packet pages (packets.py).
 A relay byte is only the last byte of the relay's number, so many known nodes
 send it: the candidates. Rule-outs (candidates_left) remove those that could
 not have relayed the copy where it was heard; then the first rule that names
-exactly one of the rest wins (name_relay).
+exactly one of the rest wins (name_relay). A node that turned OK to MQTT
+off is still a candidate, so its copies are not pinned on another node, but
+callers never name it (opt_out.py).
 """
 
 import json

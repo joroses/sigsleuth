@@ -6,6 +6,9 @@ history kept during capture) for its window, and with a node search the
 best route of each traceroute_hop row the search matches, and decodes only the
 page's shown routes. A run shows the route that worked when it has one (see
 traceroute.py), otherwise its longest route.
+
+A run with an end that turned OK to MQTT off is left out, and such a node on
+a route is a gap, as a relay that could not add itself (opt_out.py).
 """
 
 import json
@@ -31,6 +34,7 @@ from sigsleuth.links import (
     position_reports,
     unlikely_links,
 )
+from sigsleuth.opt_out import opted_out, shown_sql
 from sigsleuth.positions import HeardPosition, positions_when_heard
 from sigsleuth.radio import spreading_factor
 from sigsleuth.traceroute import (
@@ -40,6 +44,7 @@ from sigsleuth.traceroute import (
     hop_between,
     path_hops,
     read_traceroute_report,
+    without_nodes,
 )
 
 BUSIEST_NODES = 10
@@ -88,15 +93,18 @@ def hop_observations(
 
     There is no index by hop: the query reads the window's hops newest first
     and stops after 10 matches."""
+    hidden = opted_out(connection)
     since_ms = 0 if since is None else to_epoch_ms(since)
     since_id = first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
 
     def direction(from_node: int, to_node: int) -> tuple[HopObservation, ...]:
+        if from_node in hidden or to_node in hidden:
+            return ()
         # Add an index on (from_node_id, to_node_id, packet_row_id) if the
         # worst 14-day live query exceeds about 50 ms (21 ms over 230k hops,
         # October 2026).
         rows = connection.execute(
-            """
+            f"""
             SELECT h.packet_row_id, t.first_received_at, h.snr_db,
                    tr.requester_node_id, tr.target_node_id, tr.is_reply
             FROM traceroute_hop AS h
@@ -104,6 +112,7 @@ def hop_observations(
             JOIN traceroute_packet AS tr ON tr.packet_row_id = h.packet_row_id
             WHERE h.packet_row_id >= :since AND h.from_node_id = :from_node
               AND h.to_node_id = :to_node AND (:channel IS NULL OR t.channel = :channel)
+              AND {shown_sql("tr.requester_node_id")} AND {shown_sql("tr.target_node_id")}
               AND NOT (tr.is_reply AND EXISTS (
                 SELECT 1
                 FROM packet AS request
@@ -139,7 +148,8 @@ def hop_observations(
     node_ids = {a, b}
     for item in (*a_to_b, *b_to_a):
         node_ids.update((item.requester_node_id, item.target_node_id))
-    return HopObservations(a_to_b, b_to_a, tuple(nodes_by_id(connection, node_ids).values()))
+    nodes = nodes_by_id(connection, node_ids - hidden)
+    return HopObservations(a_to_b, b_to_a, tuple(nodes.values()))
 
 
 @dataclass(frozen=True)
@@ -249,11 +259,12 @@ def traceroute_runs(
     # This fetch and Python grouping grow with the entire window, not the
     # page size; selecting run keys in SQL is the open fix.
     rows = connection.execute(
-        """
+        f"""
         SELECT tr.*, t.first_received_at, t.channel, t.reception_count,
                t.sender_node_id, t.recipient_node_id
         FROM traceroute_packet AS tr JOIN packet AS t ON t.id = tr.packet_row_id
         WHERE tr.packet_row_id >= ?
+          AND {shown_sql("tr.requester_node_id")} AND {shown_sql("tr.target_node_id")}
         ORDER BY tr.packet_row_id
         """,
         (since_id,),
@@ -264,8 +275,11 @@ def traceroute_runs(
     for row in rows:
         runs.setdefault((row["requester_node_id"], row["request_packet_id"]), []).append(row)
 
+    hidden = opted_out(connection)
     searches = [
-        _matching_nodes(connection, text) for text in (node, next_to) if text and text.strip()
+        _matching_nodes(connection, text) - hidden
+        for text in (node, next_to)
+        if text and text.strip()
     ]
     first = searches[0] if searches else None
     second = searches[1] if len(searches) == 2 else None
@@ -371,7 +385,7 @@ def traceroute_runs(
     routes = []
     for packets in page:
         if any_route(packets):
-            route = _stored_route(connection, *_shown(packets))
+            route = _stored_route(connection, *_shown(packets), hidden)
         else:
             searched = searched_route(packets)
             assert searched is not None  # keep dropped the runs without one
@@ -384,6 +398,7 @@ def traceroute_runs(
                 hops=hop["route_hops"],
                 km=hop["route_km"],
                 reached=bool(hop["route_reached"]),
+                hidden=hidden,
             )
             if first is not None and second is not None:
                 route = replace(route, hop=hop_between(route.path, first, second))
@@ -540,21 +555,23 @@ def busiest_traceroutes(
         f"""
         SELECT requester_node_id, count(DISTINCT {run}) AS runs FROM traceroute_packet
         WHERE packet_row_id >= :since
-        GROUP BY requester_node_id ORDER BY runs DESC, requester_node_id LIMIT :limit
+        GROUP BY requester_node_id HAVING {shown_sql("requester_node_id")}
+        ORDER BY runs DESC, requester_node_id LIMIT :limit
         """
     )
     targets = busiest(
         f"""
         SELECT target_node_id, count(DISTINCT {run}) AS runs FROM traceroute_packet
         WHERE packet_row_id >= :since
-        GROUP BY target_node_id ORDER BY runs DESC, target_node_id LIMIT :limit
+        GROUP BY target_node_id HAVING {shown_sql("target_node_id")}
+        ORDER BY runs DESC, target_node_id LIMIT :limit
         """
     )
     # Reads every hop row in the window, one per reception's route; UNION
     # drops a packet's repeats before counting, faster than count(DISTINCT).
     # Past the 7-day request's budget, keep hourly relay totals in derive.
     relays = busiest(
-        """
+        f"""
         WITH h (packet_row_id, node_id) AS (
             SELECT packet_row_id, from_node_id FROM traceroute_hop
             WHERE packet_row_id >= :since
@@ -565,7 +582,8 @@ def busiest_traceroutes(
         SELECT node_id, count(*) AS packets
         FROM h JOIN traceroute_packet AS tr USING (packet_row_id)
         WHERE node_id NOT IN (tr.requester_node_id, tr.target_node_id)
-        GROUP BY node_id ORDER BY packets DESC, node_id LIMIT :limit
+        GROUP BY node_id HAVING {shown_sql("node_id")}
+        ORDER BY packets DESC, node_id LIMIT :limit
         """
     )
     # CROSS JOIN keeps traceroute_packet first: otherwise SQLite walks every
@@ -678,7 +696,7 @@ def _run(
 
 
 def _stored_route(
-    connection: sqlite3.Connection, packet: sqlite3.Row, prefix: str
+    connection: sqlite3.Connection, packet: sqlite3.Row, prefix: str, hidden: set[int]
 ) -> TracerouteRoute:
     """A packet's longest route (prefix "route") or route that worked
     ("success_route", always a forward route) as capture stored it."""
@@ -690,6 +708,7 @@ def _stored_route(
         hops=packet[f"{prefix}_hops"],
         km=packet[f"{prefix}_km"],
         reached=prefix == "success_route",
+        hidden=hidden,
     )
 
 
@@ -702,9 +721,11 @@ def _saved_route(
     hops: int,
     km: float | None,
     reached: bool,
+    hidden: set[int],
 ) -> TracerouteRoute:
     """A route that capture saved a summary of, decoding the one saved report
-    that holds it. km uses positions from when the report was derived."""
+    that holds it, with hidden nodes as gaps. km uses positions from when the
+    report was derived."""
     # Recompute summary distances from current positions only if that
     # visibly misleads users.
     payload = connection.execute(
@@ -714,6 +735,7 @@ def _saved_route(
     if report is None:  # not expected: capture only saves readable reports
         path = RoutePath((packet["requester_node_id"], packet["target_node_id"]), ())
     else:
+        report = without_nodes(report, hidden)
         returned = report.paths.return_path
         path = returned if is_return and returned else report.paths.forward
     return TracerouteRoute(

@@ -25,7 +25,7 @@ git pull
 docker compose pull && docker compose up -d   # or: docker compose up -d --build
 ```
 
-Pull the repository too, since `compose.yml` and `.env.example` change with the code. A raised derived-table version rebuilds the derived tables at startup: pages fill in as it goes and Diagnostics shows `rebuilding` (3 to 13 minutes for one to two weeks of a busy subscription, depending on the machine). Deliveries during the rebuild are lost; survey uploads get 503 and the phone sends them again later.
+Pull the repository too, since `compose.yml` and `.env.example` change with the code. A raised derived-table version rebuilds the derived tables at startup: pages fill in as it goes and Diagnostics shows `rebuilding` (3 to 13 minutes for one to two weeks of a busy subscription, depending on the machine). Capture keeps saving deliveries meanwhile and the rebuild catches up with them; survey uploads get 503 and the phone sends them again later.
 
 ## Database reset
 
@@ -40,7 +40,7 @@ Grouping is saved with the facts, so a grouping change applies only to new recep
 
 ## Retention and disk
 
-Capture deletes packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14), about every five minutes, and survey measurements older than `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (default 90). An upload refuses (skips as `too_old`) only measurements past that survey limit, so a phone that was offline for weeks still uploads. There is no size limit: leave disk room for the busiest two weeks (about 1.2 GB of facts for 14 days of a busy regional subscription, plus derived tables and the WAL). The SQLite file stays near its largest size; Diagnostics shows file and data size.
+While capturing, packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14) are deleted about every five minutes (`api` mode deletes nothing), and survey measurements older than `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (default 90). An upload refuses (skips as `too_old`) only measurements past that survey limit, so a phone that was offline for weeks still uploads. There is no size limit: leave disk room for the busiest two weeks (about 1.2 GB of facts for 14 days of a busy regional subscription, plus derived tables and the WAL). The SQLite file stays near its largest size; Diagnostics shows file and data size.
 
 ## External services
 

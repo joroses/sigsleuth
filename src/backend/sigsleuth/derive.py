@@ -7,37 +7,35 @@ code path serves both callers:
   delivery added, in the same transaction.
 - Rederive: after a DERIVED_VERSION change, rederive refills the emptied
   tables oldest first, each packet just before its first reception, as
-  capture derived it. Opted-out nodes (node_opt_out) are refilled first.
-  Survey measurements keep what upload decided; their survey links
-  (coverage_relay) are refilled from them first.
+  capture derived it. Capture keeps saving facts meanwhile without deriving
+  them (ingest.py), and rederive goes on until it has caught up. Opted-out
+  nodes (node_opt_out) are refilled first. Survey measurements keep what
+  upload decided; their survey links (coverage_relay) are refilled from them
+  first.
 
 Rederive matches capture except that a packet first heard unreadable is
 counted at its readable port from the start, a km when heard can use a map
 report capture had not yet received, and only each node's latest map report
-is kept, so earlier moves between reports are not seen.
+is kept, so earlier moves between reports are not seen. A readable report
+that comes after rederive passed its packet or reception adds nothing: the
+packet keeps its unreadable count, a gateway's late traceroute route its
+missing hops. Rederive passes the newest rows only in its last seconds, so
+this is rare.
 
 A failed derived update is logged and undone (derive_or_undo); the facts stay.
 """
 
 import logging
 import sqlite3
-import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
-from pathlib import Path
 from typing import Protocol
 
 from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
-from sigsleuth.db import (
-    DatabaseVersionError,
-    open_current_database,
-    recreate_derived,
-    rederive_pending,
-    transaction,
-)
+from sigsleuth.db import recreate_derived, rederive_pending, transaction
 from sigsleuth.decode import (
     interpret_payload,
     invalid_position_reason,
@@ -71,7 +69,8 @@ AIRBORNE_PAIR_KM = 150
 # A node whose new valid position is farther than this from the one it
 # replaces moved (node_current.moved_at).
 MOVED_KM = 25
-# Receptions per rederive transaction; a signal survey upload waits at most one.
+# Receptions per rederive transaction; capture waits for one at most, so one
+# must take well under DATABASE_BUSY_TIMEOUT_MS (about 1.5 s on the server).
 REDERIVE_BATCH_SIZE = 10_000
 REDERIVE_LOG_SECONDS = 60.0
 
@@ -163,31 +162,27 @@ def rederive(
     batch_size: int = REDERIVE_BATCH_SIZE,
 ) -> bool:
     """If the derived tables are waiting for rederive (db.rederive_pending),
-    empty them and refill them from saved history, oldest first. Return False
-    when stopping() said to stop before the end; the next start begins again.
+    empty them and refill them from saved history, oldest first, until they
+    have caught up with what capture saves meanwhile. stopping() is called
+    before each batch; return False when it said to stop, and the next start
+    begins again.
 
     If this grows past about 15 minutes on a small server, fill the hourly totals
     in SQL."""
     if not rederive_pending(connection):
         return True
-    LOGGER.info("Rebuilding derived tables from saved history; capture starts after")
+    LOGGER.info("Rebuilding derived tables from saved history while capture saves new deliveries")
     started_at = logged_at = time.monotonic()
     recreate_derived(connection)
-    apply_all_map_reports(connection)
-    # Before the rest, so pages never name an opted-out node while it runs.
-    # Gateways leave node_opt_out again as their reports are derived.
     with transaction(connection):
+        _apply_all_map_reports(connection)
+        # Before the rest, so pages never name an opted-out node while it runs.
+        # Gateways leave node_opt_out again as their reports are derived.
         refresh_opt_outs(connection, None)
     # coverage.py reads this module's helpers.
     from sigsleuth.coverage import refresh_survey_links
 
     refresh_survey_links(connection)
-    last_packet, last_reception = connection.execute(
-        """
-        SELECT (SELECT coalesce(max(id), 0) FROM packet),
-               (SELECT coalesce(max(id), 0) FROM reception)
-        """
-    ).fetchone()
     packets_after = receptions_after = 0
     while True:
         if stopping():
@@ -198,7 +193,9 @@ def rederive(
                 (receptions_after, batch_size),
             ).fetchall()
             done = len(receptions) < batch_size
-            # The packets these receptions start; the last batch takes the rest.
+            # The packets these receptions start. The last batch takes the
+            # rest, and the map reports capture saved meanwhile; capture waits
+            # for it and derives what comes after.
             packets = connection.execute(
                 f"""
                 SELECT {_PACKET_COLUMNS} FROM packet AS t
@@ -206,11 +203,14 @@ def rederive(
                 """,
                 (
                     packets_after,
-                    last_packet if done else max(row["packet_row_id"] for row in receptions),
+                    _last_id(connection, "packet")
+                    if done
+                    else max(row["packet_row_id"] for row in receptions),
                 ),
             ).fetchall()
             _derive_rows(connection, _in_capture_order(connection, packets, receptions))
             if done:
+                _apply_all_map_reports(connection)
                 connection.execute("UPDATE derived_state SET rebuilt = 1")
         if done:
             LOGGER.info("Derived tables are rebuilt in %.0f s", time.monotonic() - started_at)
@@ -221,8 +221,12 @@ def rederive(
             logged_at = time.monotonic()
             LOGGER.info(
                 "Rebuilding derived tables: about %d receptions left",
-                last_reception - receptions_after,
+                _last_id(connection, "reception") - receptions_after,
             )
+
+
+def _last_id(connection: sqlite3.Connection, table: str) -> int:
+    return int(connection.execute(f"SELECT coalesce(max(id), 0) FROM {table}").fetchone()[0])
 
 
 def _in_capture_order(
@@ -244,30 +248,6 @@ def _in_capture_order(
         steps.append(partial(_derive_packet, connection, packet))
         packet = next(waiting, None)
     return steps
-
-
-def rederive_in_background(database_path: str | Path, stop: threading.Event) -> None:
-    """Rederive (if waiting), then refill the estimated positions
-    (positions.refresh_estimates) and judge new long links (terrain.py), for
-    `api` mode, which has no capture thread to do these. The API starts this on a thread."""
-    try:
-        connection = open_current_database(database_path)
-    except (DatabaseVersionError, sqlite3.Error):
-        LOGGER.exception("Could not open the database to rebuild derived tables")
-        return
-    try:
-        if not rederive(connection, stop.is_set):
-            return
-        # positions.py reads link totals, which import this module.
-        from sigsleuth.positions import refresh_estimates
-        from sigsleuth.terrain import refresh_long_links
-
-        refresh_estimates(connection)
-        refresh_long_links(connection, stop.is_set)
-    except sqlite3.Error:
-        LOGGER.exception("Rebuilding derived tables failed; the next start tries again")
-    finally:
-        connection.close()
 
 
 def _derive_rows(connection: sqlite3.Connection, steps: Sequence[Callable[[], None]]) -> None:
@@ -490,12 +470,11 @@ def _replace_position(
         )
 
 
-def apply_all_map_reports(connection: sqlite3.Connection) -> None:
+def _apply_all_map_reports(connection: sqlite3.Connection) -> None:
     """Fold every saved map report into node_current, as after the derived
     tables were recreated. Hundreds to a few thousand rows: one quick pass."""
-    with transaction(connection):
-        for (node_id,) in connection.execute("SELECT node_id FROM map_report").fetchall():
-            apply_map_report(connection, int(node_id))
+    for (node_id,) in connection.execute("SELECT node_id FROM map_report").fetchall():
+        apply_map_report(connection, int(node_id))
 
 
 def _update_device_telemetry(

@@ -12,6 +12,8 @@ ingest._save_reception
   SEARCH packet USING PRIMARY KEY
 ingest.save_ok_to_mqtt
   SEARCH packet USING PRIMARY KEY
+db.rederive_pending
+  SCAN derived_state
 derive.derive_delivery
   SEARCH reception USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY

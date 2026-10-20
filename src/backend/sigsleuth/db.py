@@ -5,7 +5,8 @@ FACTS_VERSION, kept in PRAGMA user_version) are what gateways reported. Derived
 tables (derived.sql, DERIVED_VERSION, kept in derived_state) are computed from
 facts by derive.py. Raise DERIVED_VERSION with any change to derived.sql or to
 what derive.py writes: at the next start the derived tables are recreated
-empty and refilled from saved history in the background, with no upgrade code.
+empty and refilled from saved history in the background (maintenance.py) while
+capture saves new facts, with no upgrade code.
 Retention spares the packets node_current names, so a rebuild can read
 them back.
 """
@@ -24,6 +25,9 @@ from pathlib import Path
 from sigsleuth.radio import distance_km
 
 DATABASE_BUSY_TIMEOUT_MS = 5_000
+# Between the batches of a long write (rederive, retention), so capture gets
+# the write lock: a waiting connection retries only every 100 ms or so.
+WRITE_PAUSE_SECONDS = 0.15
 FACTS_VERSION = 3
 # Each takes facts from its version to the next. Survey measurements are kept
 # across them: a phone cannot resend what it has deleted.

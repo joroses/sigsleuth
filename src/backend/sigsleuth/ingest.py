@@ -6,6 +6,10 @@ saves the gateway's reception (schema.sql). derive.py then updates the derived
 tables (derived.sql) from those saved rows, in the same transaction. This is
 the whole write path apart from retention and rederive.
 
+- While the derived tables wait for rederive (db.rederive_pending), only the
+  facts are saved: rederive derives them when it reaches them. A sender's OK
+  to MQTT bit still updates node_opt_out at once.
+
 - Deliveries must be ingested in the order they were received. A new
   packet's ID then follows its first_received_at, which time windows
   (first_packet_row_id_since) and retention rely on in place of a time index.
@@ -37,7 +41,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 
-from sigsleuth.db import transaction
+from sigsleuth.db import rederive_pending, transaction
 from sigsleuth.decode import (
     ApplicationInterpretation,
     MapReport,
@@ -47,6 +51,7 @@ from sigsleuth.decode import (
 )
 from sigsleuth.derive import SavedDelivery, apply_map_report, derive_delivery, derive_or_undo
 from sigsleuth.firmware import version_number
+from sigsleuth.opt_out import refresh_opt_outs
 
 LOGGER = logging.getLogger(__name__)
 MAX_PAYLOAD_BYTES = 65_536
@@ -114,7 +119,13 @@ def ingest_delivery(connection: sqlite3.Connection, delivery: MqttDelivery) -> I
             route_added,
             ok_to_mqtt_learned,
         )
-        error = derive_or_undo(connection, lambda: derive_delivery(connection, saved))
+        if not rederive_pending(connection):
+            error = derive_or_undo(connection, lambda: derive_delivery(connection, saved))
+        elif ok_to_mqtt_learned:
+            sender = parsed.evidence.sender_node_id
+            error = derive_or_undo(connection, lambda: refresh_opt_outs(connection, [sender]))
+        else:
+            error = None
     if error is not None:
         LOGGER.error(
             "Could not update derived tables for reception %d; its facts are saved",
@@ -158,7 +169,11 @@ def _ingest_map_report(
                 report.position_precision,
             ),
         )
-        error = derive_or_undo(connection, lambda: apply_map_report(connection, report.node_id))
+        error = (
+            None
+            if rederive_pending(connection)
+            else derive_or_undo(connection, lambda: apply_map_report(connection, report.node_id))
+        )
     if error is not None:
         LOGGER.error(
             "Could not update derived tables for node %d's map report; it is saved",

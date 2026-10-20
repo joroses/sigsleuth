@@ -71,7 +71,7 @@ Anyone who can reach the page sees the squares and when they were measured, so t
 - [Glossary](docs/glossary.md) of the terms the pages use.
 - Coding agents: read [AGENTS.md](AGENTS.md).
 
-Code: `src/backend/sigsleuth/` is the Python capture and API (`mqtt.py` receives, `decode.py` reads, `ingest.py` saves, `derive.py` keeps the derived tables current, `api.py` serves; facts in `schema.sql`, derived tables in `derived.sql`; the running app lists the API at `/docs`). `src/frontend/` is the page (React, TypeScript, MapLibre). Backend tests are in `tests/`; frontend tests sit beside their components.
+Code: `src/backend/sigsleuth/` is the Python capture and API (`mqtt.py` receives, `decode.py` reads, `ingest.py` saves, `derive.py` keeps the derived tables current, `maintenance.py` rebuilds them and trims old history in the background, `api.py` serves; facts in `schema.sql`, derived tables in `derived.sql`; the running app lists the API at `/docs`). `src/frontend/` is the page (React, TypeScript, MapLibre). Backend tests are in `tests/`; frontend tests sit beside their components.
 
 ## Licence
 

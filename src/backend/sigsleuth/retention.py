@@ -1,15 +1,16 @@
 """Keep recent history within its age limit.
 
-The capture thread runs this on its own writer connection after any rederive
-(derive.py), so node_current names the packets to spare, and before it connects
-to the broker, then about every five minutes while messages arrive.
+maintenance.py runs this after any rederive (derive.py), so node_current names
+the packets to spare, then about every five minutes while capturing.
 """
 
 import sqlite3
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sigsleuth.db import (
+    WRITE_PAUSE_SECONDS,
     first_packet_row_id_since,
     to_epoch_ms,
     transaction,
@@ -67,6 +68,8 @@ def apply_retention(
     _prune_current_state(connection, cutoff)
     while deleted := _delete_oldest_packets(connection, batch_size, cutoff):
         packets += deleted
+        if deleted == batch_size:
+            time.sleep(WRITE_PAUSE_SECONDS)
     coverage_days = coverage_limit_days(retention_days, coverage_retention_days)
     coverage_cutoff = (
         to_epoch_ms(current_time - timedelta(days=coverage_days)) if coverage_days else None

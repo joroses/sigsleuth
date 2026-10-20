@@ -211,13 +211,63 @@ def test_rederiving_gives_the_same_tables_and_pages_as_capture(
     # sample_client has stopped the clock, which refresh_estimates reads.
     path = copy_database(sample.path, tmp_path / "rederived.db")
     with closing(open_current_database(path)) as connection:
-        captured = all_derived(connection)
-        assert all(captured.values())
         connection.execute("UPDATE derived_state SET version = version - 1")
     migrate_database(path)
     with closing(open_current_database(path)) as connection:
         assert rederive(connection, lambda: False)
         refresh_estimates(connection)
+    assert_same_as_capture(sample, sample_client, path)
+
+
+def test_capture_during_a_rederive_gives_the_same_tables_and_pages(
+    sample: Sample, sample_client: TestClient, tmp_path: Path
+) -> None:
+    path = tmp_path / "captured-while-rederiving.db"
+    migrate_database(path)
+    recorded = list(deliveries())
+    later = iter(recorded[len(recorded) // 2 :])
+    with closing(open_current_database(path)) as connection:
+        connection.execute("PRAGMA synchronous = OFF")
+        for delivery in recorded[: len(recorded) // 2]:
+            ingest_delivery(connection, delivery)
+        connection.execute("UPDATE derived_state SET version = version - 1")
+    migrate_database(path)
+    batches = 0
+
+    def capture_some() -> bool:
+        """Every third batch, the next deliveries arrive while rederive runs."""
+        nonlocal batches
+        batches += 1
+        if batches % 3 == 0:
+            for delivery in islice(later, 1_000):
+                ingest_delivery(capture, delivery)
+        return False
+
+    with (
+        closing(open_current_database(path)) as capture,
+        closing(open_current_database(path)) as connection,
+    ):
+        capture.execute("PRAGMA synchronous = OFF")
+        connection.execute("PRAGMA synchronous = OFF")
+        assert rederive(connection, capture_some, batch_size=2_000)
+        caught_up_at = next(later)
+        ingest_delivery(capture, caught_up_at)
+        for delivery in later:
+            ingest_delivery(capture, delivery)
+        refresh_estimates(connection)
+    # Deliveries came in during rederive, and after it.
+    assert batches >= 3 and caught_up_at != recorded[-1]
+    assert_same_as_capture(sample, sample_client, path)
+
+
+def assert_same_as_capture(sample: Sample, sample_client: TestClient, path: Path) -> None:
+    """The database at path has the sample's derived tables and pages."""
+    with (
+        closing(open_current_database(sample.path)) as captured_connection,
+        closing(open_current_database(path)) as connection,
+    ):
+        captured = all_derived(captured_connection)
+        assert all(captured.values())
         again = all_derived(connection)
     for table, rows in captured.items():
         missing, extra = list(rows - again[table]), list(again[table] - rows)

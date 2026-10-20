@@ -1,12 +1,9 @@
 """Read-only MQTT capture on a background thread of the API process.
 
-The thread first rebuilds the derived tables if they are waiting for it
-(derive.rederive), then applies retention and refills the estimated positions
-(positions.refresh_estimates), then connects and saves each delivery; it
-repeats those about every five minutes. A second thread judges new long links
-(terrain.py) on the same schedule, because their terrain tiles come over the
-network: a tile server that hangs would otherwise hold deliveries back past
-the broker's keepalive and lose the connection.
+The thread connects at once and saves each delivery, also while the derived
+tables are rebuilt (ingest.py). Rebuild, retention and the other background
+work run on maintenance.py's thread, so they never hold deliveries back past
+the broker's keepalive.
 Broker failures (unreachable, refused credentials, lost connection) are retried
 by paho with growing delays and never stop the API. A database write failure
 pauses capture for a few minutes and then tries again. Only a subscription
@@ -19,7 +16,6 @@ import sqlite3
 import threading
 import time
 from collections import Counter
-from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
@@ -30,17 +26,9 @@ from paho.mqtt.properties import Properties
 from paho.mqtt.reasoncodes import ReasonCode
 
 from sigsleuth.config import Settings
-from sigsleuth.db import (
-    now_ms,
-    open_current_database,
-    optional_from_epoch_ms,
-    rederive_pending,
-)
-from sigsleuth.derive import rederive
+from sigsleuth.db import now_ms, optional_from_epoch_ms
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
-from sigsleuth.positions import refresh_estimates
-from sigsleuth.retention import RETENTION_INTERVAL_SECONDS, apply_retention
-from sigsleuth.terrain import refresh_long_links
+from sigsleuth.maintenance import Maintenance
 
 LOGGER = logging.getLogger(__name__)
 SKIP_LOG_SECONDS = 300.0
@@ -80,19 +68,17 @@ class MqttReceiver:
         self,
         settings: Settings,
         connection: sqlite3.Connection,
+        maintenance: Maintenance,
     ) -> None:
         self._settings = settings
         self._connection = connection
+        self._maintenance = maintenance
         self._thread: threading.Thread | None = None
         self._stopping = False
-        self._stop_requested = threading.Event()
-        self._rebuilding = False
         self._connected = False
         self._stopped_reason: str | None = None
         self._retry_at: float | None = None
         self._last_message_at: int | None = None
-        self._retention_ran_at: int | None = None
-        self._retention_checked_at = time.monotonic()
         self._skips: Counter[str] = Counter()
         self._skips_logged_at = 0.0
         self._client = mqtt.Client(
@@ -123,7 +109,6 @@ class MqttReceiver:
     def stop(self) -> None:
         """Disconnect and wait for an in-progress database write to finish."""
         self._stopping = True
-        self._stop_requested.set()
         self._client.disconnect()
         if self._thread is not None:
             self._thread.join(timeout=STOP_TIMEOUT_SECONDS)
@@ -131,37 +116,21 @@ class MqttReceiver:
     def status(self) -> CaptureStatus:
         if self._stopped_reason is not None:
             status: Literal["rebuilding", "connected", "disconnected", "stopped"] = "stopped"
-        elif self._rebuilding:
+        elif self._maintenance.rebuilding.is_set():
             status = "rebuilding"
         else:
             status = "connected" if self._connected else "disconnected"
         return CaptureStatus(
             status,
             optional_from_epoch_ms(self._last_message_at),
-            optional_from_epoch_ms(self._retention_ran_at),
+            optional_from_epoch_ms(self._maintenance.retention_ran_at),
             self._stopped_reason,
             dict(self._skips),
         )
 
     def _run(self) -> None:
-        try:
-            self._rebuilding = rederive_pending(self._connection)
-            if not rederive(self._connection, lambda: self._stopping):
-                return
-        except sqlite3.Error:
-            LOGGER.exception("Rebuilding derived tables failed; the next start tries again")
-        finally:
-            self._rebuilding = False
-        try:
-            self._apply_retention()
-        except sqlite3.Error:
-            LOGGER.exception("Retention failed; it will retry in a few minutes")
         if self._stopping:
             return
-        # Daemon: a tile fetch that hangs must not hold up shutdown.
-        threading.Thread(
-            target=self._judge_long_links, name="sigsleuth-terrain", daemon=True
-        ).start()
         self._client.connect_async(
             self._settings.mqtt_host,
             self._settings.mqtt_port,
@@ -268,13 +237,6 @@ class MqttReceiver:
             )
             result = None
 
-        if time.monotonic() - self._retention_checked_at >= RETENTION_INTERVAL_SECONDS:
-            self._retention_checked_at = time.monotonic()
-            try:
-                self._apply_retention()
-            except Exception:
-                LOGGER.exception("Retention failed; it will retry in a few minutes")
-
         if result is None:
             return
         if result.reception_id is not None:
@@ -287,31 +249,6 @@ class MqttReceiver:
                 result.too_large_reason,
             )
             self._note_skip(result.too_large_reason)
-
-    def _apply_retention(self) -> None:
-        result = apply_retention(
-            self._connection,
-            retention_days=self._settings.retention_days,
-            coverage_retention_days=self._settings.coverage_retention_days,
-        )
-        self._retention_ran_at = now_ms()
-        refresh_estimates(self._connection)
-        if result.packets:
-            LOGGER.info("Retention removed %d packets and their receptions", result.packets)
-        if result.measurements:
-            LOGGER.info("Retention removed %d signal survey measurements", result.measurements)
-
-    def _judge_long_links(self) -> None:
-        """Judge new long links now and about every five minutes, on a
-        connection of this thread's own. Started after the rebuild, so it
-        never judges a half-built link_hour."""
-        with closing(open_current_database(self._settings.database_path)) as connection:
-            while not self._stop_requested.is_set():
-                try:
-                    refresh_long_links(connection, self._stop_requested.is_set)
-                except sqlite3.Error:
-                    LOGGER.exception("Judging long links failed; it will retry in a few minutes")
-                self._stop_requested.wait(RETENTION_INTERVAL_SECONDS)
 
     def _note_skip(self, reason: str) -> None:
         self._skips[reason] += 1

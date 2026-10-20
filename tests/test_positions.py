@@ -1,5 +1,5 @@
 import sqlite3
-import threading
+import time
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -12,7 +12,6 @@ from meshtastic_fixtures import application_envelope
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, nodes_by_id, now_ms, open_current_database, reported_km
-from sigsleuth.derive import rederive_in_background
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
 from sigsleuth.positions import (
     EstimatedPosition,
@@ -298,10 +297,14 @@ def test_the_api_estimates_positions_when_it_starts(tmp_path: Path) -> None:
         node(connection, NODE, None)
         neighbours_around(connection, (0, 0))
 
-    rederive_in_background(path, threading.Event())
-
-    with closing(open_current_database(path)) as connection:
-        assert node_estimate(connection, NODE) is not None
+    with (
+        TestClient(create_app(Settings(path))),
+        closing(open_current_database(path)) as connection,
+    ):
+        deadline = time.monotonic() + 20
+        while node_estimate(connection, NODE) is None:
+            assert time.monotonic() < deadline
+            time.sleep(0.05)
 
 
 def sent_position(

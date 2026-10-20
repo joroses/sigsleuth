@@ -14,17 +14,18 @@ from pathlib import Path
 import paho.mqtt.client as mqtt
 import pytest
 from fastapi.testclient import TestClient
-from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from paho.mqtt.enums import CallbackAPIVersion
 from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.reasoncodes import ReasonCode
 
 import sigsleuth.db
-from meshtastic_fixtures import application_envelope, ingest, service_envelope
-from sigsleuth import terrain
+from meshtastic_fixtures import ingest, service_envelope
+from sigsleuth import maintenance
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database
+from sigsleuth.derive import rederive
+from sigsleuth.maintenance import Maintenance
 from sigsleuth.mqtt import MqttReceiver
 
 
@@ -101,6 +102,11 @@ def connection(path: Path) -> Iterator[sqlite3.Connection]:
     connection.close()
 
 
+def receiver_on(path: Path, connection: sqlite3.Connection) -> MqttReceiver:
+    """A receiver that is not started, with maintenance not started either."""
+    return MqttReceiver(settings(path), connection, Maintenance(settings(path), retain=True))
+
+
 def deliver(receiver: MqttReceiver, message: Message) -> None:
     receiver._on_message(None, None, message)  # type: ignore[arg-type]
 
@@ -129,79 +135,43 @@ def test_api_serves_while_the_broker_is_away_and_status_follows_the_connection(
         assert count(connection, "reception") == 1
 
 
-def test_capture_trims_old_history_before_connecting(path: Path) -> None:
-    ingest(path, service_envelope(), received_at=datetime.now(UTC) - timedelta(days=15))
-    with closing(open_current_database(path)) as connection:
-        receiver = MqttReceiver(settings(path, unused_tcp_port()), connection)
-        receiver.start()
-        try:
-            wait_until(lambda: receiver.status().retention_ran_at is not None)
-        finally:
-            receiver.stop()
-        assert count(connection, "reception") == 0
-
-
-def test_capture_keeps_saving_while_a_terrain_tile_fetch_hangs(
-    path: Path, monkeypatch: pytest.MonkeyPatch
+def test_capture_saves_during_a_rebuild_which_then_derives_it(
+    tmp_path: Path, path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fetching, release = threading.Event(), threading.Event()
-
-    def hang(key: terrain.TileKey) -> bytes:
-        fetching.set()
-        release.wait(20)
-        raise OSError("tile server hung")
-
-    monkeypatch.setattr(terrain, "fetch_tile", hang)
-    hour = int(time.time()) // 3600 * 3_600_000
-    with closing(open_current_database(path)) as connection:
-        with connection:
-            for node, longitude in ((0x0A0A0A0A, 15.0), (0x0B0B0B0B, 18.7)):
-                connection.execute(
-                    "INSERT INTO node_current (node_id, last_seen_at, position_observed_at,"
-                    " latitude, longitude) VALUES (?, ?, ?, 50.0, ?)",
-                    (node, hour, hour, longitude),
-                )
-            connection.execute(
-                "INSERT INTO link_hour VALUES ('direct', ?, ?, ?, 1, 0, 0, ?, 'LongFast', 264.0)",
-                (hour, 0x0A0A0A0A, 0x0B0B0B0B, hour + 1),
-            )
-        receiver = MqttReceiver(settings(path, unused_tcp_port()), connection)
-        receiver.start()
-        try:
-            assert fetching.wait(10)
-            receiver._retention_checked_at = 0.0  # due for its five-minute work
-            started = time.monotonic()
-            deliver(receiver, Message("msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope()))
-            assert time.monotonic() - started < 5
-            assert count(connection, "reception") == 1
-        finally:
-            release.set()
-            receiver.stop()
-
-
-def test_capture_rebuilds_derived_tables_before_trimming(path: Path) -> None:
-    # Retention spares the old NodeInfo only once node_current names it again.
-    user = mesh_pb2.User(long_name="Hilltop", short_name="HILL").SerializeToString()
-    now = datetime.now(UTC)
-    ingest(
-        path,
-        application_envelope(portnums_pb2.PortNum.NODEINFO_APP, user, packet_id=1),
-        received_at=now - timedelta(days=15),
-    )
-    ingest(path, service_envelope(packet_id=2), received_at=now - timedelta(days=2))
+    ingest(path, service_envelope(packet_id=1), received_at=datetime.now(UTC) - timedelta(hours=1))
     with closing(open_current_database(path)) as connection:
         connection.execute("UPDATE derived_state SET version = 0")
     migrate_database(path)
+    # The rebuild waits to start, so the delivery arrives while it is pending.
+    release = threading.Event()
 
-    with closing(open_current_database(path)) as connection:
-        receiver = MqttReceiver(settings(path, unused_tcp_port()), connection)
-        receiver.start()
-        try:
-            wait_until(lambda: receiver.status().retention_ran_at is not None)
-        finally:
-            receiver.stop()
-        assert count(connection, "packet") == 2
-        assert connection.execute("SELECT long_name FROM node_current").fetchone()[0] == "Hilltop"
+    def rederive_later(connection: sqlite3.Connection, stopping: Callable[[], bool]) -> bool:
+        release.wait(20)
+        return rederive(connection, stopping)
+
+    monkeypatch.setattr(maintenance, "rederive", rederive_later)
+    port = unused_tcp_port()
+    app = create_app(settings(path, port), capture=True)
+    with (
+        local_broker(tmp_path, port),
+        TestClient(app) as client,
+        closing(open_current_database(path)) as connection,
+    ):
+
+        def status() -> str:
+            return str(client.get("/api/v1/status").json()["capture"]["status"])
+
+        wait_until(lambda: status() == "rebuilding")
+        wait_until(lambda: app.state.receiver._connected)
+        publish(port, "msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope(sender=0x22222222))
+        wait_until(lambda: count(connection, "reception") == 2)
+        assert status() == "rebuilding"
+        assert count(connection, "node_current") == 0
+
+        release.set()
+        wait_until(lambda: status() == "connected")
+        senders = {row[0] for row in connection.execute("SELECT node_id FROM node_current")}
+        assert {0x11111111, 0x22222222} <= senders
 
 
 def test_processing_failure_is_logged_and_capture_continues(
@@ -214,7 +184,7 @@ def test_processing_failure_is_logged_and_capture_continues(
         raise RuntimeError("simulated processing bug")
 
     monkeypatch.setattr("sigsleuth.mqtt.ingest_delivery", fail_ingest)
-    receiver = MqttReceiver(settings(path), connection)
+    receiver = receiver_on(path, connection)
     deliver(receiver, Message("msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope()))
 
     assert receiver.status().status != "stopped"
@@ -224,7 +194,7 @@ def test_processing_failure_is_logged_and_capture_continues(
 def test_oversized_delivery_is_skipped_and_next_message_saves(
     path: Path, connection: sqlite3.Connection
 ) -> None:
-    receiver = MqttReceiver(settings(path), connection)
+    receiver = receiver_on(path, connection)
     deliver(receiver, Message("msh/EU/too-large", b"x" * 65_537))
     deliver(receiver, Message("msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope()))
     assert count(connection, "reception") == 1
@@ -241,7 +211,7 @@ def test_database_failure_pauses_capture_then_retries(
         raise sqlite3.OperationalError("disk I/O error")
 
     monkeypatch.setattr("sigsleuth.mqtt.ingest_delivery", fail_save)
-    receiver = MqttReceiver(settings(path), connection)
+    receiver = receiver_on(path, connection)
     message = Message("msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope())
     deliver(receiver, message)
 
@@ -260,7 +230,7 @@ def test_database_failure_pauses_capture_then_retries(
 
 
 def test_rejected_subscription_stops_capture(path: Path, connection: sqlite3.Connection) -> None:
-    receiver = MqttReceiver(settings(path), connection)
+    receiver = receiver_on(path, connection)
     rejected = [ReasonCode(PacketTypes.SUBACK, identifier=0x80)]
     receiver._on_subscribe(None, None, 1, rejected, None)  # type: ignore[arg-type]
     assert receiver.status().status == "stopped"
@@ -276,7 +246,7 @@ def test_locked_database_skips_one_delivery_and_the_next_still_saves(
     with closing(open_current_database(path)) as writer:
         writer.execute("BEGIN IMMEDIATE")
         with closing(open_current_database(path)) as capture_connection:
-            receiver = MqttReceiver(settings(path), capture_connection)
+            receiver = receiver_on(path, capture_connection)
             deliver(
                 receiver,
                 Message("msh/EU_868/2/e/LongFast/!aaaaaaaa", service_envelope()),
@@ -298,7 +268,7 @@ def test_locked_database_skips_one_delivery_and_the_next_still_saves(
 
 
 def test_unusable_delivery_is_skipped(path: Path, connection: sqlite3.Connection) -> None:
-    receiver = MqttReceiver(settings(path), connection)
+    receiver = receiver_on(path, connection)
     deliver(receiver, Message("msh/EU_868/2/json/LongFast/!aaaaaaaa", b'{"type": "x"}'))
     deliver(receiver, Message("msh/EU_868/2/map/", service_envelope()))
     deliver(receiver, Message("msh/US/2/map/", service_envelope()))

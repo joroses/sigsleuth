@@ -4,10 +4,10 @@ nodes.py, map_nodes.py, chat.py, links.py, traceroute_explorer.py, zones.py,
 diagnostics.py, coverage.py). The one route that writes takes signal survey
 uploads from phones (coverage.py).
 
-With capture=True, the app starts MQTT capture on a background thread
-at startup and stops it at shutdown, so one process serves and records history;
-capture first rebuilds derived tables when they are waiting for rederive
-(derive.py). Without capture, a thread of its own does that.
+At startup the app starts its background work (maintenance.py: rebuilding
+derived tables when they wait for it, retention, estimates) and, with
+capture=True, MQTT capture, each on a thread of its own, and stops them at
+shutdown, so one process serves and records history.
 
 The running app lists every endpoint and response shape at /docs. The response
 classes are also the frontend's types: after changing one, run
@@ -29,10 +29,9 @@ import hmac
 import html
 import logging
 import sqlite3
-import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -66,7 +65,6 @@ from sigsleuth.db import (
     to_epoch_ms,
     utc_now,
 )
-from sigsleuth.derive import rederive_in_background
 from sigsleuth.diagnostics import (
     LONGEST_LINKS,
     MAX_LONG_LINK_SCAN,
@@ -80,6 +78,7 @@ from sigsleuth.diagnostics import (
     longest_links,
 )
 from sigsleuth.links import LinkKind, MapLinkList, link_trust, map_links
+from sigsleuth.maintenance import Maintenance
 from sigsleuth.map_nodes import (
     MapNodeList,
     TextReach,
@@ -161,30 +160,22 @@ def create_app(
 
     @asynccontextmanager
     async def run_background_work(app: FastAPI) -> AsyncIterator[None]:
-        if capture:
-            connection = open_current_database(settings.database_path)
-            receiver = MqttReceiver(settings, connection)
-            app.state.receiver = receiver
-            receiver.start()
-            try:
-                yield
-            finally:
-                receiver.stop()
-                connection.close()
-            return
-        stop_rederive = threading.Event()
-        rederive = threading.Thread(
-            target=rederive_in_background,
-            args=(settings.database_path, stop_rederive),
-            name="sigsleuth-rederive",
-            daemon=True,
-        )
-        rederive.start()
+        maintenance = Maintenance(settings, retain=capture)
+        maintenance.start()
         try:
-            yield
+            if not capture:
+                yield
+                return
+            with closing(open_current_database(settings.database_path)) as connection:
+                receiver = MqttReceiver(settings, connection, maintenance)
+                app.state.receiver = receiver
+                receiver.start()
+                try:
+                    yield
+                finally:
+                    receiver.stop()
         finally:
-            stop_rederive.set()
-            rederive.join(timeout=10)
+            maintenance.stop()
 
     app = FastAPI(title="SigSleuth API", version="1", lifespan=run_background_work)
     app.state.receiver = None

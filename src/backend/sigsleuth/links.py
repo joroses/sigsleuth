@@ -4,25 +4,30 @@ Links come from link_hour, so a window costs the same on every page. A pair
 heard on several channels is one link per channel, never averaged: each
 channel's radio settings decide how good an SNR is.
 
-Two views of where a link's nodes are:
+Two views of where a link's nodes are, each decided here once:
 
-- The map and Zones draw nodes where they are now (reported, else estimated).
-  link_trust hides the hours that no longer match: before either end moved,
-  every hour of a doubtful node, and an aircraft's hours up to its latest
-  flight. _fits_now then leaves out links that do not fit where the nodes are
-  drawn. Those are more often MQTT bridges or stale positions than radio.
-- The Links page, Traceroute explorer and packet pages keep every link and
-  show only the km saved when it was heard, never one from current
-  positions, which would mix two moments. They badge what the map hides
-  ("doubtful", "aircraft") and rank those apart from measured links; links
-  with no distance come last. A distance of PENDING_KM or more also ranks
-  apart while it is pending: until both ends have reported a position since
-  it was heard, without moving (CONFIRMED_HOUR).
+- The map and Zones draw nodes where they are now (reported, else
+  estimated). They count only the hours that still match where the nodes
+  are (trusted_sql, TRUSTED_HOUR): heard after both ends last moved, neither
+  end doubtful. Estimates, own reach and chat read the same condition. Then
+  map_misfit leaves out links that do not fit where the nodes are drawn
+  (Misfit), more often MQTT bridges or stale positions than radio; Zones adds
+  its ZONE_MAX_LINK_KM.
+- The Links page, a node's links, the Traceroute explorer and packet pages
+  keep every link and show only the km saved when it was heard, never one
+  from current positions, which would mix two moments. link_doubts says why
+  such a distance is doubted (Doubt): a doubtful end, unlikely by terrain,
+  or pending until both ends have reported a position since it was heard,
+  without moving (confirmed_sql). Pages badge those and rank them apart from
+  measured links; links with no distance come last.
+
+Both views share the terrain test (_unlikely_far). Diagnostics explains the
+map with the same functions. Coverage keeps its own liveness, ignoring
+doubt (docs/coverage.md).
 
 No page shows a link with an end that turned OK to MQTT off (opt_out.py).
 """
 
-import json
 import sqlite3
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -46,38 +51,61 @@ ZONE_MAX_LINK_KM = 400
 MAX_ESTIMATED_LINK_KM = 150
 
 # Every page: a link heard this far apart or more (link_hour.km) is checked
-# against the terrain between (terrain.py); an unlikely pair's
-# links of this length are left out of the map or badged (unlikely_links).
+# against the terrain between (terrain.py); an unlikely pair's links of this
+# length are left out of the map or badged (_unlikely_far).
 LONG_LINK_KM = 250
 
 # Distance rankings (Links page, Traceroute explorer, Diagnostics): a distance
 # heard this far apart or more ranks apart while pending. It is confirmed once
 # both ends have reported a position since it was heard and neither has moved
-# since (CONFIRMED_HOUR): a node that moved and has not reported yet is
+# since (confirmed_sql): a node that moved and has not reported yet is
 # measured from where it was. On live, 14 days to 2026-10-15, 94% of
 # link hours of 100 km or more were confirmed within a day and 99% within
 # three; 45 of 8,909 had an end that moved since.
 PENDING_KM = 100
 
-# Whether a link_hour row (unaliased) is confirmed, for an SQL expression.
-CONFIRMED_HOUR = " AND ".join(
-    f"""EXISTS (SELECT 1 FROM node_current WHERE node_id = link_hour.{end}
-        AND position_observed_at > link_hour.last_seen_at
-        AND coalesce(moved_at, 0) <= link_hour.last_seen_at)"""
-    for end in ("from_node_id", "to_node_id")
+
+def confirmed_sql(node: str, at: str) -> str:
+    """SQL: the node has reported a position since `at` and not moved since,
+    so a distance to it heard then is confirmed at its end."""
+    return f"""EXISTS (SELECT 1 FROM node_current WHERE node_id = {node}
+        AND position_observed_at > {at} AND coalesce(moved_at, 0) <= {at})"""
+
+
+# Whether a link_hour row (unaliased) is confirmed at both ends.
+CONFIRMED_HOUR = (
+    f"{confirmed_sql('link_hour.from_node_id', 'link_hour.last_seen_at')}"
+    f" AND {confirmed_sql('link_hour.to_node_id', 'link_hour.last_seen_at')}"
 )
 
-# link_trust's time for a node none of whose link hours count.
-NEVER = 2**62
+# Nodes whose hours since :since may not count: moved since then, or
+# doubtful. Few, so finding them once and looking up only those is as fast
+# as reading no table; a node_current lookup on every hour took 30-40%
+# longer (perf.db, 2026-10-20).
+_LIMITED = """(SELECT node_id FROM node_current WHERE moved_at >= :since
+               UNION ALL SELECT node_id FROM node_doubtful)"""
 
-# The link_hour rows a link_trust result keeps, passed as :trust (trust_json):
-# those with neither end in it, or heard at or after both ends' times.
-TRUSTED_LINK_HOURS = " AND ".join(
-    f"""({end} NOT IN (SELECT CAST(key AS INTEGER) FROM json_each(:trust))
-        OR last_seen_at >= (SELECT value FROM json_each(:trust)
-                            WHERE key = CAST({end} AS TEXT)))"""
-    for end in ("from_node_id", "to_node_id")
+
+def trusted_sql(node: str, at: str) -> str:
+    """SQL: the node was where pages draw it at `at`: not doubtful, and at
+    or after its last move. Callers bind :since, at or before every `at`."""
+    return f"""({node} NOT IN {_LIMITED}
+        OR ({node} NOT IN (SELECT node_id FROM node_doubtful)
+            AND {at} >= (SELECT moved_at FROM node_current WHERE node_id = {node})))"""
+
+
+# Whether a link_hour row (unaliased) counts for the map.
+TRUSTED_HOUR = (
+    f"{trusted_sql('from_node_id', 'last_seen_at')} AND {trusted_sql('to_node_id', 'last_seen_at')}"
 )
+
+
+def limited_nodes(connection: sqlite3.Connection, since_ms: int) -> set[int]:
+    """The nodes trusted_sql looks up from since_ms: tens of rows."""
+    return {
+        int(row[0]) for row in connection.execute(f"SELECT * FROM {_LIMITED}", {"since": since_ms})
+    }
+
 
 LinkKind = Literal["traceroute", "direct", "neighbor"]
 LINK_KINDS: tuple[LinkKind, ...] = ("traceroute", "direct", "neighbor")
@@ -126,18 +154,18 @@ def map_links(
     limit: int,
     default_preset: str,
     channel: str | None = None,
-    trust: Mapping[int, int] | None = None,
+    trusted: bool = False,
     max_km: float | None = None,
 ) -> MapLinkList:
     """Links from one link kind's hourly totals since the start of
     since's hour, one per node pair and channel; only channel's when given,
-    so the limit applies to that channel alone. With trust (link_trust), the
-    map's view of where nodes are now: only the hours it trusts, and only the
-    links that fit where it draws their nodes (_fits_now), at most max_km
-    apart when given."""
-    rows = _hourly_links(connection, link_kind, since, limit, channel, trust)
+    so the limit applies to that channel alone. With trusted, the map's view
+    of where nodes are now: only the hours that still match (TRUSTED_HOUR),
+    and only the links that fit where it draws their nodes (_fits_now), at
+    most max_km apart when given."""
+    rows = _hourly_links(connection, link_kind, since, limit, channel, trusted)
     kept = rows[:limit]
-    if trust is not None:
+    if trusted:
         nodes = nodes_by_id(connection, {n for row in kept for n in (row["node_a"], row["node_b"])})
         unlikely = unlikely_links(connection)
         kept = [row for row in kept if _fits_now(row, nodes, unlikely, max_km)]
@@ -151,15 +179,28 @@ def _fits_now(
     unlikely: Collection[tuple[int, int]],
     max_km: float | None,
 ) -> bool:
-    """Whether a link fits where the map draws its nodes (reported, else
-    estimated): not LONG_LINK_KM or more when last heard (km) on an unlikely
-    pair, nor drawn LONG_LINK_KM or more with no km when last heard, at most
-    max_km apart when given, MAX_ESTIMATED_LINK_KM with an estimated end, and within
-    MOVED_KM of its length when last heard. Otherwise a link with an end that
-    has neither position fits."""
+    """Whether a link fits where the map draws its nodes (map_misfit)."""
     pair = (row["node_a"], row["node_b"])
     a, b = nodes.get(pair[0]), nodes.get(pair[1])
     return map_misfit(a, b, row["km"], pair in unlikely, max_km) is None
+
+
+# Why the map leaves out a link that does not fit where it draws its ends
+# (map_misfit): heard LONG_LINK_KM or more apart on an unlikely pair; drawn
+# LONG_LINK_KM or more apart with no km when heard; an estimated end drawn
+# over MAX_ESTIMATED_LINK_KM away; drawn over a page's max_km apart; drawn
+# over MOVED_KM nearer or farther than when heard.
+Misfit = Literal["terrain", "unmeasured", "estimated_far", "too_far", "drifted"]
+# Why link pages badge a distance when heard and rank it apart (link_doubts):
+# an end has a doubtful position, the terrain check finds it unlikely, or it
+# is pending.
+Doubt = Literal["doubtful", "terrain", "pending"]
+
+
+def _unlikely_far(heard_km: float | None, unlikely: bool) -> bool:
+    """The terrain test both views share: heard LONG_LINK_KM or more apart
+    on a pair the terrain check finds unlikely."""
+    return unlikely and heard_km is not None and heard_km >= LONG_LINK_KM
 
 
 def map_misfit(
@@ -168,36 +209,48 @@ def map_misfit(
     heard_km: float | None,
     unlikely: bool,
     max_km: float | None = None,
-) -> str | None:
+) -> Misfit | None:
     """Why the map leaves out a link whose ends it draws at a and b, last
-    heard heard_km apart, on a pair the terrain check finds unlikely or not
-    (_fits_now); None when it fits."""
-    if unlikely and heard_km is not None and heard_km >= LONG_LINK_KM:
-        return (
-            f"it was heard {heard_km:g} km apart, mostly over land with no end high "
-            "above the land between, or over too much land: the terrain check finds "
-            "that unlikely"
-        )
+    heard heard_km apart, on a pair the terrain check finds unlikely or not;
+    None when it fits."""
+    if _unlikely_far(heard_km, unlikely):
+        return "terrain"
     if a is None or b is None or (km := distance_km(a, b)) is None:
         return None
     if a.estimated or b.estimated:
         if km > MAX_ESTIMATED_LINK_KM:
-            return f"an estimated end is drawn {km:g} km away, over {MAX_ESTIMATED_LINK_KM} km"
+            return "estimated_far"
     elif max_km is not None and km > max_km:
-        return f"its ends are drawn {km:g} km apart, over {max_km:g} km"
+        return "too_far"
     # Heard before an end had a position, so neither the terrain check nor the
     # moved check below can judge it; such long lines are usually a travelling
     # or test node that reported a position somewhere else later.
     if heard_km is None and km >= LONG_LINK_KM:
-        return (
-            f"its ends are drawn {km:g} km apart, but it was heard before one of "
-            "them had a position, so nothing can check it"
-        )
+        return "unmeasured"
     # An end travelled in steps each shorter than MOVED_KM, so moved_at missed
     # it.
     if heard_km is not None and abs(km - heard_km) > MOVED_KM:
-        return f"its ends are drawn {km:g} km apart but were {heard_km:g} km apart when last heard"
+        return "drifted"
     return None
+
+
+def link_doubts(
+    doubtful: bool, heard_km: float | None, unlikely: bool, confirmed: bool
+) -> tuple[Doubt, ...]:
+    """Why link pages doubt a distance heard heard_km apart: an end is
+    doubtful, the pair is unlikely by terrain, or it is PENDING_KM or more and
+    not confirmed (confirmed_sql). None for a link with no distance, which
+    ranks last anyway."""
+    if heard_km is None:
+        return ()
+    doubts: list[Doubt] = []
+    if doubtful:
+        doubts.append("doubtful")
+    if _unlikely_far(heard_km, unlikely):
+        doubts.append("terrain")
+    if heard_km >= PENDING_KM and not confirmed:
+        doubts.append("pending")
+    return tuple(doubts)
 
 
 def _hourly_links(
@@ -206,7 +259,7 @@ def _hourly_links(
     since: datetime | None,
     limit: int,
     channel: str | None,
-    trust: Mapping[int, int] | None = None,
+    trusted: bool = False,
     confirmed: bool = False,
     node: int | None = None,
 ) -> list[sqlite3.Row]:
@@ -220,7 +273,7 @@ def _hourly_links(
     # look again. Each direction's hours are added up before the two directions
     # are paired, which is faster than grouping by pair. km is a bare column, so
     # SQLite takes it from the row with the max(last_seen_at): the newest hour's.
-    trusted = "" if trust is None else f"AND {TRUSTED_LINK_HOURS}"
+    only_trusted = f"AND {TRUSTED_HOUR}" if trusted else ""
     # Still the window's primary key range: no index finds a node's links
     # into it, and that read is 60-105 ms on live (2026-10-18, 7 days).
     of_node = "" if node is None else "AND :node IN (from_node_id, to_node_id)"
@@ -248,7 +301,7 @@ def _hourly_links(
                    {confirmed_hours} AS confirmed_hours
             FROM link_hour
             WHERE link_kind = :kind AND hour_start >= :since
-              AND (:channel IS NULL OR channel = :channel) {trusted} {of_node}
+              AND (:channel IS NULL OR channel = :channel) {only_trusted} {of_node}
             GROUP BY from_node_id, to_node_id, channel
         )
         GROUP BY node_a, node_b, channel
@@ -261,7 +314,6 @@ def _hourly_links(
             "since": since_ms - since_ms % HOUR_MS,
             "channel": channel,
             "limit": limit + 1,
-            "trust": None if trust is None else trust_json(trust),
             "pending_km": PENDING_KM,
             "node": node,
         },
@@ -352,63 +404,6 @@ def link_hours(
     return LinkHours(heard(node_a, node_b), heard(node_b, node_a))
 
 
-def link_trust(connection: sqlite3.Connection, since_ms: int) -> dict[int, int]:
-    """Per node, the time from which its link hours match where the map draws
-    it now: a link hour counts only when heard (last_seen_at) at or after both
-    ends' times. A node that moved counts from moved_at, an aircraft from just
-    after its latest flight (airborne_at), and a node with a doubtful position
-    (doubtful_nodes) NEVER. Only nodes whose time falls in the window from
-    since_ms's hour are returned: every hour of the others counts. node_current
-    has thousands of rows, so this reads it whole."""
-    since_ms -= since_ms % HOUR_MS
-    trust: dict[int, int] = {}
-    for node_id, moved_at, airborne_at in connection.execute(
-        """
-        SELECT node_id, moved_at, airborne_at FROM node_current
-        WHERE moved_at >= :since OR airborne_at >= :since
-        """,
-        {"since": since_ms},
-    ):
-        trust[int(node_id)] = max(moved_at or 0, airborne_at + 1 if airborne_at is not None else 0)
-    for node_id in doubtful_nodes(connection):
-        trust[node_id] = NEVER
-    return trust
-
-
-def position_reports(
-    connection: sqlite3.Connection, node_ids: Collection[int]
-) -> dict[int, tuple[int, int]]:
-    """Per node with a position, when it last reported one and when it last
-    moved (0 when never), for distance_confirmed."""
-    return {
-        int(node_id): (int(reported), int(moved))
-        for node_id, reported, moved in connection.execute(
-            """
-            SELECT node_id, position_observed_at, coalesce(moved_at, 0) FROM node_current
-            WHERE node_id IN (SELECT value FROM json_each(?))
-              AND position_observed_at IS NOT NULL
-            """,
-            (json.dumps(sorted(node_ids)),),
-        )
-    }
-
-
-def distance_confirmed(
-    reports: Mapping[int, tuple[int, int]], node_ids: Collection[int], heard_at: int
-) -> bool:
-    """Whether a distance between node_ids heard at heard_at (epoch ms) is
-    confirmed, as CONFIRMED_HOUR decides, from position_reports."""
-    return all(
-        node_id in reports and reports[node_id][1] <= heard_at < reports[node_id][0]
-        for node_id in node_ids
-    )
-
-
-def trust_json(trust: Mapping[int, int]) -> str:
-    """A link_trust result as TRUSTED_LINK_HOURS' :trust."""
-    return json.dumps({str(node_id): at for node_id, at in trust.items()})
-
-
 def doubtful_nodes(connection: sqlite3.Connection) -> set[int]:
     """Nodes whose reported position their own direct links contradict
     (node_doubtful, refilled by positions.refresh_estimates)."""
@@ -425,64 +420,27 @@ def unlikely_links(connection: sqlite3.Connection) -> set[tuple[int, int]]:
     }
 
 
-# The packet that last showed a node in the air: airborne_at is its
-# first_received_at (derive._mark_airborne). For a query on node_current with
-# no alias. Retention does not spare it, so once it is deleted the flight is
-# older than the history kept and pages stop calling the node an aircraft.
-# The packet_sender index reads all that node's packets, thousands for a busy
-# one, so ask only for aircraft (airborne_at IS NOT NULL).
-FLIGHT_PACKET = """(
-    SELECT MIN(flight.id) FROM packet AS flight
-    WHERE flight.sender_node_id = node_current.node_id
-      AND flight.first_received_at = node_current.airborne_at
-)"""
-
-
-def airborne_nodes(connection: sqlite3.Connection, since: datetime | None) -> set[int]:
-    """Nodes heard in the air since `since` (node_current.airborne_at) whose
-    flight packet is still kept (FLIGHT_PACKET). Their links are radio, but
-    measured from where they were on the ground."""
-    since_ms = 0 if since is None else to_epoch_ms(since)
-    return {
-        int(row[0])
-        for row in connection.execute(
-            f"""
-            SELECT node_id FROM node_current
-            WHERE airborne_at >= ? AND {FLIGHT_PACKET} IS NOT NULL
-            """,
-            (since_ms,),
-        )
-    }
-
-
 @dataclass(frozen=True)
 class LinkRow(MapLink):
     """A map link with the great-circle distance between its nodes' reported
     positions when the link was last heard in the window (last_seen_at),
-    None when either had none then. unlikely says that distance is
-    LONG_LINK_KM or more on a pair the terrain check finds unlikely
-    (unlikely_links), and pending that it is PENDING_KM or more with no
-    confirmed hour that long in the window (CONFIRMED_HOUR): by distance
-    either ranks apart, like a link with a doubtful or airborne end."""
+    None when either had none then, and why that distance is doubted
+    (link_doubts): by distance a doubted link ranks apart. It is confirmed
+    when any hour PENDING_KM or more in the window is."""
 
     link_kind: LinkKind
     distance_km: float | None
-    unlikely: bool
-    pending: bool
+    doubts: tuple[Doubt, ...]
 
 
 @dataclass(frozen=True)
 class LinkTable:
     """doubtful_node_ids are the table's nodes with a doubtful position
-    (doubtful_nodes) and airborne_node_ids those that were in the air in
-    the window (airborne_nodes); by distance, a link with either, or an
-    unlikely one (LinkRow.unlikely), ranks apart from the measured links (see
-    the module docstring)."""
+    (doubtful_nodes), the suspects of a link doubted for one."""
 
     items: tuple[LinkRow, ...]
     nodes: tuple[NodeSummary, ...]
     doubtful_node_ids: tuple[int, ...]
-    airborne_node_ids: tuple[int, ...]
     # Some link kind had more than MAX_LINK_ROWS links.
     truncated: bool
 
@@ -496,9 +454,10 @@ def link_table(
     node: int | None = None,
 ) -> LinkTable:
     """The map's links of link_kinds, only node's when given, with both nodes'
-    names and positions, their distance, which are unlikely, and which of the
-    nodes have a doubtful position or were in the air."""
+    names and positions, their distance, why it is doubted, and which of the
+    nodes have a doubtful position."""
     unlikely = unlikely_links(connection)
+    doubtful = doubtful_nodes(connection)
     items: list[LinkRow] = []
     truncated = False
     for link_kind in link_kinds:
@@ -514,19 +473,15 @@ def link_table(
                     **vars(link),
                     link_kind=link_kind,
                     distance_km=km,
-                    unlikely=km is not None
-                    and km >= LONG_LINK_KM
-                    and (link.node_a, link.node_b) in unlikely,
-                    pending=km is not None and km >= PENDING_KM and not row["confirmed_hours"],
+                    doubts=link_doubts(
+                        link.node_a in doubtful or link.node_b in doubtful,
+                        km,
+                        (link.node_a, link.node_b) in unlikely,
+                        bool(row["confirmed_hours"]),
+                    ),
                 )
             )
     nodes = nodes_by_id(connection, {n for link in items for n in (link.node_a, link.node_b)})
-    doubtful = doubtful_nodes(connection) & set(nodes)
-    airborne = airborne_nodes(connection, since) & set(nodes)
     return LinkTable(
-        tuple(items),
-        tuple(nodes.values()),
-        tuple(sorted(doubtful)),
-        tuple(sorted(airborne)),
-        truncated,
+        tuple(items), tuple(nodes.values()), tuple(sorted(doubtful & set(nodes))), truncated
     )

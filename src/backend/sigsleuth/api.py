@@ -62,7 +62,6 @@ from sigsleuth.db import (
     DatabaseVersionError,
     open_current_database,
     rederive_pending,
-    to_epoch_ms,
     utc_now,
 )
 from sigsleuth.diagnostics import (
@@ -77,7 +76,7 @@ from sigsleuth.diagnostics import (
     doubtful_node_list,
     longest_links,
 )
-from sigsleuth.links import LinkKind, MapLinkList, link_trust, map_links
+from sigsleuth.links import LinkKind, MapLinkList, map_links
 from sigsleuth.maintenance import Maintenance
 from sigsleuth.map_nodes import (
     MapNodeList,
@@ -463,14 +462,13 @@ def create_app(
         own list of nodes it heard with no relay); kinds are never combined.
         since starts the window at its whole hour, so it can include up to an hour
         more. truncated is true when more links matched. Hours that no longer
-        match where the map draws their nodes are left out (links.link_trust):
-        heard before a node moved, at a doubtful position, or before an
-        aircraft's flight. So are links that do not fit where the map draws
-        their nodes, by reported or else estimated position: last heard 250 km
-        apart or more on a pair the terrain check finds unlikely, drawn 250 km
-        apart or more with no distance when last heard,
-        over 150 km to an estimated node, or more than 25 km nearer or
-        farther apart than when last heard (links._fits_now).
+        match where the map draws their nodes are left out (links.TRUSTED_HOUR):
+        heard before a node moved, or at a doubtful position. So are links
+        that do not fit where the map draws their nodes, by reported or else
+        estimated position (links.map_misfit): last heard 250 km apart or more
+        on a pair the terrain check finds unlikely, drawn 250 km apart or more
+        with no distance when last heard, over 150 km to an estimated node, or
+        more than 25 km nearer or farther apart than when last heard.
         """
         query_start = time.perf_counter()
         start = _utc(since)
@@ -480,7 +478,7 @@ def create_app(
             since=start,
             limit=limit,
             default_preset=settings.default_preset,
-            trust=link_trust(connection, 0 if start is None else to_epoch_ms(start)),
+            trusted=True,
         )
         request.state.map_query_ms = (time.perf_counter() - query_start) * 1000
         return page
@@ -720,7 +718,7 @@ def create_app(
         """Signal survey coverage cells in the visible area, busiest first, at
         the level for the map's zoom (zoom + 6, from 8 to 17), with at most
         5,000 cells, from the measurements still true: none heard before its
-        node last moved or flew, and each either heard within
+        node last moved, and each either heard within
         SIGSLEUTH_RETENTION_DAYS or of a node seen since then, by MQTT or by
         a survey hearing its packets. since filters when the measurements were heard. With
         node, only the measurements where that node was the heard node,
@@ -816,8 +814,8 @@ def create_app(
 
     @app.get("/api/v1/diagnostics/doubtful-nodes", dependencies=[Admin])
     def doubtful_nodes_page(connection: Connection) -> DoubtfulNodeList:
-        """Nodes with a doubtful position, aircraft, and nodes in two or more
-        links the terrain check finds unlikely, with their long-link counts."""
+        """Nodes with a doubtful position, and nodes in two or more links the
+        terrain check finds unlikely, with their long-link counts."""
         return doubtful_node_list(connection)
 
     @app.get("/{requested_path:path}", include_in_schema=False)

@@ -19,9 +19,8 @@ CREATE TABLE derived_state (
 -- newer than last_sent_at.
 -- firmware_minimum is major * 10000 + minor * 100 + patch, proven by
 -- firmware_trait (firmware.TRAITS); it only moves up.
--- moved_at: last move over derive.MOVED_KM between node_position rows;
--- airborne_at: last packet heard in the air (derive._mark_airborne). Pages
--- hide link hours before them. The packet IDs may name deleted packets.
+-- moved_at: last move over derive.MOVED_KM between node_position rows; pages
+-- hide link hours before it. The packet IDs may name deleted packets.
 CREATE TABLE node_current (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
     last_sent_at INTEGER,
@@ -49,7 +48,6 @@ CREATE TABLE node_current (
     firmware_trait TEXT CHECK (firmware_trait IS NULL OR length(firmware_trait) <= 64),
     channel TEXT,
     channel_observed_at INTEGER,
-    airborne_at INTEGER,
     moved_at INTEGER,
     CHECK ((last_sent_at IS NULL) = (last_sent_packet_row_id IS NULL)),
     CHECK ((channel IS NULL) = (channel_observed_at IS NULL)),

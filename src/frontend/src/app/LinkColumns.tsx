@@ -1,7 +1,7 @@
 // The columns the Links page and a node page's links share.
 
 import type { LinkRow, NodeSummary } from "./api";
-import { type LinkSort, asymmetry, touches, weakerMargin } from "./linkRows";
+import { type LinkSort, asymmetry, weakerMargin } from "./linkRows";
 import {
   doubtedNames,
   formatKm,
@@ -9,7 +9,6 @@ import {
   tracerouteHopHref,
 } from "./nodeDisplay";
 import {
-  AirborneBadge,
   BothWays,
   DirectionSnr,
   DoubtfulBadge,
@@ -70,12 +69,10 @@ export function LinkCells({
   link,
   nodes,
   doubtful,
-  airborne,
 }: {
   link: LinkRow;
   nodes: ReadonlyMap<number, NodeSummary>;
   doubtful: ReadonlySet<number>;
-  airborne: ReadonlySet<number>;
 }) {
   const margin = weakerMargin(link);
   return (
@@ -84,16 +81,13 @@ export function LinkCells({
         {formatKm(link.distance_km)}
         <DoubtfulBadge
           suspects={
-            link.distance_km === null
-              ? []
-              : doubtedNames([link.node_a, link.node_b], doubtful, nodes)
+            link.doubts.includes("doubtful")
+              ? doubtedNames([link.node_a, link.node_b], doubtful, nodes)
+              : []
           }
-          unlikely={link.unlikely}
+          unlikely={link.doubts.includes("terrain")}
         />
-        {link.distance_km !== null && touches(link, airborne) ? (
-          <AirborneBadge />
-        ) : null}
-        {link.pending ? <PendingBadge /> : null}
+        {link.doubts.includes("pending") ? <PendingBadge /> : null}
         {link.distance_km !== null ? (
           <a
             className="los-link"

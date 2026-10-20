@@ -371,7 +371,7 @@ describe("minimapMarkers", () => {
           reply_packet_row_id: 7,
           reply_receptions: 2,
           distance_km: null,
-          distance_pending: false,
+          doubts: [],
           // The relay was farther south when the route was heard.
           positions: [
             {

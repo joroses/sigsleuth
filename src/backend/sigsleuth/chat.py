@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from sigsleuth.db import fold, from_epoch_ms, optional_text
-from sigsleuth.links import link_trust
+from sigsleuth.links import trusted_sql
 from sigsleuth.opt_out import SHOWN_PACKET, shown_sql
 from sigsleuth.radio import great_circle_km
 
@@ -45,7 +45,7 @@ class ChatMessage:
     is saved. farthest_km is how far from the sender the farthest reporting
     gateway is, between reported positions as they are now (estimates would
     measure their own guess). Like the map, it leaves out the
-    nodes whose position no longer matches the message (links.link_trust): a
+    nodes whose position no longer matches the message (links.trusted_sql): a
     gateway that moved since, or a doubtful one. None when the sender is left
     out or has no position, or every other gateway is or has none.
     """
@@ -183,39 +183,36 @@ def chat_messages(
 def _farthest_gateways(connection: sqlite3.Connection, rows: list[sqlite3.Row]) -> dict[int, float]:
     """Per message, the km from its placed sender to its farthest placed
     reporting gateway other than the sender itself, both trusted at the
-    message's time. Looking up where every gateway of 100 messages was when
-    heard would cost about a second, so this uses where they are now."""
-    if not rows:
-        return {}
-    trust = link_trust(connection, min(int(row["first_received_at"]) for row in rows))
-    sent_at = {int(row["id"]): int(row["first_received_at"]) for row in rows}
+    message's time (links.trusted_sql). Looking up where every gateway of 100
+    messages was when heard would cost about a second, so this uses where
+    they are now."""
     senders = {
-        int(row["id"]): (
-            int(row["sender_node_id"]),
-            row["sender_latitude"],
-            row["sender_longitude"],
-        )
+        int(row["id"]): (row["sender_latitude"], row["sender_longitude"])
         for row in rows
         if row["sender_latitude"] is not None
-        and trust.get(int(row["sender_node_id"]), 0) <= sent_at[int(row["id"])]
     }
     if not senders:
         return {}
     gateways = connection.execute(
-        """
-        SELECT r.packet_row_id, r.gateway_node_id, g.latitude, g.longitude
+        f"""
+        SELECT r.packet_row_id, g.latitude, g.longitude
         FROM reception AS r
+        JOIN packet AS t ON t.id = r.packet_row_id
         JOIN node_current AS g ON g.node_id = r.gateway_node_id
-        WHERE r.packet_row_id IN (SELECT value FROM json_each(?)) AND g.latitude IS NOT NULL
+        WHERE r.packet_row_id IN (SELECT value FROM json_each(:packets))
+          AND g.latitude IS NOT NULL AND r.gateway_node_id != t.sender_node_id
+          AND {trusted_sql("t.sender_node_id", "t.first_received_at")}
+          AND {trusted_sql("r.gateway_node_id", "t.first_received_at")}
         """,
-        (json.dumps(sorted(senders)),),
+        {
+            "packets": json.dumps(sorted(senders)),
+            "since": min(int(row["first_received_at"]) for row in rows),
+        },
     ).fetchall()
     farthest: dict[int, float] = {}
-    for packet_row_id, gateway, latitude, longitude in gateways:
-        sender, sender_latitude, sender_longitude = senders[packet_row_id]
-        if gateway != sender and trust.get(gateway, 0) <= sent_at[packet_row_id]:
-            km = great_circle_km(sender_latitude, sender_longitude, latitude, longitude)
-            farthest[packet_row_id] = max(km, farthest.get(packet_row_id, 0.0))
+    for packet_row_id, latitude, longitude in gateways:
+        km = great_circle_km(*senders[packet_row_id], latitude, longitude)
+        farthest[packet_row_id] = max(km, farthest.get(packet_row_id, 0.0))
     return farthest
 
 

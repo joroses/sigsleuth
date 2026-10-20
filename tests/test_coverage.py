@@ -701,20 +701,10 @@ def test_only_measurements_still_true_colour_cells(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     now = now_ms()
-    gone, surveyed, moved, flown, relayed = (
-        0x0D0D0D01,
-        0x0D0D0D02,
-        0x0D0D0D03,
-        0x0D0D0D04,
-        0x0D0D0D05,
-    )
+    gone, surveyed, moved, relayed = 0x0D0D0D01, 0x0D0D0D02, 0x0D0D0D03, 0x0D0D0D05
     node(connection, moved, PHONE[0])
-    node(connection, flown, PHONE[0])
     connection.execute(
         "UPDATE node_current SET moved_at = ? WHERE node_id = ?", (now - DAY_MS, moved)
-    )
-    connection.execute(
-        "UPDATE node_current SET airborne_at = ? WHERE node_id = ?", (now - DAY_MS, flown)
     )
     upload(
         client,
@@ -726,22 +716,21 @@ def test_only_measurements_still_true_colour_cells(
         direct(3, surveyed, heard_at_ms=now - DAY_MS),
         direct(9, relayed, heard_at_ms=now - 20 * DAY_MS),
         measurement(10, sender_node_id=relayed, heard_at_ms=now - DAY_MS),
-        # Heard before it moved or flew, and after.
+        # Heard before it moved, and after.
         direct(4, moved, heard_at_ms=now - 2 * DAY_MS),
         direct(5, moved, heard_at_ms=now - 60_000),
-        direct(6, flown, heard_at_ms=now - 2 * DAY_MS),
         # No heard node: recent counts, old does not.
         measurement(7, relay_byte=None, heard_at_ms=now - 20 * DAY_MS),
         measurement(8, relay_byte=None, heard_at_ms=now - 60_000),
     )
 
     assert cell_measurements(client) == 6
-    nodes = (gone, surveyed, moved, flown, relayed)
-    assert [cell_measurements(client, node=n) for n in nodes] == [0, 2, 1, 0, 1]
+    nodes = (gone, surveyed, moved, relayed)
+    assert [cell_measurements(client, node=n) for n in nodes] == [0, 2, 1, 1]
     extent = client.get("/api/v1/coverage/extent", params={"node": gone}).json()
     assert extent is None
     # Filtered when read, never deleted.
-    assert connection.execute("SELECT count(*) FROM coverage_measurement").fetchone()[0] == 10
+    assert connection.execute("SELECT count(*) FROM coverage_measurement").fetchone()[0] == 9
 
 
 def test_a_guessed_relay_keeps_its_measurements_while_it_is_alive(

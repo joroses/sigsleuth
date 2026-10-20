@@ -297,39 +297,6 @@ def test_long_hops_pull_a_node_less_than_nearby_links(path: Path) -> None:
     assert {Y1, Y2, Y3} in zones
 
 
-def test_a_hop_over_400_km_between_reported_positions_is_left_out(path: Path) -> None:
-    # Two groups 445 km apart joined by one busy hop, as an MQTT bridge makes them
-    # look; the map would draw it.
-    two_groups(path)
-    link(path, X1, Y1, observations=20, km=445.0)
-    for node_id in (X1, X2, X3):
-        node(path, node_id, 0.0)
-    for node_id in (Y1, Y2, Y3):
-        node(path, node_id, 4.0)
-
-    body = get_zones(path)
-
-    assert body["zone_pairs"] == []
-    assert key_relay(body, X1) is None
-
-
-def test_a_hop_the_terrain_check_finds_unlikely_is_left_out(path: Path) -> None:
-    # Two groups 267 km apart joined by one busy hop over low land.
-    two_groups(path)
-    link(path, X1, Y1, observations=20, km=266.9)
-    for node_id in (X1, X2, X3):
-        node(path, node_id, 0.0)
-    for node_id in (Y1, Y2, Y3):
-        node(path, node_id, 2.4)
-    with closing(open_current_database(path)) as connection, connection:
-        connection.execute("INSERT INTO long_link VALUES (?, ?, 266.9, 0.0, 50.0, 0, 1)", (X1, Y1))
-
-    body = get_zones(path)
-
-    assert body["zone_pairs"] == []
-    assert key_relay(body, X1) is None
-
-
 def test_a_zones_centre_is_drawn_to_where_its_members_crowd(path: Path) -> None:
     # Three members within 2 km of each other and four spread about 22 km
     # apart to the north; a plain median would land on the nearest spread one.

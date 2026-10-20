@@ -646,7 +646,7 @@ _HOW_ORDER: tuple[HeardHow, ...] = (
 
 # Whether a measurement is still true as far as SigSleuth can tell
 # (docs/coverage.md). With its heard node in node_current, it counts from the
-# node's last move or flight on, as links.link_trust (though a doubtful
+# node's last move on, as links.trusted_sql (though a doubtful
 # position does not make a reception wrong). Otherwise it counts while
 # recent (:alive_since, when node_current forgets a node), or while a survey
 # has heard a packet the node sent since then: a survey reception is a
@@ -655,7 +655,7 @@ _HOW_ORDER: tuple[HeardHow, ...] = (
 # index answers in one seek, where the heard index would read every relayed
 # measurement it was named for, for each measurement checked.
 _ALIVE_SQL = f""" AND coalesce(
-    (SELECT m.heard_at >= max(coalesce(n.moved_at, 0), coalesce(n.airborne_at + 1, 0))
+    (SELECT m.heard_at >= coalesce(n.moved_at, 0)
      FROM node_current AS n WHERE n.node_id = {_HEARD}),
     m.heard_at >= :alive_since OR EXISTS (
         SELECT 1 FROM coverage_measurement AS d

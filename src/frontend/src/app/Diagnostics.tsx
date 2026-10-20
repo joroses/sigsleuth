@@ -39,7 +39,6 @@ import {
 } from "./remember";
 import { ApiState, openedAt, useApi } from "./useApi";
 import {
-  AirborneBadge,
   Badge,
   DIAGNOSTICS_LINKED,
   DataItem,
@@ -459,7 +458,6 @@ const LINK_FILTERS: { value: LongLinkFilter | "all"; label: string }[] = [
   { value: "shorter", label: "Now shorter" },
   { value: "hidden", label: "Hidden" },
   { value: "position", label: "Doubtful position" },
-  { value: "airborne", label: "Aircraft" },
   { value: "unlikely", label: "Unlikely by terrain" },
   { value: "pending", label: "Pending" },
   { value: "checks", label: "With checks to review" },
@@ -760,7 +758,7 @@ const LOOKED = "diagnostics.longLinksLooked";
 const LONG_LINKS_VIEW = "diagnostics.longLinks";
 
 /**
- * Every doubtful node and aircraft, and the nodes the terrain check most
+ * Every doubtful node, and the nodes the terrain check most
  * often blames, with their long-link counts.
  */
 function DoubtfulNodesSection({
@@ -1096,19 +1094,6 @@ function EndRow({
           title={formatNodeId(node.node_id)}
         />{" "}
         {end.doubtful ? <DoubtfulBadge suspects={[endName(end)]} /> : null}
-        {end.airborne_at !== null ? <AirborneBadge /> : null}
-        {end.flight_packet_row_id !== null ? (
-          <>
-            {" "}
-            <a
-              className="text-button"
-              href={`#packets/${end.flight_packet_row_id}`}
-              title="The packet gateways hundreds of km apart heard directly at once"
-            >
-              Flight packet
-            </a>
-          </>
-        ) : null}
       </th>
       <td>
         {node.latitude === null || node.longitude === null ? (
@@ -1159,7 +1144,7 @@ function EndRow({
 
 /**
  * Why the Links page ranks a long link apart (LongLink.doubt), naming the end
- * to blame: the same doubtful and aircraft badges the pages show, with the
+ * to blame: the same doubtful badge the pages show, with the
  * reason and suspect written out.
  */
 function DoubtBadge({ link }: { link: LongLink }) {
@@ -1169,16 +1154,6 @@ function DoubtBadge({ link }: { link: LongLink }) {
     endName(ends.find((end) => end.node.node_id === nodeId)!),
   );
   const named = suspects.join(" and ");
-  if (doubt.reason === "airborne") {
-    return (
-      <Badge
-        tone="blue"
-        title="Gateways hundreds of km apart heard one of its packets directly at once. Its links are real radio, but measured from where it was on the ground."
-      >
-        ✈ aircraft: {named}
-      </Badge>
-    );
-  }
   if (doubt.reason === "position") {
     return (
       <Badge

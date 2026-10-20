@@ -1,16 +1,19 @@
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
+from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from meshtastic_fixtures import application_envelope, ingest
+from sigsleuth import db
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
+from sigsleuth.derive import _copy_all_reported
 from sigsleuth.positions import refresh_estimates
 
 HOUR = datetime(2026, 9, 27, 9, tzinfo=UTC)
@@ -251,7 +254,7 @@ def test_a_long_distance_is_pending_until_both_ends_report_again(path: Path) -> 
 
     def pending() -> dict[tuple[int, int], bool]:
         return {
-            (item["node_a"], item["node_b"]): item["pending"]
+            (item["node_a"], item["node_b"]): "pending" in item["doubts"]
             for item in links(path, "/api/v1/links")["items"]
         }
 
@@ -307,57 +310,6 @@ def test_the_map_leaves_out_unmeasured_long_links_but_the_link_table_keeps_them(
     assert in_table[(A, d)] is None
 
 
-def test_the_map_leaves_out_links_that_no_longer_fit_where_nodes_are_drawn(
-    path: Path,
-) -> None:
-    d, e = 0x0D0D0D0D, 0x0E0E0E0E
-    place(path, A, "NA", 40.0, 2.0)
-    # B was 2 km from A when heard, then travelled 111 km away in steps too
-    # short to count as a move. C is about where it was.
-    add_link_hour(path, 0, A, B, observations=2, snr=[-4.0], km=2.0)
-    place(path, B, "NB", 41.0, 2.0)
-    add_link_hour(path, 0, A, C, observations=2, snr=[-4.0], km=50.0)
-    place(path, C, "NC", 40.5, 2.0)
-    # D reports no position; E hears it directly, so it is estimated at E,
-    # 222 km from A.
-    add_link_hour(path, 0, A, d, observations=2, snr=[-4.0])
-    add_link_hour(path, 0, d, e, observations=2, snr=[-4.0], link_kind="direct")
-    place(path, e, "NE", 42.0, 2.0)
-    with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO node_current (node_id, last_seen_at) VALUES (?, ?)", (d, to_epoch_ms(HOUR))
-        )
-        refresh_estimates(connection)
-
-    on_map = {(item["node_a"], item["node_b"]) for item in links(path)["items"]}
-    in_table = {(item["node_a"], item["node_b"]) for item in links(path, "/api/v1/links")["items"]}
-
-    assert on_map == {(A, C)}
-    assert in_table == {(A, B), (A, C), (A, d)}
-
-
-def test_the_map_leaves_out_a_long_link_heard_before_an_end_had_a_position(
-    path: Path,
-) -> None:
-    d = 0x0D0D0D0D
-    place(path, A, "NA", 40.0, 2.0)
-    # B and C were heard before they reported a position, so their links have
-    # no km when heard: B is now drawn about 333 km away, C about 111 km.
-    # D, heard 889 km away over the sea, is measured, so the map draws it.
-    add_link_hour(path, 0, A, B, observations=2, snr=[-4.0])
-    add_link_hour(path, 0, A, C, observations=2, snr=[-4.0])
-    add_link_hour(path, 0, A, d, observations=2, snr=[-4.0], km=889.6)
-    place(path, B, "NB", 43.0, 2.0)
-    place(path, C, "NC", 41.0, 2.0)
-    place(path, d, "ND", 32.0, 2.0)
-
-    on_map = {(item["node_a"], item["node_b"]) for item in links(path)["items"]}
-    in_table = {(item["node_a"], item["node_b"]) for item in links(path, "/api/v1/links")["items"]}
-
-    assert on_map == {(A, C), (A, d)}
-    assert in_table == {(A, B), (A, C), (A, d)}
-
-
 def judged(path: Path, a: int, b: int, km: float, *, unlikely: bool) -> None:
     """The terrain check's verdict on a pair, as terrain.refresh_long_links
     keeps it for the pair's longest km."""
@@ -384,7 +336,7 @@ def test_the_map_leaves_out_an_unlikely_long_link_and_the_link_table_badges_it(
 
     on_map = {(item["node_a"], item["node_b"]) for item in links(path)["items"]}
     in_table = {
-        (item["node_a"], item["node_b"]): item["unlikely"]
+        (item["node_a"], item["node_b"]): "terrain" in item["doubts"]
         for item in links(path, "/api/v1/links")["items"]
     }
     longest = {
@@ -456,14 +408,12 @@ def test_a_node_heard_only_far_from_where_it_was_is_doubtful(path: Path) -> None
 
 
 def test_the_map_hides_link_hours_that_no_longer_match_where_nodes_are(path: Path) -> None:
-    moved, doubted, plane, far = B, C, 0x0D0D0D0D, 0x0E0E0E0E
-    for node_id, name in ((A, "NA"), (moved, "NB"), (doubted, "NC"), (plane, "ND"), (far, "NE")):
+    moved, doubted, far = B, C, 0x0E0E0E0E
+    for node_id, name in ((A, "NA"), (moved, "NB"), (doubted, "NC"), (far, "NE")):
         place(path, node_id, name, 40.0, 2.0)
-    # A heard B and D two hours ago, before B moved and before D flew, and
-    # again since.
+    # A heard B two hours ago, before B moved, and again since.
     for hours_ago in (2, 0):
         add_link_hour(path, hours_ago, moved, A, observations=1, snr=[1.0])
-        add_link_hour(path, hours_ago, plane, A, observations=1, snr=[1.0])
     add_link_hour(path, 0, doubted, A, observations=1, snr=[1.0])
     # C's only direct partner was 880 km from it when heard.
     add_link_hour(path, 0, doubted, far, observations=1, snr=[1.0], link_kind="direct", km=880.0)
@@ -471,19 +421,6 @@ def test_the_map_hides_link_hours_that_no_longer_match_where_nodes_are(path: Pat
     with closing(open_current_database(path)) as connection, connection:
         connection.execute(
             "UPDATE node_current SET moved_at = ? WHERE node_id = ?", (an_hour_ago, moved)
-        )
-        connection.execute(
-            "UPDATE node_current SET airborne_at = ? WHERE node_id = ?", (an_hour_ago, plane)
-        )
-        # The packet that showed D in the air.
-        connection.execute(
-            """
-            INSERT INTO packet (channel, sender_node_id, recipient_node_id, packet_id,
-                has_decoded_report, has_encrypted_report, first_received_at,
-                last_received_at, reception_count)
-            VALUES ('LongFast', ?1, 4294967295, 1, 1, 0, ?2, ?2, 0)
-            """,
-            (plane, an_hour_ago),
         )
     refresh(path)
 
@@ -494,11 +431,11 @@ def test_the_map_hides_link_hours_that_no_longer_match_where_nodes_are(path: Pat
             for item in body["items"]
         }
 
-    assert heard(links(path)) == {(A, moved): 1, (A, plane): 1}
+    assert heard(links(path)) == {(A, moved): 1}
     # The Links page keeps every hour, and badges what the map hides.
     table = links(path, "/api/v1/links")
-    assert heard(table) == {(A, moved): 2, (A, plane): 2, (A, doubted): 1}
-    assert (table["doubtful_node_ids"], table["airborne_node_ids"]) == ([doubted], [plane])
+    assert heard(table) == {(A, moved): 2, (A, doubted): 1}
+    assert table["doubtful_node_ids"] == [doubted]
     # Diagnostics names the ends the badge blames: C and E were each other's
     # only direct partner, 880 km apart, so both are doubted.
     doubts = {
@@ -545,33 +482,6 @@ def test_a_link_is_measured_where_its_nodes_were_when_heard(path: Path) -> None:
     assert link["distance_km"] == pytest.approx(11.1, abs=0.1)
 
 
-def test_a_packet_heard_directly_by_two_far_apart_pairs_of_gateways_was_in_the_air(
-    path: Path,
-) -> None:
-    plane, lone = 0x0D0D0D0D, 0x0E0E0E0E
-    madrid = [0x1000_0001, 0x1000_0002]
-    barcelona = [0x2000_0001, 0x2000_0002]
-    for gateway, (latitude, longitude) in zip(
-        madrid + barcelona, [(40.4, -3.7), (40.5, -3.6), (41.4, 2.2), (41.5, 2.1)], strict=True
-    ):
-        place(path, gateway, f"G{gateway & 0xF}", latitude, longitude)
-    for gateway in madrid + barcelona:
-        heard_directly(path, plane, gateway, packet_id=1)
-    # One gateway alone in Barcelona hearing a Madrid node is a misplaced
-    # gateway, not a plane.
-    place(path, 0x1000_0003, "G3", 40.45, -3.65)
-    for gateway in [*madrid, 0x1000_0003, barcelona[0]]:
-        heard_directly(path, lone, gateway, packet_id=2)
-
-    table = links(path, "/api/v1/links", link_kind="direct")
-
-    assert table["airborne_node_ids"] == [plane]
-    # Once retention deletes the packet, the flight is older than the history kept.
-    with closing(open_current_database(path)) as connection, connection:
-        connection.execute("DELETE FROM packet WHERE sender_node_id = ?", (plane,))
-    assert links(path, "/api/v1/links", link_kind="direct")["airborne_node_ids"] == []
-
-
 @pytest.mark.parametrize(
     "params", [{"since": "2026-09-27T07:30:00"}, {"link_kind": "rumour"}], ids=["naive", "kind"]
 )
@@ -580,3 +490,284 @@ def test_bad_parameters_are_rejected(path: Path, params: dict[str, str]) -> None
         response = client.get("/api/v1/map/links", params=params)
 
     assert response.status_code == 400
+
+
+# The trust rules, one scenario each: what every page makes of one A-B
+# traceroute link, heard twice at HOUR. Each page applies only its own rules:
+# the map and Zones hide, link pages badge and rank apart, Diagnostics
+# explains. A new rule adds a scenario here.
+G, X, Y, Z = 0x0E0E0E0E, 0x01010101, 0x02020202, 0x03030303
+REPORTED_AGAIN = HOUR + timedelta(minutes=30)
+
+
+def reported(path: Path, node_id: int, at: datetime, latitude: float, longitude: float) -> None:
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
+            (node_id, to_epoch_ms(at), latitude, longitude),
+        )
+
+
+def traced(path: Path, requester: int, target: int, request_id: int) -> None:
+    """target's reply to a traceroute from requester, heard by requester's own
+    gateway, with the hop to target heard at 5 dB."""
+    gateway = f"!{requester:08x}"
+    ingest(
+        path,
+        application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(route=[], snr_towards=[20]).SerializeToString(),
+            sender=target,
+            recipient=requester,
+            packet_id=request_id + 1,
+            request_id=request_id,
+            gateway_id=gateway,
+        ),
+        received_at=HOUR,
+        topic=f"msh/EU_868/2/e/LongFast/{gateway}",
+    )
+
+
+@dataclass(frozen=True)
+class Scenario:
+    """Where B was when heard (None: unplaced), and the positions it reports
+    after, ten minutes apart up to REPORTED_AGAIN, when A reports again too;
+    by default where it was heard. With pending, neither reports again.
+    unlikely is the pair's terrain verdict, None when not judged. G, heard
+    directly by B, is doubted_km away when heard (doubting both), or placed
+    at g_at."""
+
+    b_heard: tuple[float, float] | None = (50.0, 19.2)  # 300 km east of A
+    b_later: tuple[tuple[float, float], ...] | None = None
+    pending: bool = False
+    unlikely: bool | None = False
+    doubted_km: float | None = None
+    g_at: tuple[float, float] | None = None
+
+
+A_AT = (50.0, 15.0)
+SCENARIOS = {
+    "none": Scenario(),
+    "moved": Scenario(b_later=((50.5, 19.2),)),  # 56 km at once
+    "doubtful": Scenario(doubted_km=450.0),
+    "terrain": Scenario(unlikely=True),
+    "unmeasured": Scenario(b_heard=None, b_later=((50.0, 19.2),), unlikely=None),
+    # B is estimated where G is, 200 km from A.
+    "estimated far": Scenario(b_heard=None, b_later=(), g_at=(50.0, 17.8), unlikely=None),
+    # 34 km farther, in steps too short to count as a move.
+    "drifted": Scenario(b_later=((50.0, 19.45), (50.0, 19.7))),
+    "zones cap": Scenario(b_heard=(50.0, 21.3)),  # 450 km
+    "pending": Scenario(pending=True),
+}
+
+
+def build(path: Path, scenario: Scenario) -> None:
+    before = HOUR - timedelta(hours=1)
+    # Two control runs to rank against: X-Y measured 56 km, X-Z unplaced.
+    places = {A: A_AT, X: (48.0, 10.0), Y: (48.5, 10.0)}
+    for node_id, at in places.items():
+        reported(path, node_id, before, *at)
+        if not scenario.pending:
+            reported(path, node_id, REPORTED_AGAIN, *at)
+    if scenario.b_heard is not None:
+        reported(path, B, before, *scenario.b_heard)
+    later = scenario.b_later
+    if later is None:
+        later = () if scenario.pending or scenario.b_heard is None else (scenario.b_heard,)
+    for steps_left, at in enumerate(reversed(later)):
+        reported(path, B, REPORTED_AGAIN - timedelta(minutes=10 * steps_left), *at)
+    if scenario.g_at is not None:
+        reported(path, G, before, *scenario.g_at)
+    traced(path, A, B, 7)
+    traced(path, A, B, 10)
+    traced(path, X, Y, 20)
+    traced(path, X, Z, 22)
+    hour_start = to_epoch_ms(HOUR)
+    with closing(open_current_database(path)) as connection:
+        with connection:
+            if scenario.doubted_km is not None or scenario.g_at is not None:
+                connection.execute(
+                    "INSERT INTO node_current (node_id, last_seen_at) VALUES (?, ?)",
+                    (G, hour_start),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO link_hour
+                    VALUES ('direct', ?, ?, ?, 1, 1, 5.0, ?, 'LongFast', ?)
+                    """,
+                    (hour_start, B, G, hour_start, scenario.doubted_km),
+                )
+            _copy_all_reported(connection)
+            for node_id, name in ((A, "NA"), (B, "NB")):
+                connection.execute(
+                    "UPDATE node_current SET short_name = ? WHERE node_id = ?", (name, node_id)
+                )
+            if scenario.unlikely is not None:
+                connection.execute(
+                    """
+                    INSERT INTO long_link SELECT ?, ?, max(km), 0.0, 100.0, 0, ?
+                    FROM link_hour WHERE link_kind = 'traceroute'
+                    """,
+                    (A, B, scenario.unlikely),
+                )
+        refresh_estimates(connection)
+
+
+def what_pages_say(path: Path) -> dict[str, object]:
+    """What each page makes of the A-B link: whether the map and Zones draw
+    it, the Links page's and A's node page's badges, where the explorer's
+    distance sort ranks its runs, and Diagnostics' reading."""
+    with TestClient(create_app(Settings(path, default_preset="LongFast"))) as client:
+
+        def get(url: str, **params: object) -> dict[str, Any]:
+            response = client.get(url, params=params)
+            assert response.status_code == 200, response.text
+            body: dict[str, Any] = response.json()
+            return body
+
+        on_map = any(
+            (item["node_a"], item["node_b"]) == (A, B) for item in get("/api/v1/map/links")["items"]
+        )
+        # The only heard link (seen twice): X's are seen once.
+        in_zones = get("/api/v1/zones", window_hours=72)["link_count"] == 1
+
+        def badges(table: dict[str, Any]) -> set[str]:
+            [row] = [item for item in table["items"] if (item["node_a"], item["node_b"]) == (A, B)]
+            return set(row["doubts"])
+
+        links_badges = badges(get("/api/v1/links"))
+        assert badges(get(f"/api/v1/nodes/{A}/links")) == links_badges
+
+        runs = get("/api/v1/traceroutes", sort="distance")["items"]
+        targets = [run["target_node_id"] for run in runs]
+        explorer = {
+            (B, B, Y, Z): "measured",
+            (Y, B, B, Z): "apart",
+            (Y, Z, B, B): "unmeasured",
+        }[tuple(targets)]
+        # The explorer badges a run's distance as the Links page does its link.
+        for run in runs:
+            if run["target_node_id"] == B:
+                assert set(run["doubts"]) == links_badges
+
+        longest = [
+            item
+            for item in get("/api/v1/diagnostics/longest-links")["items"]
+            if (item["node_a"]["node"]["node_id"], item["node_b"]["node"]["node_id"]) == (A, B)
+        ]
+        diagnostics = None
+        if longest:
+            [link] = longest
+            [evidence] = link["evidence"]
+            diagnostics = (
+                evidence["map_hidden_because"],
+                link["doubt"],
+                link["pending"],
+                link["shown"],
+            )
+    return {
+        "map": on_map,
+        "zones": in_zones,
+        "links": links_badges,
+        "explorer": explorer,
+        "diagnostics": diagnostics,
+    }
+
+
+def because(words: str) -> object:
+    """A reason that says words."""
+
+    class Says(str):
+        def __eq__(self, other: object) -> bool:
+            return isinstance(other, str) and words in other
+
+        __hash__ = str.__hash__
+
+    return Says(words)
+
+
+EXPECTED: dict[str, dict[str, object]] = {
+    "none": {
+        "map": True,
+        "zones": True,
+        "links": set(),
+        "explorer": "measured",
+        "diagnostics": (None, None, False, "long"),
+    },
+    "moved": {
+        "map": False,
+        "zones": False,
+        "links": {"pending"},
+        "explorer": "apart",
+        "diagnostics": (because("before NB last moved"), None, True, "hidden"),
+    },
+    "doubtful": {
+        "map": False,
+        "zones": False,
+        "links": {"doubtful"},
+        "explorer": "apart",
+        "diagnostics": (
+            because("NB has a doubtful position"),
+            {"reason": "position", "suspects": [B]},
+            False,
+            "hidden",
+        ),
+    },
+    "terrain": {
+        "map": False,
+        "zones": False,
+        "links": {"terrain"},
+        "explorer": "apart",
+        "diagnostics": (
+            because("the terrain check finds that unlikely"),
+            {"reason": "terrain", "suspects": []},
+            False,
+            "hidden",
+        ),
+    },
+    "unmeasured": {
+        "map": False,
+        "zones": False,
+        "links": set(),
+        "explorer": "unmeasured",
+        "diagnostics": None,
+    },
+    "estimated far": {
+        "map": False,
+        "zones": False,
+        "links": set(),
+        "explorer": "unmeasured",
+        "diagnostics": None,
+    },
+    "drifted": {
+        "map": False,
+        "zones": False,
+        "links": set(),
+        "explorer": "measured",
+        "diagnostics": (because("apart when last heard"), None, False, "long"),
+    },
+    "zones cap": {
+        "map": True,
+        "zones": False,
+        "links": set(),
+        "explorer": "measured",
+        "diagnostics": (None, None, False, "long"),
+    },
+    "pending": {
+        "map": True,
+        "zones": True,
+        "links": {"pending"},
+        "explorer": "apart",
+        "diagnostics": (None, None, True, "long"),
+    },
+}
+
+
+@pytest.mark.parametrize("name", SCENARIOS)
+def test_every_page_applies_its_trust_rules_to_a_link(
+    path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(HOUR + timedelta(hours=1)))
+    build(path, SCENARIOS[name])
+
+    assert what_pages_say(path) == EXPECTED[name]

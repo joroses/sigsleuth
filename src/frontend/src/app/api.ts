@@ -258,7 +258,6 @@ export type LongLinkFilter =
   | "shorter"
   | "hidden"
   | "position"
-  | "airborne"
   | "unlikely"
   | "pending"
   | "checks";

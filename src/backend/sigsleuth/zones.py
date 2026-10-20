@@ -2,7 +2,7 @@
 and the relays everything depends on.
 
 Computed per request from the map's traceroute links (links.map_links with
-link_trust, so it hides what the map hides, opted-out nodes included); no
+trusted, so it hides what the map hides, opted-out nodes included); no
 table or cache of its own.
 Positions are reported, else estimated. One channel at a time: presets cannot
 hear each other, so each is a separate network.
@@ -59,7 +59,6 @@ from sigsleuth.links import (
     LinkDirection,
     MapLink,
     MapLinkList,
-    link_trust,
     map_links,
 )
 from sigsleuth.opt_out import shown_sql
@@ -441,7 +440,7 @@ def network_zones(
             limit=link_limit,
             default_preset=default_preset,
             channel=channel,
-            trust=link_trust(connection, since_ms),
+            trusted=True,
             max_km=ZONE_MAX_LINK_KM,
         )
     )

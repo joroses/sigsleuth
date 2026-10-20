@@ -28,10 +28,10 @@ from sigsleuth.db import (
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import (
     PENDING_KM,
-    airborne_nodes,
-    distance_confirmed,
+    Doubt,
+    confirmed_sql,
     doubtful_nodes,
-    position_reports,
+    link_doubts,
     unlikely_links,
 )
 from sigsleuth.opt_out import opted_out, shown_sql
@@ -185,8 +185,9 @@ class TracerouteRun:
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
     then; like every link page, it is never measured from where the nodes are
-    now (links.py). distance_pending says it is links.PENDING_KM or more and
-    not confirmed yet (links.distance_confirmed). positions are where the
+    now (links.py). doubts are why that distance is doubted
+    (links.link_doubts), the pair of its ends judged by terrain as a link
+    would be. positions are where the
     route's nodes and ends were when the shown route's packet was heard
     (reported.positions_when_heard); a node missing there is drawn where the
     page's nodes place it now, estimates included."""
@@ -201,7 +202,7 @@ class TracerouteRun:
     reply_packet_row_id: int | None
     reply_receptions: int | None
     distance_km: float | None
-    distance_pending: bool
+    doubts: tuple[Doubt, ...]
     route: TracerouteRoute
     positions: tuple[HeardPosition, ...]
 
@@ -209,14 +210,12 @@ class TracerouteRun:
 @dataclass(frozen=True)
 class TracerouteRuns:
     """matched_node_ids are the page's nodes that match the node searches;
-    doubtful_node_ids those with a doubtful position (links.doubtful_nodes)
-    and airborne_node_ids those in the air in the window (links.airborne_nodes)."""
+    doubtful_node_ids those with a doubtful position (links.doubtful_nodes)."""
 
     items: tuple[TracerouteRun, ...]
     nodes: tuple[NodeSummary, ...]
     matched_node_ids: tuple[int, ...]
     doubtful_node_ids: tuple[int, ...]
-    airborne_node_ids: tuple[int, ...]
     has_more: bool
 
 
@@ -246,14 +245,12 @@ def traceroute_runs(
     hops capture saved (traceroute_hop). min_hops and the route sort use the
     route shown. successful keeps the runs with a successful route (see
     reached_end) and shows only those routes; the distance sort always does,
-    since an unconfirmed run's ends need not have heard each other. Both km sorts put last the runs
-    a doubtful position or a node in the air would inflate
-    (links.doubtful_nodes, links.airborne_nodes): by distance, those with
-    such an end, just before the runs without one; by route, those with any
-    hop at such a node, on any of the run's routes, which is approximate.
-    Both also put there the runs with a hop between a pair the terrain check
-    finds unlikely (links.unlikely_links) on any of their routes, and the
-    distance sort the runs whose distance is pending (TracerouteRun)."""
+    since an unconfirmed run's ends need not have heard each other. The
+    distance sort puts the runs whose distance is doubted (TracerouteRun)
+    just before the runs without one. The route sort puts last the runs with
+    any hop at a doubtful position (links.doubtful_nodes) or between a pair
+    the terrain check finds unlikely (links.unlikely_links), on any of the
+    run's routes, which is approximate."""
     successful = successful or sort == "distance"
     since_id = _since_id(connection, since)
     # This fetch and Python grouping grow with the entire window, not the
@@ -261,13 +258,17 @@ def traceroute_runs(
     rows = connection.execute(
         f"""
         SELECT tr.*, t.first_received_at, t.channel, t.reception_count,
-               t.sender_node_id, t.recipient_node_id
+               t.sender_node_id, t.recipient_node_id,
+               CASE WHEN tr.ends_km >= :pending_km THEN
+                   {confirmed_sql("tr.requester_node_id", "t.first_received_at")}
+                   AND {confirmed_sql("tr.target_node_id", "t.first_received_at")}
+               END AS ends_confirmed
         FROM traceroute_packet AS tr JOIN packet AS t ON t.id = tr.packet_row_id
-        WHERE tr.packet_row_id >= ?
+        WHERE tr.packet_row_id >= :since
           AND {shown_sql("tr.requester_node_id")} AND {shown_sql("tr.target_node_id")}
         ORDER BY tr.packet_row_id
         """,
-        (since_id,),
+        {"since": since_id, "pending_km": PENDING_KM},
     ).fetchall()
     # Reused request IDs or broadcast replies can share a run, rarely; split
     # them only if they cause confusing rows in ordinary browsing.
@@ -345,28 +346,17 @@ def traceroute_runs(
 
     kept = [packets for packets in runs.values() if keep(packets)]
     doubtful = doubtful_nodes(connection)
-    airborne = airborne_nodes(connection, since)
-    suspect = doubtful | airborne
     unlikely = unlikely_links(connection)
-    reports: dict[int, tuple[int, int]] = {}
     if sort == "distance":
-        over_unlikely = _packets_over(connection, unlikely, since_id)
-        reports = position_reports(connection, {n for packets in kept for n in _ends(packets)})
 
         def apart(packets: list[sqlite3.Row]) -> float:
             if (heard := _ends_km(packets)) is None:
                 return -2.0
-            if (
-                not suspect.isdisjoint(_ends(packets))
-                or not over_unlikely.isdisjoint(packet["packet_row_id"] for packet in packets)
-                or _pending(packets, reports)
-            ):
-                return -1.0
-            return heard
+            return -1.0 if _doubts(packets, doubtful, unlikely) else heard
 
         kept.sort(key=lambda packets: (apart(packets), packets[0]["packet_row_id"]), reverse=True)
     elif sort == "route":
-        doubted = _packets_through(connection, suspect, since_id) | _packets_over(
+        doubted = _packets_through(connection, doubtful, since_id) | _packets_over(
             connection, unlikely, since_id
         )
         kept.sort(
@@ -380,8 +370,6 @@ def traceroute_runs(
     else:
         kept.reverse()  # runs is in order of each run's first packet
     page = kept[offset : offset + limit]
-    if sort != "distance":
-        reports = position_reports(connection, {n for packets in page for n in _ends(packets)})
     routes = []
     for packets in page:
         if any_route(packets):
@@ -429,7 +417,7 @@ def traceroute_runs(
             _run(
                 packets,
                 route,
-                _pending(packets, reports),
+                _doubts(packets, doubtful, unlikely),
                 default_preset,
                 tuple(
                     heard[node_id, heard_at[route.packet_row_id]]
@@ -442,7 +430,6 @@ def traceroute_runs(
         nodes=tuple(nodes.values()),
         matched_node_ids=tuple(sorted(node_ids & (first or set()) | node_ids & (second or set()))),
         doubtful_node_ids=tuple(sorted(node_ids & doubtful)),
-        airborne_node_ids=tuple(sorted(node_ids & airborne)),
         has_more=len(kept) > offset + limit,
     )
 
@@ -468,14 +455,19 @@ def _ends_km(packets: list[sqlite3.Row]) -> float | None:
     return None if heard is None else float(heard["ends_km"])
 
 
-def _pending(packets: list[sqlite3.Row], reports: dict[int, tuple[int, int]]) -> bool:
-    """Whether the run's distance is pending (TracerouteRun), from
-    links.position_reports of its ends."""
+def _doubts(
+    packets: list[sqlite3.Row], doubtful: set[int], unlikely: set[tuple[int, int]]
+) -> tuple[Doubt, ...]:
+    """Why the run's distance is doubted (TracerouteRun)."""
     heard = _ends_heard(packets)
-    return (
-        heard is not None
-        and heard["ends_km"] >= PENDING_KM
-        and not distance_confirmed(reports, _ends(packets), heard["first_received_at"])
+    if heard is None:
+        return ()
+    a, b = sorted(_ends(packets))
+    return link_doubts(
+        a in doubtful or b in doubtful,
+        heard["ends_km"],
+        (a, b) in unlikely,
+        bool(heard["ends_confirmed"]),
     )
 
 
@@ -677,7 +669,7 @@ def _shown(packets: list[sqlite3.Row]) -> tuple[sqlite3.Row, str]:
 def _run(
     packets: list[sqlite3.Row],
     route: TracerouteRoute,
-    distance_pending: bool,
+    doubts: tuple[Doubt, ...],
     default_preset: str,
     positions: tuple[HeardPosition, ...],
 ) -> TracerouteRun:
@@ -695,7 +687,7 @@ def _run(
         reply_packet_row_id=None if reply is None else int(reply["packet_row_id"]),
         reply_receptions=None if reply is None else int(reply["reception_count"]),
         distance_km=_ends_km(packets),
-        distance_pending=distance_pending,
+        doubts=doubts,
         route=route,
         positions=positions,
     )

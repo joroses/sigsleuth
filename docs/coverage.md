@@ -25,7 +25,7 @@ Clicking a square draws lines from its centre to where each heard node is now: s
 
 A measurement counts unless it is proven stale, and only while its node is known to be alive or the measurement is recent:
 
-- **Node seen by MQTT** in the last `SIGSLEUTH_RETENTION_DAYS` (14): counts if heard after the node's last move over 25 km and its last flight.
+- **Node seen by MQTT** in the last `SIGSLEUTH_RETENTION_DAYS` (14): counts if heard after the node's last move over 25 km.
 - **Otherwise** (MQTT has not seen it in 14 days, or the heard node is unknown): counts if under 14 days old, or if a survey heard the node send a packet, directly or relayed, in the last 14 days.
 
 Not being seen by MQTT does not mean a node is gone: surveys matter most where no gateway listens. A doubtful position does not hide a node's measurements, since a wrong position does not make a reception wrong. Measurements that do not count are hidden, not deleted.

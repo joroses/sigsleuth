@@ -249,20 +249,6 @@ def heard_only_far_away(path: Path, node_id: int) -> None:
         refresh_estimates(connection)
 
 
-def test_the_distance_sort_puts_runs_to_a_doubtful_position_after_measured_ones(path: Path) -> None:
-    place(path, A, 40.0, 2.0)
-    place(path, B, 41.0, 2.0)
-    place(path, OTHER, 40.5, 2.0)
-    four_runs(path)
-    heard_only_far_away(path, B)
-
-    body = get(path, "/api/v1/traceroutes", sort="distance")
-
-    # They come after the measured runs, before those with an unplaced end.
-    assert [run["target_node_id"] for run in body["items"]] == [OTHER, B, R2]
-    assert body["doubtful_node_ids"] == [B]
-
-
 def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Path) -> None:
     place(path, A, 40.0, 2.0)
     place(path, B, 41.0, 2.0)
@@ -272,7 +258,7 @@ def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Pat
 
     def order() -> list[tuple[int, bool]]:
         runs = get(path, "/api/v1/traceroutes", sort="distance")["items"]
-        return [(run["target_node_id"], run["distance_pending"]) for run in runs]
+        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
 
     # B has not reported a position since its 111 km run; OTHER's 56 km is
     # too short to wait for.

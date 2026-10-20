@@ -319,14 +319,13 @@ export interface paths {
      *     own list of nodes it heard with no relay); kinds are never combined.
      *     since starts the window at its whole hour, so it can include up to an hour
      *     more. truncated is true when more links matched. Hours that no longer
-     *     match where the map draws their nodes are left out (links.link_trust):
-     *     heard before a node moved, at a doubtful position, or before an
-     *     aircraft's flight. So are links that do not fit where the map draws
-     *     their nodes, by reported or else estimated position: last heard 250 km
-     *     apart or more on a pair the terrain check finds unlikely, drawn 250 km
-     *     apart or more with no distance when last heard,
-     *     over 150 km to an estimated node, or more than 25 km nearer or
-     *     farther apart than when last heard (links._fits_now).
+     *     match where the map draws their nodes are left out (links.TRUSTED_HOUR):
+     *     heard before a node moved, or at a doubtful position. So are links
+     *     that do not fit where the map draws their nodes, by reported or else
+     *     estimated position (links.map_misfit): last heard 250 km apart or more
+     *     on a pair the terrain check finds unlikely, drawn 250 km apart or more
+     *     with no distance when last heard, over 150 km to an estimated node, or
+     *     more than 25 km nearer or farther apart than when last heard.
      */
     get: operations["map_link_page_api_v1_map_links_get"];
     put?: never;
@@ -627,7 +626,7 @@ export interface paths {
      * @description Signal survey coverage cells in the visible area, busiest first, at
      *     the level for the map's zoom (zoom + 6, from 8 to 17), with at most
      *     5,000 cells, from the measurements still true: none heard before its
-     *     node last moved or flew, and each either heard within
+     *     node last moved, and each either heard within
      *     SIGSLEUTH_RETENTION_DAYS or of a node seen since then, by MQTT or by
      *     a survey hearing its packets. since filters when the measurements were heard. With
      *     node, only the measurements where that node was the heard node,
@@ -740,8 +739,8 @@ export interface paths {
     };
     /**
      * Doubtful Nodes Page
-     * @description Nodes with a doubtful position, aircraft, and nodes in two or more
-     *     links the terrain check finds unlikely, with their long-link counts.
+     * @description Nodes with a doubtful position, and nodes in two or more links the
+     *     terrain check finds unlikely, with their long-link counts.
      */
     get: operations["doubtful_nodes_page_api_v1_diagnostics_doubtful_nodes_get"];
     put?: never;
@@ -823,7 +822,7 @@ export interface components {
      *     is saved. farthest_km is how far from the sender the farthest reporting
      *     gateway is, between reported positions as they are now (estimates would
      *     measure their own guess). Like the map, it leaves out the
-     *     nodes whose position no longer matches the message (links.link_trust): a
+     *     nodes whose position no longer matches the message (links.trusted_sql): a
      *     gateway that moved since, or a doubtful one. None when the sender is left
      *     out or has no position, or every other gateway is or has none.
      */
@@ -1065,11 +1064,10 @@ export interface components {
     /**
      * DoubtfulNode
      * @description A node to look at when reviewing long links: one with a doubtful
-     *     position (node_doubtful), one whose flight packet is kept (FLIGHT_PACKET), or one
-     *     in at least two pairs the terrain check finds unlikely, which is how
-     *     LongLinkDoubt guesses whom to blame. long_links counts its pairs heard
-     *     links.LONG_LINK_KM or more apart (long_link), unlikely_links those found
-     *     unlikely.
+     *     position (node_doubtful), or one in at least two pairs the terrain check
+     *     finds unlikely, which is how LongLinkDoubt guesses whom to blame.
+     *     long_links counts its pairs heard links.LONG_LINK_KM or more apart
+     *     (long_link), unlikely_links those found unlikely.
      */
     DoubtfulNode: {
       end: components["schemas"]["LongLinkEnd"];
@@ -1258,11 +1256,9 @@ export interface components {
      * LinkRow
      * @description A map link with the great-circle distance between its nodes' reported
      *     positions when the link was last heard in the window (last_seen_at),
-     *     None when either had none then. unlikely says that distance is
-     *     LONG_LINK_KM or more on a pair the terrain check finds unlikely
-     *     (unlikely_links), and pending that it is PENDING_KM or more with no
-     *     confirmed hour that long in the window (CONFIRMED_HOUR): by distance
-     *     either ranks apart, like a link with a doubtful or airborne end.
+     *     None when either had none then, and why that distance is doubted
+     *     (link_doubts): by distance a doubted link ranks apart. It is confirmed
+     *     when any hour PENDING_KM or more in the window is.
      */
     LinkRow: {
       node_a: number;
@@ -1276,22 +1272,17 @@ export interface components {
       /** @enum {string} */
       link_kind: "traceroute" | "direct" | "neighbor";
       distance_km: number | null;
-      unlikely: boolean;
-      pending: boolean;
+      doubts: ("doubtful" | "terrain" | "pending")[];
     };
     /**
      * LinkTable
      * @description doubtful_node_ids are the table's nodes with a doubtful position
-     *     (doubtful_nodes) and airborne_node_ids those that were in the air in
-     *     the window (airborne_nodes); by distance, a link with either, or an
-     *     unlikely one (LinkRow.unlikely), ranks apart from the measured links (see
-     *     the module docstring).
+     *     (doubtful_nodes), the suspects of a link doubted for one.
      */
     LinkTable: {
       items: components["schemas"]["LinkRow"][];
       nodes: components["schemas"]["NodeSummary"][];
       doubtful_node_ids: number[];
-      airborne_node_ids: number[];
       truncated: boolean;
     };
     /**
@@ -1353,17 +1344,16 @@ export interface components {
     /**
      * LongLinkDoubt
      * @description Why the Links page badges a long link and ranks it apart: 'position'
-     *     when an end has a doubtful position, 'airborne' when an end was in the
-     *     air, 'terrain' when its newest km is LONG_LINK_KM or more on a pair the
-     *     terrain check finds unlikely, in that order. suspects are the ends to
-     *     blame: the doubtful or airborne ones. The terrain check judges the pair,
+     *     when an end has a doubtful position, else 'terrain' when its newest km is
+     *     LONG_LINK_KM or more on a pair the terrain check finds unlikely. suspects
+     *     are the ends to blame: the doubtful ones. The terrain check judges the pair,
      *     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
      *     when that is at least two, since one wrong position makes many; none when
      *     the ends are in as many.
      */
     LongLinkDoubt: {
       /** @enum {string} */
-      reason: "position" | "airborne" | "terrain";
+      reason: "position" | "terrain";
       suspects: number[];
     };
     /**
@@ -1373,10 +1363,7 @@ export interface components {
      *     altitude_meters 0 is how a manually set position says "not set".
      *     position_from_map_report marks a position from a map report, which may be
      *     rounded on purpose, rather than the node's own packet. moved_at is
-     *     node_current's. airborne_at is too, and flight_packet_row_id the packet
-     *     that showed it (links.FLIGHT_PACKET); both are None once that packet is
-     *     gone, and the packet alone when pages do not show it (opt_out.py).
-     *     doubtful is node_doubtful's flag.
+     *     node_current's, doubtful node_doubtful's flag.
      *     direct_partners counts the placed nodes it had direct receptions with over
      *     the last positions.ESTIMATE_DAYS of links, each at its shortest distance
      *     when heard; nearest_partner_km and median_partner_km are over those.
@@ -1389,8 +1376,6 @@ export interface components {
       position_observed_at: string | null;
       position_from_map_report: boolean;
       moved_at: string | null;
-      airborne_at: string | null;
-      flight_packet_row_id: number | null;
       doubtful: boolean;
       direct_partners: number;
       nearest_partner_km: number | null;
@@ -2066,8 +2051,9 @@ export interface components {
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
      *     then; like every link page, it is never measured from where the nodes are
-     *     now (links.py). distance_pending says it is links.PENDING_KM or more and
-     *     not confirmed yet (links.distance_confirmed). positions are where the
+     *     now (links.py). doubts are why that distance is doubted
+     *     (links.link_doubts), the pair of its ends judged by terrain as a link
+     *     would be. positions are where the
      *     route's nodes and ends were when the shown route's packet was heard
      *     (reported.positions_when_heard); a node missing there is drawn where the
      *     page's nodes place it now, estimates included.
@@ -2084,22 +2070,20 @@ export interface components {
       reply_packet_row_id: number | null;
       reply_receptions: number | null;
       distance_km: number | null;
-      distance_pending: boolean;
+      doubts: ("doubtful" | "terrain" | "pending")[];
       route: components["schemas"]["TracerouteRoute"];
       positions: components["schemas"]["HeardPosition"][];
     };
     /**
      * TracerouteRuns
      * @description matched_node_ids are the page's nodes that match the node searches;
-     *     doubtful_node_ids those with a doubtful position (links.doubtful_nodes)
-     *     and airborne_node_ids those in the air in the window (links.airborne_nodes).
+     *     doubtful_node_ids those with a doubtful position (links.doubtful_nodes).
      */
     TracerouteRuns: {
       items: components["schemas"]["TracerouteRun"][];
       nodes: components["schemas"]["NodeSummary"][];
       matched_node_ids: number[];
       doubtful_node_ids: number[];
-      airborne_node_ids: number[];
       has_more: boolean;
     };
     /** Upload */
@@ -3301,7 +3285,6 @@ export interface operations {
               | "shorter"
               | "hidden"
               | "position"
-              | "airborne"
               | "unlikely"
               | "pending"
               | "checks"

@@ -12,7 +12,7 @@ own links measures the estimate.
 refresh_estimates refills node_estimate and node_doubtful from a fixed window
 (ESTIMATE_DAYS), so a node gets the same flags on every page. A doubtful
 position is never replaced: guessing which positions are wrong moved correct
-mountain sites. Pages hide or badge its links instead (links.link_trust).
+mountain sites. Pages hide or badge its links instead (links.trusted_sql).
 """
 
 import json
@@ -28,7 +28,7 @@ from typing import Literal
 from sigsleuth.db import now_ms, to_epoch_ms, transaction
 from sigsleuth.decode import UNKNOWN_NODE
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.links import LONG_LINK_KM, TRUSTED_LINK_HOURS, link_trust, trust_json
+from sigsleuth.links import LONG_LINK_KM, TRUSTED_HOUR, limited_nodes, trusted_sql
 from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
 from sigsleuth.reported import HeardPosition, positions_when_heard
@@ -226,12 +226,12 @@ def own_reach(
     connection: sqlite3.Connection, node_ids: Collection[int], *, from_km: float = 0
 ) -> dict[int, float]:
     """Each node's reach: its longest direct or neighbour link it transmitted
-    on that the map trusts (links.link_trust), over the history kept, in km.
+    on that the map trusts (links.trusted_sql), over the history kept, in km.
     Nodes with no such link from from_km up are left out: a caller that
     floors reach at from_km needs no shorter one, and reads far fewer rows."""
-    trust = link_trust(connection, 0)
+    limited = limited_nodes(connection, 0)
     # Each pair's longest from the index alone, then the hours of the pairs
-    # with an end that link_trust limits, which need last_seen_at from the
+    # with an end trusted_sql looks up, which need last_seen_at from the
     # table: reading it for every hour took 15 times as long (2026-10-18,
     # live copy).
     longest = connection.execute(
@@ -247,10 +247,10 @@ def own_reach(
         """,
         {"nodes": json.dumps(sorted(node_ids)), "from_km": from_km, "long": LONG_LINK_KM},
     ).fetchall()
-    limited = [[a, b] for a, b, _ in longest if a in trust or b in trust]
+    limited_pairs = [[a, b] for a, b, _ in longest if a in limited or b in limited]
     hours = connection.execute(
-        """
-        SELECT l.from_node_id, l.to_node_id, l.km, l.last_seen_at
+        f"""
+        SELECT l.from_node_id, l.km
         FROM json_each(:pairs) AS p
         JOIN link_hour AS l INDEXED BY link_hour_pair
           ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
@@ -259,14 +259,13 @@ def own_reach(
               SELECT 1 FROM long_link
               WHERE node_a = min(l.from_node_id, l.to_node_id)
                 AND node_b = max(l.from_node_id, l.to_node_id) AND unlikely))
+          AND {trusted_sql("l.from_node_id", "l.last_seen_at")}
+          AND {trusted_sql("l.to_node_id", "l.last_seen_at")}
         """,
-        {"pairs": json.dumps(limited), "from_km": from_km, "long": LONG_LINK_KM},
+        {"pairs": json.dumps(limited_pairs), "from_km": from_km, "long": LONG_LINK_KM, "since": 0},
     ).fetchall()
-    found = [(a, km) for a, b, km in longest if a not in trust and b not in trust] + [
-        (a, km)
-        for a, b, km, last_seen_at in hours
-        if last_seen_at >= trust.get(a, last_seen_at) and last_seen_at >= trust.get(b, last_seen_at)
-    ]
+    found = [(a, km) for a, b, km in longest if a not in limited and b not in limited]
+    found += [(a, km) for a, km in hours]
     reach: dict[int, float] = {}
     for node, km in found:
         reach[int(node)] = max(reach.get(int(node), 0.0), float(km))
@@ -275,7 +274,7 @@ def own_reach(
 
 def _estimates(connection: sqlite3.Connection, since_ms: int) -> list[EstimatedPosition]:
     """Estimates for the linked nodes with no reported position, from the
-    link hours since since_ms that the map trusts (links.link_trust)."""
+    link hours since since_ms that the map trusts (links.TRUSTED_HOUR)."""
     reported = {
         int(row[0]): (float(row[1]), float(row[2]))
         for row in connection.execute(
@@ -291,13 +290,12 @@ def _estimates(connection: sqlite3.Connection, since_ms: int) -> list[EstimatedP
         WHERE link_kind IN ('direct', 'neighbor', 'traceroute') AND hour_start >= :since
           AND from_node_id NOT IN (0, :unknown)
           AND to_node_id NOT IN (0, :unknown) AND from_node_id != to_node_id
-          AND {TRUSTED_LINK_HOURS}
+          AND {TRUSTED_HOUR}
         GROUP BY 1, 2, 3
         """,
         {
             "since": since_ms,
             "unknown": UNKNOWN_NODE,
-            "trust": trust_json(link_trust(connection, since_ms)),
         },
     ):
         for node, other in ((a, b), (b, a)):

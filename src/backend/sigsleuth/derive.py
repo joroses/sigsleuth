@@ -59,13 +59,6 @@ from sigsleuth.traceroute import (
 LOGGER = logging.getLogger(__name__)
 HOUR_MS = 60 * 60 * 1_000
 BROADCAST_NODE_ID = 0xFFFFFFFF
-# A packet heard directly by two pairs of gateways, each pair within
-# AIRBORNE_PAIR_KM, with the pairs over AIRBORNE_APART_KM apart came from a node
-# in the air (_mark_airborne): ground radio never spreads that wide, a plane
-# did. Two gateways per side keep one misplaced gateway from
-# faking it.
-AIRBORNE_APART_KM = 300
-AIRBORNE_PAIR_KM = 150
 # A node whose valid position is farther than this from its previous one
 # moved (node_current.moved_at).
 MOVED_KM = 25
@@ -357,20 +350,13 @@ _READ_PORTS = (
     portnums_pb2.PortNum.NEIGHBORINFO_APP,
     *TRAIT_PORTS,
 )
-# A reception that may show its sender in the air (_mark_airborne).
-_ZERO_HOP = f"""
-    r.hop_start = r.hop_limit AND r.gateway_node_id <> t.sender_node_id
-    AND (r.relay_byte IS NULL OR r.relay_byte = {relay_byte_sql("t.sender_node_id")})
-    AND (r.rx_snr IS NOT NULL OR r.rx_rssi IS NOT NULL)
-"""
 
 
 def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> None:
     """Derive one rederive batch: its packets' positions into the position
     history (after the upgrade that made it a fact it held only the latest),
     totals and marks in SQL (_BATCH_SQL), then in Python, row by row in
-    capture's order, the payloads that need reading, traceroute routes and
-    the packets that may have been in the air."""
+    capture's order, the payloads that need reading and traceroute routes."""
     _derive_rows(
         connection,
         [
@@ -419,20 +405,6 @@ def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> Non
         ranges,
     ).fetchall():
         steps.append(partial(_derive_route, connection, row, placed))
-    # Packets with a zero-hop reception in this batch and four in all.
-    for row in connection.execute(
-        f"""
-        SELECT {_PACKET_COLUMNS} FROM packet AS t
-        WHERE t.id IN (
-            SELECT r.packet_row_id FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
-            WHERE r.id > :receptions_after AND r.id <= :last_reception AND {_ZERO_HOP}
-        ) AND (
-            SELECT count(*) FROM reception AS r WHERE r.packet_row_id = t.id AND {_ZERO_HOP}
-        ) >= 4
-        """,
-        ranges,
-    ).fetchall():
-        steps.append(partial(_mark_airborne, connection, row))
     _derive_rows(connection, steps)
 
 
@@ -730,68 +702,7 @@ def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     if is_direct_reception(sender_node_id, gateway_node_id, SavedHeader.of(row)):
         raise_firmware(connection, sender_node_id, "relay_byte")
         _count_link(connection, "direct", row, Hop(sender_node_id, gateway_node_id, row["rx_snr"]))
-    if (
-        row["hop_start"] is not None
-        and row["hop_limit"] == row["hop_start"]
-        and gateway_node_id != sender_node_id
-        and row["relay_byte"] in (None, relay_byte_of(sender_node_id))
-        and (row["rx_snr"] is not None or row["rx_rssi"] is not None)
-    ):
-        _mark_airborne(connection, row)
     _derive_route(connection, row, {})
-
-
-def _mark_airborne(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
-    """Set the sender's airborne_at when the gateways that heard this packet
-    with no hops used include two pairs, each within AIRBORNE_PAIR_KM, that are
-    over AIRBORNE_APART_KM apart. Unlike a direct link, a report without a
-    relay byte counts, as long as no hop was used and a signal was measured:
-    some uploads keep no relay byte on traceroutes. Gateways are placed where
-    they were when the packet was heard."""
-    sender_node_id = int(row["sender_node_id"])
-    heard_at = int(row["first_received_at"])
-    gateways = [
-        int(found[0])
-        for found in connection.execute(
-            """
-            SELECT gateway_node_id FROM reception
-            WHERE packet_row_id = ? AND hop_start = hop_limit
-              AND gateway_node_id <> ? AND (relay_byte IS NULL OR relay_byte = ?)
-              AND (rx_snr IS NOT NULL OR rx_rssi IS NOT NULL)
-            """,
-            (row["packet_row_id"], sender_node_id, relay_byte_of(sender_node_id)),
-        )
-    ]
-    if len(gateways) < 4:
-        return
-    places = [
-        (found.latitude, found.longitude)
-        for found in positions_when_heard(
-            connection, {(gateway, heard_at) for gateway in gateways}
-        ).values()
-    ]
-    if len(places) < 4:
-        return
-    paired = [
-        place
-        for place in places
-        if any(
-            other is not place and great_circle_km(*place, *other) <= AIRBORNE_PAIR_KM
-            for other in places
-        )
-    ]
-    if any(
-        great_circle_km(*a, *b) > AIRBORNE_APART_KM
-        for index, a in enumerate(paired)
-        for b in paired[index + 1 :]
-    ):
-        connection.execute(
-            """
-            UPDATE node_current SET airborne_at = ?1
-            WHERE node_id = ?2 AND (airborne_at IS NULL OR airborne_at < ?1)
-            """,
-            (int(row["first_received_at"]), sender_node_id),
-        )
 
 
 # Where nodes were when heard, by (node, time), within one transaction;

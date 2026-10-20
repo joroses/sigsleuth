@@ -52,10 +52,6 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
     () => new Set(data?.doubtful_node_ids ?? []),
     [data],
   );
-  const airborne = useMemo(
-    () => new Set(data?.airborne_node_ids ?? []),
-    [data],
-  );
   const links = useMemo(
     () => (data?.items ?? []).map((link) => fromNode(link, nodeId)),
     [data, nodeId],
@@ -89,10 +85,8 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
       ),
       sort,
       ascending,
-      doubtful,
-      airborne,
     );
-  }, [links, searchIndex, search, kind, sort, ascending, doubtful, airborne]);
+  }, [links, searchIndex, search, kind, sort, ascending]);
 
   return (
     <>
@@ -179,7 +173,6 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
                           link={link}
                           nodes={nodes}
                           doubtful={doubtful}
-                          airborne={airborne}
                         />
                         <td className="expand-cell">
                           <IconButton

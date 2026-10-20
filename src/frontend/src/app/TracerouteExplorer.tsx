@@ -31,7 +31,6 @@ import { RouteHopList, RouteItem } from "./RouteItem";
 import { useSetting, useViewState } from "./remember";
 import { useApi } from "./useApi";
 import {
-  AirborneBadge,
   DoubtfulBadge,
   ErrorPanel,
   IconButton,
@@ -134,10 +133,6 @@ export function TracerouteExplorer({
   const matched = useMemo(() => new Set(data?.matched_node_ids ?? []), [data]);
   const doubtful = useMemo(
     () => new Set(data?.doubtful_node_ids ?? []),
-    [data],
-  );
-  const airborne = useMemo(
-    () => new Set(data?.airborne_node_ids ?? []),
     [data],
   );
   // Any change of filter starts again at the first page. Only a choice made
@@ -279,7 +274,6 @@ export function TracerouteExplorer({
               searchNote={searchNote}
               matched={matched}
               doubtful={doubtful}
-              airborne={airborne}
               firstNumber={filters.offset + 1}
               nodes={nodes}
               onNode={filterNode}
@@ -416,7 +410,6 @@ function RunTable({
   searchNote,
   matched,
   doubtful,
-  airborne,
   firstNumber,
   nodes,
   onNode,
@@ -430,8 +423,6 @@ function RunTable({
   matched: ReadonlySet<number>;
   /** Nodes with a doubtful position, whose km get a badge. */
   doubtful: ReadonlySet<number>;
-  /** Nodes heard in the air, whose km get a badge. */
-  airborne: ReadonlySet<number>;
   /** The number shown on the first run, counting from the first page. */
   firstNumber: number;
   nodes: NodeMap;
@@ -570,10 +561,6 @@ function RunTable({
                     }
                     unlikely={run.route.unlikely}
                   />
-                  {run.route.km !== null &&
-                  measured.some((nodeId) => airborne.has(nodeId)) ? (
-                    <AirborneBadge />
-                  ) : null}
                   <span className="heading-note">
                     {run.route.reached ? "reached" : "not confirmed"}
                   </span>
@@ -583,21 +570,17 @@ function RunTable({
                   <span className="cell-badges">
                     <DoubtfulBadge
                       suspects={
-                        run.distance_km === null
-                          ? []
-                          : doubtedNames(
+                        run.doubts.includes("doubtful")
+                          ? doubtedNames(
                               [run.requester_node_id, run.target_node_id],
                               doubtful,
                               nodes,
                             )
+                          : []
                       }
+                      unlikely={run.doubts.includes("terrain")}
                     />
-                    {run.distance_km !== null &&
-                    (airborne.has(run.requester_node_id) ||
-                      airborne.has(run.target_node_id)) ? (
-                      <AirborneBadge />
-                    ) : null}
-                    {run.distance_pending ? <PendingBadge /> : null}
+                    {run.doubts.includes("pending") ? <PendingBadge /> : null}
                   </span>
                 </td>
                 <td>

@@ -14,8 +14,7 @@ function link(nodeB: number, seen: number, km: number | null): LinkRow {
     b_to_a: { observations: 1, snr_samples: 1, average_snr: -3 },
     link_kind: "direct",
     distance_km: km,
-    unlikely: false,
-    pending: false,
+    doubts: [],
   };
 }
 
@@ -34,10 +33,9 @@ describe("a node page's links", () => {
 
   it("rank a link to a node with no position by how often it was heard", () => {
     const links = [link(2, 3, 12.5), link(3, 40, null), link(4, 9, 80)];
-    const none = new Set<number>();
 
-    const byObservations = sortLinks(links, "observations", false, none, none);
-    const byDistance = sortLinks(links, "distance", false, none, none);
+    const byObservations = sortLinks(links, "observations", false);
+    const byDistance = sortLinks(links, "distance", false);
 
     expect(byObservations.map((item) => item.node_b)).toEqual([3, 4, 2]);
     expect(byDistance.map((item) => item.node_b)).toEqual([4, 2, 3]);
@@ -53,10 +51,9 @@ describe("a node page's links", () => {
       at(3, "2026-10-18T09:30:00Z"),
       at(4, "2026-10-12T23:00:00Z"),
     ];
-    const none = new Set<number>();
 
-    const latest = sortLinks(links, "last_seen", false, none, none);
-    const oldest = sortLinks(links, "last_seen", true, none, none);
+    const latest = sortLinks(links, "last_seen", false);
+    const oldest = sortLinks(links, "last_seen", true);
 
     expect(latest.map((item) => item.node_b)).toEqual([3, 2, 4]);
     expect(oldest.map((item) => item.node_b)).toEqual([4, 2, 3]);

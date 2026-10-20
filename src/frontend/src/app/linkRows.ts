@@ -36,28 +36,21 @@ export function isLinkSort(value: unknown): boolean {
 }
 
 /**
- * Links with no value come last whichever way round. By distance, those with
- * a doubtful position or an aircraft, and unlikely or pending ones, come after
- * the measured links when longest first, and at the top when shortest first,
- * to find them; at the top they stay longest first, the most suspicious
- * leading.
+ * Links with no value come last whichever way round. By distance, those whose
+ * distance the backend doubts (LinkRow.doubts) come after the measured links
+ * when longest first, and at the top when shortest first, to find them; at
+ * the top they stay longest first, the most suspicious leading.
  */
 export function sortLinks<T extends LinkRow>(
   links: T[],
   sort: LinkSort,
   ascending: boolean,
-  doubtful: ReadonlySet<number>,
-  airborne: ReadonlySet<number>,
 ): T[] {
   const value = LINK_SORTS.find((item) => item.sort === sort)!.value;
   const tier = (link: T) =>
     value(link) === null
       ? 2
-      : sort === "distance" &&
-          (link.unlikely ||
-            link.pending ||
-            touches(link, doubtful) ||
-            touches(link, airborne))
+      : sort === "distance" && link.doubts.length > 0
         ? ascending
           ? -1
           : 1

@@ -18,22 +18,24 @@ from sigsleuth.db import (
     nodes_by_id,
     optional_from_epoch_ms,
     reported_km,
-    to_epoch_ms,
     utc_now,
 )
 from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.links import (
-    FLIGHT_PACKET,
+    CONFIRMED_HOUR,
     LONG_LINK_KM,
+    MAX_ESTIMATED_LINK_KM,
     PENDING_KM,
+    TRUSTED_HOUR,
+    Doubt,
     LinkKind,
-    distance_confirmed,
+    Misfit,
     doubtful_nodes,
-    link_trust,
+    link_doubts,
     map_misfit,
 )
 from sigsleuth.mqtt import CaptureStatus
-from sigsleuth.opt_out import opted_out, shown_sql, unlinkable_packets
+from sigsleuth.opt_out import opted_out, shown_sql
 from sigsleuth.positions import ESTIMATE_DAYS, doubt_limit_km
 from sigsleuth.radio import distance_km
 from sigsleuth.terrain import LongLinkCheck
@@ -193,10 +195,7 @@ class LongLinkEnd:
     altitude_meters 0 is how a manually set position says "not set".
     position_from_map_report marks a position from a map report, which may be
     rounded on purpose, rather than the node's own packet. moved_at is
-    node_current's. airborne_at is too, and flight_packet_row_id the packet
-    that showed it (links.FLIGHT_PACKET); both are None once that packet is
-    gone, and the packet alone when pages do not show it (opt_out.py).
-    doubtful is node_doubtful's flag.
+    node_current's, doubtful node_doubtful's flag.
     direct_partners counts the placed nodes it had direct receptions with over
     the last positions.ESTIMATE_DAYS of links, each at its shortest distance
     when heard; nearest_partner_km and median_partner_km are over those.
@@ -208,8 +207,6 @@ class LongLinkEnd:
     position_observed_at: datetime | None
     position_from_map_report: bool
     moved_at: datetime | None
-    airborne_at: datetime | None
-    flight_packet_row_id: int | None
     doubtful: bool
     direct_partners: int
     nearest_partner_km: float | None
@@ -242,15 +239,14 @@ class LongLinkEvidence:
 @dataclass(frozen=True)
 class LongLinkDoubt:
     """Why the Links page badges a long link and ranks it apart: 'position'
-    when an end has a doubtful position, 'airborne' when an end was in the
-    air, 'terrain' when its newest km is LONG_LINK_KM or more on a pair the
-    terrain check finds unlikely, in that order. suspects are the ends to
-    blame: the doubtful or airborne ones. The terrain check judges the pair,
+    when an end has a doubtful position, else 'terrain' when its newest km is
+    LONG_LINK_KM or more on a pair the terrain check finds unlikely. suspects
+    are the ends to blame: the doubtful ones. The terrain check judges the pair,
     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
     when that is at least two, since one wrong position makes many; none when
     the ends are in as many."""
 
-    reason: Literal["position", "airborne", "terrain"]
+    reason: Literal["position", "terrain"]
     suspects: tuple[int, ...]
 
 
@@ -314,9 +310,7 @@ class LongLinkList:
 # badged for that reason (LongLinkDoubt.reason), judged unlikely by the
 # terrain check whatever the pages make of it, pending, or with checks to
 # review.
-LongLinkFilter = Literal[
-    "long", "shorter", "hidden", "position", "airborne", "unlikely", "pending", "checks"
-]
+LongLinkFilter = Literal["long", "shorter", "hidden", "position", "unlikely", "pending", "checks"]
 # How a page of long links is ranked: by longest distance when heard, or only
 # the links heard links.LONG_LINK_KM or more apart, newest such hour first, to
 # catch new ones. By hour, not last_seen_at: the hour is in link_hour_pair, so
@@ -394,20 +388,21 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
     ids = sorted({node for pair in pairs for node in pair})
     hours: dict[tuple[int, int], list[sqlite3.Row]] = defaultdict(list)
     for row in connection.execute(
-        """
+        f"""
         WITH heard (from_node_id, to_node_id) AS (
             SELECT value ->> 0, value ->> 1 FROM json_each(:pairs)
             UNION ALL SELECT value ->> 1, value ->> 0 FROM json_each(:pairs)
         )
-        SELECT link_hour.* FROM heard JOIN link_hour USING (from_node_id, to_node_id)
+        SELECT link_hour.*, {TRUSTED_HOUR} AS trusted,
+               km >= :pending_km AND {CONFIRMED_HOUR} AS confirmed
+        FROM heard JOIN link_hour USING (from_node_id, to_node_id)
         """,
-        {"pairs": json.dumps(pairs)},
+        {"pairs": json.dumps(pairs), "since": 0, "pending_km": PENDING_KM},
     ):
         heard = (row["from_node_id"], row["to_node_id"])
         hours[min(heard), max(heard)].append(row)
     pairs = [pair for pair in pairs if any(row["km"] is not None for row in hours[pair])]
     ends = _long_link_ends(connection, ids)
-    trust = link_trust(connection, 0)
     # long_link is small: a row per pair heard 250 km or more.
     unlikely_pairs = Counter(
         node
@@ -428,7 +423,7 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
         )
     }
     return [
-        _long_link(ends[a], ends[b], hours[a, b], trust, checks.get((a, b)), unlikely_pairs)
+        _long_link(ends[a], ends[b], hours[a, b], checks.get((a, b)), unlikely_pairs)
         for a, b in pairs
     ]
 
@@ -436,11 +431,10 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
 @dataclass(frozen=True)
 class DoubtfulNode:
     """A node to look at when reviewing long links: one with a doubtful
-    position (node_doubtful), one whose flight packet is kept (FLIGHT_PACKET), or one
-    in at least two pairs the terrain check finds unlikely, which is how
-    LongLinkDoubt guesses whom to blame. long_links counts its pairs heard
-    links.LONG_LINK_KM or more apart (long_link), unlikely_links those found
-    unlikely."""
+    position (node_doubtful), or one in at least two pairs the terrain check
+    finds unlikely, which is how LongLinkDoubt guesses whom to blame.
+    long_links counts its pairs heard links.LONG_LINK_KM or more apart
+    (long_link), unlikely_links those found unlikely."""
 
     end: LongLinkEnd
     long_links: int
@@ -453,25 +447,15 @@ class DoubtfulNodeList:
 
 
 def doubtful_node_list(connection: sqlite3.Connection) -> DoubtfulNodeList:
-    """Every doubtful, airborne or often-unlikely node: doubtful first, then
-    aircraft, then most unlikely links. All three sources are small: tens
-    of nodes."""
+    """Every doubtful or often-unlikely node: doubtful first, then most
+    unlikely links. Both sources are small: tens of nodes."""
     long_links: Counter[int] = Counter()
     unlikely: Counter[int] = Counter()
     for a, b, is_unlikely in connection.execute("SELECT node_a, node_b, unlikely FROM long_link"):
         for node in (int(a), int(b)):
             long_links[node] += 1
             unlikely[node] += is_unlikely
-    airborne = {
-        int(row[0])
-        for row in connection.execute(
-            f"""
-            SELECT node_id FROM node_current
-            WHERE airborne_at IS NOT NULL AND {FLIGHT_PACKET} IS NOT NULL
-            """
-        )
-    }
-    ids = doubtful_nodes(connection) | airborne | {node for node, n in unlikely.items() if n >= 2}
+    ids = doubtful_nodes(connection) | {node for node, n in unlikely.items() if n >= 2}
     ids -= opted_out(connection)
     ends = _long_link_ends(connection, sorted(ids))
     return DoubtfulNodeList(
@@ -480,7 +464,6 @@ def doubtful_node_list(connection: sqlite3.Connection) -> DoubtfulNodeList:
                 (DoubtfulNode(ends[node], long_links[node], unlikely[node]) for node in ids),
                 key=lambda item: (
                     not item.end.doubtful,
-                    item.end.airborne_at is None,
                     -item.unlikely_links,
                     -item.long_links,
                     item.end.node.node_id,
@@ -495,11 +478,9 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
     current = {
         int(row["node_id"]): row
         for row in connection.execute(
-            f"""
+            """
             SELECT node_id, altitude_meters, position_observed_at, position_packet_row_id,
-                   latitude, moved_at, airborne_at,
-                   CASE WHEN airborne_at IS NOT NULL THEN {FLIGHT_PACKET} END
-                       AS flight_packet_row_id
+                   latitude, moved_at
             FROM node_current WHERE node_id IN (SELECT value FROM json_each(?))
             """,
             (json.dumps(ids),),
@@ -507,9 +488,6 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
     }
     doubtful = doubtful_nodes(connection)
     partners = _direct_partners(connection, ids)
-    unshown = unlinkable_packets(
-        connection, (row["flight_packet_row_id"] for row in current.values())
-    )
     ends = {}
     for node_id in ids:
         row = current.get(node_id)
@@ -525,12 +503,6 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             and row["latitude"] is not None
             and row["position_packet_row_id"] is None,
             moved_at=None if row is None else optional_from_epoch_ms(row["moved_at"]),
-            airborne_at=None
-            if row is None or row["flight_packet_row_id"] is None
-            else from_epoch_ms(row["airborne_at"]),
-            flight_packet_row_id=None
-            if row is None or row["flight_packet_row_id"] in unshown
-            else row["flight_packet_row_id"],
             doubtful=node_id in doubtful,
             direct_partners=len(found),
             nearest_partner_km=found[0] if found else None,
@@ -569,7 +541,6 @@ def _long_link(
     a: LongLinkEnd,
     b: LongLinkEnd,
     rows: Sequence[sqlite3.Row],
-    trust: Mapping[int, int],
     terrain: LongLinkCheck | None,
     unlikely_pairs: Mapping[int, int],
 ) -> LongLink:
@@ -581,37 +552,21 @@ def _long_link(
     longest_km = longest["km"]
     unlikely = terrain is not None and terrain.unlikely
     evidence = tuple(
-        _evidence(kind, kind_rows, a, b, trust, unlikely)
+        _evidence(kind, kind_rows, a, b, unlikely)
         for kind in LINK_KINDS
         if (kind_rows := [row for row in rows if row["link_kind"] == kind])
     )
     drawn_km = distance_km(a.node, b.node)
     drawn = any(kind.map_hidden_because is None for kind in evidence)
-    doubt = _doubt(
-        a,
-        b,
-        unlikely and newest["km"] is not None and newest["km"] >= LONG_LINK_KM,
-        unlikely_pairs,
+    # As the Links page badges it, over all history (links.link_table).
+    doubts = link_doubts(
+        a.doubtful or b.doubtful,
+        newest["km"],
+        unlikely,
+        any(row["confirmed"] for row in rows),
     )
-
-    reports = {
-        end.node.node_id: (
-            to_epoch_ms(end.position_observed_at),
-            0 if end.moved_at is None else to_epoch_ms(end.moved_at),
-        )
-        for end in (a, b)
-        if end.position_observed_at is not None
-    }
-    # As the Links page ranks it, over all history (links.link_table).
-    pending = (
-        newest["km"] is not None
-        and newest["km"] >= PENDING_KM
-        and not any(
-            row["km"] >= PENDING_KM
-            and distance_confirmed(reports, (a.node.node_id, b.node.node_id), row["last_seen_at"])
-            for row in measured
-        )
-    )
+    doubt = _doubt(a, b, doubts, unlikely_pairs)
+    pending = "pending" in doubts
 
     def still_long(km: float | None) -> bool:
         return km is not None and abs(longest_km - km) <= MOVED_KM
@@ -647,14 +602,12 @@ def _long_link(
 
 
 def _doubt(
-    a: LongLinkEnd, b: LongLinkEnd, unlikely: bool, unlikely_pairs: Mapping[int, int]
+    a: LongLinkEnd, b: LongLinkEnd, doubts: Sequence[Doubt], unlikely_pairs: Mapping[int, int]
 ) -> LongLinkDoubt | None:
     ends = (a, b)
-    if doubted := [end.node.node_id for end in ends if end.doubtful]:
-        return LongLinkDoubt("position", tuple(doubted))
-    if flown := [end.node.node_id for end in ends if end.airborne_at is not None]:
-        return LongLinkDoubt("airborne", tuple(flown))
-    if not unlikely:
+    if "doubtful" in doubts:
+        return LongLinkDoubt("position", tuple(end.node.node_id for end in ends if end.doubtful))
+    if "terrain" not in doubts:
         return None
     more, fewer = sorted((end.node.node_id for end in ends), key=lambda node: -unlikely_pairs[node])
     if unlikely_pairs[more] >= 2 and unlikely_pairs[more] > unlikely_pairs[fewer]:
@@ -667,7 +620,6 @@ def _evidence(
     rows: Sequence[sqlite3.Row],
     a: LongLinkEnd,
     b: LongLinkEnd,
-    trust: Mapping[int, int],
     unlikely: bool,
 ) -> LongLinkEvidence:
     snr_count = sum(row["snr_count"] for row in rows)
@@ -683,7 +635,7 @@ def _evidence(
         first_hour_at=from_epoch_ms(min(row["hour_start"] for row in rows)),
         last_seen_at=from_epoch_ms(max(row["last_seen_at"] for row in rows)),
         longest_km=max(measured) if measured else None,
-        map_hidden_because=_map_hidden_because(rows, a, b, trust, unlikely),
+        map_hidden_because=_map_hidden_because(rows, a, b, unlikely),
     )
 
 
@@ -691,30 +643,48 @@ def _map_hidden_because(
     rows: Sequence[sqlite3.Row],
     a: LongLinkEnd,
     b: LongLinkEnd,
-    trust: Mapping[int, int],
     unlikely: bool,
 ) -> str | None:
     """Why the map with all history shown leaves out one kind of link, by its
-    own rules: the hours it trusts (links.link_trust), then whether the newest
+    own rules: the hours it trusts (links.TRUSTED_HOUR), then whether the newest
     of them fits where it draws the ends, given the pair's terrain check
     (links.map_misfit). None when it draws the link on any channel."""
     reasons = []
     for channel in sorted({row["channel"] for row in rows}):
         heard = [row for row in rows if row["channel"] == channel]
-        trusted = [
-            row
-            for row in heard
-            if all(row["last_seen_at"] >= trust.get(end.node.node_id, 0) for end in (a, b))
-        ]
+        trusted = [row for row in heard if row["trusted"]]
         if not trusted:
             reasons.append(_distrusted_because(a, b, max(row["last_seen_at"] for row in heard)))
             continue
         newest = max(trusted, key=lambda row: row["last_seen_at"])
-        reason = map_misfit(a.node, b.node, newest["km"], unlikely)
-        if reason is None:
+        misfit = map_misfit(a.node, b.node, newest["km"], unlikely)
+        if misfit is None:
             return None
-        reasons.append(reason)
+        reasons.append(_misfit_because(misfit, a, b, newest["km"]))
     return reasons[0]
+
+
+def _misfit_because(misfit: Misfit, a: LongLinkEnd, b: LongLinkEnd, heard_km: float | None) -> str:
+    """links.map_misfit's reason in words, for the map with no max_km."""
+    drawn = distance_km(a.node, b.node)
+    if misfit == "terrain":
+        return (
+            f"it was heard {heard_km:g} km apart, mostly over land with no end high "
+            "above the land between, or over too much land: the terrain check finds "
+            "that unlikely"
+        )
+    if misfit == "estimated_far":
+        return f"an estimated end is drawn {drawn:g} km away, over {MAX_ESTIMATED_LINK_KM} km"
+    if misfit == "unmeasured":
+        return (
+            f"its ends are drawn {drawn:g} km apart, but it was heard before one of "
+            "them had a position, so nothing can check it"
+        )
+    if misfit == "drifted":
+        return (
+            f"its ends are drawn {drawn:g} km apart but were {heard_km:g} km apart when last heard"
+        )
+    return f"its ends are drawn {drawn:g} km apart, too far for this page"
 
 
 def _distrusted_because(a: LongLinkEnd, b: LongLinkEnd, last_seen_ms: int) -> str:
@@ -722,9 +692,6 @@ def _distrusted_because(a: LongLinkEnd, b: LongLinkEnd, last_seen_ms: int) -> st
         if end.doubtful:
             return f"{_name(end)} has a doubtful position"
     last_seen = from_epoch_ms(last_seen_ms)
-    for end in (a, b):
-        if end.airborne_at is not None and last_seen <= end.airborne_at:
-            return f"it was heard before or during {_name(end)}'s latest flight"
     for end in (a, b):
         if end.moved_at is not None and last_seen <= end.moved_at:
             return f"it was heard before {_name(end)} last moved"

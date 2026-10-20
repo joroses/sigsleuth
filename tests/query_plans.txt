@@ -55,8 +55,6 @@ derive._count_link
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
-derive._mark_airborne
-  SEARCH reception USING INDEX sqlite_autoindex_reception_1
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
@@ -81,13 +79,21 @@ relays.relay_evidence
   SEARCH node_activity_hour USING INDEX node_activity_node
 positions.radio_links
   SEARCH link_hour USING PRIMARY KEY
-links.link_trust
+links.limited_nodes
   SCAN node_current
-links.doubtful_nodes
   SCAN node_doubtful
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
 coverage._mqtt_reports
@@ -418,6 +424,8 @@ db.nodes_by_id
 
 links.unlikely_links
   SCAN long_link
+links.doubtful_nodes
+  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
@@ -425,11 +433,6 @@ links._hourly_links
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.doubtful_nodes
-  SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 
 ## GET /api/v1/map/nodes
 
@@ -451,12 +454,14 @@ opt_out.unlinkable_packets
 
 ## GET /api/v1/map/links?link_kind=traceroute&since=<time>
 
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -473,6 +478,8 @@ map_nodes.text_senders
 
 links.unlikely_links
   SCAN long_link
+links.doubtful_nodes
+  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
@@ -480,20 +487,17 @@ links._hourly_links
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.doubtful_nodes
-  SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 
 ## GET /api/v1/map/links?link_kind=direct&since=<time>
 
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -504,6 +508,8 @@ links.unlikely_links
 
 links.unlikely_links
   SCAN long_link
+links.doubtful_nodes
+  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
@@ -511,20 +517,17 @@ links._hourly_links
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.doubtful_nodes
-  SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 
 ## GET /api/v1/map/links?link_kind=neighbor&since=<time>
 
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -535,6 +538,8 @@ links.unlikely_links
 
 links.unlikely_links
   SCAN long_link
+links.doubtful_nodes
+  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
@@ -542,20 +547,17 @@ links._hourly_links
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.doubtful_nodes
-  SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 
 ## GET /api/v1/map/links?link_kind=traceroute
 
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -582,12 +584,15 @@ chat.chat_messages
   SEARCH packet USING INDEX text_message
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 chat._farthest_gateways
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 chat._chat_parents
   SEARCH packet USING INDEX text_message_packet
@@ -599,12 +604,15 @@ chat.chat_messages
   SEARCH packet USING INDEX text_message_channel
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 chat._farthest_gateways
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 chat._chat_parents
   SEARCH packet USING INDEX text_message_packet
@@ -616,12 +624,15 @@ chat.chat_messages
   SEARCH packet USING INDEX text_message_channel
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 chat._farthest_gateways
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 chat._chat_parents
   SEARCH packet USING INDEX text_message_packet
@@ -633,12 +644,15 @@ chat.chat_messages
   SEARCH packet USING INDEX text_message
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 chat._farthest_gateways
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 chat._chat_parents
   SEARCH packet USING INDEX text_message_packet
@@ -658,12 +672,15 @@ chat.chat_messages
   SEARCH packet USING INDEX text_message
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 chat._farthest_gateways
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 chat._chat_parents
   SEARCH packet USING INDEX text_message_packet
@@ -683,17 +700,14 @@ db.first_packet_row_id_since
 traceroute_explorer.traceroute_runs
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 links.doubtful_nodes
   SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.unlikely_links
   SCAN long_link
-links.position_reports
-  SEARCH node_current USING PRIMARY KEY
 traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 db.nodes_by_id
@@ -712,17 +726,14 @@ db.first_packet_row_id_since
 traceroute_explorer.traceroute_runs
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 links.doubtful_nodes
   SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.unlikely_links
   SCAN long_link
-links.position_reports
-  SEARCH node_current USING PRIMARY KEY
 traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 db.nodes_by_id
@@ -741,17 +752,14 @@ db.first_packet_row_id_since
 traceroute_explorer.traceroute_runs
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 links.doubtful_nodes
   SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.unlikely_links
   SCAN long_link
-links.position_reports
-  SEARCH node_current USING PRIMARY KEY
 traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 db.nodes_by_id
@@ -770,6 +778,8 @@ db.first_packet_row_id_since
 traceroute_explorer.traceroute_runs
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 traceroute_explorer._matching_nodes
@@ -778,13 +788,8 @@ traceroute_explorer._hop_routes
   SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.unlikely_links
   SCAN long_link
-links.position_reports
-  SEARCH node_current USING PRIMARY KEY
 traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 db.nodes_by_id
@@ -799,6 +804,8 @@ reported.positions_when_heard
 traceroute_explorer.traceroute_runs
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 traceroute_explorer._matching_nodes
@@ -807,13 +814,8 @@ traceroute_explorer._hop_routes
   SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
-links.airborne_nodes
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.unlikely_links
   SCAN long_link
-links.position_reports
-  SEARCH node_current USING PRIMARY KEY
 traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 db.nodes_by_id
@@ -878,12 +880,14 @@ db.nodes_by_id
 
 zones._channel_links
   SEARCH link_hour USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -925,16 +929,12 @@ diagnostics.diagnostics_summary
 
 diagnostics.doubtful_node_list
   SCAN long_link
-diagnostics.doubtful_node_list
-  SCAN node_current
-  SEARCH packet USING INDEX packet_sender
 links.doubtful_nodes
   SCAN node_doubtful
 opt_out.opted_out
   SCAN node_opt_out
 diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
-  SEARCH packet USING INDEX packet_sender
 diagnostics._direct_partners
   SEARCH link_hour USING PRIMARY KEY
 
@@ -944,19 +944,32 @@ diagnostics.longest_links
   SCAN link_hour USING INDEX link_hour_pair
 diagnostics._long_links
   SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
   SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
-  SEARCH packet USING INDEX packet_sender
 links.doubtful_nodes
   SCAN node_doubtful
 diagnostics._direct_partners
   SEARCH link_hour USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -979,19 +992,32 @@ diagnostics.longest_links
   SCAN link_hour USING INDEX link_hour_pair
 diagnostics._long_links
   SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
   SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
-  SEARCH packet USING INDEX packet_sender
 links.doubtful_nodes
   SCAN node_doubtful
 diagnostics._direct_partners
   SEARCH link_hour USING PRIMARY KEY
-links.link_trust
-  SCAN node_current
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1138,9 +1164,11 @@ positions._doubtful
   SCAN node_current
 positions._estimates
   SCAN node_current
-links.link_trust
-  SCAN node_current
-links.doubtful_nodes
-  SCAN node_doubtful
 positions._estimates
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY

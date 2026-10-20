@@ -392,14 +392,12 @@ describe("Node detail", () => {
         b_to_a: direction,
         link_kind: "direct",
         distance_km: null,
-        unlikely: false,
-        pending: false,
+        doubts: [],
       })),
       nodes: [
         { node_id: others[11], long_name: "Mill Gate", short_name: "MILL" },
       ],
       doubtful_node_ids: [],
-      airborne_node_ids: [],
       truncated: false,
     };
     vi.stubGlobal(
@@ -1196,6 +1194,7 @@ describe("Links", () => {
                         b_to_a: direction,
                         link_kind: "traceroute",
                         distance_km: null,
+                        doubts: [],
                       },
                     ],
                     nodes: [],
@@ -1265,6 +1264,7 @@ describe("Links", () => {
       a_to_b: direction,
       b_to_a: direction,
       distance_km: null,
+      doubts: [],
     });
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
@@ -1318,6 +1318,7 @@ describe("Links", () => {
       a_to_b: direction,
       b_to_a: direction,
       distance_km: null,
+      doubts: [],
     });
     const fetchMock = vi.fn(() =>
       Promise.resolve(
@@ -1369,8 +1370,7 @@ describe("Links", () => {
       a_to_b: { observations: ab, snr_samples: ab, average_snr: 2 },
       b_to_a: { observations: ba, snr_samples: ba, average_snr: 2 },
       distance_km: null,
-      unlikely: false,
-      pending: false,
+      doubts: [],
     });
     vi.stubGlobal(
       "fetch",
@@ -1391,7 +1391,6 @@ describe("Links", () => {
                     short_name: null,
                   })),
                   doubtful_node_ids: [],
-                  airborne_node_ids: [],
                   truncated: false,
                 }
               : {},
@@ -1420,8 +1419,7 @@ describe("Links", () => {
       node_a: number,
       node_b: number,
       distance_km: number | null,
-      unlikely = false,
-      pending = false,
+      doubts: ("doubtful" | "terrain" | "pending")[] = [],
     ) => ({
       node_a,
       node_b,
@@ -1431,8 +1429,7 @@ describe("Links", () => {
       a_to_b: direction,
       b_to_a: direction,
       distance_km,
-      unlikely,
-      pending,
+      doubts,
     });
     vi.stubGlobal(
       "fetch",
@@ -1443,19 +1440,19 @@ describe("Links", () => {
               ? {
                   items: [
                     link(7, 8, null),
-                    link(1, 2, 880),
-                    link(5, 6, 600),
+                    link(1, 2, 880, ["doubtful"]),
+                    link(5, 6, 600, ["doubtful"]),
                     link(3, 4, 40),
                     link(9, 10, 12),
-                    link(11, 12, 300, true),
-                    link(13, 14, 500, false, true),
+                    link(11, 12, 300, ["terrain"]),
+                    link(13, 14, 500, ["pending"]),
                   ],
                   nodes: [
                     { node_id: 1, long_name: "Hilltop", short_name: null },
                     { node_id: 2, long_name: "Ridge", short_name: null },
                     { node_id: 3, long_name: "Farm", short_name: null },
                     { node_id: 4, long_name: "Mill", short_name: null },
-                    { node_id: 5, long_name: "Plane", short_name: null },
+                    { node_id: 5, long_name: "Summit", short_name: null },
                     { node_id: 6, long_name: "Field", short_name: null },
                     { node_id: 7, long_name: "Unplaced", short_name: null },
                     { node_id: 8, long_name: "Barn", short_name: null },
@@ -1466,8 +1463,7 @@ describe("Links", () => {
                     { node_id: 13, long_name: "Quarry", short_name: null },
                     { node_id: 14, long_name: "Pond", short_name: null },
                   ],
-                  doubtful_node_ids: [2],
-                  airborne_node_ids: [5],
+                  doubtful_node_ids: [2, 5],
                   truncated: false,
                 }
               : {},
@@ -1486,14 +1482,14 @@ describe("Links", () => {
         .map((row) => row.textContent ?? "")
         .map(
           (text) =>
-            /Farm|Shed|Ridge|Plane|Quarry|Tower|Unplaced/.exec(text)?.[0],
+            /Farm|Shed|Ridge|Summit|Quarry|Tower|Unplaced/.exec(text)?.[0],
         )
         .filter((name) => name !== undefined);
     expect(order()).toEqual([
       "Farm",
       "Shed",
       "Ridge",
-      "Plane",
+      "Summit",
       "Quarry",
       "Tower",
       "Unplaced",
@@ -1504,7 +1500,7 @@ describe("Links", () => {
     fireEvent.click(screen.getByRole("button", { name: /Distance/ }));
     expect(order()).toEqual([
       "Ridge",
-      "Plane",
+      "Summit",
       "Quarry",
       "Tower",
       "Shed",
@@ -1534,6 +1530,7 @@ const FARM_TO_MILL = {
   reply_packet_row_id: null,
   reply_receptions: null,
   distance_km: null,
+  doubts: [],
   route: {
     packet_row_id: 9,
     is_return: false,
@@ -1776,7 +1773,6 @@ describe("Traceroute explorer", () => {
                   items: [run(9, 120, false), run(10, 340, true)],
                   nodes: [],
                   doubtful_node_ids: [6],
-                  airborne_node_ids: [],
                   has_more: false,
                 },
           ),

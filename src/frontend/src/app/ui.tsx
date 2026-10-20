@@ -398,22 +398,6 @@ function joinNames(names: readonly string[]): string {
 }
 
 /**
- * Beside a distance with a node heard in the air in the window
- * (links.airborne_nodes): its links are radio, but measured from where it
- * was on the ground. Pages rank these last by km.
- */
-export function AirborneBadge() {
-  return (
-    <Badge
-      tone="blue"
-      title="A node here was airborne; distances are from the ground"
-    >
-      ✈ aircraft
-    </Badge>
-  );
-}
-
-/**
  * Beside a long distance not confirmed yet (links.PENDING_KM): an end has not
  * reported its position since it was heard, or moved since. Pages rank these
  * last by km.

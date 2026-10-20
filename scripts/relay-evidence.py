@@ -185,7 +185,7 @@ class World:
         for node_id in sorted(self.nodes):
             self.by_byte[relay_byte_of(node_id)].append(node_id)
 
-        # links.link_trust: a moved node's hours count from its move, a
+        # As links.trusted_sql: a moved node's hours count from its move, a
         # doubtful node's never; unlikely long pairs never.
         trust = {n.node_id: NEVER if n.doubtful else n.moved_at or 0 for n in self.nodes.values()}
         unlikely = {

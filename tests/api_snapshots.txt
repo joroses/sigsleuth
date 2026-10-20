@@ -1250,8 +1250,7 @@ items: 46 items
       average_snr: -3.03
     link_kind: "traceroute"
     distance_km: 2.4
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1267,8 +1266,7 @@ items: 46 items
       average_snr: 12.25
     link_kind: "traceroute"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2933499666
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1284,8 +1282,7 @@ items: 46 items
       average_snr: -6.5
     link_kind: "traceroute"
     distance_km: 64.4
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 41 items
   - node_id: 96879053
     long_name: "Node 41cd"
@@ -1309,7 +1306,6 @@ nodes: 41 items
     longitude: 19.4576
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/map/nodes
@@ -1654,8 +1650,7 @@ items: 501 items
       average_snr: 3.16
     link_kind: "traceroute"
     distance_km: 39.7
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1671,8 +1666,7 @@ items: 501 items
       average_snr: -2.51
     link_kind: "traceroute"
     distance_km: 2.4
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1688,8 +1682,7 @@ items: 501 items
       average_snr: 12.16
     link_kind: "traceroute"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 224 items
   - node_id: 14234932
     long_name: "Node 3534"
@@ -1713,7 +1706,6 @@ nodes: 224 items
     longitude: 19.1562
     estimated: true
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/links?link_kind=traceroute&since=2026-10-04T16:25:30.812000Z
@@ -1734,8 +1726,7 @@ items: 946 items
       average_snr: 1.72
     link_kind: "traceroute"
     distance_km: 39.7
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1751,8 +1742,7 @@ items: 946 items
       average_snr: -3.03
     link_kind: "traceroute"
     distance_km: 2.4
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1768,8 +1758,7 @@ items: 946 items
       average_snr: 12.25
     link_kind: "traceroute"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 359 items
   - node_id: 14234932
     long_name: "Node 3534"
@@ -1793,7 +1782,6 @@ nodes: 359 items
     longitude: 19.6346
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/map/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
@@ -1858,8 +1846,7 @@ items: 24 items
       average_snr: -6.3
     link_kind: "direct"
     distance_km: 2.6
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -1875,8 +1862,7 @@ items: 24 items
       average_snr: null
     link_kind: "direct"
     distance_km: 15.3
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 1550505660
     node_b: 1770149960
     last_seen_at: "2026-10-11T16:05:23.256000Z"
@@ -1892,8 +1878,7 @@ items: 24 items
       average_snr: null
     link_kind: "direct"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 20 items
   - node_id: 383887127
     long_name: "Node a717"
@@ -1917,7 +1902,6 @@ nodes: 20 items
     longitude: 19.5101
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/links?link_kind=direct&since=2026-10-04T16:25:30.812000Z
@@ -1938,8 +1922,7 @@ items: 35 items
       average_snr: -6.42
     link_kind: "direct"
     distance_km: 2.6
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -1955,8 +1938,7 @@ items: 35 items
       average_snr: null
     link_kind: "direct"
     distance_km: 15.3
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 1550505660
     node_b: 1770149960
     last_seen_at: "2026-10-11T16:05:23.256000Z"
@@ -1972,8 +1954,7 @@ items: 35 items
       average_snr: null
     link_kind: "direct"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 27 items
   - node_id: 383887127
     long_name: "Node a717"
@@ -1997,7 +1978,6 @@ nodes: 27 items
     longitude: 19.5101
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/map/links?link_kind=neighbor&since=2026-10-10T16:25:30.812000Z
@@ -2062,8 +2042,7 @@ items: 242 items
       average_snr: null
     link_kind: "neighbor"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 173442116
     node_b: 423423344
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2079,8 +2058,7 @@ items: 242 items
       average_snr: 6.92
     link_kind: "neighbor"
     distance_km: 2.3
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 173442116
     node_b: 463896892
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2096,8 +2074,7 @@ items: 242 items
       average_snr: -4.83
     link_kind: "neighbor"
     distance_km: 5.2
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 134 items
   - node_id: 67438552
     long_name: null
@@ -2121,7 +2098,6 @@ nodes: 134 items
     longitude: 19.3724
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/links?link_kind=neighbor&since=2026-10-04T16:25:30.812000Z
@@ -2142,8 +2118,7 @@ items: 405 items
       average_snr: null
     link_kind: "neighbor"
     distance_km: 1.5
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 173442116
     node_b: 423423344
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2159,8 +2134,7 @@ items: 405 items
       average_snr: 6.7
     link_kind: "neighbor"
     distance_km: 2.3
-    unlikely: false
-    pending: false
+    doubts: []
   - node_a: 173442116
     node_b: 463896892
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2176,8 +2150,7 @@ items: 405 items
       average_snr: -3.53
     link_kind: "neighbor"
     distance_km: 5.2
-    unlikely: false
-    pending: false
+    doubts: []
 nodes: 181 items
   - node_id: 67438552
     long_name: null
@@ -2201,7 +2174,6 @@ nodes: 181 items
     longitude: 19.3724
     estimated: false
 doubtful_node_ids: []
-airborne_node_ids: []
 truncated: false
 
 ## GET /api/v1/map/links?link_kind=traceroute
@@ -2593,7 +2565,7 @@ items: 50 items
     reply_packet_row_id: 31074
     reply_receptions: 4
     distance_km: 13.1
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 31074
       is_return: false
@@ -2628,7 +2600,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 30918
       is_return: false
@@ -2673,7 +2645,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 30914
       is_return: false
@@ -2732,7 +2704,6 @@ nodes: 80 items
     estimated: false
 matched_node_ids: []
 doubtful_node_ids: []
-airborne_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
@@ -2748,7 +2719,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 29629
       is_return: false
@@ -2793,7 +2764,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: 17
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 30572
       is_return: false
@@ -2838,7 +2809,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 29711
       is_return: false
@@ -2897,7 +2868,6 @@ nodes: 87 items
     estimated: true
 matched_node_ids: []
 doubtful_node_ids: []
-airborne_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
@@ -2913,7 +2883,7 @@ items: 50 items
     reply_packet_row_id: 23091
     reply_receptions: 4
     distance_km: 222.6
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 23091
       is_return: false
@@ -2958,7 +2928,7 @@ items: 50 items
     reply_packet_row_id: 27147
     reply_receptions: 4
     distance_km: 114.7
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 27147
       is_return: false
@@ -3003,7 +2973,7 @@ items: 50 items
     reply_packet_row_id: 23074
     reply_receptions: 3
     distance_km: 113.7
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 23074
       is_return: false
@@ -3062,7 +3032,6 @@ nodes: 101 items
     estimated: false
 matched_node_ids: []
 doubtful_node_ids: []
-airborne_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z&node=289b&next_to=!9e7654c4&channel=ShortFast&min_hops=1&successful=true
@@ -3071,7 +3040,6 @@ items: []
 nodes: []
 matched_node_ids: []
 doubtful_node_ids: []
-airborne_node_ids: []
 has_more: false
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!d9dd289b
@@ -3087,7 +3055,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 29629
       is_return: false
@@ -3132,7 +3100,7 @@ items: 50 items
     reply_packet_row_id: 29761
     reply_receptions: 4
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 29761
       is_return: true
@@ -3177,7 +3145,7 @@ items: 50 items
     reply_packet_row_id: null
     reply_receptions: null
     distance_km: null
-    distance_pending: false
+    doubts: []
     route:
       packet_row_id: 9796
       is_return: false
@@ -3236,7 +3204,6 @@ nodes: 104 items
     estimated: true
 matched_node_ids: [3655149723]
 doubtful_node_ids: []
-airborne_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z
@@ -3707,8 +3674,6 @@ items: 30 items
       position_observed_at: "2026-10-11T14:35:41.545000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3727,8 +3692,6 @@ items: 30 items
       position_observed_at: "2026-10-11T16:22:57.964000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3771,8 +3734,6 @@ items: 30 items
       position_observed_at: "2026-10-11T16:22:57.964000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3791,8 +3752,6 @@ items: 30 items
       position_observed_at: "2026-10-11T15:49:56.160000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3835,8 +3794,6 @@ items: 30 items
       position_observed_at: "2026-10-11T15:23:01.992000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3855,8 +3812,6 @@ items: 30 items
       position_observed_at: "2026-10-11T13:42:29.507000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3933,8 +3888,6 @@ items: 25 items
       position_observed_at: "2026-10-11T16:18:40.349000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -3953,8 +3906,6 @@ items: 25 items
       position_observed_at: "2026-10-11T11:47:22.037000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 4
       nearest_partner_km: 1.5
@@ -3997,8 +3948,6 @@ items: 25 items
       position_observed_at: "2026-10-11T15:23:01.992000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -4017,8 +3966,6 @@ items: 25 items
       position_observed_at: "2026-10-11T11:47:22.037000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 4
       nearest_partner_km: 1.5
@@ -4071,8 +4018,6 @@ items: 25 items
       position_observed_at: "2026-10-11T08:47:06.789000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 0
       nearest_partner_km: null
@@ -4091,8 +4036,6 @@ items: 25 items
       position_observed_at: "2026-10-11T11:47:22.037000Z"
       position_from_map_report: false
       moved_at: null
-      airborne_at: null
-      flight_packet_row_id: null
       doubtful: false
       direct_partners: 4
       nearest_partner_km: 1.5

@@ -259,10 +259,6 @@ function LinkTabs({
     () => new Set(data?.doubtful_node_ids ?? []),
     [data],
   );
-  const airborne = useMemo(
-    () => new Set(data?.airborne_node_ids ?? []),
-    [data],
-  );
   if (error !== null) return <StatusPanel tone="error">{error}</StatusPanel>;
   if (data === null) return <StatusPanel>Loading links…</StatusPanel>;
   if (data.items.length === 0) {
@@ -277,7 +273,6 @@ function LinkTabs({
         links={data.items}
         nodes={nodes}
         doubtful={doubtful}
-        airborne={airborne}
         linkKind={linkKind}
         since={since}
         node={node}
@@ -314,7 +309,6 @@ function LinkRanking({
   links,
   nodes,
   doubtful,
-  airborne,
   linkKind,
   since,
   node,
@@ -324,8 +318,6 @@ function LinkRanking({
   /** Nodes with a doubtful position; by distance their links rank after the
    * measured ones, or first (still longest first) when shortest first. */
   doubtful: ReadonlySet<number>;
-  /** Nodes heard in the air; their links rank last by distance too. */
-  airborne: ReadonlySet<number>;
   linkKind: LinkKind;
   since: string | undefined;
   /** A node in the URL fills the search. */
@@ -407,7 +399,7 @@ function LinkRanking({
         (found === null || found.has(link.node_a) || found.has(link.node_b))
       );
     });
-    return sortLinks(filtered, sort, ascending, doubtful, airborne);
+    return sortLinks(filtered, sort, ascending);
   }, [
     ascending,
     links,
@@ -417,8 +409,6 @@ function LinkRanking({
     marginFloor,
     channel,
     sort,
-    doubtful,
-    airborne,
   ]);
   const traceroutes = linkKind === "traceroute";
 
@@ -523,7 +513,6 @@ function LinkRanking({
                           link={link}
                           nodes={nodes}
                           doubtful={doubtful}
-                          airborne={airborne}
                         />
                         <td className="expand-cell">
                           <IconButton

@@ -32,9 +32,8 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Estimated position | Where a node that reports no position probably is, from its placed radio neighbours (`positions.py`). Drawn hollow; never used for km. |
 | Doubtful position | A reported position the node's own direct links contradict (`positions.py`). Its links are hidden on the map and badged elsewhere. |
 | Moved node | A node whose new position is over 25 km from the last; its earlier link hours are hidden on the map. |
-| Aircraft | A node heard directly in two far-apart places at once (`derive._mark_airborne`). |
 | Unlikely long link | A link 250 km or longer that the terrain check rejects. |
-| Pending distance | A distance of 100 km or more ranked apart until both ends have reported a position after it was heard, without either moving since. If an end moved after it was heard, that historical distance stays pending even after further reports. |
+| Pending distance | A distance of 100 km or more ranked apart until both ends have reported a position after it was heard, without either moving since (`links.confirmed_sql`). If an end moved after it was heard, that historical distance stays pending even after further reports. Link pages badge and rank it like a distance with a doubtful end or an unlikely one (`links.link_doubts`). |
 | Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Link pages show only this; the map draws nodes where they are now. |
 | Channel | The channel name a packet was uploaded under. `PKI` means private messages, not a channel. |
 | Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the radio channel of its latest packet on one. |

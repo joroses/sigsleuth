@@ -40,10 +40,10 @@ from dataclasses import dataclass
 
 from PIL import Image
 
-from sigsleuth.db import first_packet_row_id_since, transaction
+from sigsleuth.db import transaction
 from sigsleuth.links import LONG_LINK_KM
-from sigsleuth.positions import positions_when_heard
 from sigsleuth.radio import EARTH_RADIUS_KM, great_circle_km
+from sigsleuth.reported import positions_when_heard
 
 LOGGER = logging.getLogger(__name__)
 
@@ -344,12 +344,8 @@ def _ends_when_heard(
     """Each pair's ends where they were when its longest hour was last heard
     (positions_when_heard), else where node_current places them. Pairs with
     an end placed neither way are left out."""
-    packets = {
-        pair: first_packet_row_id_since(connection, heard_at + 1) - 1
-        for pair, (_, heard_at) in pairs.items()
-    }
     heard = positions_when_heard(
-        connection, {(node, packet) for pair, packet in packets.items() for node in pair}
+        connection, {(node, heard_at) for pair, (_, heard_at) in pairs.items() for node in pair}
     )
     nodes = {node for pair in pairs for node in pair}
     current = {
@@ -363,10 +359,10 @@ def _ends_when_heard(
         )
     }
     ends = {}
-    for pair, packet in packets.items():
+    for pair, (_, heard_at) in pairs.items():
         found = []
         for node in pair:
-            position = heard.get((node, packet))
+            position = heard.get((node, heard_at))
             if position is not None:
                 found.append((position.latitude, position.longitude, position.altitude_meters))
             elif node in current:

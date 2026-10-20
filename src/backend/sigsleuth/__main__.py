@@ -100,7 +100,7 @@ def _rederive_pending(database_path: Path) -> bool:
 
 def _refresh_opt_outs(database_path: Path) -> None:
     """Refill node_opt_out before serving, as SIGSLEUTH_HIDE_OPTED_OUT may have
-    changed: one scan of the packets. A pending rederive refills it itself."""
+    changed. A pending rederive refills it itself."""
     connection = open_database(database_path)
     try:
         if not rederive_pending(connection):

@@ -33,7 +33,7 @@ from sigsleuth.links import (
     map_misfit,
 )
 from sigsleuth.mqtt import CaptureStatus
-from sigsleuth.opt_out import opted_out, shown_sql, unshown_packets
+from sigsleuth.opt_out import opted_out, shown_sql, unlinkable_packets
 from sigsleuth.positions import ESTIMATE_DAYS, doubt_limit_km
 from sigsleuth.radio import distance_km
 from sigsleuth.terrain import LongLinkCheck
@@ -507,7 +507,9 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
     }
     doubtful = doubtful_nodes(connection)
     partners = _direct_partners(connection, ids)
-    unshown = unshown_packets(connection, (row["flight_packet_row_id"] for row in current.values()))
+    unshown = unlinkable_packets(
+        connection, (row["flight_packet_row_id"] for row in current.values())
+    )
     ends = {}
     for node_id in ids:
         row = current.get(node_id)

@@ -43,8 +43,9 @@ from typing import Literal
 
 from sigsleuth.decode import read_route_discovery
 from sigsleuth.links import LONG_LINK_KM
-from sigsleuth.positions import RECENT_HOURS, positions_when_heard
+from sigsleuth.positions import RECENT_HOURS
 from sigsleuth.radio import great_circle_km, relay_byte_of, relay_byte_sql
+from sigsleuth.reported import positions_when_heard
 from sigsleuth.traceroute import UNKNOWN_NODE
 
 HOUR_MS = 3_600_000
@@ -1584,7 +1585,7 @@ def own_byte_uploads(connection: sqlite3.Connection) -> None:
 def staleness(connection: sqlite3.Connection, route: Tally, every: int) -> None:
     """Where the true relay was when heard against where node_current puts it."""
     cases = route.route_cases[::every] if route.route_cases else []
-    pairs = {(case.truth, case.packet) for case in cases if case.truth is not None}
+    pairs = {(case.truth, case.at) for case in cases if case.truth is not None}
     started = time.monotonic()
     heard = positions_when_heard(connection, pairs)
     seconds = time.monotonic() - started

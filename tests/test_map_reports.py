@@ -164,6 +164,33 @@ def test_a_rebuild_brings_back_nodes_known_only_from_map_reports(
     assert dict(node(connection)) == captured
 
 
+def test_a_valid_position_outlives_a_later_invalid_report_and_a_rebuild(
+    connection: sqlite3.Connection,
+) -> None:
+    report(connection, 0)
+    report(connection, 60, latitude_i=0, longitude_i=0)
+    connection.execute("UPDATE derived_state SET rebuilt = 0")
+
+    assert rederive(connection, lambda: False)
+
+    assert round(node(connection)["latitude"], 3) == 52.459
+
+
+def test_an_old_report_still_names_a_node_that_sends_no_node_info(
+    connection: sqlite3.Connection,
+) -> None:
+    report(connection, -15 * 24 * 60)
+    send(connection, 1, portnums_pb2.PortNum.TEXT_MESSAGE_APP, b"still here")
+    apply_retention(connection, retention_days=14, now=NOW)
+    send(connection, 2, portnums_pb2.PortNum.TEXT_MESSAGE_APP, b"and here")
+    assert node(connection)["long_name"] == "Tower Poznan"
+
+    connection.execute("UPDATE derived_state SET rebuilt = 0")
+    assert rederive(connection, lambda: False)
+
+    assert node(connection)["long_name"] == "Tower Poznan"
+
+
 def test_retention_removes_old_reports(connection: sqlite3.Connection) -> None:
     report(connection, -15 * 24 * 60)
     apply_retention(connection, retention_days=14, now=NOW)

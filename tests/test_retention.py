@@ -2,9 +2,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from meshtastic_fixtures import application_envelope, ingest
+from sigsleuth.api import create_app
+from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
 from sigsleuth.derive import rederive
 from sigsleuth.retention import RetentionResult, apply_retention
@@ -60,12 +63,12 @@ def test_retention_removes_old_packets_their_receptions_and_idle_nodes(
     path = tmp_path / "history.db"
     migrate_database(path)
     now = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    cutoff = now - timedelta(days=14)
     save_packet(path, now - timedelta(days=15), 1)
     save_packet(path, now - timedelta(days=15), 4, sender=0x22222222)
-    new_packet = save_packet(path, now - timedelta(days=2), 3)
-    cutoff = now - timedelta(days=14)
     save_packet(path, cutoff - timedelta(minutes=1), 5, sender=0x33333333)
     save_packet(path, cutoff + timedelta(minutes=1), 5, sender=0x33333333, gateway_id="!bbbbbbbb")
+    new_packet = save_packet(path, now - timedelta(days=2), 3)
 
     result = retain(path, retention_days=14, now=now)
 
@@ -83,37 +86,78 @@ def test_retention_removes_old_packets_their_receptions_and_idle_nodes(
         connection.close()
 
 
-def test_retention_spares_the_packets_an_active_node_names_and_a_rebuild_reads_them(
+def test_a_node_seen_only_as_a_gateway_keeps_what_it_reported_after_retention_and_a_rebuild(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)
     now = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
-    named = save_packet(path, now - timedelta(days=15), 1, node_info("Hilltop", "HILL"))
-    placed = save_packet(path, now - timedelta(days=15), 2, position(41.0, 2.0))
-    gateway_sent = save_packet(path, now - timedelta(days=15), 3, sender=0x22222222)
-    save_packet(path, now - timedelta(days=15), 5)
+    gateway = 0x22222222
+    save_packet(path, now - timedelta(days=15), 1, node_info("Hilltop", "HILL"), sender=gateway)
+    save_packet(path, now - timedelta(days=15), 2, position(41.0, 2.0), sender=gateway)
+    last_sent = save_packet(path, now - timedelta(days=15), 3, sender=gateway)
     new_packet = save_packet(path, now - timedelta(days=2), 4, gateway_id="!22222222")
 
     result = retain(path, retention_days=14, now=now)
 
-    assert result.packets == 1
-    assert packet_row_ids(path) == [named, placed, gateway_sent, new_packet]
+    assert result.packets == 3
+    assert packet_row_ids(path) == [new_packet]
     connection = open_current_database(path)
     try:
         connection.execute("UPDATE derived_state SET version = 0")
         migrate_database(path)
         assert rederive(connection, lambda: False)
-        sender, gateway = connection.execute(
-            "SELECT * FROM node_current WHERE node_id IN (?, ?) ORDER BY node_id",
-            (0x11111111, 0x22222222),
-        ).fetchall()
-        assert (sender["long_name"], sender["latitude"]) == ("Hilltop", 41.0)
-        assert sender["last_sent_packet_row_id"] == new_packet
-        assert gateway["channel"] == "LongFast"
-        assert gateway["last_gateway_at"] == to_epoch_ms(now - timedelta(days=2))
+        row = connection.execute(
+            "SELECT * FROM node_current WHERE node_id = ?", (gateway,)
+        ).fetchone()
+        assert (row["long_name"], row["latitude"], row["longitude"]) == ("Hilltop", 41.0, 2.0)
+        assert row["last_sent_at"] == to_epoch_ms(now - timedelta(days=15))
+        assert row["last_sent_packet_row_id"] == last_sent
+        assert row["last_gateway_at"] == to_epoch_ms(now - timedelta(days=2))
     finally:
         connection.close()
+    # Pages keep the times but link to no deleted packet.
+    with TestClient(create_app(Settings(path))) as client:
+        node = client.get(f"/api/v1/nodes/{gateway}").json()["node"]
+        listed = client.get("/api/v1/nodes").json()["items"]
+    assert node["long_name"] == "Hilltop"
+    assert node["last_sent_at"] is not None and node["last_sent_packet_row_id"] is None
+    assert node["node_info_packet_row_id"] is None
+    assert node["position"]["latitude"] == 41.0 and node["position"]["packet_row_id"] is None
+    assert [item["last_sent_packet_row_id"] for item in listed if item["node_id"] == gateway] == [
+        None
+    ]
+
+
+def test_retention_keeps_each_nodes_position_from_before_the_limit(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    save_packet(path, now - timedelta(days=16), 1, position(40.0, 2.0))
+    save_packet(path, now - timedelta(days=15), 2, position(41.0, 2.0))
+    save_packet(path, now - timedelta(days=1), 3, position(42.0, 2.0))
+
+    retain(path, retention_days=14, now=now)
+
+    connection = open_database(path)
+    try:
+        kept = connection.execute("SELECT latitude FROM node_position ORDER BY at").fetchall()
+        # Where the node was at the limit, and since.
+        assert [row[0] for row in kept] == [41.0, 42.0]
+    finally:
+        connection.close()
+
+
+def test_retention_keeps_the_newest_packet_so_ids_are_never_reused(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    save_packet(path, now - timedelta(days=16), 1)
+    newest = save_packet(path, now - timedelta(days=15), 2)
+
+    assert retain(path, retention_days=14, now=now).packets == 1
+    assert packet_row_ids(path) == [newest]
+    assert save_packet(path, now, 3) > newest
 
 
 def test_zero_retention_keeps_everything(tmp_path: Path) -> None:

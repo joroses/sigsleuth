@@ -31,7 +31,7 @@ from sigsleuth.db import (
 )
 from sigsleuth.decode import read_neighbors
 from sigsleuth.derive import rederive
-from sigsleuth.opt_out import unshown_packets
+from sigsleuth.opt_out import unlinkable_packets
 from sigsleuth.retention import apply_retention
 
 NODE, GATEWAY, HIDDEN = 0x0D0D0D0D, 0xAAAAAAAA, 0x0E0E0E0E
@@ -288,7 +288,7 @@ def test_no_page_names_a_node_that_opted_out(
 
     # No link opens a packet that is not shown.
     with closing(open_current_database(path)) as connection:
-        assert unshown_packets(connection, linked) == set()
+        assert unlinkable_packets(connection, linked) == set()
 
     # The other nodes all show.
     listed = client.get("/api/v1/nodes", params={"limit": 1}).json()["total"]
@@ -395,9 +395,29 @@ def test_retention_keeps_an_opted_out_node_hidden_after_a_restart(tmp_path: Path
         # What startup does (__main__._refresh_opt_outs).
         with transaction(connection):
             opt_out.refresh_opt_outs(connection, None)
-    # Retention keeps the newest packet with the bit off, which decides.
-    assert removed.packets == 1
+    # The bit outlives its packet.
+    assert removed.packets == 3
     assert not shown(client)
+
+
+def test_a_node_that_turned_the_bit_back_on_stays_shown_after_retention(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    # The NodeInfo with the bit off was once kept for its name, and decided.
+    user = mesh_pb2.User(long_name="Quiet Hill", short_name="QH")
+    send(path, 0, 0, portnum=portnums_pb2.PortNum.NODEINFO_APP, payload=user.SerializeToString())
+    send(path, DAY, 1)
+    send(path, 15 * DAY, None)
+    client = TestClient(create_app(Settings(path)))
+    assert shown(client)
+    with closing(open_current_database(path)) as connection:
+        removed = apply_retention(connection, retention_days=14, now=START + timedelta(days=16))
+        with transaction(connection):
+            opt_out.refresh_opt_outs(connection, None)
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False)
+    assert removed.packets == 2
+    assert shown(client)
 
 
 def test_retention_still_deletes_with_a_node_hidden_only_by_a_survey(tmp_path: Path) -> None:

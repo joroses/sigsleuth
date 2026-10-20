@@ -284,22 +284,15 @@ def assert_same_as_capture(sample: Sample, sample_client: TestClient, path: Path
             continue
         captured = sample_client.get(url).json()
         again = rederived.get(url).json()
-        if url.startswith("/api/v1/links?"):
-            # all_derived's map report exception, as the Links page shows it.
-            for item, rebuilt in zip(captured["items"], again["items"], strict=False):
-                if item["distance_km"] is None:
-                    rebuilt["distance_km"] = None
         assert again == captured, f"{url}\n{json_diff(captured, again)}"
 
 
 def all_derived(connection: sqlite3.Connection) -> dict[str, Counter[tuple[object, ...]]]:
     """Every derived table's rows, including the estimates, without the
-    differences a rebuild is allowed: when a later report
-    teaches a packet its port, capture leaves the unreadable port's hour at 0
-    packets and its last_sent_at unchanged; and a link's km when heard can
-    use a position a rebuild already has from a map report folded in first."""
+    difference a rebuild is allowed: when a later report teaches a packet its
+    port, capture leaves the unreadable port's hour at 0 packets and its
+    last_sent_at unchanged."""
     tables = {table: Counter(rows) for table, rows in derived(connection).items()}
-    tables["link_hour"] = Counter(row[:-1] for row in tables["link_hour"].elements())
     tables["node_activity_hour"] = Counter(
         row[:5] if row[2] == -1 else row
         for row in tables["node_activity_hour"].elements()

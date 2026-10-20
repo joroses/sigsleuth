@@ -6,9 +6,9 @@ tables (derived.sql, DERIVED_VERSION, kept in derived_state) are computed from
 facts by derive.py. Raise DERIVED_VERSION with any change to derived.sql or to
 what derive.py writes: at the next start the derived tables are recreated
 empty and refilled from saved history in the background (maintenance.py) while
-capture saves new facts, with no upgrade code.
-Retention spares the packets node_current names, so a rebuild can read
-them back.
+capture saves new facts, with no upgrade code. What a node reported that
+must outlive its packets (names, positions, OK to MQTT) is a fact
+(reported.py), so a rebuild never loses it.
 """
 
 import json
@@ -22,13 +22,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sigsleuth.radio import distance_km
+from sigsleuth.radio import distance_km, great_circle_km
 
 DATABASE_BUSY_TIMEOUT_MS = 5_000
 # Between the batches of a long write (rederive, retention), so capture gets
 # the write lock: a waiting connection retries only every 100 ms or so.
 WRITE_PAUSE_SECONDS = 0.15
-FACTS_VERSION = 3
+FACTS_VERSION = 4
 # Each takes facts from its version to the next. Survey measurements are kept
 # across them: a phone cannot resend what it has deleted.
 _FACTS_UPGRADES = {
@@ -83,8 +83,72 @@ _FACTS_UPGRADES = {
     """,
     # Packets gain their sender's OK to MQTT bit; older ones never learn it.
     2: "ALTER TABLE packet ADD COLUMN ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1));",
+    # Each node's reported state becomes facts (node_reported, node_position),
+    # filled from node_current and each node's newest OK to MQTT bit. A
+    # rebuild adds the position history of the packets kept.
+    3: """
+    CREATE TABLE node_reported (
+        node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
+        last_sent_at INTEGER,
+        last_sent_packet_row_id INTEGER,
+        node_info_at INTEGER,
+        node_info_packet_row_id INTEGER,
+        long_name TEXT CHECK (long_name IS NULL OR length(CAST(long_name AS BLOB)) <= 1024),
+        short_name TEXT CHECK (short_name IS NULL OR length(CAST(short_name AS BLOB)) <= 1024),
+        hardware_model TEXT CHECK (hardware_model IS NULL OR length(hardware_model) <= 64),
+        role TEXT CHECK (role IS NULL OR length(role) <= 64),
+        ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1)),
+        ok_to_mqtt_at INTEGER,
+        CHECK ((last_sent_at IS NULL) = (last_sent_packet_row_id IS NULL)),
+        CHECK ((node_info_at IS NULL) = (node_info_packet_row_id IS NULL)),
+        CHECK ((ok_to_mqtt IS NULL) = (ok_to_mqtt_at IS NULL))
+    ) STRICT;
+    CREATE TABLE node_position (
+        node_id INTEGER NOT NULL CHECK (node_id BETWEEN 1 AND 4294967295),
+        at INTEGER NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        altitude_meters INTEGER,
+        device_time INTEGER,
+        packet_row_id INTEGER,
+        PRIMARY KEY (node_id, at)
+    ) STRICT, WITHOUT ROWID;
+    INSERT INTO node_reported (
+        node_id, last_sent_at, last_sent_packet_row_id, node_info_at, node_info_packet_row_id,
+        long_name, short_name, hardware_model, role
+    )
+    SELECT node_id, last_sent_at, last_sent_packet_row_id, node_info_observed_at,
+           node_info_packet_row_id,
+           -- Without a NodeInfo, node_current's names are its map report's.
+           iif(node_info_observed_at IS NULL, NULL, long_name),
+           iif(node_info_observed_at IS NULL, NULL, short_name),
+           iif(node_info_observed_at IS NULL, NULL, hardware_model),
+           iif(node_info_observed_at IS NULL, NULL, role)
+    FROM node_current
+    WHERE last_sent_at IS NOT NULL OR node_info_observed_at IS NOT NULL;
+    -- Bare columns come from the row with the max().
+    INSERT INTO node_reported (node_id, ok_to_mqtt, ok_to_mqtt_at)
+    SELECT sender_node_id, ok_to_mqtt, first_received_at FROM (
+        SELECT sender_node_id, ok_to_mqtt, first_received_at, max(id) FROM packet
+        WHERE ok_to_mqtt IS NOT NULL GROUP BY sender_node_id
+    ) WHERE true
+    ON CONFLICT (node_id) DO UPDATE SET
+        ok_to_mqtt = excluded.ok_to_mqtt, ok_to_mqtt_at = excluded.ok_to_mqtt_at;
+    INSERT INTO node_reported (node_id, ok_to_mqtt, ok_to_mqtt_at)
+    SELECT sender_node_id, ok_to_mqtt, heard_at FROM (
+        SELECT sender_node_id, ok_to_mqtt, max(heard_at) AS heard_at FROM coverage_measurement
+        WHERE ok_to_mqtt IS NOT NULL GROUP BY sender_node_id
+    ) WHERE true
+    ON CONFLICT (node_id) DO UPDATE SET
+        ok_to_mqtt = excluded.ok_to_mqtt, ok_to_mqtt_at = excluded.ok_to_mqtt_at
+    WHERE ok_to_mqtt_at IS NULL OR ok_to_mqtt_at <= excluded.ok_to_mqtt_at;
+    INSERT INTO node_position
+    SELECT node_id, position_observed_at, latitude, longitude, altitude_meters, device_time,
+           position_packet_row_id
+    FROM node_current WHERE position_observed_at IS NOT NULL;
+    """,
 }
-DERIVED_VERSION = 37
+DERIVED_VERSION = 38
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -174,7 +238,7 @@ class NodeSummary:
     neighbours (node_estimate, positions.py), which sets estimated; None when
     neither places it. The map and Zones draw a node here; link pages draw
     it where it was when heard when its own positions tell, else here
-    (positions.positions_when_heard)."""
+    (reported.positions_when_heard)."""
 
     node_id: int
     long_name: str | None
@@ -277,6 +341,8 @@ def open_database(database_path: str | Path) -> sqlite3.Connection:
     )
     connection.row_factory = sqlite3.Row
     connection.create_function("fold", 1, fold, deterministic=True)
+    # km(latitude, longitude, latitude, longitude), never with a NULL.
+    connection.create_function("km", 4, great_circle_km, deterministic=True)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(f"PRAGMA busy_timeout = {DATABASE_BUSY_TIMEOUT_MS}")

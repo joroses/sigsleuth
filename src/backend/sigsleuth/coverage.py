@@ -12,8 +12,9 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
   a fix worse than MAX_ACCURACY_M or older than MAX_FIX_AGE_MS, or a time
   outside the age limit or more than MAX_FUTURE_MS ahead.
 - Everything is read before the write transaction opens, so it holds the
-  write lock, which capture also needs, only to insert and to refresh its
-  senders' opt-outs (opt_out.refresh_opt_outs, a few seeks each).
+  write lock, which capture also needs, only to insert, to save its senders'
+  OK to MQTT bits (reported.save_bit) and to refresh their opt-outs
+  (opt_out.refresh_opt_outs), a few seeks each.
 - Each measurement is saved with its cell, its SNR margin and the node it
   heard (heard_node), decided once, at upload (schema.sql says why). A survey
   link (refresh_survey_links), from survey evidence alone, can name a relay
@@ -64,6 +65,7 @@ from sigsleuth.relays import (
     node_radios,
     nodes_by_byte,
 )
+from sigsleuth.reported import save_bit
 
 MAX_UPLOAD_MEASUREMENTS = 1_000
 MAX_ACCURACY_M = 100
@@ -186,14 +188,14 @@ def save_upload(
     skipped: Counter[str] = Counter()
     session = upload.session
     rows = []
-    decoded_senders = set()
+    bits = []
     for m in upload.measurements:
         reason = skip_reason(m, now=now, max_age_days=max_age_days)
         if reason is not None:
             skipped[reason] += 1
             continue
         if m.ok_to_mqtt is not None and m.sender_node_id:
-            decoded_senders.add(m.sender_node_id)
+            bits.append((m.sender_node_id, m.ok_to_mqtt, m.heard_at_ms))
         # As capture reads MQTT headers: an unknown hop start leaves both
         # hop fields unknown.
         hop_start = None
@@ -284,7 +286,9 @@ def save_upload(
                     "margin_db": point.margin_db,
                 },
             ).rowcount
-        refresh_opt_outs(connection, decoded_senders)
+        for sender, bit, heard_at in bits:
+            save_bit(connection, sender, bit, heard_at)
+        refresh_opt_outs(connection, {sender for sender, _, _ in bits})
     # Already saved rows too: when a refresh fails after the insert commits,
     # the phone gets a 503 and resends the batch, which saves nothing.
     if points:

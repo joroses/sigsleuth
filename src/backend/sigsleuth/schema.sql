@@ -1,5 +1,6 @@
--- Saved facts: what gateways reported, grouped into packets, and what signal
--- survey phones uploaded. Derived tables (derived.sql) are rebuilt from these.
+-- Saved facts: what gateways reported, grouped into packets, what signal
+-- survey phones uploaded, and each node's reported state that outlives its
+-- packets. Derived tables (derived.sql) are rebuilt from these.
 -- FACTS_VERSION in db.py is this file's version.
 -- Times are epoch milliseconds (UTC). Node numbers and packet IDs are unsigned
 -- 32-bit. A node is its node number alone: topic roots are gateway settings,
@@ -138,7 +139,8 @@ CREATE INDEX coverage_measurement_sender ON coverage_measurement (sender_node_id
 -- Each node's latest map report (decode.MapReport), the node's own MQTT
 -- self-description on <root>/2/map/; neither a packet nor a reception.
 -- channel is its primary channel, not the channel its packets are heard on.
--- The position is as sent, valid or not; derive.py checks it.
+-- The position is as sent, valid or not; reported.py checks it. Retention
+-- deletes a report with its node, as it may be all that names the node.
 CREATE TABLE map_report (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
     received_at INTEGER NOT NULL,
@@ -158,3 +160,42 @@ CREATE TABLE map_report (
     altitude_meters INTEGER,
     position_precision INTEGER NOT NULL
 ) STRICT;
+
+-- Each node's reported state that has to outlive its packets (reported.py):
+-- its last sent packet, newest NodeInfo, and newest OK to MQTT bit told by a
+-- packet or a survey measurement. Each part only moves to newer data, and
+-- the packet IDs may name packets retention has deleted. Retention removes
+-- a row with the node's node_current row, or with its last survey
+-- measurement.
+CREATE TABLE node_reported (
+    node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
+    last_sent_at INTEGER,
+    last_sent_packet_row_id INTEGER,
+    node_info_at INTEGER,
+    node_info_packet_row_id INTEGER,
+    long_name TEXT CHECK (long_name IS NULL OR length(CAST(long_name AS BLOB)) <= 1024),
+    short_name TEXT CHECK (short_name IS NULL OR length(CAST(short_name AS BLOB)) <= 1024),
+    hardware_model TEXT CHECK (hardware_model IS NULL OR length(hardware_model) <= 64),
+    role TEXT CHECK (role IS NULL OR length(role) <= 64),
+    ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1)),
+    ok_to_mqtt_at INTEGER,
+    CHECK ((last_sent_at IS NULL) = (last_sent_packet_row_id IS NULL)),
+    CHECK ((node_info_at IS NULL) = (node_info_packet_row_id IS NULL)),
+    CHECK ((ok_to_mqtt IS NULL) = (ok_to_mqtt_at IS NULL))
+) STRICT;
+
+-- Each valid position a node reported, from its own packet, or from its map
+-- report (packet_row_id NULL) while it has no position of its own: map
+-- reports are often coarse or wrong. Retention keeps the rows from its age
+-- limit on and each node's newest before it, so where a node was is known
+-- for all kept history.
+CREATE TABLE node_position (
+    node_id INTEGER NOT NULL CHECK (node_id BETWEEN 1 AND 4294967295),
+    at INTEGER NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    altitude_meters INTEGER,
+    device_time INTEGER,
+    packet_row_id INTEGER,
+    PRIMARY KEY (node_id, at)
+) STRICT, WITHOUT ROWID;

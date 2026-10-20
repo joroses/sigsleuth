@@ -1,9 +1,12 @@
 """Keep recent history within its age limit.
 
-maintenance.py runs this after any rederive (derive.py), so node_current names
-the packets to spare, then about every five minutes while capturing.
+maintenance.py runs this after any rederive (derive.py), then about every
+five minutes while capturing. Packets go by age alone: what a node reported
+that must outlive them is kept as facts (reported.py) while the node is
+known.
 """
 
+import json
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -12,6 +15,7 @@ from datetime import datetime, timedelta
 from sigsleuth.db import (
     WRITE_PAUSE_SECONDS,
     first_packet_row_id_since,
+    rederive_pending,
     to_epoch_ms,
     transaction,
     utc_now,
@@ -47,11 +51,10 @@ def apply_retention(
     now: datetime | None = None,
     batch_size: int = RETENTION_BATCH_SIZE,
 ) -> RetentionResult:
-    """Delete the current state and packets first heard before the age
-    limit, except the packets nodes still name or that keep a node hidden
-    (_SPARED_PACKETS), oldest first in small batches,
-    then signal survey measurements heard before their own, usually longer,
-    limit; retention_days 0 disables both. coverage_retention_days is the
+    """Delete the current state and the packets first heard before the age
+    limit, packets oldest first in small batches, then signal survey
+    measurements heard before their own, usually longer, limit;
+    retention_days 0 disables both. coverage_retention_days is the
     measurements' limit: None keeps them no longer than packets, 0 sets no
     limit, and it is never shorter than retention_days.
 
@@ -59,7 +62,9 @@ def apply_retention(
     """
     if retention_days < 0:
         raise ValueError("retention_days must be non-negative")
-    if not retention_days:
+    # What it deletes with a node follows node_current, which is incomplete
+    # until rederive has finished.
+    if not retention_days or rederive_pending(connection):
         return RetentionResult()
 
     current_time = now or utc_now()
@@ -97,6 +102,19 @@ def _delete_old_measurements(connection: sqlite3.Connection, cutoff: int) -> int
         ]
         deleted = len(senders)
         if deleted:
+            # A sender no longer known leaves no reported state.
+            connection.execute(
+                """
+                DELETE FROM node_reported
+                WHERE node_id IN (SELECT value FROM json_each(?))
+                  AND node_id NOT IN (SELECT node_id FROM node_current)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM coverage_measurement
+                      WHERE sender_node_id = node_reported.node_id
+                  )
+                """,
+                (json.dumps(sorted(set(senders))),),
+            )
             refresh_opt_outs(connection, set(senders))
             connection.execute(
                 """
@@ -119,13 +137,47 @@ def database_used_bytes(connection: sqlite3.Connection) -> int:
 
 def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
     """Delete the current state last updated before the age limit: nodes last
-    seen before it, map reports received before it, and hourly link and node
-    activity totals. Totals go by whole hours, so the hour holding the limit
-    stays."""
+    seen before it with their reported state and map report, positions from
+    before it except each node's newest then, and hourly link and node
+    activity totals. Totals go by whole hours, so the
+    hour holding the limit stays. A node still sending survey measurements
+    keeps its OK to MQTT bit."""
     hour = cutoff - cutoff % HOUR_MS
     with transaction(connection):
-        connection.execute("DELETE FROM node_current WHERE last_seen_at < ?", (cutoff,))
-        connection.execute("DELETE FROM map_report WHERE received_at < ?", (cutoff,))
+        gone = json.dumps(
+            [
+                row[0]
+                for row in connection.execute(
+                    "DELETE FROM node_current WHERE last_seen_at < ? RETURNING node_id", (cutoff,)
+                )
+            ]
+        )
+        # A map report goes with its node, not by age: it names a node that
+        # sends no NodeInfo.
+        for table in ("node_position", "map_report"):
+            connection.execute(
+                f"DELETE FROM {table} WHERE node_id IN (SELECT value FROM json_each(?))", (gone,)
+            )
+        connection.execute(
+            """
+            DELETE FROM node_reported WHERE node_id IN (SELECT value FROM json_each(?))
+              AND NOT EXISTS (
+                  SELECT 1 FROM coverage_measurement WHERE sender_node_id = node_reported.node_id
+              )
+            """,
+            (gone,),
+        )
+        # Kept rows still place a node at the limit: as-of lookups from it on
+        # find its newest position before it.
+        connection.execute(
+            """
+            DELETE FROM node_position AS p WHERE at < :cutoff AND EXISTS (
+                SELECT 1 FROM node_position
+                WHERE node_id = p.node_id AND at > p.at AND at < :cutoff
+            )
+            """,
+            {"cutoff": cutoff},
+        )
         # Naming every link kind lets SQLite seek the primary key.
         connection.execute(
             """
@@ -137,48 +189,29 @@ def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
         connection.execute("DELETE FROM node_activity_hour WHERE hour_start < ?", (hour,))
 
 
-# The packets node_current names as a node's last sent packet, NodeInfo and
-# position. Retention spares them, so a rebuild reads them again and pages can
-# link to them. It also spares each opted-out node's newest packet with OK to
-# MQTT off: without it, a spared older packet with the bit on would decide at
-# the next refill and show the node again. A node hidden by a survey has no
-# such packet; its NULL must stay out, as one NULL makes NOT IN match nothing.
-_SPARED_PACKETS = """
-    SELECT last_sent_packet_row_id FROM node_current WHERE last_sent_packet_row_id IS NOT NULL
-    UNION SELECT node_info_packet_row_id FROM node_current
-        WHERE node_info_packet_row_id IS NOT NULL
-    UNION SELECT position_packet_row_id FROM node_current WHERE position_packet_row_id IS NOT NULL
-    UNION SELECT id FROM (
-        SELECT (
-            SELECT max(p.id) FROM packet AS p
-            WHERE p.sender_node_id = o.node_id AND p.ok_to_mqtt = 0
-        ) AS id
-        FROM node_opt_out AS o
-    ) WHERE id IS NOT NULL
-"""
-
-
 def _delete_oldest_packets(
     connection: sqlite3.Connection,
     batch_size: int,
     cutoff: int,
 ) -> int:
     """Delete up to batch_size of the oldest packets first heard before
-    cutoff, except the spared ones (_SPARED_PACKETS).
+    cutoff.
 
     Packet row IDs grow with arrival, so the IDs below the first one at
     cutoff are the old ones. The foreign key cascade deletes their receptions
-    and traceroute hops.
+    and traceroute hops. The newest packet stays, or SQLite would number new
+    ones from 1 again, and reported state names packets by ID.
     """
-    before = first_packet_row_id_since(connection, cutoff)
+    newest = connection.execute("SELECT max(id) FROM packet").fetchone()[0]
+    if newest is None:
+        return 0
+    before = min(first_packet_row_id_since(connection, cutoff), newest)
     with transaction(connection):
         return int(
             connection.execute(
-                f"""
+                """
                 DELETE FROM packet WHERE id IN (
-                    SELECT id FROM packet
-                    WHERE id < ? AND id NOT IN ({_SPARED_PACKETS})
-                    ORDER BY id LIMIT ?
+                    SELECT id FROM packet WHERE id < ? ORDER BY id LIMIT ?
                 )
                 """,
                 (before, batch_size),

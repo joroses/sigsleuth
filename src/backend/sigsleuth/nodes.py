@@ -33,7 +33,7 @@ from sigsleuth.decode import interpret_payload, portnum_name, read_device_teleme
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import FirmwareEstimate, estimate
 from sigsleuth.links import LinkKind
-from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unshown_packets
+from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unlinkable_packets
 from sigsleuth.packets import PacketPage, PacketPort, packet_rows
 from sigsleuth.positions import EstimatedPosition, node_estimate
 
@@ -84,7 +84,7 @@ class NodePosition:
 def node_position(row: sqlite3.Row, unshown: set[int]) -> NodePosition:
     """The position part of a node_current row that has a valid position. The
     row also holds the node's map report's position_precision, NULL without one.
-    unshown are packets not to link (opt_out.unshown_packets)."""
+    unshown are packets not to link (opt_out.unlinkable_packets)."""
     packet = row["position_packet_row_id"]
     return NodePosition(
         observed_at=from_epoch_ms(row["position_observed_at"]),
@@ -198,7 +198,7 @@ def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
     unshown = (
         set()
         if row is None
-        else unshown_packets(
+        else unlinkable_packets(
             connection,
             (
                 row["last_sent_packet_row_id"],
@@ -369,7 +369,7 @@ def node_charts(connection: sqlite3.Connection, node_id: int, *, since: datetime
         ),
     ).fetchall()
     utilization = []
-    unshown = unshown_packets(connection, (packet["id"] for packet in telemetry))
+    unshown = unlinkable_packets(connection, (packet["id"] for packet in telemetry))
     for packet in reversed(telemetry):
         util = read_device_telemetry(packet["application_payload"])
         if util is not None and (
@@ -466,7 +466,7 @@ def node_position_history(connection: sqlite3.Connection, node_id: int) -> NodeP
         (node_id, MAX_NODE_POSITIONS),
     ).fetchall()
     items = []
-    unshown = unshown_packets(connection, (row["id"] for row in rows))
+    unshown = unlinkable_packets(connection, (row["id"] for row in rows))
     for row in rows:
         position = interpret_payload(
             portnums_pb2.PortNum.POSITION_APP, bytes(row["application_payload"])
@@ -757,7 +757,7 @@ def node_list(
         f"{node_table} SELECT count(*) FROM node WHERE {where}",
         {**values, "since": since - since % HOUR_MS},
     ).fetchone()[0]
-    unshown = unshown_packets(connection, (row["last_sent_packet_row_id"] for row in rows))
+    unshown = unlinkable_packets(connection, (row["last_sent_packet_row_id"] for row in rows))
     items = tuple(
         NodeListItem(
             node_id=int(row["node_id"]),

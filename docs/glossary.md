@@ -14,7 +14,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Packet | One radio message, found by grouping its receptions (`ingest.group_reception`). Its row ID is SigSleuth's; its packet ID is the sender's 32-bit number, which can repeat. |
 | Inactivity window | A matching reception joins a packet if it arrives within 30 minutes of the packet's latest one. |
 | Map report | A node's own MQTT self-description on `<root>/2/map/`, about hourly. Not a packet; names and places a node only until its own NodeInfo and position arrive. |
-| Facts / derived tables | What was reported, as saved (`schema.sql`) / tables computed from facts for fast pages (`derived.sql`, `derive.py`). |
+| Facts / derived tables | What was reported, as saved (`schema.sql`), including each node's names, positions and OK to MQTT setting, which outlive its packets (`reported.py`) / tables computed from facts for fast pages (`derived.sql`, `derive.py`). |
 | Rederive | Rebuilding the derived tables from facts after `DERIVED_VERSION` changes. |
 | Default channel key | The public Meshtastic key; the only one SigSleuth decrypts with. |
 | Sentinel | A value meaning "unavailable", such as an SNR of 0 for a gateway's own packet. Saved as missing. |
@@ -26,7 +26,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Node | A radio's node number, such as `!aabbccdd`. It does not prove one physical device: numbers can collide. |
 | Gateway | The node that uploaded a reception to MQTT. It may not be a node SigSleuth has heard itself. |
 | NodeInfo | A node's broadcast of its names, hardware and role. |
-| Opted-out node | One whose newest packet that told its OK to MQTT setting, captured or surveyed, had it off; a node reporting to MQTT as a gateway never is (`opt_out.py`). Its history is kept, but no page names it: its own node, the packets to or from it and its links are left out (another node's packet to it keeps its time, without a link), and other nodes' routes, neighbour lists and relays show it as unknown. Its survey measurements read as an unknown relay's ([coverage](coverage.md#nodes-that-do-not-allow-mqtt)). Turning the setting on shows its whole history again. With `SIGSLEUTH_HIDE_OPTED_OUT=false`, no node is opted out. |
+| Opted-out node | One whose newest OK to MQTT setting, from a captured packet or a survey, was off, even once that packet has expired; a node reporting to MQTT as a gateway never is (`opt_out.py`). Its history is kept, but no page names it: its own node, the packets to or from it and its links are left out (another node's packet to it keeps its time, without a link), and other nodes' routes, neighbour lists and relays show it as unknown. Its survey measurements read as an unknown relay's ([coverage](coverage.md#nodes-that-do-not-allow-mqtt)). Turning the setting on shows its whole history again. With `SIGSLEUTH_HIDE_OPTED_OUT=false`, no node is opted out. |
 | Last sent / last seen | When the node last originated a packet / that, or when it last reported as a gateway or appeared in a traceroute hop. |
 | Valid position | Coordinates in range and not near 0,0. An invalid one never replaces the latest valid one. |
 | Estimated position | Where a node that reports no position probably is, from its placed radio neighbours (`positions.py`). Drawn hollow; never used for km. |
@@ -35,7 +35,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Aircraft | A node heard directly in two far-apart places at once (`derive._mark_airborne`). |
 | Unlikely long link | A link 250 km or longer that the terrain check rejects. |
 | Pending distance | A distance of 100 km or more ranked apart until both ends have reported a position after it was heard, without either moving since. If an end moved after it was heard, that historical distance stays pending even after further reports. |
-| Distance when heard | km between the nodes' reported positions when the link was last heard. Link pages show only this; the map draws nodes where they are now. |
+| Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Link pages show only this; the map draws nodes where they are now. |
 | Channel | The channel name a packet was uploaded under. `PKI` means private messages, not a channel. |
 | Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the radio channel of its latest packet on one. |
 | Packet channel | The number on one packet: a channel hash when encrypted, a gateway-local index when decoded. |

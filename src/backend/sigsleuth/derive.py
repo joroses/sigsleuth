@@ -8,19 +8,19 @@ code path serves both callers:
 - Rederive: after a DERIVED_VERSION change, rederive refills the emptied
   tables oldest first, each packet just before its first reception, as
   capture derived it. Capture keeps saving facts meanwhile without deriving
-  them (ingest.py), and rederive goes on until it has caught up. Opted-out
-  nodes (node_opt_out) are refilled first. Survey measurements keep what
-  upload decided; their survey links (coverage_relay) are refilled from them
-  first.
+  them (ingest.py), and rederive goes on until it has caught up. Each node's
+  reported state (reported.py) is copied in first, and opted-out nodes
+  (node_opt_out) refilled. Survey measurements keep what upload decided;
+  their survey links (coverage_relay) are refilled from them first.
 
-Rederive matches capture except that a packet first heard unreadable is
-counted at its readable port from the start, a km when heard can use a map
-report capture had not yet received, and only each node's latest map report
-is kept, so earlier moves between reports are not seen. A readable report
-that comes after rederive passed its packet or reception adds nothing: the
-packet keeps its unreadable count, a gateway's late traceroute route its
-missing hops. Rederive passes the newest rows only in its last seconds, so
-this is rare.
+Nodes are placed where they were when heard (reported.positions_when_heard)
+and node_current's reported part is a copy of facts (copy_reported), so
+neither depends on the order rows are derived in. Rederive matches capture
+except that a packet first heard unreadable is counted at its readable port
+from the start. A readable report that comes after rederive passed its
+packet or reception adds nothing: the packet keeps its unreadable count, a
+gateway's late traceroute route its missing hops. Rederive passes the newest
+rows only in its last seconds, so this is rare.
 
 A failed derived update is logged and undone (derive_or_undo); the facts stay.
 """
@@ -37,14 +37,13 @@ from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import recreate_derived, rederive_pending, transaction
 from sigsleuth.decode import (
-    interpret_payload,
-    invalid_position_reason,
     read_device_telemetry,
     read_neighbors,
 )
 from sigsleuth.firmware import TRAITS, newest, payload_trait
 from sigsleuth.opt_out import refresh_opt_outs
 from sigsleuth.radio import great_circle_km, preset_name, relay_byte_of
+from sigsleuth.reported import positions_when_heard, save_position
 from sigsleuth.traceroute import (
     Hop,
     Route,
@@ -66,8 +65,8 @@ BROADCAST_NODE_ID = 0xFFFFFFFF
 # faking it.
 AIRBORNE_APART_KM = 300
 AIRBORNE_PAIR_KM = 150
-# A node whose new valid position is farther than this from the one it
-# replaces moved (node_current.moved_at).
+# A node whose valid position is farther than this from its previous one
+# moved (node_current.moved_at).
 MOVED_KM = 25
 # Receptions per rederive transaction; capture waits for one at most, so one
 # must take well under DATABASE_BUSY_TIMEOUT_MS (about 1.5 s on the server).
@@ -128,6 +127,9 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
         _count_activity(connection, row, row["portnum"], 1)
     if delivery.application_saved:
         _update_sender(connection, row)
+        copy_reported(connection, int(row["sender_node_id"]))
+        if row["portnum"] == portnums_pb2.PortNum.POSITION_APP:
+            _mark_moves(connection, int(row["sender_node_id"]))
         _count_neighbors(connection, row)
     if delivery.new_reception:
         _derive_reception(connection, row)
@@ -175,7 +177,7 @@ def rederive(
     started_at = logged_at = time.monotonic()
     recreate_derived(connection)
     with transaction(connection):
-        _apply_all_map_reports(connection)
+        _copy_all_reported(connection)
         # Before the rest, so pages never name an opted-out node while it runs.
         # Gateways leave node_opt_out again as their reports are derived.
         refresh_opt_outs(connection, None)
@@ -194,8 +196,8 @@ def rederive(
             ).fetchall()
             done = len(receptions) < batch_size
             # The packets these receptions start. The last batch takes the
-            # rest, and the map reports capture saved meanwhile; capture waits
-            # for it and derives what comes after.
+            # rest, and the reported state capture saved meanwhile; capture
+            # waits for it and derives what comes after.
             packets = connection.execute(
                 f"""
                 SELECT {_PACKET_COLUMNS} FROM packet AS t
@@ -210,7 +212,7 @@ def rederive(
             ).fetchall()
             _derive_rows(connection, _in_capture_order(connection, packets, receptions))
             if done:
-                _apply_all_map_reports(connection)
+                _copy_all_reported(connection)
                 connection.execute("UPDATE derived_state SET rebuilt = 1")
         if done:
             LOGGER.info("Derived tables are rebuilt in %.0f s", time.monotonic() - started_at)
@@ -268,10 +270,14 @@ def _derive_rows(connection: sqlite3.Connection, steps: Sequence[Callable[[], No
 
 def _derive_packet(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     """A saved packet's activity count, its sender's node state and its
-    neighbour links, as capture derives them from its first readable report."""
+    neighbour links, as capture derives them from its first readable report.
+    A position is added to the position history: after the upgrade that
+    made it a fact, only the latest one was there."""
     _count_activity(connection, row, row["portnum"], 1)
     _update_sender(connection, row)
     _count_neighbors(connection, row)
+    if row["portnum"] == portnums_pb2.PortNum.POSITION_APP:
+        save_position(connection, row)
 
 
 def _count_activity(
@@ -301,26 +307,12 @@ def _count_activity(
 
 def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     """Move the sender's node_current forward with its packet's saved
-    application data: last sent packet, radio channel, NodeInfo, valid position, ChUtil and
-    AirUtil, battery and firmware, each only when newer than what it holds."""
+    application data: radio channel, ChUtil and AirUtil, battery and
+    firmware, each only when newer than what it holds. Its reported part
+    comes from facts (copy_reported)."""
     sender_node_id = int(row["sender_node_id"])
-    packet_row_id = int(row["packet_row_id"])
     observed_at = int(row["first_received_at"])
-    connection.execute(
-        """
-        INSERT INTO node_current (
-            node_id, last_sent_at, last_sent_packet_row_id, last_seen_at
-        ) VALUES (?1, ?2, ?3, ?2)
-        ON CONFLICT(node_id) DO UPDATE SET
-            last_sent_at = excluded.last_sent_at,
-            last_sent_packet_row_id = excluded.last_sent_packet_row_id,
-            last_seen_at = max(last_seen_at, excluded.last_seen_at)
-        WHERE node_current.last_sent_at IS NULL
-           OR (excluded.last_sent_at, excluded.last_sent_packet_row_id)
-            > (node_current.last_sent_at, node_current.last_sent_packet_row_id)
-        """,
-        (sender_node_id, observed_at, packet_row_id),
-    )
+    _mark_seen(connection, sender_node_id, observed_at)
     # Only a radio channel tells the node's radio settings; private messages
     # (channel PKI) and other channels leave its channel alone. Keep the
     # observed spelling so channel filters match the packet and its links.
@@ -337,61 +329,6 @@ def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     if payload is None or row["portnum"] is None:
         return
     portnum = int(row["portnum"])
-    interpretation = interpret_payload(portnum, bytes(payload))
-    if interpretation.node_info is not None:
-        node_info = interpretation.node_info
-        connection.execute(
-            """
-            UPDATE node_current SET
-                node_info_observed_at = ?,
-                node_info_packet_row_id = ?,
-                long_name = ?, short_name = ?, hardware_model = ?, role = ?
-            WHERE node_id = ?
-              AND (node_info_observed_at IS NULL
-                   OR (?, ?) > (node_info_observed_at,
-                                node_info_packet_row_id))
-            """,
-            (
-                observed_at,
-                packet_row_id,
-                node_info.long_name,
-                node_info.short_name,
-                node_info.hardware_model,
-                node_info.role,
-                sender_node_id,
-                observed_at,
-                packet_row_id,
-            ),
-        )
-    position = interpretation.position
-    if position is not None and position.is_valid:
-        _replace_position(
-            connection,
-            sender_node_id,
-            observed_at,
-            """
-            UPDATE node_current SET
-                position_observed_at = ?,
-                position_packet_row_id = ?,
-                latitude = ?, longitude = ?, altitude_meters = ?,
-                device_time = ?
-            WHERE node_id = ?
-              AND (position_packet_row_id IS NULL
-                   OR (?, ?) > (position_observed_at,
-                                position_packet_row_id))
-            """,
-            (
-                observed_at,
-                packet_row_id,
-                position.latitude,
-                position.longitude,
-                position.altitude_meters,
-                position.device_time,
-                sender_node_id,
-                observed_at,
-                packet_row_id,
-            ),
-        )
     if portnum == portnums_pb2.PortNum.TELEMETRY_APP:
         _update_device_telemetry(connection, sender_node_id, observed_at, bytes(payload))
     signed = "signature" if row["is_signed"] else None
@@ -401,80 +338,130 @@ def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
 
 
 def apply_map_report(connection: sqlite3.Connection, node_id: int) -> None:
-    """Fold the node's saved map report (map_report) into node_current: the
-    node was seen, and the report stands in for a NodeInfo and a position
-    until the node's own packets give them. Runs inside the caller's
-    transaction, and is safe to repeat."""
-    report = connection.execute("SELECT * FROM map_report WHERE node_id = ?", (node_id,)).fetchone()
+    """Fold the node's saved map report into node_current: the node was
+    seen, and the report names and places it until its own packets do (see
+    copy_reported). Runs inside the caller's transaction, and is safe to
+    repeat."""
+    report = connection.execute(
+        "SELECT received_at FROM map_report WHERE node_id = ?", (node_id,)
+    ).fetchone()
     if report is None:
         return
-    received_at = int(report["received_at"])
-    _mark_seen(connection, node_id, received_at)
+    _mark_seen(connection, node_id, int(report["received_at"]))
+    copy_reported(connection, node_id)
+    _mark_moves(connection, node_id)
+
+
+def copy_reported(connection: sqlite3.Connection, node_id: int | None) -> None:
+    """Copy one node's reported state, or every node's when None, into
+    node_current: last sent and NodeInfo (node_reported), else its map
+    report's names, and its newest position (node_position). A node that
+    sent a packet gets a row. Runs inside the caller's transaction."""
+    only, only_n, only_current = (
+        ("", "", "")
+        if node_id is None
+        else ("AND node_id = :node", "AND n.node_id = :node", "AND node_current.node_id = :node")
+    )
+    values = {"node": node_id}
+    connection.execute(
+        f"""
+        INSERT INTO node_current (node_id, last_seen_at, last_sent_at, last_sent_packet_row_id)
+        SELECT node_id, last_sent_at, last_sent_at, last_sent_packet_row_id FROM node_reported
+        WHERE last_sent_at IS NOT NULL {only}
+        ON CONFLICT (node_id) DO UPDATE SET
+            last_seen_at = max(last_seen_at, excluded.last_seen_at),
+            last_sent_at = excluded.last_sent_at,
+            last_sent_packet_row_id = excluded.last_sent_packet_row_id
+        """,
+        values,
+    )
+    connection.execute(
+        f"""
+        UPDATE node_current SET
+            node_info_observed_at = s.node_info_at,
+            node_info_packet_row_id = s.node_info_packet_row_id,
+            long_name = s.long_name, short_name = s.short_name,
+            hardware_model = s.hardware_model, role = s.role
+        FROM (
+            SELECT n.node_id, r.node_info_at, r.node_info_packet_row_id,
+                   iif(r.node_info_at IS NULL, m.long_name, r.long_name) AS long_name,
+                   iif(r.node_info_at IS NULL, m.short_name, r.short_name) AS short_name,
+                   iif(r.node_info_at IS NULL, m.hardware_model, r.hardware_model)
+                       AS hardware_model,
+                   iif(r.node_info_at IS NULL, m.role, r.role) AS role
+            FROM node_current AS n
+            LEFT JOIN node_reported AS r USING (node_id)
+            LEFT JOIN map_report AS m USING (node_id)
+            WHERE (r.node_id IS NOT NULL OR m.node_id IS NOT NULL) {only_n}
+        ) AS s
+        WHERE node_current.node_id = s.node_id
+        """,
+        values,
+    )
+    connection.execute(
+        f"""
+        UPDATE node_current SET
+            position_observed_at = p.at, position_packet_row_id = p.packet_row_id,
+            latitude = p.latitude, longitude = p.longitude,
+            altitude_meters = p.altitude_meters, device_time = p.device_time
+        FROM node_position AS p
+        WHERE p.node_id = node_current.node_id {only_current}
+          AND p.at = (SELECT max(at) FROM node_position WHERE node_id = node_current.node_id)
+        """,
+        values,
+    )
+
+
+def _mark_moves(connection: sqlite3.Connection, node_id: int | None) -> None:
+    """Set moved_at to the latest time one node's position, or every node's
+    when None, was over MOVED_KM from its previous one in node_position. One
+    node's check reads only its newest two, as capture adds them one by one."""
+    only = (
+        ""
+        if node_id is None
+        else """
+        WHERE node_id = :node AND at >= (
+            SELECT at FROM node_position WHERE node_id = :node ORDER BY at DESC LIMIT 1 OFFSET 1
+        )
+        """
+    )
+    connection.execute(
+        f"""
+        UPDATE node_current SET moved_at = m.at
+        FROM (
+            SELECT node_id, max(at) AS at FROM (
+                SELECT node_id, at, latitude, longitude,
+                       lag(latitude) OVER placed AS before_latitude,
+                       lag(longitude) OVER placed AS before_longitude
+                FROM node_position {only}
+                WINDOW placed AS (PARTITION BY node_id ORDER BY at)
+            )
+            -- A degree is at most 111.2 km, so this skips most km() calls.
+            WHERE abs(latitude - before_latitude) + abs(longitude - before_longitude)
+                    > :moved_km / 111.2
+              AND km(before_latitude, before_longitude, latitude, longitude) > :moved_km
+            GROUP BY node_id
+        ) AS m
+        WHERE node_current.node_id = m.node_id
+          AND (node_current.moved_at IS NULL OR node_current.moved_at < m.at)
+        """,
+        {"node": node_id, "moved_km": MOVED_KM},
+    )
+
+
+def _copy_all_reported(connection: sqlite3.Connection) -> None:
+    """Every node's reported state and moves, as after the derived tables
+    were recreated; map reports mark their nodes seen. Thousands of rows:
+    one quick pass."""
     connection.execute(
         """
-        UPDATE node_current SET long_name = ?, short_name = ?, hardware_model = ?, role = ?
-        WHERE node_id = ? AND node_info_observed_at IS NULL
-        """,
-        (
-            report["long_name"],
-            report["short_name"],
-            report["hardware_model"],
-            report["role"],
-            node_id,
-        ),
+        INSERT INTO node_current (node_id, last_seen_at)
+        SELECT node_id, received_at FROM map_report WHERE true
+        ON CONFLICT (node_id) DO UPDATE SET last_seen_at = max(last_seen_at, excluded.last_seen_at)
+        """
     )
-    if invalid_position_reason(report["latitude"], report["longitude"]) is None:
-        _replace_position(
-            connection,
-            node_id,
-            received_at,
-            """
-            UPDATE node_current SET
-                position_observed_at = ?, latitude = ?, longitude = ?,
-                altitude_meters = ?, device_time = NULL
-            WHERE node_id = ? AND position_packet_row_id IS NULL
-              AND (position_observed_at IS NULL OR position_observed_at <= ?)
-            """,
-            (
-                received_at,
-                report["latitude"],
-                report["longitude"],
-                report["altitude_meters"],
-                node_id,
-                received_at,
-            ),
-        )
-
-
-def _replace_position(
-    connection: sqlite3.Connection, node_id: int, at: int, update: str, values: Sequence[object]
-) -> None:
-    """Run update, which may give the node a new position observed at `at`. When
-    it does and the new position is more than MOVED_KM from the one it
-    replaced, from a packet or a map report, the node moved at `at`;
-    moved_at keeps the latest move."""
-    placed = (
-        "SELECT latitude, longitude FROM node_current WHERE node_id = ? AND latitude IS NOT NULL"
-    )
-    before = connection.execute(placed, (node_id,)).fetchone()
-    if not connection.execute(update, values).rowcount or before is None:
-        return
-    after = connection.execute(placed, (node_id,)).fetchone()
-    if great_circle_km(*before, *after) > MOVED_KM:
-        connection.execute(
-            """
-            UPDATE node_current SET moved_at = ?1
-            WHERE node_id = ?2 AND (moved_at IS NULL OR moved_at < ?1)
-            """,
-            (at, node_id),
-        )
-
-
-def _apply_all_map_reports(connection: sqlite3.Connection) -> None:
-    """Fold every saved map report into node_current, as after the derived
-    tables were recreated. Hundreds to a few thousand rows: one quick pass."""
-    for (node_id,) in connection.execute("SELECT node_id FROM map_report").fetchall():
-        apply_map_report(connection, int(node_id))
+    copy_reported(connection, None)
+    _mark_moves(connection, None)
 
 
 def _update_device_telemetry(
@@ -547,22 +534,29 @@ def _mark_airborne(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     with no hops used include two pairs, each within AIRBORNE_PAIR_KM, that are
     over AIRBORNE_APART_KM apart. Unlike a direct link, a report without a
     relay byte counts, as long as no hop was used and a signal was measured:
-    some uploads keep no relay byte on traceroutes. Gateways are placed by their
-    reported positions in node_current now."""
+    some uploads keep no relay byte on traceroutes. Gateways are placed where
+    they were when the packet was heard."""
     sender_node_id = int(row["sender_node_id"])
-    places = [
-        (float(found[0]), float(found[1]))
+    heard_at = int(row["first_received_at"])
+    gateways = [
+        int(found[0])
         for found in connection.execute(
             """
-            SELECT n.latitude, n.longitude
-            FROM reception AS r JOIN node_current AS n ON n.node_id = r.gateway_node_id
-            WHERE r.packet_row_id = ? AND r.hop_start = r.hop_limit
-              AND r.gateway_node_id <> ? AND (r.relay_byte IS NULL OR r.relay_byte = ?)
-              AND (r.rx_snr IS NOT NULL OR r.rx_rssi IS NOT NULL)
-              AND n.latitude IS NOT NULL
+            SELECT gateway_node_id FROM reception
+            WHERE packet_row_id = ? AND hop_start = hop_limit
+              AND gateway_node_id <> ? AND (relay_byte IS NULL OR relay_byte = ?)
+              AND (rx_snr IS NOT NULL OR rx_rssi IS NOT NULL)
             """,
             (row["packet_row_id"], sender_node_id, relay_byte_of(sender_node_id)),
         )
+    ]
+    if len(gateways) < 4:
+        return
+    places = [
+        (found.latitude, found.longitude)
+        for found in positions_when_heard(
+            connection, {(gateway, heard_at) for gateway in gateways}
+        ).values()
     ]
     if len(places) < 4:
         return
@@ -599,16 +593,12 @@ def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     )
     if report is None:
         return
-    node_ids = report.node_ids
+    heard_at = int(row["first_received_at"])
     positions = {
-        int(position[0]): (float(position[1]), float(position[2]))
-        for position in connection.execute(
-            f"""
-            SELECT node_id, latitude, longitude FROM node_current
-            WHERE latitude IS NOT NULL AND node_id IN ({",".join("?" * len(node_ids))})
-            """,
-            sorted(node_ids),
-        )
+        node: (found.latitude, found.longitude)
+        for (node, _), found in positions_when_heard(
+            connection, {(node, heard_at) for node in report.node_ids}
+        ).items()
     }
     routes = report_routes(report, positions)
     _save_hops(connection, row, routes)
@@ -729,8 +719,8 @@ def _save_traceroute(
     """Add the packet's traceroute_packet row, replace its longest route with this
     report's when that one is longer, and keep the earliest report's successful
     route (see traceroute.py). routes are the report's report_routes, and ends_km
-    the distance between requester and target, with positions from
-    node_current as it is now; the first report placing both ends keeps it."""
+    the distance between requester and target where they were when heard;
+    the first report placing both ends keeps it."""
     packet_row_id = int(row["packet_row_id"])
     reception_id = int(row["reception_id"])
     request_id = row["request_id"]
@@ -840,21 +830,22 @@ def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row
 
     It is timed at its packet's first receipt, so all of a packet's
     observations land in the same hour whichever gateway reports them. Its
-    km is between the two nodes' reported positions as they are now, and the
-    hour keeps its latest observation's.
+    km is between where the two nodes were then, and the hour keeps its
+    latest observation's.
     """
     seen_at = int(row["first_received_at"])
-    placed = {
-        int(found[0]): (float(found[1]), float(found[2]))
-        for found in connection.execute(
-            "SELECT node_id, latitude, longitude FROM node_current "
-            "WHERE node_id IN (?, ?) AND latitude IS NOT NULL",
-            (hop.from_node_id, hop.to_node_id),
-        )
-    }
+    placed = positions_when_heard(
+        connection, {(hop.from_node_id, seen_at), (hop.to_node_id, seen_at)}
+    )
+    ends = placed.get((hop.from_node_id, seen_at)), placed.get((hop.to_node_id, seen_at))
     km = (
-        round(great_circle_km(*placed[hop.from_node_id], *placed[hop.to_node_id]), 1)
-        if hop.from_node_id in placed and hop.to_node_id in placed
+        round(
+            great_circle_km(
+                ends[0].latitude, ends[0].longitude, ends[1].latitude, ends[1].longitude
+            ),
+            1,
+        )
+        if ends[0] is not None and ends[1] is not None
         else None
     )
     connection.execute(

@@ -292,7 +292,7 @@ def test_a_run_is_measured_where_its_ends_were_when_heard(path: Path) -> None:
     place(path, A, 40.0, 2.0)
     place(path, B, 41.0, 2.0)
     request_and_reply(path)
-    place(path, B, 48.0, 2.0)  # B moves after the run
+    place(path, B, 48.0, 2.0, NOW + timedelta(hours=1))  # B moves after the run
 
     [run] = get(path, "/api/v1/traceroutes", sort="distance")["items"]
 
@@ -302,7 +302,7 @@ def test_a_run_is_measured_where_its_ends_were_when_heard(path: Path) -> None:
 def test_a_run_heard_before_an_end_had_a_position_has_no_distance(path: Path) -> None:
     place(path, A, 40.0, 2.0)
     request_and_reply(path)
-    place(path, B, 41.0, 2.0)  # B reports a position only after the run
+    place(path, B, 41.0, 2.0, NOW + timedelta(hours=1))  # B reports a position only after the run
 
     [run] = get(path, "/api/v1/traceroutes", sort="distance")["items"]
 
@@ -419,6 +419,10 @@ def place(
                 longitude = excluded.longitude
             """,
             (node_id, at, at, f"N{node_id % 16}", at, latitude, longitude),
+        )
+        connection.execute(
+            "INSERT OR REPLACE INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
+            (node_id, at, latitude, longitude),
         )
 
 

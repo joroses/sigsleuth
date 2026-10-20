@@ -40,7 +40,7 @@ Grouping is saved with the facts, so a grouping change applies only to new recep
 
 ## Retention and disk
 
-While capturing, packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14) are deleted about every five minutes (`api` mode deletes nothing), and survey measurements older than `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (default 90). An upload refuses (skips as `too_old`) only measurements past that survey limit, so a phone that was offline for weeks still uploads. There is no size limit: leave disk room for the busiest two weeks (about 1.2 GB of facts for 14 days of a busy regional subscription, plus derived tables and the WAL). The SQLite file stays near its largest size; Diagnostics shows file and data size.
+While capturing, packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14) are deleted about every five minutes (`api` mode deletes nothing), and survey measurements older than `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (default 90). What a node still heard last reported (names, position, OK to MQTT setting) outlives its packets; pages only lose their link to a deleted packet. An upload refuses (skips as `too_old`) only measurements past that survey limit, so a phone that was offline for weeks still uploads. There is no size limit: leave disk room for the busiest two weeks (about 1.2 GB of facts for 14 days of a busy regional subscription, plus derived tables and the WAL). The SQLite file stays near its largest size; Diagnostics shows file and data size.
 
 ## External services
 

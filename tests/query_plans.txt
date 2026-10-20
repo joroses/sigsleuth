@@ -12,6 +12,8 @@ ingest._save_reception
   SEARCH packet USING PRIMARY KEY
 ingest.save_ok_to_mqtt
   SEARCH packet USING PRIMARY KEY
+reported.save_packet
+  SEARCH packet USING PRIMARY KEY
 db.rederive_pending
   SCAN derived_state
 derive.derive_delivery
@@ -19,28 +21,41 @@ derive.derive_delivery
   SEARCH packet USING PRIMARY KEY
 derive._update_sender
   SEARCH node_current USING PRIMARY KEY
-derive._replace_position
+derive.copy_reported
+  SEARCH node_reported USING PRIMARY KEY
+derive.copy_reported
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_reported USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+derive.copy_reported
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+derive._mark_moves
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 derive._mark_gateway
   SEARCH node_opt_out USING PRIMARY KEY
-opt_out._newest_bit
-  SEARCH packet USING INDEX packet_sender
-  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 opt_out.refresh_opt_outs
   SEARCH node_opt_out USING PRIMARY KEY
+opt_out.refresh_opt_outs
+  SEARCH node_reported USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 ingest.group_reception
   SEARCH packet USING PRIMARY KEY
+reported.save_packet
+  SEARCH node_reported USING PRIMARY KEY
 derive._update_device_telemetry
   SEARCH node_current USING PRIMARY KEY
 derive.raise_firmware
   SEARCH node_current USING PRIMARY KEY
-derive._count_link
-  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 derive._mark_airborne
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
-  SEARCH node_current USING PRIMARY KEY
-derive._derive_route
-  SEARCH node_current USING PRIMARY KEY
 derive._save_traceroute
   SEARCH traceroute_packet USING PRIMARY KEY
 derive._save_hops
@@ -76,11 +91,11 @@ coverage._mqtt_reports
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 coverage.save_upload
   SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
-opt_out._newest_bit
-  SEARCH packet USING INDEX packet_sender
-  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 opt_out.refresh_opt_outs
   SEARCH node_opt_out USING PRIMARY KEY
+opt_out.refresh_opt_outs
+  SEARCH node_reported USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY
   SCAN coverage_session
@@ -147,10 +162,9 @@ opt_out.opted_out
 packets.packet_detail
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -168,7 +182,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0
@@ -182,7 +196,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=packets&limit=20&offset=0
@@ -196,7 +210,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=texts&limit=20&offset=0
@@ -210,7 +224,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=channel_utilization&limit=20&offset=0
@@ -224,7 +238,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=air_util_tx&limit=20&offset=0
@@ -238,7 +252,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=firmware&limit=20&offset=0
@@ -252,7 +266,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=firmware_oldest&limit=20&offset=0
@@ -266,7 +280,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=altitude&limit=20&offset=0
@@ -280,7 +294,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=altitude_lowest&limit=20&offset=0
@@ -294,7 +308,7 @@ nodes.node_list
 nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes?sort=traceroute&limit=20&offset=0&q=hill&channel=LongFast&gateway=true
@@ -321,7 +335,7 @@ opt_out.is_opted_out
 nodes.node_overview
   SEARCH node_current USING PRIMARY KEY
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 nodes._location_source
   SEARCH packet USING PRIMARY KEY
@@ -364,7 +378,7 @@ db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
 nodes.node_charts
   SEARCH packet USING INDEX packet_sender
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes/168430090/positions
@@ -373,7 +387,7 @@ opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
 nodes.node_position_history
   SEARCH packet USING INDEX packet_sender
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/nodes/168430090/contacts?since=<time>
@@ -419,7 +433,7 @@ map_nodes.map_nodes
   SCAN node_current
   SEARCH node_estimate USING PRIMARY KEY
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/map/nodes?seen_since=<time>&position_since=<time>
@@ -428,7 +442,7 @@ map_nodes.map_nodes
   SCAN node_current
   SEARCH node_estimate USING PRIMARY KEY
   SEARCH map_report USING PRIMARY KEY
-opt_out.unshown_packets
+opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
 ## GET /api/v1/map/links?link_kind=traceroute&since=<time>
@@ -681,10 +695,9 @@ traceroute_explorer._saved_route
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=<time>
 
@@ -711,10 +724,9 @@ traceroute_explorer._saved_route
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=<time>
 
@@ -741,10 +753,9 @@ traceroute_explorer._saved_route
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=<time>&node=hill&next_to=!0b0b0b0b&channel=LongFast&min_hops=1&successful=true
 
@@ -775,10 +786,9 @@ traceroute_explorer._saved_route
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!0a0a0a0a
 
@@ -805,10 +815,9 @@ traceroute_explorer._saved_route
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
-positions.positions_when_heard
-  SEARCH packet USING INDEX packet_sender
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes/hops?node_a=168430090&node_b=185273099&since=<time>
 
@@ -830,14 +839,11 @@ db.nodes_by_id
 
 ## GET /api/v1/links/positions?node_a=168430090&node_b=185273099&at=<time>
 
-db.first_packet_row_id_since
-  SEARCH packet
-db.first_packet_row_id_since
-  SEARCH packet USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
-positions.positions_when_heard
-  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/links/hours?node_a=168430090&node_b=185273099&channel=LongFast&since=<time>
 
@@ -1075,14 +1081,26 @@ coverage.coverage_cell
 
 ## retention and estimates
 
+db.rederive_pending
+  SCAN derived_state
 retention._prune_current_state
   SCAN node_current
 retention._prune_current_state
-  SCAN map_report
+  SEARCH node_position USING PRIMARY KEY
+retention._prune_current_state
+  SEARCH map_report USING PRIMARY KEY
+retention._prune_current_state
+  SEARCH node_reported USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+retention._prune_current_state
+  SCAN node_position
+  SEARCH node_position USING PRIMARY KEY
 retention._prune_current_state
   SEARCH link_hour USING PRIMARY KEY
 retention._prune_current_state
   SEARCH node_activity_hour USING PRIMARY KEY
+retention._delete_oldest_packets
+  SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
@@ -1090,23 +1108,20 @@ db.first_packet_row_id_since
 retention._delete_oldest_packets
   SEARCH packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
-  SCAN node_current
-  SCAN node_current
-  SCAN node_current
-  SCAN node_opt_out
-  SEARCH packet USING INDEX packet_sender
-  SEARCH packet USING INDEX packet_sender
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_relay USING PRIMARY KEY
-opt_out._newest_bit
-  SEARCH packet USING INDEX packet_sender
+retention._delete_old_measurements
+  SEARCH node_reported USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 opt_out.refresh_opt_outs
   SEARCH node_opt_out USING PRIMARY KEY
+opt_out.refresh_opt_outs
+  SEARCH node_reported USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 retention._delete_old_measurements
   SCAN coverage_session
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1

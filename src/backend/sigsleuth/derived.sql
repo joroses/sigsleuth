@@ -9,19 +9,19 @@ CREATE TABLE derived_state (
 ) STRICT;
 
 -- Every node seen in retained history: as sender, gateway, traceroute hop or
--- map report. Each part (last sent, NodeInfo, position, channel, telemetry,
--- firmware) only moves to newer data. An invalid position never replaces a
--- valid one. A map report stands in for NodeInfo and position only until the
--- node's own arrive, and never replaces them.
+-- map report. Last sent, NodeInfo and position are copied from what it
+-- reported (node_reported, its newest node_position row), which outlives
+-- the packets; a map report's names stand in until a NodeInfo arrives.
+-- The other parts (channel, telemetry, firmware) only move to newer data.
 -- channel is the latest packet's channel among radio channels (radio.py);
 -- PKI and other channels go out on the same radio, so they never change it.
 -- last_seen_at also counts gateway reports and traceroute hops, so it can be
 -- newer than last_sent_at.
 -- firmware_minimum is major * 10000 + minor * 100 + patch, proven by
 -- firmware_trait (firmware.TRAITS); it only moves up.
--- moved_at: last move over derive.MOVED_KM; airborne_at: last packet heard
--- in the air (derive._mark_airborne). Pages hide link hours before them.
--- Retention spares the packets a row names, so a rebuild reads them again.
+-- moved_at: last move over derive.MOVED_KM between node_position rows;
+-- airborne_at: last packet heard in the air (derive._mark_airborne). Pages
+-- hide link hours before them. The packet IDs may name deleted packets.
 CREATE TABLE node_current (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
     last_sent_at INTEGER,
@@ -132,8 +132,8 @@ CREATE TABLE traceroute_hop (
 -- One row per readable traceroute packet, for the Traceroute explorer: its
 -- longest route so far and its route that reached its end (success_route_,
 -- traceroute.successful_route). A run is (requester_node_id,
--- request_packet_id). km figures use node_current positions as they were
--- when the report was derived, so they stay where the nodes were when heard.
+-- request_packet_id). km figures use where the nodes were when heard
+-- (reported.positions_when_heard).
 CREATE TABLE traceroute_packet (
     packet_row_id INTEGER PRIMARY KEY REFERENCES packet(id) ON DELETE CASCADE,
     requester_node_id INTEGER NOT NULL CHECK (requester_node_id BETWEEN 0 AND 4294967295),
@@ -158,8 +158,8 @@ CREATE TABLE traceroute_packet (
 --   'neighbor': a NeighborInfo listing (decode.read_neighbors), once per
 --     NeighborInfo packet. A neighbour stays listed for hours, so this counts
 --     reports, not radio packets.
--- km is between the nodes' reported positions when the hour's latest
--- observation was counted (where they were when heard); NULL while unplaced.
+-- km is between where the nodes were at the hour's latest observation
+-- (reported.positions_when_heard); NULL while either was unplaced.
 CREATE TABLE link_hour (
     link_kind TEXT NOT NULL CHECK (link_kind IN ('traceroute', 'direct', 'neighbor')),
     hour_start INTEGER NOT NULL,

@@ -171,6 +171,10 @@ def place(path: Path, node_id: int, short_name: str, latitude: float, longitude:
             """,
             (node_id, at, at, short_name, at, latitude, longitude),
         )
+        connection.execute(
+            "INSERT INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
+            (node_id, at, latitude, longitude),
+        )
 
 
 def test_link_table_names_both_nodes_and_measures_only_when_heard(path: Path) -> None:
@@ -530,6 +534,10 @@ def test_a_link_is_measured_where_its_nodes_were_when_heard(path: Path) -> None:
     heard_directly(path, B, A)
     # B then reports a position 880 km away.
     with closing(open_current_database(path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO node_position VALUES (?, ?, 32.2, 2.0, NULL, NULL, 2)",
+            (B, to_epoch_ms(HOUR) + HOUR_MS),
+        )
         connection.execute("UPDATE node_current SET latitude = 32.2 WHERE node_id = ?", (B,))
 
     [link] = links(path, "/api/v1/links", link_kind="direct")["items"]

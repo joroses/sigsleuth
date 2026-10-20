@@ -17,11 +17,11 @@ from sigsleuth.positions import (
     EstimatedPosition,
     guess_relay,
     node_estimate,
-    positions_when_heard,
     radio_links,
     refresh_estimates,
 )
 from sigsleuth.radio import great_circle_km
+from sigsleuth.reported import positions_when_heard
 
 HOUR_MS = 3_600_000
 DAY_MS = 24 * HOUR_MS
@@ -310,14 +310,16 @@ def test_the_api_estimates_positions_when_it_starts(tmp_path: Path) -> None:
 def sent_position(
     connection: sqlite3.Connection, node_id: int, minutes: int, latitude: float
 ) -> int:
-    """The node's position packet, with its row ID; latitude 0 is no fix."""
+    """The node's position packet, with the time it was heard; latitude 0 is
+    no fix."""
     position = mesh_pb2.Position(
         latitude_i=int(latitude * 1e7), longitude_i=int(2e7) if latitude else 0
     )
+    heard_at = now_ms() + minutes * 60_000
     result = ingest_delivery(
         connection,
         MqttDelivery(
-            now_ms() + minutes * 60_000,
+            heard_at,
             "msh/EU_868/2/e/LongFast/!aaaaaaaa",
             application_envelope(
                 portnums_pb2.PortNum.POSITION_APP,
@@ -328,7 +330,7 @@ def sent_position(
         ),
     )
     assert result.packet_row_id is not None
-    return result.packet_row_id
+    return heard_at
 
 
 def test_a_node_is_placed_where_it_was_when_a_packet_was_heard(

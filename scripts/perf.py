@@ -44,7 +44,12 @@ from sigsleuth.db import (
 )
 from sigsleuth.derive import rederive as rederive_tables
 from sigsleuth.positions import refresh_estimates
-from sigsleuth.retention import RETENTION_BATCH_SIZE, _delete_oldest_packets, database_used_bytes
+from sigsleuth.retention import (
+    RETENTION_BATCH_SIZE,
+    _delete_oldest_packets,
+    _prune_current_state,
+    database_used_bytes,
+)
 from sigsleuth.terrain import refresh_long_links
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
@@ -118,6 +123,11 @@ def time_capture_jobs(connection: sqlite3.Connection, timer: "Timer") -> None:
     timer.time(
         f"retention: delete {RETENTION_BATCH_SIZE:,} packets",
         lambda: _delete_oldest_packets(connection, RETENTION_BATCH_SIZE, cutoff),
+        RETENTION_BUDGET_MS,
+    )
+    timer.time(
+        "retention: trim nodes, positions and hourly totals",
+        lambda: _prune_current_state(connection, cutoff),
         RETENTION_BUDGET_MS,
     )
     timer.time(

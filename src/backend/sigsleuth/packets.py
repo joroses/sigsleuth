@@ -18,7 +18,6 @@ from sigsleuth.decode import describe_payload, portnum_name
 from sigsleuth.derive import is_direct_reception
 from sigsleuth.diagnostics import describe_reason
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
-from sigsleuth.positions import positions_when_heard
 from sigsleuth.radio import distance_km, relay_byte_of, relay_byte_sql, spreading_factor
 from sigsleuth.relays import (
     COHEARER_RECEPTIONS,
@@ -31,6 +30,7 @@ from sigsleuth.relays import (
     node_km,
     relay_evidence,
 )
+from sigsleuth.reported import positions_when_heard
 from sigsleuth.traceroute import (
     Hop,
     ReportPaths,
@@ -121,7 +121,7 @@ class PacketReception:
 
     gateway_name is the long name, else the short name; gateway_short_name is
     the short name alone. The gateway's latitude and longitude are where it
-    was when the packet was heard (positions.positions_when_heard), else
+    was when the packet was heard (reported.positions_when_heard), else
     where pages draw it now (db.nodes_by_id): its latest valid position, else
     its estimate, which sets gateway_estimated; None when neither places it.
     paths are the traceroute routes this gateway reported, None for other
@@ -258,7 +258,7 @@ def packet_detail(
     sender = int(row["sender_node_id"])
     places = _when_heard(
         connection,
-        packet_row_id,
+        int(row["first_received_at"]),
         {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
     )
     receptions = sorted(
@@ -320,7 +320,7 @@ def packet_detail(
         unreadable_reason_description=None if reason is None else describe_reason(reason),
         hops=hops,
         route_nodes=_route_nodes(
-            connection, packet_row_id, hops, receptions, traceroute, reply_route
+            connection, int(row["first_received_at"]), hops, receptions, traceroute, reply_route
         ),
         spreading_factor=spreading_factor(str(row["channel"]), default_preset),
         traceroute=traceroute,
@@ -363,14 +363,14 @@ def _reply_route(
 
 
 def _when_heard(
-    connection: sqlite3.Connection, packet_row_id: int, node_ids: set[int]
+    connection: sqlite3.Connection, heard_at: int, node_ids: set[int]
 ) -> dict[int, NodeSummary]:
-    """The nodes as nodes_by_id finds them, each placed where it was when the
-    packet was heard when its own position packets tell."""
-    heard = positions_when_heard(connection, {(node_id, packet_row_id) for node_id in node_ids})
+    """The nodes as nodes_by_id finds them, each placed where it was at
+    heard_at when its reported positions tell."""
+    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in node_ids})
     return {
         node_id: node
-        if (at := heard.get((node_id, packet_row_id))) is None
+        if (at := heard.get((node_id, heard_at))) is None
         else replace(node, latitude=at.latitude, longitude=at.longitude, estimated=False)
         for node_id, node in nodes_by_id(connection, node_ids).items()
     }
@@ -378,7 +378,7 @@ def _when_heard(
 
 def _route_nodes(
     connection: sqlite3.Connection,
-    packet_row_id: int,
+    heard_at: int,
     hops: tuple[TracerouteHop, ...],
     receptions: list[PacketReception],
     traceroute: TracerouteEnds | None,
@@ -395,7 +395,7 @@ def _route_nodes(
         for path in (reception.paths.forward, reception.paths.return_path):
             if path is not None:
                 node_ids.update(node for node in path.nodes if node is not None)
-    return tuple(_when_heard(connection, packet_row_id, node_ids).values())
+    return tuple(_when_heard(connection, heard_at, node_ids).values())
 
 
 def _with_relays(

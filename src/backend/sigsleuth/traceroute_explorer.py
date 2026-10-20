@@ -35,8 +35,8 @@ from sigsleuth.links import (
     unlikely_links,
 )
 from sigsleuth.opt_out import opted_out, shown_sql
-from sigsleuth.positions import HeardPosition, positions_when_heard
 from sigsleuth.radio import spreading_factor
+from sigsleuth.reported import HeardPosition, positions_when_heard
 from sigsleuth.traceroute import (
     Hop,
     RoutePath,
@@ -188,7 +188,7 @@ class TracerouteRun:
     now (links.py). distance_pending says it is links.PENDING_KM or more and
     not confirmed yet (links.distance_confirmed). positions are where the
     route's nodes and ends were when the shown route's packet was heard
-    (positions.positions_when_heard); a node missing there is drawn where the
+    (reported.positions_when_heard); a node missing there is drawn where the
     page's nodes place it now, estimates included."""
 
     requester_node_id: int
@@ -410,10 +410,16 @@ def traceroute_runs(
         routes.append((packets, replace(route, unlikely=over)))
     node_ids = {node_id for packets, route in routes for node_id in _run_nodes(packets, route)}
     nodes = nodes_by_id(connection, node_ids)
+    # Each route's packet is one of its run's.
+    heard_at = {
+        int(packet["packet_row_id"]): int(packet["first_received_at"])
+        for packets, _ in routes
+        for packet in packets
+    }
     heard = positions_when_heard(
         connection,
         {
-            (node_id, route.packet_row_id)
+            (node_id, heard_at[route.packet_row_id])
             for packets, route in routes
             for node_id in _run_nodes(packets, route)
         },
@@ -426,9 +432,9 @@ def traceroute_runs(
                 _pending(packets, reports),
                 default_preset,
                 tuple(
-                    heard[node_id, route.packet_row_id]
+                    heard[node_id, heard_at[route.packet_row_id]]
                     for node_id in sorted(_run_nodes(packets, route))
-                    if (node_id, route.packet_row_id) in heard
+                    if (node_id, heard_at[route.packet_row_id]) in heard
                 ),
             )
             for packets, route in routes

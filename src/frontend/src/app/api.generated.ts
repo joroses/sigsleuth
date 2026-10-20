@@ -1146,8 +1146,8 @@ export interface components {
     };
     /**
      * HeardPosition
-     * @description Where a node was when a packet was heard: its latest valid reported
-     *     position up to that packet (positions_when_heard).
+     * @description Where a node was when heard: its newest valid reported position by
+     *     then (positions_when_heard).
      */
     HeardPosition: {
       node_id: number;
@@ -1733,7 +1733,7 @@ export interface components {
      *     neighbours (node_estimate, positions.py), which sets estimated; None when
      *     neither places it. The map and Zones draw a node here; link pages draw
      *     it where it was when heard when its own positions tell, else here
-     *     (positions.positions_when_heard).
+     *     (reported.positions_when_heard).
      */
     NodeSummary: {
       node_id: number;
@@ -1820,7 +1820,7 @@ export interface components {
      *
      *     gateway_name is the long name, else the short name; gateway_short_name is
      *     the short name alone. The gateway's latitude and longitude are where it
-     *     was when the packet was heard (positions.positions_when_heard), else
+     *     was when the packet was heard (reported.positions_when_heard), else
      *     where pages draw it now (db.nodes_by_id): its latest valid position, else
      *     its estimate, which sets gateway_estimated; None when neither places it.
      *     paths are the traceroute routes this gateway reported, None for other
@@ -2069,7 +2069,7 @@ export interface components {
      *     now (links.py). distance_pending says it is links.PENDING_KM or more and
      *     not confirmed yet (links.distance_confirmed). positions are where the
      *     route's nodes and ends were when the shown route's packet was heard
-     *     (positions.positions_when_heard); a node missing there is drawn where the
+     *     (reported.positions_when_heard); a node missing there is drawn where the
      *     page's nodes place it now, estimates included.
      */
     TracerouteRun: {

@@ -68,6 +68,10 @@ def place(path: Path, node_id: int, latitude: float) -> None:
             """,
             (node_id, at, at, at, latitude),
         )
+        connection.execute(
+            "INSERT INTO node_position VALUES (?, ?, ?, 2.0, NULL, NULL, 1)",
+            (node_id, at, latitude),
+        )
 
 
 def rows(path: Path) -> list[dict[str, object]]:

@@ -15,7 +15,7 @@ from sigsleuth.db import (
 )
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.nodes import NodePosition, node_position, shown_link
-from sigsleuth.opt_out import is_opted_out, shown_sql, unshown_packets
+from sigsleuth.opt_out import is_opted_out, shown_sql, unlinkable_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
 
@@ -97,7 +97,7 @@ def map_nodes(
         (*values, limit + 1),
     ).fetchall()
     items = []
-    unshown = unshown_packets(
+    unshown = unlinkable_packets(
         connection,
         (
             packet

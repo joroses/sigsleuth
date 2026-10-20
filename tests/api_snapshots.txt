@@ -3676,7 +3676,7 @@ capture: null
 api_started_at: "2026-10-11T16:25:30.812000Z"
 api_uptime_seconds: 0
 database:
-  facts_version: 3
+  facts_version: 4
   row_counts:
     reception: 106266
     packet: 31095

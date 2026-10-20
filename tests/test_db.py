@@ -1,9 +1,11 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 
 import pytest
 
+from recorded_sample import Sample
 from sigsleuth import db
 from sigsleuth.db import (
     DERIVED_VERSION,
@@ -11,8 +13,11 @@ from sigsleuth.db import (
     DatabaseVersionError,
     facts_version,
     migrate_database,
+    open_current_database,
     open_database,
 )
+from sigsleuth.derive import rederive
+from sigsleuth.opt_out import opted_out
 
 
 def test_unsupported_facts_version_requires_reset(tmp_path: Path) -> None:
@@ -41,6 +46,8 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
         ALTER TABLE coverage_measurement DROP COLUMN ok_to_mqtt;
         ALTER TABLE coverage_measurement DROP COLUMN default_key;
         ALTER TABLE packet DROP COLUMN ok_to_mqtt;
+        DROP TABLE node_reported;
+        DROP TABLE node_position;
         INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1);
         PRAGMA user_version = 1;
         INSERT INTO coverage_session (uuid, receiver_node_id, first_uploaded_at, last_uploaded_at)
@@ -65,7 +72,7 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
     assert connection.execute("SELECT rebuilt FROM derived_state").fetchone() == (0,)
     # A later rebuild copies columns in order, so upgraded and new tables match.
     new = sqlite3.connect(new_path)
-    for table in ("coverage_measurement", "packet"):
+    for table in ("coverage_measurement", "packet", "node_reported", "node_position"):
         for pragma in ("table_info", "index_list"):
             query = f"PRAGMA {pragma}({table})"
             assert connection.execute(query).fetchall() == new.execute(query).fetchall()
@@ -89,3 +96,51 @@ def test_connection_can_follow_a_request_between_worker_threads(tmp_path: Path) 
         executor.submit(connection.close).result()
 
     assert version == FACTS_VERSION
+
+
+def test_upgrading_facts_3_and_rederiving_keeps_what_each_node_reported(
+    sample: Sample, tmp_path: Path
+) -> None:
+    path = tmp_path / "facts-3.db"
+    with closing(sqlite3.connect(sample.path)) as source, closing(sqlite3.connect(path)) as copy:
+        source.backup(copy)
+        # The sample has no opted-out node: one that is no gateway turns its
+        # bit off in its newest packet that tells it.
+        (hidden,) = copy.execute(
+            """
+            SELECT id FROM packet
+            WHERE ok_to_mqtt IS NOT NULL AND sender_node_id IN (
+                SELECT node_id FROM node_current WHERE last_gateway_at IS NULL
+            )
+            ORDER BY id DESC LIMIT 1
+            """
+        ).fetchone()
+        copy.executescript(
+            f"""
+            UPDATE packet SET ok_to_mqtt = 0 WHERE id = {hidden};
+            DROP TABLE node_reported; DROP TABLE node_position; PRAGMA user_version = 3;
+            """
+        )
+        (node,) = copy.execute("SELECT sender_node_id FROM packet WHERE id = ?", (hidden,))
+
+    assert migrate_database(path) == FACTS_VERSION
+    with closing(open_current_database(path)) as connection:
+        assert rederive(connection, lambda: False)
+        upgraded = reported(connection)
+        assert opted_out(connection) == {node[0]}
+    with closing(open_current_database(sample.path)) as connection:
+        assert upgraded == reported(connection)
+
+
+def reported(connection: sqlite3.Connection) -> set[tuple[object, ...]]:
+    """Each node's names, position and last sent time."""
+    return {
+        tuple(row)
+        for row in connection.execute(
+            """
+            SELECT node_id, long_name, short_name, hardware_model, role, last_sent_at,
+                   latitude, longitude, altitude_meters, position_observed_at
+            FROM node_current
+            """
+        )
+    }

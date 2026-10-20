@@ -49,7 +49,8 @@ def packets(path: Path) -> int:
 
 
 def test_rebuild_comes_before_trimming(path: Path) -> None:
-    # Retention spares the old NodeInfo only once node_current names it again.
+    # Retention deletes a node's reported state with its node_current row,
+    # so it waits for node_current to be whole again.
     user = mesh_pb2.User(long_name="Hilltop", short_name="HILL").SerializeToString()
     now = datetime.now(UTC)
     ingest(
@@ -68,7 +69,7 @@ def test_rebuild_comes_before_trimming(path: Path) -> None:
         wait_until(lambda: work.retention_ran_at is not None)
     finally:
         work.stop()
-    assert packets(path) == 2
+    assert packets(path) == 1
     with closing(open_current_database(path)) as connection:
         assert connection.execute("SELECT long_name FROM node_current").fetchone()[0] == "Hilltop"
 
@@ -78,12 +79,14 @@ def test_capture_trims_history_on_a_timer_while_the_broker_is_away(
 ) -> None:
     monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(NOW))
     monkeypatch.setattr(maintenance, "RETENTION_INTERVAL_SECONDS", 0.1)
-    old = NOW - timedelta(days=15)
-    ingest(path, service_envelope(packet_id=1), received_at=old)
+    ingest(path, service_envelope(packet_id=1), received_at=NOW - timedelta(days=15))
+    ingest(path, service_envelope(packet_id=2), received_at=NOW - timedelta(days=13))
     with TestClient(create_app(settings(path), capture=True)) as client:
-        wait_until(lambda: packets(path) == 0)
-        ingest(path, service_envelope(packet_id=2), received_at=old)
-        wait_until(lambda: packets(path) == 0)
+        wait_until(lambda: packets(path) == 1)
+        # Two days on, the second has aged out too.
+        monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(NOW + timedelta(days=2)))
+        ingest(path, service_envelope(packet_id=3), received_at=NOW + timedelta(days=2))
+        wait_until(lambda: packets(path) == 1)
         capture = client.get("/api/v1/status").json()["capture"]
     assert capture["status"] == "disconnected"
     assert capture["retention_ran_at"] is not None
@@ -131,8 +134,10 @@ def test_retention_runs_while_a_terrain_tile_fetch_hangs(
     work.start()
     try:
         assert fetching.wait(10)
-        ingest(path, service_envelope(), received_at=datetime.now(UTC) - timedelta(days=15))
-        wait_until(lambda: packets(path) == 0, seconds=5)
+        now = datetime.now(UTC)
+        ingest(path, service_envelope(packet_id=1), received_at=now - timedelta(days=15))
+        ingest(path, service_envelope(packet_id=2), received_at=now)
+        wait_until(lambda: packets(path) == 1, seconds=5)
     finally:
         release.set()
         work.stop()

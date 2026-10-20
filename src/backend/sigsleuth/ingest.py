@@ -1,8 +1,9 @@
 """Save one MQTT delivery's facts, then derive what pages need from them.
 
 MQTT delivery -> size check -> one parse -> one transaction that groups the
-report into a packet, saves its application data on the packet and
-saves the gateway's reception (schema.sql). derive.py then updates the derived
+report into a packet, saves its application data on the packet, saves the
+gateway's reception and what the packet says about its sender
+(reported.save_packet) (schema.sql). derive.py then updates the derived
 tables (derived.sql) from those saved rows, in the same transaction. This is
 the whole write path apart from retention and rederive.
 
@@ -17,7 +18,8 @@ the whole write path apart from retention and rederive.
   deliveries in time order too.
 - Oversized topics or payloads are logged (without content) and skipped.
 - A map report (<root>/2/map/) is not a radio packet: it replaces its node's
-  map_report row and is folded into node_current (derive.apply_map_report).
+  map_report row, may add to its positions (reported.save_map_report) and
+  is folded into node_current (derive.apply_map_report).
 - Deliveries that cannot be grouped (JSON mirrors, corrupted payloads, topic
   mismatches) are skipped; the receiver counts them by reason.
 - A locked database skips the delivery. Any other SQLite operational error (for
@@ -52,6 +54,7 @@ from sigsleuth.decode import (
 from sigsleuth.derive import SavedDelivery, apply_map_report, derive_delivery, derive_or_undo
 from sigsleuth.firmware import version_number
 from sigsleuth.opt_out import refresh_opt_outs
+from sigsleuth.reported import save_map_report, save_packet
 
 LOGGER = logging.getLogger(__name__)
 MAX_PAYLOAD_BYTES = 65_536
@@ -110,6 +113,8 @@ def ingest_delivery(connection: sqlite3.Connection, delivery: MqttDelivery) -> I
         ok_to_mqtt_learned = save_ok_to_mqtt(
             connection, packet_row_id, parsed.application.ok_to_mqtt
         )
+        if application_saved or ok_to_mqtt_learned:
+            save_packet(connection, packet_row_id)
         saved = SavedDelivery(
             reception_id,
             new_packet,
@@ -169,6 +174,7 @@ def _ingest_map_report(
                 report.position_precision,
             ),
         )
+        save_map_report(connection, report.node_id)
         error = (
             None
             if rederive_pending(connection)

@@ -1055,11 +1055,11 @@ def test_retention_and_rederive_refill_opt_outs(
     )
     assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]
 
-    # The only decoded bit left the database with its measurement.
+    # The bit outlives its measurement while the node is still surveyed.
     apply_retention(connection, retention_days=7, now=now)
-    assert opt_outs(connection) == [OPTED_OUT]
+    assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]
 
     recreate_derived(connection)
     assert opt_outs(connection) == []
     assert rederive(connection, lambda: False)
-    assert opt_outs(connection) == [OPTED_OUT]
+    assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]

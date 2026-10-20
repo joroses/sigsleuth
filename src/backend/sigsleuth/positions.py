@@ -1,5 +1,5 @@
 """Where nodes are: estimates for linked nodes that report no position,
-positions their own links contradict, and where a node was when heard.
+and positions their own links contradict.
 
 Estimates use radio neighbours (direct and neighbour-info links, median about
 5 km). Traceroute hops are longer and include MQTT bridges, so they are used
@@ -25,14 +25,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
-
-from sigsleuth.db import first_packet_row_id_since, now_ms, to_epoch_ms, transaction
-from sigsleuth.decode import UNKNOWN_NODE, interpret_payload
+from sigsleuth.db import now_ms, to_epoch_ms, transaction
+from sigsleuth.decode import UNKNOWN_NODE
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import LONG_LINK_KM, TRUSTED_LINK_HOURS, link_trust, trust_json
 from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
+from sigsleuth.reported import HeardPosition, positions_when_heard
 
 # Estimates come from this many days of links; perf.py budgets the refill.
 ESTIMATE_DAYS = 7
@@ -178,71 +177,6 @@ def node_estimate(connection: sqlite3.Connection, node_id: int) -> EstimatedPosi
 
 
 @dataclass(frozen=True)
-class HeardPosition:
-    """Where a node was when a packet was heard: its latest valid reported
-    position up to that packet (positions_when_heard)."""
-
-    node_id: int
-    latitude: float
-    longitude: float
-    altitude_meters: int | None
-
-
-def positions_when_heard(
-    connection: sqlite3.Connection, pairs: Collection[tuple[int, int]]
-) -> dict[tuple[int, int], HeardPosition]:
-    """For each (node, packet row ID), the node's latest valid position from
-    its own position packets up to that packet. The current one serves when
-    its packet is at or before it. Nodes with no position packet of their own,
-    or none retained up to the packet, are left out: callers fall back to
-    where pages draw them now (db.nodes_by_id).
-
-    Each other lookup reads the node's position packets back by the
-    packet_sender index. Nodes without a position packet are skipped, as
-    theirs is the slowest lookup."""
-    current = {
-        int(row["node_id"]): row
-        for row in connection.execute(
-            """
-            SELECT node_id, position_packet_row_id, latitude, longitude, altitude_meters
-            FROM node_current
-            WHERE node_id IN (SELECT value FROM json_each(?))
-              AND position_packet_row_id IS NOT NULL
-            """,
-            (json.dumps(sorted({node for node, _ in pairs})),),
-        )
-    }
-    found: dict[tuple[int, int], HeardPosition] = {}
-    for node, packet in pairs:
-        now = current.get(node)
-        if now is None:
-            continue
-        if now["position_packet_row_id"] <= packet:
-            found[node, packet] = HeardPosition(
-                node, now["latitude"], now["longitude"], now["altitude_meters"]
-            )
-            continue
-        # portnum = 3 is written out so SQLite keeps the packet_sender index.
-        for (payload,) in connection.execute(
-            """
-            SELECT application_payload FROM packet
-            WHERE sender_node_id = ? AND portnum = 3 AND id <= ?
-              AND application_payload IS NOT NULL
-            ORDER BY id DESC
-            """,
-            (node, packet),
-        ):
-            position = interpret_payload(portnums_pb2.PortNum.POSITION_APP, bytes(payload)).position
-            if position is not None and position.is_valid:
-                assert position.latitude is not None and position.longitude is not None
-                found[node, packet] = HeardPosition(
-                    node, position.latitude, position.longitude, position.altitude_meters
-                )
-                break
-    return found
-
-
-@dataclass(frozen=True)
 class HeardPositionList:
     items: tuple[HeardPosition, ...]
 
@@ -250,12 +184,12 @@ class HeardPositionList:
 def positions_at(
     connection: sqlite3.Connection, node_ids: Collection[int], at: datetime
 ) -> HeardPositionList:
-    """Where the nodes were at `at`, as positions_when_heard places them at
-    the last packet first received by then, for line of sight between a link's
-    nodes when it was last heard. Opted-out nodes are left out (opt_out.py)."""
-    packet = first_packet_row_id_since(connection, to_epoch_ms(at) + 1) - 1
+    """Where the nodes were at `at` (reported.positions_when_heard), for line
+    of sight between a link's nodes when it was last heard. Opted-out nodes
+    are left out (opt_out.py)."""
+    heard_at = to_epoch_ms(at)
     shown = set(node_ids) - opted_out(connection)
-    heard = positions_when_heard(connection, {(node_id, packet) for node_id in shown})
+    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in shown})
     return HeardPositionList(tuple(heard[pair] for pair in sorted(heard)))
 
 

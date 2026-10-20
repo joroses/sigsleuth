@@ -145,21 +145,117 @@ def test_runs_over_a_hop_the_terrain_check_finds_unlikely_rank_last(path: Path) 
     place(path, OTHER, 40.1, 2.0)
     traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=B, packet_id=7, route=[R1], snr=[20])
     traceroute(path, "!aaaaaaaa", NOW, sender=OTHER, recipient=A, packet_id=10, route=[], snr=[20])
-    with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            """
-            INSERT INTO long_link
-            SELECT ?, ?, max(km), 0.0, 50.0, 0, 1 FROM link_hour
-            WHERE from_node_id = ? AND to_node_id = ?
-            """,
-            (R1, A, A, R1),  # lower ID first
-        )
+    judge_unlikely(path, A, R1)
 
     longest = get(path, "/api/v1/traceroutes", sort="route")["items"]
 
     # The run through R1 is the longest, but its hop from A is unlikely.
     assert [run["target_node_id"] for run in longest] == [A, B]
     assert [run["route"]["unlikely"] for run in longest] == [False, True]
+
+
+def judge_unlikely(path: Path, from_node: int, to_node: int) -> None:
+    """Record the terrain check's verdict on the heard hop from_node -> to_node: unlikely."""
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute(
+            """
+            INSERT INTO long_link
+            SELECT min(:a, :b), max(:a, :b), max(km), 0.0, 50.0, 0, 1 FROM link_hour
+            WHERE from_node_id = :a AND to_node_id = :b
+            """,
+            {"a": from_node, "b": to_node},
+        )
+
+
+def test_the_route_sort_judges_only_the_route_a_run_shows(path: Path) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, R1, 42.5, 2.0)  # 278 km north
+    place(path, R2, 40.5, 2.0)
+    place(path, B, 41.0, 2.0)
+    place(path, OTHER, 40.1, 2.0)
+    # A gateway heard request 7 at R1; the reply carried the route through R2.
+    traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=B, packet_id=7, route=[R1], snr=[20])
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(seconds=5),
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[R2],
+        snr=[20, 8],
+    )
+    traceroute(path, "!aaaaaaaa", NOW, sender=OTHER, recipient=A, packet_id=10, route=[], snr=[20])
+    judge_unlikely(path, A, R1)
+
+    longest = get(path, "/api/v1/traceroutes", sort="route")["items"]
+
+    # The run to B shows the route that worked, with no unlikely hop.
+    assert [run["target_node_id"] for run in longest] == [B, A]
+    assert [run["route"]["unlikely"] for run in longest] == [False, False]
+
+
+def test_the_route_sort_puts_a_single_hop_with_a_doubted_distance_last(path: Path) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, B, 41.0, 2.0)
+    place(path, R1, 42.5, 2.0)
+    place(path, OTHER, 40.5, 2.0)
+    later = NOW + timedelta(seconds=5)
+    # A reaches B (111 km) and OTHER (56 km) directly, and R1 (278 km) through B.
+    for target, packet_id, route in ((B, 8, []), (OTHER, 10, []), (R1, 12, [B])):
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            later,
+            sender=target,
+            recipient=A,
+            packet_id=packet_id,
+            request_id=packet_id - 1,
+            route=route,
+            snr=[20] * (len(route) + 1),
+        )
+    place(path, A, 40.0, 2.0, NOW + timedelta(hours=1))
+
+    def order() -> list[tuple[int, bool]]:
+        runs = get(path, "/api/v1/traceroutes", sort="route")["items"]
+        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
+
+    # B's single hop is its run's distance, pending until B reports again.
+    # R1's pending distance is not the km of its two-hop route.
+    assert order() == [(R1, True), (OTHER, False), (B, True)]
+    place(path, B, 41.0, 2.0, NOW + timedelta(hours=2))
+    assert order() == [(R1, True), (B, False), (OTHER, False)]
+
+
+def test_the_route_sort_keeps_a_single_hop_away_from_the_ends_by_its_km(path: Path) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, R1, 40.4, 2.0)
+    place(path, B, 41.2, 2.0)
+    place(path, OTHER, 40.2, 2.0)
+    # B's own gateway heard request 7, which reached it through R1 but
+    # carries only the hop to R1 (44 km); OTHER answered directly (22 km).
+    traceroute(path, "!0b0b0b0b", NOW, sender=A, recipient=B, packet_id=7, route=[R1], snr=[20])
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=OTHER,
+        recipient=A,
+        packet_id=10,
+        request_id=9,
+        route=[],
+        snr=[20],
+    )
+
+    runs = get(path, "/api/v1/traceroutes", sort="route")["items"]
+
+    # The 133 km between A and B is pending, but it is not the route's km.
+    assert [(run["target_node_id"], run["doubts"]) for run in runs] == [
+        (B, ["pending"]),
+        (OTHER, []),
+    ]
+    assert (runs[0]["route"]["hops"], runs[0]["route"]["reached"]) == (1, True)
 
 
 def four_runs(path: Path) -> None:
@@ -272,6 +368,44 @@ def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Pat
             (to_epoch_ms(NOW + timedelta(hours=1)), B),
         )
     assert order() == [(OTHER, False), (B, True), (R2, False)]
+
+
+@pytest.mark.parametrize("doubt", ["terrain", "doubtful"])
+def test_the_distance_sort_puts_a_run_over_a_doubted_hop_after_measured_ones(
+    path: Path, doubt: str
+) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, R1, 42.5, 2.0)  # 278 km north
+    place(path, B, 41.0, 2.0)
+    place(path, OTHER, 40.5, 2.0)
+    # B answers through R1, OTHER directly.
+    for target, packet_id, route in ((B, 8, [R1]), (OTHER, 10, [])):
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            NOW,
+            sender=target,
+            recipient=A,
+            packet_id=packet_id,
+            request_id=packet_id - 1,
+            route=route,
+            snr=[20] * (len(route) + 1),
+        )
+    # Both ends report again, which confirms B's 111 km.
+    place(path, A, 40.0, 2.0, NOW + timedelta(hours=1))
+    place(path, B, 41.0, 2.0, NOW + timedelta(hours=1))
+    if doubt == "terrain":
+        judge_unlikely(path, A, R1)
+    else:
+        heard_only_far_away(path, R1)
+
+    body = get(path, "/api/v1/traceroutes", sort="distance")
+    runs = body["items"]
+
+    # B's ends never heard each other: only its route's badge doubts the run.
+    assert [(run["target_node_id"], run["doubts"]) for run in runs] == [(OTHER, []), (B, [])]
+    assert runs[1]["route"]["unlikely"] is (doubt == "terrain")
+    assert body["doubtful_node_ids"] == ([R1] if doubt == "doubtful" else [])
 
 
 def test_a_run_is_measured_where_its_ends_were_when_heard(path: Path) -> None:

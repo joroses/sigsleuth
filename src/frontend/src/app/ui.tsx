@@ -644,9 +644,9 @@ export function DirectionSnr({
 
 /**
  * One hop's SNR after a dot in its tier colour at spreadingFactor, which is
- * left out without one. Exactly 0 dB reads "MQTT?" and is not rated: it is
- * usually a node that got the packet from MQTT, not a radio hop, and the
- * backend leaves it out of links (MQTT_HOP_SNR_DB). digits fixes the
+ * left out without one. Exactly 0 dB says on hover that it may be an MQTT
+ * hop: often a node that got the packet from MQTT, not over the air, so the
+ * backend leaves it out of km and links (MQTT_HOP_SNR_DB). digits fixes the
  * decimals; without it the SNR shows as reported.
  */
 export function HopSnr({
@@ -662,17 +662,14 @@ export function HopSnr({
   digits?: number;
   after?: string | null;
 }) {
-  const mqtt = snr === 0;
   const margin =
-    mqtt || spreadingFactor === undefined
-      ? null
-      : fadeMargin(snr, spreadingFactor);
+    spreadingFactor === undefined ? null : fadeMargin(snr, spreadingFactor);
   return (
     <span
       className={className}
       title={
-        mqtt
-          ? "0 dB: probably crossed MQTT, not a radio hop"
+        snr === 0
+          ? "0 dB: may be an MQTT hop"
           : margin === null
             ? undefined
             : `${margin.toFixed(1)} dB margin`
@@ -683,9 +680,7 @@ export function HopSnr({
       )}
       {snr === null
         ? "? dB"
-        : mqtt
-          ? "MQTT?"
-          : `${digits === undefined ? snr : snr.toFixed(digits)} dB`}
+        : `${digits === undefined ? snr : snr.toFixed(digits)} dB`}
       {after}
     </span>
   );

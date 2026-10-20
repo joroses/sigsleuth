@@ -4,6 +4,7 @@ import type {
   NodeSummary,
   TracerouteHop,
   ReportPaths,
+  RoutePath,
   TracerouteRun,
   PacketDetail,
 } from "./api";
@@ -73,7 +74,10 @@ export interface HopLines {
 export interface MinimapContents {
   markers: MinimapMarker[];
   unplacedGateways: number;
-  /** Every hop the packet reported, and on a request its reply's route. */
+  /**
+   * Every hop the packet reported, and on a request its reply's route, plus
+   * the listed routes' 0 dB steps (zeroDbSteps).
+   */
   allHops: HopLines;
   /**
    * The hops of the routes each traceroute reception reported, by reception_id;
@@ -136,7 +140,11 @@ export function minimapMarkers(
     if (reception.paths === null) continue;
     receptionHops.set(
       reception.reception_id,
-      hopLines(detail.spreading_factor, reception.hops, positions),
+      hopLines(
+        detail.spreading_factor,
+        withZeroDbSteps(reception.hops, reception.paths),
+        positions,
+      ),
     );
     if (detail.traceroute !== null) {
       const { requester_node_id, target_node_id } = detail.traceroute;
@@ -155,7 +163,11 @@ export function minimapMarkers(
     const { requester_node_id, target_node_id } = detail.traceroute;
     receptionHops.set(
       reply.reception_id,
-      hopLines(detail.spreading_factor, reply.hops, positions),
+      hopLines(
+        detail.spreading_factor,
+        withZeroDbSteps(reply.hops, { forward: reply.path, return_path: null }),
+        positions,
+      ),
     );
     receptionNumbers.set(
       reply.reception_id,
@@ -188,7 +200,11 @@ export function minimapMarkers(
     unplacedGateways,
     allHops: hopLines(
       detail.spreading_factor,
-      reply === null ? detail.hops : [...detail.hops, ...reply.hops],
+      [
+        ...detail.hops,
+        ...(reply?.hops ?? []),
+        ...listedReports(detail).flatMap((report) => report.zeroDbSteps),
+      ],
       positions,
     ),
     receptionHops,
@@ -205,9 +221,9 @@ export function minimapMarkers(
 /**
  * One traceroute run's longest route on its own: S at the requester and R at
  * the target whichever way the route went, its placed relays numbered along it from
- * 1 (a gap takes a number), and one line per hop with its SNR label. Nodes
- * sit where they were when the route was heard (run.positions), else where
- * the page's nodes place them now.
+ * 1 (a gap takes a number), and one line per hop or 0 dB step with its SNR
+ * label. Nodes sit where they were when the route was heard (run.positions),
+ * else where the page's nodes place them now.
  */
 export function routeMinimap(
   run: TracerouteRun,
@@ -281,7 +297,14 @@ export function routeMinimap(
   return {
     markers,
     unplacedGateways: 0,
-    allHops: hopLines(run.spreading_factor, run.route.path_hops, positions),
+    allHops: hopLines(
+      run.spreading_factor,
+      withZeroDbSteps(run.route.path_hops, {
+        forward: run.route.path,
+        return_path: null,
+      }),
+      positions,
+    ),
     receptionHops: new Map(),
     receptionNumbers: new Map(),
     relayReports: new Map(),
@@ -335,14 +358,14 @@ export function reportsWithHop(
 interface ListedReport {
   receptionId: number;
   nodes: (number | null)[];
+  /** Its measured hops, as the API sends them. */
   hops: TracerouteHop[];
+  /** Its steps at exactly 0 dB (zeroDbSteps), drawn with its hops. */
+  zeroDbSteps: TracerouteHop[];
 }
 
-// Each reception's forward and return routes, and a request's reply route.
-function foundReports(
-  detail: PacketDetail,
-  keep: (report: ListedReport) => boolean,
-): FoundReports {
+// Each listed reception's forward and return routes, and a request's reply route.
+function listedReports(detail: PacketDetail): ListedReport[] {
   const reports: ListedReport[] = [];
   for (const reception of detail.receptions) {
     const { paths } = reception;
@@ -351,6 +374,7 @@ function foundReports(
       receptionId: reception.reception_id,
       nodes: [...paths.forward.nodes, ...(paths.return_path?.nodes ?? [])],
       hops: reception.hops,
+      zeroDbSteps: zeroDbSteps(paths),
     });
   }
   const reply = detail.reply_route;
@@ -359,20 +383,60 @@ function foundReports(
       receptionId: reply.reception_id,
       nodes: reply.path.nodes,
       hops: reply.hops,
+      zeroDbSteps: zeroDbSteps({ forward: reply.path, return_path: null }),
     });
   }
+  return reports;
+}
+
+function foundReports(
+  detail: PacketDetail,
+  keep: (report: ListedReport) => boolean,
+): FoundReports {
   const receptionIds = new Set<number>();
   const hops = new Map<string, TracerouteHop>();
   const nodeIds = new Set<number>();
-  for (const report of reports) {
+  for (const report of listedReports(detail)) {
     if (!keep(report)) continue;
     receptionIds.add(report.receptionId);
     for (const node of report.nodes) if (node !== null) nodeIds.add(node);
     for (const hop of report.hops) {
       hops.set(`${hop.from_node_id}-${hop.to_node_id}`, hop);
     }
+    // A measured hop between the same nodes is drawn instead.
+    for (const step of report.zeroDbSteps) {
+      const key = `${step.from_node_id}-${step.to_node_id}`;
+      if (!hops.has(key)) hops.set(key, step);
+    }
   }
   return { receptionIds, hops: [...hops.values()], nodeIds };
+}
+
+/**
+ * The routes' steps at exactly 0 dB between two known, different nodes. The
+ * API's hops leave them out, as they may be MQTT hops (MQTT_HOP_SNR_DB in
+ * traceroute.py), so they never count toward km or links; the minimaps still
+ * draw them, as the route text lists them.
+ */
+export function zeroDbSteps(paths: ReportPaths): TracerouteHop[] {
+  return [paths.forward, paths.return_path]
+    .filter((path): path is RoutePath => path !== null)
+    .flatMap((path) =>
+      path.snr_db.flatMap((snr, index) => {
+        const from = path.nodes[index];
+        const to = path.nodes[index + 1];
+        return snr === 0 && from !== null && to !== null && from !== to
+          ? [{ from_node_id: from, to_node_id: to, snr_db: snr }]
+          : [];
+      }),
+    );
+}
+
+function withZeroDbSteps(
+  hops: TracerouteHop[],
+  paths: ReportPaths | null,
+): TracerouteHop[] {
+  return paths === null ? hops : [...hops, ...zeroDbSteps(paths)];
 }
 
 function withEstimate(title: string, estimated: boolean): string {

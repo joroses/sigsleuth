@@ -15,7 +15,7 @@ import json
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from sigsleuth.db import (
     NodeSummary,
@@ -50,6 +50,10 @@ from sigsleuth.traceroute import (
 BUSIEST_NODES = 10
 
 TracerouteSort = Literal["newest", "route", "distance"]
+
+# A saved route as traceroute_hop names it: its packet's row, the reception
+# whose report holds it, and whether it is a reply's return route.
+_RouteKey = tuple[int, int, bool]
 
 MAX_HOP_OBSERVATIONS = 10
 
@@ -245,12 +249,15 @@ def traceroute_runs(
     hops capture saved (traceroute_hop). min_hops and the route sort use the
     route shown. successful keeps the runs with a successful route (see
     reached_end) and shows only those routes; the distance sort always does,
-    since an unconfirmed run's ends need not have heard each other. The
-    distance sort puts the runs whose distance is doubted (TracerouteRun)
-    just before the runs without one. The route sort puts last the runs with
-    any hop at a doubtful position (links.doubtful_nodes) or between a pair
-    the terrain check finds unlikely (links.unlikely_links), on any of the
-    run's routes, which is approximate."""
+    since an unconfirmed run's ends need not have heard each other. Each
+    sort puts apart the runs with a badge on the km it sorts by. A shown
+    route has one with a hop at a doubtful position (links.doubtful_nodes),
+    while the route has a km, or between a pair the terrain check finds
+    unlikely (links.unlikely_links). The distance sort puts those runs, and
+    the runs whose distance is doubted (TracerouteRun), just before the runs
+    without a distance. The route sort puts last those runs, and the runs
+    whose route is a single reached hop between the ends, the run's
+    distance, with that distance doubted."""
     successful = successful or sort == "distance"
     since_id = _since_id(connection, since)
     # This fetch and Python grouping grow with the entire window, not the
@@ -319,17 +326,29 @@ def traceroute_runs(
         ]
         return max(found, key=lambda item: _hop_route_rank(item[0]), default=None)
 
+    def shown(packets: list[sqlite3.Row]) -> _SavedRoute | None:
+        """The route the run shows; None when no route has the searched
+        nodes."""
+        if any_route(packets):
+            return _stored_route(*_shown(packets))
+        searched = searched_route(packets)
+        if searched is None:
+            return None
+        hop, packet = searched
+        return _SavedRoute(
+            packet,
+            reception_id=int(hop["route_reception_id"]),
+            is_return=bool(hop["route_is_return"]),
+            hops=int(hop["route_hops"]),
+            km=hop["route_km"],
+            reached=bool(hop["route_reached"]),
+        )
+
     def rank(packets: list[sqlite3.Row]) -> tuple[float, int] | None:
         """The shown route's km and hops; None when no route has the searched
         nodes."""
-        if any_route(packets):
-            return _rank(*_shown(packets))
-        searched = searched_route(packets)
-        return (
-            None
-            if searched is None
-            else (searched[0]["route_km"] or 0.0, searched[0]["route_hops"])
-        )
+        route = shown(packets)
+        return None if route is None else (route.km or 0.0, route.hops)
 
     def keep(packets: list[sqlite3.Row]) -> bool:
         first_packet = packets[0]
@@ -347,49 +366,63 @@ def traceroute_runs(
     kept = [packets for packets in runs.values() if keep(packets)]
     doubtful = doubtful_nodes(connection)
     unlikely = unlikely_links(connection)
+    # Hidden nodes are gaps in a shown route, so they badge nothing.
+    through_doubtful, over_unlikely = (
+        (set(), set())
+        if sort == "newest"
+        else _doubted_routes(
+            connection,
+            doubtful - hidden,
+            {pair for pair in unlikely if hidden.isdisjoint(pair)},
+            since_id,
+        )
+    )
+
+    def route_doubted(route: _SavedRoute | None) -> bool:
+        """Whether a shown route gets the page's badge (see traceroute_runs).
+        A hop row keeps its packet's best route with that hop
+        (traceroute_hop), which is the shown one but in rare ties."""
+        return route is not None and (
+            route.key in over_unlikely or (route.km is not None and route.key in through_doubtful)
+        )
+
     if sort == "distance":
 
         def apart(packets: list[sqlite3.Row]) -> float:
             if (heard := _ends_km(packets)) is None:
                 return -2.0
-            return -1.0 if _doubts(packets, doubtful, unlikely) else heard
+            if _doubts(packets, doubtful, unlikely) or route_doubted(shown(packets)):
+                return -1.0
+            return heard
 
         kept.sort(key=lambda packets: (apart(packets), packets[0]["packet_row_id"]), reverse=True)
     elif sort == "route":
-        doubted = _packets_through(connection, doubtful, since_id) | _packets_over(
-            connection, unlikely, since_id
-        )
-        kept.sort(
-            key=lambda packets: (
-                doubted.isdisjoint(packet["packet_row_id"] for packet in packets),
-                *(rank(packets) or (0.0, -1)),
-                packets[0]["packet_row_id"],
-            ),
-            reverse=True,
-        )
+
+        def longest(packets: list[sqlite3.Row]) -> tuple[bool, float, int, int]:
+            route = shown(packets)
+            if route is None:
+                return (True, 0.0, -1, packets[0]["packet_row_id"])
+            # A reached single hop between the ends is the run's distance,
+            # with its doubts.
+            doubted = route_doubted(route) or (
+                route.reached
+                and route.hops == 1
+                and bool(_doubts(packets, doubtful, unlikely))
+                and _joins_ends(connection, route)
+            )
+            return (not doubted, route.km or 0.0, route.hops, packets[0]["packet_row_id"])
+
+        kept.sort(key=longest, reverse=True)
     else:
         kept.reverse()  # runs is in order of each run's first packet
     page = kept[offset : offset + limit]
     routes = []
     for packets in page:
-        if any_route(packets):
-            route = _stored_route(connection, *_shown(packets), hidden)
-        else:
-            searched = searched_route(packets)
-            assert searched is not None  # keep dropped the runs without one
-            hop, packet = searched
-            route = _saved_route(
-                connection,
-                packet,
-                reception_id=hop["route_reception_id"],
-                is_return=bool(hop["route_is_return"]),
-                hops=hop["route_hops"],
-                km=hop["route_km"],
-                reached=bool(hop["route_reached"]),
-                hidden=hidden,
-            )
-            if first is not None and second is not None:
-                route = replace(route, hop=hop_between(route.path, first, second))
+        saved = shown(packets)
+        assert saved is not None  # keep dropped the runs without one
+        route = _saved_route(connection, saved, hidden)
+        if first is not None and second is not None:
+            route = replace(route, hop=hop_between(route.path, first, second))
         over = any(
             (min(hop.from_node_id, hop.to_node_id), max(hop.from_node_id, hop.to_node_id))
             in unlikely
@@ -471,47 +504,36 @@ def _doubts(
     )
 
 
-def _packets_through(connection: sqlite3.Connection, node_ids: set[int], since_id: int) -> set[int]:
-    """The traceroute packets since since_id with a saved hop at one of node_ids."""
-    if not node_ids:
-        return set()
-    return {
-        int(row[0])
-        for row in connection.execute(
-            """
-            SELECT DISTINCT packet_row_id FROM traceroute_hop
-            WHERE packet_row_id >= :since
-              AND (from_node_id IN (SELECT value FROM json_each(:nodes))
-                   OR to_node_id IN (SELECT value FROM json_each(:nodes)))
-            """,
-            {"since": since_id, "nodes": json.dumps(sorted(node_ids))},
-        )
-    }
-
-
-def _packets_over(
-    connection: sqlite3.Connection, pairs: set[tuple[int, int]], since_id: int
-) -> set[int]:
-    """The traceroute packets since since_id with a saved hop between the
-    nodes of one of pairs (lower ID first), either way. It scans the
-    window's hops, as _packets_through does, but only when there are
-    pairs."""
-    if not pairs:
-        return set()
-    nodes = json.dumps(sorted({node for pair in pairs for node in pair}))
-    return {
-        int(packet_row_id)
-        for packet_row_id, from_node, to_node in connection.execute(
-            """
-            SELECT packet_row_id, from_node_id, to_node_id FROM traceroute_hop
-            WHERE packet_row_id >= :since
-              AND from_node_id IN (SELECT value FROM json_each(:nodes))
-              AND to_node_id IN (SELECT value FROM json_each(:nodes))
-            """,
-            {"since": since_id, "nodes": nodes},
-        )
-        if (min(from_node, to_node), max(from_node, to_node)) in pairs
-    }
+def _doubted_routes(
+    connection: sqlite3.Connection,
+    doubtful: set[int],
+    unlikely: set[tuple[int, int]],
+    since_id: int,
+) -> tuple[set[_RouteKey], set[_RouteKey]]:
+    """The routes since since_id with a saved hop at a doubtful node, and
+    those with one between an unlikely pair (lower ID first), either way.
+    It scans the window's hops once, and only when there are such nodes."""
+    nodes = doubtful | {node for pair in unlikely for node in pair}
+    through: set[_RouteKey] = set()
+    over: set[_RouteKey] = set()
+    if not nodes:
+        return through, over
+    for packet_row_id, reception_id, is_return, from_node, to_node in connection.execute(
+        """
+        SELECT packet_row_id, route_reception_id, route_is_return, from_node_id, to_node_id
+        FROM traceroute_hop
+        WHERE packet_row_id >= :since
+          AND (from_node_id IN (SELECT value FROM json_each(:nodes))
+               OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+        """,
+        {"since": since_id, "nodes": json.dumps(sorted(nodes))},
+    ):
+        key = (int(packet_row_id), int(reception_id), bool(is_return))
+        if from_node in doubtful or to_node in doubtful:
+            through.add(key)
+        if (min(from_node, to_node), max(from_node, to_node)) in unlikely:
+            over.add(key)
+    return through, over
 
 
 @dataclass(frozen=True)
@@ -693,41 +715,67 @@ def _run(
     )
 
 
-def _stored_route(
-    connection: sqlite3.Connection, packet: sqlite3.Row, prefix: str, hidden: set[int]
-) -> TracerouteRoute:
+class _SavedRoute(NamedTuple):
+    """A route that capture saved a summary of, before it is decoded: the
+    packet (a traceroute_packet row joined to its packet) and reception whose
+    report holds it. km uses positions from when the report was derived. A
+    tuple, as the sorts make one per run."""
+
+    packet: sqlite3.Row
+    reception_id: int
+    is_return: bool
+    hops: int
+    km: float | None
+    reached: bool
+
+    @property
+    def key(self) -> _RouteKey:
+        return (int(self.packet["packet_row_id"]), self.reception_id, self.is_return)
+
+
+def _stored_route(packet: sqlite3.Row, prefix: str) -> _SavedRoute:
     """A packet's longest route (prefix "route") or route that worked
     ("success_route", always a forward route) as capture stored it."""
-    return _saved_route(
-        connection,
+    return _SavedRoute(
         packet,
-        reception_id=packet[f"{prefix}_reception_id"],
+        reception_id=int(packet[f"{prefix}_reception_id"]),
         is_return=prefix == "route" and bool(packet["route_is_return"]),
-        hops=packet[f"{prefix}_hops"],
+        hops=int(packet[f"{prefix}_hops"]),
         km=packet[f"{prefix}_km"],
         reached=prefix == "success_route",
-        hidden=hidden,
+    )
+
+
+def _joins_ends(connection: sqlite3.Connection, route: _SavedRoute) -> bool:
+    """Whether the route's packet has a saved hop between the run's ends. A
+    one-hop route needs one to measure the run's distance: a request its
+    target's own gateway heard reached the target, but carries only the hops
+    before the last one. Called for the few doubted runs only."""
+    packet = route.packet
+    a, b = int(packet["requester_node_id"]), int(packet["target_node_id"])
+    return (
+        connection.execute(
+            """
+            SELECT 1 FROM traceroute_hop
+            WHERE packet_row_id = ?
+              AND ((from_node_id = ? AND to_node_id = ?) OR (from_node_id = ? AND to_node_id = ?))
+            """,
+            (int(packet["packet_row_id"]), a, b, b, a),
+        ).fetchone()
+        is not None
     )
 
 
 def _saved_route(
-    connection: sqlite3.Connection,
-    packet: sqlite3.Row,
-    *,
-    reception_id: int,
-    is_return: bool,
-    hops: int,
-    km: float | None,
-    reached: bool,
-    hidden: set[int],
+    connection: sqlite3.Connection, saved: _SavedRoute, hidden: set[int]
 ) -> TracerouteRoute:
-    """A route that capture saved a summary of, decoding the one saved report
-    that holds it, with hidden nodes as gaps. km uses positions from when the
-    report was derived."""
+    """The route decoded from the one saved report that holds it, with
+    hidden nodes as gaps."""
     # Recompute summary distances from current positions only if that
     # visibly misleads users.
+    packet = saved.packet
     payload = connection.execute(
-        "SELECT route_payload FROM reception WHERE id = ?", (reception_id,)
+        "SELECT route_payload FROM reception WHERE id = ?", (saved.reception_id,)
     ).fetchone()
     report = None if payload is None else _traceroute_report(packet, payload[0], None)
     if report is None:  # not expected: capture only saves readable reports
@@ -735,13 +783,13 @@ def _saved_route(
     else:
         report = without_nodes(report, hidden)
         returned = report.paths.return_path
-        path = returned if is_return and returned else report.paths.forward
+        path = returned if saved.is_return and returned else report.paths.forward
     return TracerouteRoute(
         packet_row_id=int(packet["packet_row_id"]),
-        is_return=is_return,
-        hops=int(hops),
-        km=None if km is None else round(km, 1),
-        reached=reached,
+        is_return=saved.is_return,
+        hops=saved.hops,
+        km=None if saved.km is None else round(saved.km, 1),
+        reached=saved.reached,
         path=path,
         path_hops=tuple(path_hops(path)),
     )

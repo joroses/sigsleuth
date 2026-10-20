@@ -99,6 +99,9 @@ def test_a_readable_report_moves_the_count_to_its_port(path: Path) -> None:
     send(path, 1, gateway="!bbbbbbbb", at=SENT_AT + timedelta(minutes=5))
 
     assert activity(path) == [(hour(SENT_AT), 0x11111111, TEXT, 1, 1)]
+    # The unreadable hour is gone, as a rebuild would leave it.
+    with closing(open_database(path)) as connection:
+        assert connection.execute("SELECT count(*) FROM node_activity_hour").fetchone()[0] == 1
 
 
 def test_retention_drops_activity_hours_before_the_age_limit(path: Path) -> None:

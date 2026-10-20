@@ -103,6 +103,16 @@ def is_signed(data: mesh_pb2.Data) -> bool:
     return _has_field(data, _DATA_XEDDSA_SIGNATURE)
 
 
+# The ports payload_trait reads.
+TRAIT_PORTS = (
+    portnums_pb2.PortNum.NODEINFO_APP,
+    portnums_pb2.PortNum.TELEMETRY_APP,
+    portnums_pb2.PortNum.ROUTING_APP,
+    portnums_pb2.PortNum.NODE_STATUS_APP,
+    _PAGING_APP,
+)
+
+
 def payload_trait(sender_node_id: int, portnum: int, payload: bytes) -> str | None:
     """The newest trait in a packet's application payload."""
     if portnum == portnums_pb2.PortNum.NODEINFO_APP:

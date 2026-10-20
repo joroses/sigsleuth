@@ -51,11 +51,15 @@ derive._update_device_telemetry
   SEARCH node_current USING PRIMARY KEY
 derive.raise_firmware
   SEARCH node_current USING PRIMARY KEY
-reported.positions_when_heard
+derive._count_link
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 derive._mark_airborne
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 derive._save_traceroute
   SEARCH traceroute_packet USING PRIMARY KEY
 derive._save_hops

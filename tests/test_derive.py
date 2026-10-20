@@ -13,6 +13,7 @@ from meshtastic.protobuf import (  # type: ignore[import-untyped]
 )
 
 from meshtastic_fixtures import application_envelope
+from sigsleuth import derive
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import (
@@ -190,6 +191,29 @@ def test_an_interrupted_rederive_starts_again(path: Path, connection: sqlite3.Co
 
     rederive_all(connection)
     assert derived(connection) == captured
+
+
+def test_a_row_that_fails_to_derive_skips_only_itself(
+    path: Path, connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture_some_history(connection)
+    captured = derived(connection)
+
+    def unreadable_route(*_: object) -> None:
+        raise ValueError("unreadable route")
+
+    monkeypatch.setattr(derive, "_derive_route", unreadable_route)
+    connection.execute("UPDATE derived_state SET version = 0")
+    migrate_database(path)
+    assert rederive(connection, lambda: False)
+
+    again = derived(connection)
+    assert not again["traceroute_packet"]
+    # Neighbour links are read in Python too, in the same batch.
+    assert [row for row in again["link_hour"] if row[0] != "traceroute"] == [
+        row for row in captured["link_hour"] if row[0] != "traceroute"
+    ]
+    assert again["node_activity_hour"] == captured["node_activity_hour"]
 
 
 def test_app_rebuilds_derived_tables_in_the_background(

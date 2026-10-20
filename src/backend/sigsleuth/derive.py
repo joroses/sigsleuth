@@ -1,34 +1,35 @@
 """Keep the derived tables (derived.sql) up to date from saved facts.
 
-They are computed only from saved rows, never from an MQTT delivery, so one
-code path serves both callers:
+They are computed only from saved rows, never from an MQTT delivery:
 
 - Capture: ingest.py calls derive_delivery (or apply_map_report) for what a
-  delivery added, in the same transaction.
+  delivery added, in the same transaction, row by row.
 - Rederive: after a DERIVED_VERSION change, rederive refills the emptied
-  tables oldest first, each packet just before its first reception, as
-  capture derived it. Capture keeps saving facts meanwhile without deriving
-  them (ingest.py), and rederive goes on until it has caught up. Each node's
+  tables oldest first, in batches of receptions: totals and marks in SQL
+  (_BATCH_SQL), and in Python only what needs a payload read (capture's own
+  functions). Capture keeps saving facts meanwhile without deriving them
+  (ingest.py), and rederive goes on until it has caught up. Each node's
   reported state (reported.py) is copied in first, and opted-out nodes
   (node_opt_out) refilled. Survey measurements keep what upload decided;
   their survey links (coverage_relay) are refilled from them first.
 
-Nodes are placed where they were when heard (reported.positions_when_heard)
-and node_current's reported part is a copy of facts (copy_reported), so
-neither depends on the order rows are derived in. Rederive matches capture
-except that a packet first heard unreadable is counted at its readable port
-from the start. A readable report that comes after rederive passed its
-packet or reception adds nothing: the packet keeps its unreadable count, a
-gateway's late traceroute route its missing hops. Rederive passes the newest
-rows only in its last seconds, so this is rare.
+Totals are written twice, by capture's upserts and by _BATCH_SQL's GROUP
+BYs; test_sample_cross_checks holds them equal. Nodes are placed where they
+were when heard (reported.positions_when_heard) and node_current's reported
+part is a copy of facts (copy_reported), so nothing depends on the order
+rows are derived in. A readable report that comes while rederive runs but
+after it passed its packet or reception adds nothing: the packet keeps its
+unreadable count, a gateway's late traceroute route its missing hops.
+Rederive passes the newest rows only in its last seconds, so this is rare.
 
 A failed derived update is logged and undone (derive_or_undo); the facts stay.
 """
 
+import json
 import logging
 import sqlite3
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
@@ -40,10 +41,10 @@ from sigsleuth.decode import (
     read_device_telemetry,
     read_neighbors,
 )
-from sigsleuth.firmware import TRAITS, newest, payload_trait
+from sigsleuth.firmware import TRAIT_PORTS, TRAITS, newest, payload_trait
 from sigsleuth.opt_out import refresh_opt_outs
-from sigsleuth.radio import great_circle_km, preset_name, relay_byte_of
-from sigsleuth.reported import positions_when_heard, save_position
+from sigsleuth.radio import great_circle_km, preset_name, relay_byte_of, relay_byte_sql
+from sigsleuth.reported import km_when_heard_sql, positions_when_heard, save_position
 from sigsleuth.traceroute import (
     Hop,
     Route,
@@ -69,8 +70,9 @@ AIRBORNE_PAIR_KM = 150
 # moved (node_current.moved_at).
 MOVED_KM = 25
 # Receptions per rederive transaction; capture waits for one at most, so one
-# must take well under DATABASE_BUSY_TIMEOUT_MS (about 1.5 s on the server).
-REDERIVE_BATCH_SIZE = 10_000
+# must take well under DATABASE_BUSY_TIMEOUT_MS: 0.28 s on a laptop, about
+# 1.3 s on the server (2026-10-20).
+REDERIVE_BATCH_SIZE = 25_000
 REDERIVE_LOG_SECONDS = 60.0
 
 # The saved facts derive reads: a packet's, and a reception's with its
@@ -121,10 +123,10 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
         f"{_RECEPTION_QUERY} WHERE r.id = ?", (delivery.reception_id,)
     ).fetchone()
     if delivery.new_packet:
-        _count_activity(connection, row, row["portnum"], 1)
+        _count_activity(connection, row)
     elif delivery.port_learned:
-        _count_activity(connection, row, None, -1)
-        _count_activity(connection, row, row["portnum"], 1)
+        _uncount_unreadable(connection, row)
+        _count_activity(connection, row)
     if delivery.application_saved:
         _update_sender(connection, row)
         copy_reported(connection, int(row["sender_node_id"]))
@@ -134,7 +136,7 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
     if delivery.new_reception:
         _derive_reception(connection, row)
     elif delivery.route_added:
-        _derive_route(connection, row)
+        _derive_route(connection, row, {})
     if delivery.ok_to_mqtt_learned:
         refresh_opt_outs(connection, [int(row["sender_node_id"])])
 
@@ -167,10 +169,7 @@ def rederive(
     empty them and refill them from saved history, oldest first, until they
     have caught up with what capture saves meanwhile. stopping() is called
     before each batch; return False when it said to stop, and the next start
-    begins again.
-
-    If this grows past about 15 minutes on a small server, fill the hourly totals
-    in SQL."""
+    begins again."""
     if not rederive_pending(connection):
         return True
     LOGGER.info("Rebuilding derived tables from saved history while capture saves new deliveries")
@@ -190,35 +189,43 @@ def rederive(
         if stopping():
             return False
         with transaction(connection):
-            receptions = connection.execute(
-                f"{_RECEPTION_QUERY} WHERE r.id > ? ORDER BY r.id LIMIT ?",
+            last_reception, receptions = connection.execute(
+                """
+                SELECT max(id), count(*) FROM (
+                    SELECT id FROM reception WHERE id > ? ORDER BY id LIMIT ?
+                )
+                """,
                 (receptions_after, batch_size),
-            ).fetchall()
-            done = len(receptions) < batch_size
+            ).fetchone()
+            done = receptions < batch_size
             # The packets these receptions start. The last batch takes the
             # rest, and the reported state capture saved meanwhile; capture
             # waits for it and derives what comes after.
-            packets = connection.execute(
-                f"""
-                SELECT {_PACKET_COLUMNS} FROM packet AS t
-                WHERE t.id > ? AND t.id <= ? ORDER BY t.id
-                """,
-                (
-                    packets_after,
-                    _last_id(connection, "packet")
-                    if done
-                    else max(row["packet_row_id"] for row in receptions),
-                ),
-            ).fetchall()
-            _derive_rows(connection, _in_capture_order(connection, packets, receptions))
+            last_packet = (
+                _last_id(connection, "packet")
+                if done
+                else connection.execute(
+                    "SELECT max(packet_row_id) FROM reception WHERE id > ? AND id <= ?",
+                    (receptions_after, last_reception),
+                ).fetchone()[0]
+            )
+            _derive_batch(
+                connection,
+                {
+                    "packets_after": packets_after,
+                    "last_packet": max(last_packet or 0, packets_after),
+                    "receptions_after": receptions_after,
+                    "last_reception": last_reception or receptions_after,
+                },
+            )
             if done:
                 _copy_all_reported(connection)
                 connection.execute("UPDATE derived_state SET rebuilt = 1")
         if done:
             LOGGER.info("Derived tables are rebuilt in %.0f s", time.monotonic() - started_at)
             return True
-        packets_after = packets[-1]["packet_row_id"] if packets else packets_after
-        receptions_after = receptions[-1]["reception_id"]
+        packets_after = max(last_packet or 0, packets_after)
+        receptions_after = last_reception
         if time.monotonic() - logged_at >= REDERIVE_LOG_SECONDS:
             logged_at = time.monotonic()
             LOGGER.info(
@@ -231,34 +238,216 @@ def _last_id(connection: sqlite3.Connection, table: str) -> int:
     return int(connection.execute(f"SELECT coalesce(max(id), 0) FROM {table}").fetchone()[0])
 
 
-def _in_capture_order(
-    connection: sqlite3.Connection,
-    packets: Sequence[sqlite3.Row],
-    receptions: Sequence[sqlite3.Row],
-) -> list[Callable[[], None]]:
-    """Derive steps for each packet just before its first reception, as
-    capture derives them; packets are numbered as they are first heard."""
+def direct_reception_sql(reception: str, packet: str) -> str:
+    """is_direct_reception in SQL, for the reception and packet table aliases."""
+    return f"""(
+        {reception}.hop_start IS NOT NULL AND {reception}.hop_limit = {reception}.hop_start
+        AND {reception}.gateway_node_id <> {packet}.sender_node_id
+        AND {reception}.relay_byte = {relay_byte_sql(f"{packet}.sender_node_id")}
+        AND ({reception}.rx_snr IS NOT NULL OR {reception}.rx_rssi IS NOT NULL)
+    )"""
+
+
+# What capture's per-delivery steps add up to, for the packets and receptions
+# in one rederive batch: :packets_after < packet.id <= :last_packet and
+# :receptions_after < reception.id <= :last_reception.
+_BATCH_SQL = (
+    # _count_activity, at the port each packet has now.
+    f"""
+    INSERT INTO node_activity_hour (hour_start, node_id, portnum, is_broadcast, packets,
+        last_sent_at)
+    SELECT first_received_at - first_received_at % {HOUR_MS}, sender_node_id,
+           coalesce(portnum, -1), recipient_node_id = {BROADCAST_NODE_ID}, count(*),
+           max(first_received_at)
+    FROM packet WHERE id > :packets_after AND id <= :last_packet
+    GROUP BY 1, 2, 3, 4
+    ON CONFLICT (hour_start, node_id, portnum, is_broadcast) DO UPDATE SET
+        packets = packets + excluded.packets,
+        last_sent_at = max(last_sent_at, excluded.last_sent_at)
+    """,
+    # _update_sender: seen when it sent, and its latest radio channel.
+    """
+    INSERT INTO node_current (node_id, last_seen_at)
+    SELECT sender_node_id, max(first_received_at) FROM packet
+    WHERE id > :packets_after AND id <= :last_packet
+    GROUP BY 1
+    ON CONFLICT (node_id) DO UPDATE SET last_seen_at = max(last_seen_at, excluded.last_seen_at)
+    """,
+    """
+    UPDATE node_current SET channel = c.channel, channel_observed_at = c.at
+    FROM (
+        SELECT sender_node_id, channel, at FROM (
+            -- Of packets heard at the same time, capture keeps the first.
+            SELECT sender_node_id, channel, first_received_at AS at,
+                   row_number() OVER (
+                       PARTITION BY sender_node_id ORDER BY first_received_at DESC, id
+                   ) AS newest
+            FROM packet
+            WHERE id > :packets_after AND id <= :last_packet
+              AND channel IN (SELECT value FROM json_each(:radio_channels))
+        )
+        WHERE newest = 1
+    ) AS c
+    WHERE node_current.node_id = c.sender_node_id
+      AND (node_current.channel_observed_at IS NULL OR node_current.channel_observed_at < c.at)
+    """,
+    # _mark_gateway.
+    f"""
+    INSERT INTO node_current (node_id, last_seen_at, last_gateway_at)
+    SELECT gateway_node_id, max(received_at), max(received_at) FROM reception
+    WHERE id > :receptions_after AND id <= :last_reception
+      AND gateway_node_id BETWEEN 1 AND {BROADCAST_NODE_ID - 1}
+    GROUP BY 1
+    ON CONFLICT (node_id) DO UPDATE SET
+        last_seen_at = max(last_seen_at, excluded.last_seen_at),
+        last_gateway_at = max(coalesce(last_gateway_at, 0), excluded.last_gateway_at)
+    """,
+    """
+    DELETE FROM node_opt_out WHERE node_id IN (
+        SELECT gateway_node_id FROM reception
+        WHERE id > :receptions_after AND id <= :last_reception
+    )
+    """,
+    # _count_link for direct receptions.
+    f"""
+    INSERT INTO link_hour (link_kind, hour_start, from_node_id, to_node_id, observations,
+        snr_count, snr_sum, last_seen_at, channel, km)
+    SELECT 'direct', hour_start, from_node_id, to_node_id, observations, snr_count, snr_sum,
+           last_seen_at, channel, {km_when_heard_sql("from_node_id", "to_node_id", "last_seen_at")}
+    FROM (
+        SELECT t.first_received_at - t.first_received_at % {HOUR_MS} AS hour_start,
+               t.sender_node_id AS from_node_id, r.gateway_node_id AS to_node_id,
+               count(*) AS observations, count(r.rx_snr) AS snr_count,
+               total(r.rx_snr) AS snr_sum, max(t.first_received_at) AS last_seen_at,
+               t.channel AS channel
+        FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+        WHERE r.id > :receptions_after AND r.id <= :last_reception
+          AND {direct_reception_sql("r", "t")}
+        GROUP BY 1, 2, 3, 8
+    ) WHERE true
+    ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
+        observations = observations + excluded.observations,
+        snr_count = snr_count + excluded.snr_count,
+        snr_sum = snr_sum + excluded.snr_sum,
+        last_seen_at = max(last_seen_at, excluded.last_seen_at),
+        km = CASE WHEN excluded.last_seen_at >= last_seen_at
+                  THEN coalesce(excluded.km, km) ELSE coalesce(km, excluded.km) END
+    """,
+    # _derive_reception's firmware hint: only 2.6.0 and newer fill in the
+    # relay byte. No other trait has its version, so order does not matter.
+    f"""
+    UPDATE node_current SET firmware_minimum = {TRAITS["relay_byte"].version},
+        firmware_trait = 'relay_byte'
+    WHERE (firmware_minimum IS NULL OR firmware_minimum < {TRAITS["relay_byte"].version})
+      AND node_id IN (
+        SELECT gateway_node_id FROM reception
+        WHERE id > :receptions_after AND id <= :last_reception AND relay_byte IS NOT NULL
+        UNION
+        SELECT t.sender_node_id FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+        WHERE r.id > :receptions_after AND r.id <= :last_reception
+          AND {direct_reception_sql("r", "t")}
+    )
+    """,
+)
+# Ports whose payloads a rebuild reads: positions, telemetry, neighbour
+# lists and firmware traits.
+_READ_PORTS = (
+    portnums_pb2.PortNum.POSITION_APP,
+    portnums_pb2.PortNum.TELEMETRY_APP,
+    portnums_pb2.PortNum.NEIGHBORINFO_APP,
+    *TRAIT_PORTS,
+)
+# A reception that may show its sender in the air (_mark_airborne).
+_ZERO_HOP = f"""
+    r.hop_start = r.hop_limit AND r.gateway_node_id <> t.sender_node_id
+    AND (r.relay_byte IS NULL OR r.relay_byte = {relay_byte_sql("t.sender_node_id")})
+    AND (r.rx_snr IS NOT NULL OR r.rx_rssi IS NOT NULL)
+"""
+
+
+def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> None:
+    """Derive one rederive batch: its packets' positions into the position
+    history (after the upgrade that made it a fact it held only the latest),
+    totals and marks in SQL (_BATCH_SQL), then in Python, row by row in
+    capture's order, the payloads that need reading, traceroute routes and
+    the packets that may have been in the air."""
+    _derive_rows(
+        connection,
+        [
+            partial(save_position, connection, row)
+            for row in connection.execute(
+                f"""
+                SELECT {_PACKET_COLUMNS} FROM packet AS t
+                WHERE t.id > :packets_after AND t.id <= :last_packet
+                  AND coalesce(t.portnum, -1) = {portnums_pb2.PortNum.POSITION_APP}
+                """,
+                ranges,
+            ).fetchall()
+        ],
+    )
+    radio_channels = [
+        channel
+        for (channel,) in connection.execute(
+            "SELECT DISTINCT channel FROM packet WHERE id > :packets_after AND id <= :last_packet",
+            ranges,
+        )
+        if preset_name(channel) is not None
+    ]
+    for statement in _BATCH_SQL:
+        connection.execute(statement, {**ranges, "radio_channels": json.dumps(radio_channels)})
     steps: list[Callable[[], None]] = []
-    waiting = iter(packets)
-    packet = next(waiting, None)
-    for reception in receptions:
-        while packet is not None and packet["packet_row_id"] <= reception["packet_row_id"]:
-            steps.append(partial(_derive_packet, connection, packet))
-            packet = next(waiting, None)
-        steps.append(partial(_derive_reception, connection, reception))
-    while packet is not None:
-        steps.append(partial(_derive_packet, connection, packet))
-        packet = next(waiting, None)
-    return steps
+    placed: Placed = {}
+    for row in connection.execute(
+        f"""
+        SELECT {_PACKET_COLUMNS} FROM packet AS t
+        WHERE t.id > :packets_after AND t.id <= :last_packet
+          AND t.application_payload IS NOT NULL
+          AND (t.portnum IN ({",".join(map(str, _READ_PORTS))}) OR t.is_signed)
+        ORDER BY t.id
+        """,
+        ranges,
+    ).fetchall():
+        steps.append(partial(_read_payload, connection, row))
+        steps.append(partial(_count_neighbors, connection, row))
+    for row in connection.execute(
+        f"""
+        {_RECEPTION_QUERY}
+        WHERE r.id > :receptions_after AND r.id <= :last_reception
+          AND r.route_payload IS NOT NULL
+        ORDER BY r.id
+        """,
+        ranges,
+    ).fetchall():
+        steps.append(partial(_derive_route, connection, row, placed))
+    # Packets with a zero-hop reception in this batch and four in all.
+    for row in connection.execute(
+        f"""
+        SELECT {_PACKET_COLUMNS} FROM packet AS t
+        WHERE t.id IN (
+            SELECT r.packet_row_id FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+            WHERE r.id > :receptions_after AND r.id <= :last_reception AND {_ZERO_HOP}
+        ) AND (
+            SELECT count(*) FROM reception AS r WHERE r.packet_row_id = t.id AND {_ZERO_HOP}
+        ) >= 4
+        """,
+        ranges,
+    ).fetchall():
+        steps.append(partial(_mark_airborne, connection, row))
+    _derive_rows(connection, steps)
 
 
-def _derive_rows(connection: sqlite3.Connection, steps: Sequence[Callable[[], None]]) -> None:
-    """Run each derive step on its own, so one bad row skips only itself."""
-    failures: list[Exception] = []
-    for step in steps:
-        error = derive_or_undo(connection, step)
-        if error is not None:
-            failures.append(error)
+def _derive_rows(connection: sqlite3.Connection, steps: list[Callable[[], None]]) -> None:
+    """Run the steps all at once, and only after a failure one by one, so one
+    bad row skips only itself: a savepoint per row took a tenth of the
+    rebuild."""
+
+    def run_all() -> None:
+        for step in steps:
+            step()
+
+    if derive_or_undo(connection, run_all) is None:
+        return
+    failures = [error for step in steps if (error := derive_or_undo(connection, step)) is not None]
     if failures:
         LOGGER.error(
             "Skipped %d of %d saved rows while rebuilding derived tables",
@@ -268,41 +457,55 @@ def _derive_rows(connection: sqlite3.Connection, steps: Sequence[Callable[[], No
         )
 
 
-def _derive_packet(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
-    """A saved packet's activity count, its sender's node state and its
-    neighbour links, as capture derives them from its first readable report.
-    A position is added to the position history: after the upgrade that
-    made it a fact, only the latest one was there."""
-    _count_activity(connection, row, row["portnum"], 1)
-    _update_sender(connection, row)
-    _count_neighbors(connection, row)
-    if row["portnum"] == portnums_pb2.PortNum.POSITION_APP:
-        save_position(connection, row)
-
-
-def _count_activity(
-    connection: sqlite3.Connection, row: sqlite3.Row, portnum: int | None, change: int
-) -> None:
-    """Add change (1 or -1) to the sender's hourly count for one port."""
+def _count_activity(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    """Count the packet in its sender's hour at its port, -1 while unreadable."""
     sent_at = int(row["first_received_at"])
     connection.execute(
         """
         INSERT INTO node_activity_hour (
             hour_start, node_id, portnum, is_broadcast, packets, last_sent_at
-        ) VALUES (:hour_start, :node, :portnum, :broadcast, max(:change, 0), :sent_at)
+        ) VALUES (:hour_start, :node, :portnum, :broadcast, 1, :sent_at)
         ON CONFLICT (hour_start, node_id, portnum, is_broadcast) DO UPDATE SET
-            packets = packets + :change,
+            packets = packets + 1,
             last_sent_at = max(last_sent_at, excluded.last_sent_at)
         """,
         {
             "hour_start": sent_at - sent_at % HOUR_MS,
             "node": row["sender_node_id"],
-            "portnum": -1 if portnum is None else portnum,
+            "portnum": -1 if row["portnum"] is None else row["portnum"],
             "broadcast": row["recipient_node_id"] == BROADCAST_NODE_ID,
-            "change": change,
             "sent_at": sent_at,
         },
     )
+
+
+def _uncount_unreadable(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    """Take a packet that has just learned its port out of its hour's
+    unreadable count, which then holds what a rebuild would count there."""
+    sent_at = int(row["first_received_at"])
+    key = """
+        hour_start = :hour_start AND node_id = :node AND portnum = -1
+        AND is_broadcast = :broadcast
+    """
+    values = {
+        "hour_start": sent_at - sent_at % HOUR_MS,
+        "node": row["sender_node_id"],
+        "broadcast": row["recipient_node_id"] == BROADCAST_NODE_ID,
+    }
+    connection.execute(
+        f"""
+        UPDATE node_activity_hour SET packets = packets - 1, last_sent_at = coalesce((
+            SELECT max(first_received_at) FROM packet
+            WHERE sender_node_id = :node AND portnum IS NULL
+              AND (recipient_node_id = {BROADCAST_NODE_ID}) = :broadcast
+              AND first_received_at >= :hour_start
+              AND first_received_at < :hour_start + {HOUR_MS}
+        ), last_sent_at)
+        WHERE {key}
+        """,
+        values,
+    )
+    connection.execute(f"DELETE FROM node_activity_hour WHERE {key} AND packets <= 0", values)
 
 
 def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
@@ -325,12 +528,21 @@ def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
             """,
             (radio_channel, observed_at, sender_node_id, observed_at),
         )
+    _read_payload(connection, row)
+
+
+def _read_payload(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    """The sender's ChUtil, AirUtil and battery, and its firmware traits,
+    from the packet's saved payload."""
     payload = row["application_payload"]
     if payload is None or row["portnum"] is None:
         return
+    sender_node_id = int(row["sender_node_id"])
     portnum = int(row["portnum"])
     if portnum == portnums_pb2.PortNum.TELEMETRY_APP:
-        _update_device_telemetry(connection, sender_node_id, observed_at, bytes(payload))
+        _update_device_telemetry(
+            connection, sender_node_id, int(row["first_received_at"]), bytes(payload)
+        )
     signed = "signature" if row["is_signed"] else None
     raise_firmware(
         connection, sender_node_id, newest(signed, payload_trait(sender_node_id, portnum, payload))
@@ -526,7 +738,7 @@ def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
         and (row["rx_snr"] is not None or row["rx_rssi"] is not None)
     ):
         _mark_airborne(connection, row)
-    _derive_route(connection, row)
+    _derive_route(connection, row, {})
 
 
 def _mark_airborne(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
@@ -582,7 +794,25 @@ def _mark_airborne(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
         )
 
 
-def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+# Where nodes were when heard, by (node, time), within one transaction;
+# None for unplaced. A packet's gateways all report the same nodes at the
+# same time, so a rebuild batch reads each once.
+Placed = dict[tuple[int, int], tuple[float, float] | None]
+
+
+def _placed_at(
+    connection: sqlite3.Connection, pairs: set[tuple[int, int]], placed: Placed
+) -> dict[int, tuple[float, float]]:
+    """positions_when_heard for (node, time) pairs, through placed."""
+    if missing := pairs - placed.keys():
+        found = positions_when_heard(connection, missing)
+        for pair in missing:
+            heard = found.get(pair)
+            placed[pair] = None if heard is None else (heard.latitude, heard.longitude)
+    return {node: position for node, at in pairs if (position := placed[node, at]) is not None}
+
+
+def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row, placed: Placed) -> None:
     """A traceroute report adds hops and may lengthen its longest routes."""
     report = read_traceroute_report(
         row["route_payload"],
@@ -594,12 +824,7 @@ def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     if report is None:
         return
     heard_at = int(row["first_received_at"])
-    positions = {
-        node: (found.latitude, found.longitude)
-        for (node, _), found in positions_when_heard(
-            connection, {(node, heard_at) for node in report.node_ids}
-        ).items()
-    }
+    positions = _placed_at(connection, {(node, heard_at) for node in report.node_ids}, placed)
     routes = report_routes(report, positions)
     _save_hops(connection, row, routes)
     ends = (positions.get(report.requester), positions.get(report.target))
@@ -834,28 +1059,14 @@ def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row
     latest observation's.
     """
     seen_at = int(row["first_received_at"])
-    placed = positions_when_heard(
-        connection, {(hop.from_node_id, seen_at), (hop.to_node_id, seen_at)}
-    )
-    ends = placed.get((hop.from_node_id, seen_at)), placed.get((hop.to_node_id, seen_at))
-    km = (
-        round(
-            great_circle_km(
-                ends[0].latitude, ends[0].longitude, ends[1].latitude, ends[1].longitude
-            ),
-            1,
-        )
-        if ends[0] is not None and ends[1] is not None
-        else None
-    )
     connection.execute(
-        """
+        f"""
         INSERT INTO link_hour (
             link_kind, hour_start, from_node_id, to_node_id,
             observations, snr_count, snr_sum, last_seen_at, channel, km
         ) VALUES (
             :link_kind, :hour_start, :from_node, :to_node, 1, :has_snr, :snr, :seen_at, :channel,
-            :km
+            {km_when_heard_sql(":from_node", ":to_node", ":seen_at")}
         )
         ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
             observations = observations + 1,
@@ -874,6 +1085,5 @@ def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row
             "snr": hop.snr_db or 0.0,
             "seen_at": seen_at,
             "channel": row["channel"],
-            "km": km,
         },
     )

@@ -128,8 +128,36 @@ def test_upgrading_facts_3_and_rederiving_keeps_what_each_node_reported(
         assert rederive(connection, lambda: False)
         upgraded = reported(connection)
         assert opted_out(connection) == {node[0]}
+        # Distances when heard need the position history the rebuild adds.
+        links = link_km(connection)
     with closing(open_current_database(sample.path)) as connection:
         assert upgraded == reported(connection)
+        captured = link_km(connection)
+        assert links.keys() == captured.keys()
+        # Facts kept only each node's latest map report, so hours placed by
+        # an earlier one lose their km.
+        for key, km in captured.items():
+            if links[key] != km:
+                _, _, a, b, _, at = key
+                assert connection.execute(
+                    """
+                    SELECT 1 FROM node_position
+                    WHERE node_id IN (?, ?) AND packet_row_id IS NULL AND at <= ?
+                    """,
+                    (a, b, at),
+                ).fetchone()
+
+
+def link_km(connection: sqlite3.Connection) -> dict[tuple[object, ...], float | None]:
+    return {
+        tuple(row[:-1]): row[-1]
+        for row in connection.execute(
+            """
+            SELECT link_kind, hour_start, from_node_id, to_node_id, channel, last_seen_at, km
+            FROM link_hour
+            """
+        )
+    }
 
 
 def reported(connection: sqlite3.Connection) -> set[tuple[object, ...]]:

@@ -15,10 +15,10 @@ from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, optional_text, to_epoch_ms
 from sigsleuth.decode import describe_payload, portnum_name
-from sigsleuth.derive import is_direct_reception
+from sigsleuth.derive import direct_reception_sql, is_direct_reception
 from sigsleuth.diagnostics import describe_reason
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
-from sigsleuth.radio import distance_km, relay_byte_of, relay_byte_sql, spreading_factor
+from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
 from sigsleuth.relays import (
     COHEARER_RECEPTIONS,
     COHEARER_WINDOW_MS,
@@ -661,16 +661,13 @@ def packet_list(
     if sender is not None:
         filters.append("AND sender_node_id = :sender")
         if heard_directly_by is not None:
-            # derive.is_direct_reception, the rule direct links are counted by.
+            # The rule direct links are counted by.
             filters.append(
                 f"""
                 AND EXISTS (
                     SELECT 1 FROM reception AS r
                     WHERE r.packet_row_id = packet.id AND r.gateway_node_id = :gateway
-                      AND r.gateway_node_id <> packet.sender_node_id
-                      AND r.hop_start IS NOT NULL AND r.hop_limit = r.hop_start
-                      AND r.relay_byte = {relay_byte_sql("packet.sender_node_id")}
-                      AND (r.rx_snr IS NOT NULL OR r.rx_rssi IS NOT NULL)
+                      AND {direct_reception_sql("r", "packet")}
                 )
                 """
             )

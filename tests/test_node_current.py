@@ -1,10 +1,12 @@
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from meshtastic_fixtures import application_envelope, ingest
-from sigsleuth.db import migrate_database, open_database, to_epoch_ms
+from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
+from sigsleuth.derive import rederive
 from sigsleuth.links import map_links
 from sigsleuth.nodes import node_channels
 
@@ -201,6 +203,37 @@ def test_only_radio_channels_set_the_node_channel(tmp_path: Path) -> None:
     assert send("PKI", 2) == "longfast"
     assert send("TEST", 3) == "longfast"
     assert send("MediumFast", 4) == "MediumFast"
+
+
+def test_of_two_channels_heard_at_once_the_first_stays_after_a_rebuild(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 19, 12, tzinfo=UTC)
+    for packet_id, channel in ((1, "LongSlow"), (2, "LongFast")):
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"hi",
+                packet_id=packet_id,
+                channel_id=channel,
+            ),
+            received_at=now,
+            topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+        )
+
+    def node_channel() -> str:
+        with closing(open_current_database(path)) as connection:
+            found: str = connection.execute(
+                "SELECT channel FROM node_current WHERE node_id = ?", (0x11111111,)
+            ).fetchone()[0]
+            return found
+
+    assert node_channel() == "LongSlow"
+    with closing(open_current_database(path)) as connection:
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False)
+    assert node_channel() == "LongSlow"
 
 
 def test_node_channel_filter_keeps_links_with_the_observed_spelling(tmp_path: Path) -> None:

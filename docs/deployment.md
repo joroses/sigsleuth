@@ -25,7 +25,7 @@ git pull
 docker compose pull && docker compose up -d   # or: docker compose up -d --build
 ```
 
-Pull the repository too, since `compose.yml` and `.env.example` change with the code. A raised derived-table version rebuilds the derived tables at startup: pages fill in as it goes and Diagnostics shows `rebuilding` (3 to 13 minutes for one to two weeks of a busy subscription, depending on the machine). Capture keeps saving deliveries meanwhile and the rebuild catches up with them; survey uploads get 503 and the phone sends them again later.
+Pull the repository too, since `compose.yml` and `.env.example` change with the code. A raised derived-table version rebuilds the derived tables at startup: pages fill in as it goes and Diagnostics shows `rebuilding` (about 2 minutes on a laptop, and 10 to 15 on a small server, for two weeks of a busy subscription). Capture keeps saving deliveries meanwhile and the rebuild catches up with them; survey uploads get 503 and the phone sends them again later.
 
 ## Database reset
 

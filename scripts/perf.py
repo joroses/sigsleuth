@@ -1,12 +1,12 @@
-"""Time every page's requests, a retention batch and the estimate refill on a
-copy of a busy instance's database.
+"""Time a rebuild of the derived tables, every page's requests, a retention
+batch and the estimate refill on a copy of a busy instance's database.
 
 Usage: uv run --locked python scripts/perf.py [--runs 5] [--baseline FILE] [DATABASE]
 
 DATABASE defaults to data/perf.db (docs/setup.md shows how to copy
-one). After a derived change its derived tables are rebuilt from its facts, as
-the API does; after a facts change, copy it again once the instance runs that
-change.
+one). Its derived tables are rebuilt from its facts on every run, once, and
+its terrain verdicts kept, as they come over the network; after a facts
+change, copy it again once the instance runs that change.
 
 Requests go through the API in process, so times include building the JSON
 but not the network. The clock is stopped a minute after the newest packet,
@@ -60,6 +60,9 @@ RESULTS = Path("data/perf-results")
 # Capture's jobs hold the write lock, so deliveries wait meanwhile.
 RETENTION_BUDGET_MS = 300
 REFILL_BUDGET_MS = 600
+# Laptop time on 15 days of a busy subscription (9.8 M receptions): 110 s,
+# 2026-10-20; the server takes about 4.6 times as long.
+REBUILD_BUDGET_MS = 150_000
 
 
 def main() -> None:
@@ -70,19 +73,17 @@ def main() -> None:
     arguments = parser.parse_args()
 
     if not arguments.database.exists():
-        raise SystemExit(
-            f"No {arguments.database}: copy a busy instance's (docs/setup.md)"
-        )
+        raise SystemExit(f"No {arguments.database}: copy a busy instance's (docs/setup.md)")
     migrate_database(arguments.database)
     timer = Timer(arguments.runs, arguments.baseline)
     with closing(open_current_database(arguments.database)) as connection:
-        rederive(connection)
+        database = describe(connection)
+        timer.start(database)
+        time_rebuild(connection, timer)
         # Fetches terrain tiles only for pairs not judged yet, so once per database.
         refresh_long_links(connection)
         now_ms = connection.execute("SELECT max(last_received_at) FROM packet").fetchone()[0]
         db.fixed_now_ms = now_ms + 60_000
-        database = describe(connection)
-        timer.start(database)
         time_capture_jobs(connection, timer)
     time_pages(arguments.database, timer)
     timer.save(database)
@@ -93,12 +94,26 @@ def main() -> None:
         raise SystemExit(1)
 
 
-def rederive(connection: sqlite3.Connection) -> None:
-    """Refill derived tables recreated by a DERIVED_VERSION change, as the API would."""
-    if not rederive_pending(connection):
-        return
-    print("Rebuilding the derived tables from saved history...", flush=True)
-    rederive_tables(connection, lambda: False)
+def time_rebuild(connection: sqlite3.Connection, timer: "Timer") -> None:
+    """Rebuild the derived tables once, as a DERIVED_VERSION change does,
+    keeping the terrain verdicts when the tables were current."""
+    judged = (
+        []
+        if rederive_pending(connection)
+        else connection.execute("SELECT * FROM long_link").fetchall()
+    )
+    connection.execute("UPDATE derived_state SET rebuilt = 0")
+    timer.time(
+        "rebuild derived tables",
+        lambda: rederive_tables(connection, lambda: False),
+        REBUILD_BUDGET_MS,
+        runs=1,
+    )
+    if judged:
+        with db.transaction(connection):
+            connection.executemany(
+                f"INSERT INTO long_link VALUES ({', '.join('?' * len(judged[0]))})", judged
+            )
     refresh_estimates(connection)
 
 
@@ -192,9 +207,16 @@ class Timer:
         print(f"{database}\n{self.compared_with}\n")
         print(f"{'median':>11}  {'slowest':>11}  {'baseline':>11}  {'change':>6}")
 
-    def time(self, name: str, call: Callable[[], object], budget_ms: float, note: str = "") -> None:
+    def time(
+        self,
+        name: str,
+        call: Callable[[], object],
+        budget_ms: float,
+        note: str = "",
+        runs: int | None = None,
+    ) -> None:
         timings = []
-        for _ in range(self.runs):
+        for _ in range(runs or self.runs):
             started = time.perf_counter()
             call()
             timings.append((time.perf_counter() - started) * 1000)

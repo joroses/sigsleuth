@@ -293,11 +293,6 @@ def all_derived(connection: sqlite3.Connection) -> dict[str, Counter[tuple[objec
     port, capture leaves the unreadable port's hour at 0 packets and its
     last_sent_at unchanged."""
     tables = {table: Counter(rows) for table, rows in derived(connection).items()}
-    tables["node_activity_hour"] = Counter(
-        row[:5] if row[2] == -1 else row
-        for row in tables["node_activity_hour"].elements()
-        if row[4]
-    )
     tables["node_estimate"] = Counter(
         tuple(row) for row in connection.execute("SELECT * FROM node_estimate")
     )

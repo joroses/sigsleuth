@@ -151,6 +151,20 @@ def save_bit(connection: sqlite3.Connection, node_id: int, ok_to_mqtt: bool, at:
     )
 
 
+def km_when_heard_sql(node_a: str, node_b: str, heard_at: str) -> str:
+    """An SQL expression: km between where the nodes in node_a and node_b
+    were at heard_at (as positions_when_heard places them), to 0.1 km; NULL
+    while either was unplaced."""
+    return f"""(
+        SELECT round(km(a.latitude, a.longitude, b.latitude, b.longitude), 1)
+        FROM node_position AS a, node_position AS b
+        WHERE a.node_id = {node_a} AND a.at = (
+                SELECT max(at) FROM node_position WHERE node_id = {node_a} AND at <= {heard_at})
+          AND b.node_id = {node_b} AND b.at = (
+                SELECT max(at) FROM node_position WHERE node_id = {node_b} AND at <= {heard_at})
+    )"""
+
+
 @dataclass(frozen=True)
 class HeardPosition:
     """Where a node was when heard: its newest valid reported position by

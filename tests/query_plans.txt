@@ -1091,6 +1091,9 @@ retention._delete_oldest_packets
   SCAN node_current
   SCAN node_current
   SCAN node_current
+  SCAN node_opt_out
+  SEARCH packet USING INDEX packet_sender
+  SEARCH packet USING INDEX packet_sender
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH reception USING INDEX sqlite_autoindex_reception_1

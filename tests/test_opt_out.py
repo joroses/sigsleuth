@@ -27,13 +27,16 @@ from sigsleuth.db import (
     open_current_database,
     recreate_derived,
     to_epoch_ms,
+    transaction,
 )
 from sigsleuth.decode import read_neighbors
 from sigsleuth.derive import rederive
 from sigsleuth.opt_out import unshown_packets
+from sigsleuth.retention import apply_retention
 
 NODE, GATEWAY, HIDDEN = 0x0D0D0D0D, 0xAAAAAAAA, 0x0E0E0E0E
 START = datetime(2026, 10, 1, 9, tzinfo=UTC)
+DAY = 24 * 60
 
 
 def send(
@@ -373,3 +376,55 @@ def test_an_opted_out_node_reads_as_one_never_heard(
     assert node in hidden
     missing = client.get("/api/v1/packets/999999999")
     assert client.get(f"/api/v1/packets/{packet}").json() == missing.json()
+
+
+def test_retention_keeps_an_opted_out_node_hidden_after_a_restart(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    user = mesh_pb2.User(long_name="Quiet Hill", short_name="QH")
+    # Day 0: NodeInfo with OK to MQTT on, which node_current keeps naming.
+    # Day 1: a text with it off, then packets that do not tell it.
+    send(path, 0, 1, portnum=portnums_pb2.PortNum.NODEINFO_APP, payload=user.SerializeToString())
+    send(path, DAY, 0)
+    send(path, DAY + 60, None)
+    send(path, 15 * DAY, None)
+    client = TestClient(create_app(Settings(path)))
+    assert not shown(client)
+    with closing(open_current_database(path)) as connection:
+        removed = apply_retention(connection, retention_days=14, now=START + timedelta(days=16))
+        # What startup does (__main__._refresh_opt_outs).
+        with transaction(connection):
+            opt_out.refresh_opt_outs(connection, None)
+    # Retention keeps the newest packet with the bit off, which decides.
+    assert removed.packets == 1
+    assert not shown(client)
+
+
+def test_retention_still_deletes_with_a_node_hidden_only_by_a_survey(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    send(path, 0, 1)
+    send(path, 15 * DAY, 1)
+    client = TestClient(create_app(Settings(path, upload_password="survey")))
+    # HIDDEN has no packet with the bit off, only a survey measurement.
+    survey = {
+        "session": {"id": "a", "receiver_node_id": 0x0F0F0F0F},
+        "measurements": [
+            {
+                "seq": 1,
+                "heard_at_ms": to_epoch_ms(START + timedelta(days=15)),
+                "latitude": 52.0,
+                "longitude": 4.9,
+                "sender_node_id": HIDDEN,
+                "ok_to_mqtt": False,
+            }
+        ],
+    }
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(db, "fixed_now_ms", to_epoch_ms(START + timedelta(days=15, minutes=1)))
+        response = client.post("/api/v1/coverage/uploads", json=survey, auth=("phone", "survey"))
+        assert response.json()["saved"] == 1
+    with closing(open_current_database(path)) as connection:
+        assert opt_out.is_opted_out(connection, HIDDEN)
+        removed = apply_retention(connection, retention_days=14, now=START + timedelta(days=16))
+    assert removed.packets == 1

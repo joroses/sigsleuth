@@ -47,7 +47,8 @@ def apply_retention(
     batch_size: int = RETENTION_BATCH_SIZE,
 ) -> RetentionResult:
     """Delete the current state and packets first heard before the age
-    limit, except the packets nodes still name, oldest first in small batches,
+    limit, except the packets nodes still name or that keep a node hidden
+    (_SPARED_PACKETS), oldest first in small batches,
     then signal survey measurements heard before their own, usually longer,
     limit; retention_days 0 disables both. coverage_retention_days is the
     measurements' limit: None keeps them no longer than packets, 0 sets no
@@ -135,12 +136,22 @@ def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
 
 # The packets node_current names as a node's last sent packet, NodeInfo and
 # position. Retention spares them, so a rebuild reads them again and pages can
-# link to them.
+# link to them. It also spares each opted-out node's newest packet with OK to
+# MQTT off: without it, a spared older packet with the bit on would decide at
+# the next refill and show the node again. A node hidden by a survey has no
+# such packet; its NULL must stay out, as one NULL makes NOT IN match nothing.
 _SPARED_PACKETS = """
     SELECT last_sent_packet_row_id FROM node_current WHERE last_sent_packet_row_id IS NOT NULL
     UNION SELECT node_info_packet_row_id FROM node_current
         WHERE node_info_packet_row_id IS NOT NULL
     UNION SELECT position_packet_row_id FROM node_current WHERE position_packet_row_id IS NOT NULL
+    UNION SELECT id FROM (
+        SELECT (
+            SELECT max(p.id) FROM packet AS p
+            WHERE p.sender_node_id = o.node_id AND p.ok_to_mqtt = 0
+        ) AS id
+        FROM node_opt_out AS o
+    ) WHERE id IS NOT NULL
 """
 
 
@@ -150,7 +161,7 @@ def _delete_oldest_packets(
     cutoff: int,
 ) -> int:
     """Delete up to batch_size of the oldest packets first heard before
-    cutoff, except those node_current still names (_SPARED_PACKETS).
+    cutoff, except the spared ones (_SPARED_PACKETS).
 
     Packet row IDs grow with arrival, so the IDs below the first one at
     cutoff are the old ones. The foreign key cascade deletes their receptions

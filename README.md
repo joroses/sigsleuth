@@ -1,15 +1,37 @@
 # SigSleuth
 
-A map of your Meshtastic mesh, built from what gateways upload to MQTT. Along with where nodes are, it shows how the mesh holds together: where it splits into zones, which relays it relies on and how far messages travel.
-
-**Coverage map**: see where your mesh reaches on the ground. Walk or drive with your node and the [Mesh Survey](https://github.com/joroses/mesh-survey) Android app. The map colours each spot you pass, from red (barely heard) to green (strong signal).
+A map of your Meshtastic mesh, built from what gateways upload to MQTT. Among other things, it allows you to browse all the routes traceroutes take, analyse links and neighbours, where the nodes split into zones and how far text messages reach. With the [Mesh Survey](https://github.com/joroses/mesh-survey) app, users can contribute signal measurements to the map.
 
 | | |
 |---|---|
 | <img src="docs/images/map-links.png" alt="Direct links" width="400"> | <img src="docs/images/map-text-reach.png" alt="How far messages reach" width="400"> |
 | Direct links | How far messages reach |
 | <img src="docs/images/zones.png" alt="Zones" width="400"> | <img src="docs/images/coverage.png" alt="Coverage map" width="400"> |
-| Zones view | Coverage map |
+| Zones view | Coverage |
+
+## Coverage
+
+MQTT shows only what gateways hear. To see where your mesh can be heard on the ground, someone walks or drives with their node and [Mesh Survey](https://github.com/joroses/mesh-survey), a fork of the Meshtastic Android app. It records every packet the node hears, with the phone's position, and uploads them to a SigSleuth. On the Map, turn on **Coverage**: squares are coloured by their signal strength.
+
+| | |
+|---|---|
+| <img src="docs/images/survey-recording.jpg" alt="Recording a survey" width="220"> | <img src="docs/images/survey-relays.jpg" alt="Relays heard" width="220"> |
+| Recording a survey | Which relays it heard through |
+
+**If you run SigSleuth** and want surveys from others:
+
+1. Set `SIGSLEUTH_UPLOAD_PASSWORD` in `.env` and serve SigSleuth over HTTPS ([a public server](docs/deployment.md#a-public-server)).
+2. Give surveyors its address and the upload password.
+
+Measurements will appear in the map
+
+**If you want to survey** for a mesh that runs SigSleuth:
+
+1. Install [Mesh Survey](https://github.com/joroses/mesh-survey/releases) and connect your node.
+2. Ask whoever runs that SigSleuth for its address and upload password.
+3. Open Settings → Advanced → Signal Survey, enter the address (`https://sigsleuth.example.org`), any user name and the password, and press Start.
+
+
 
 ## Try it
 
@@ -52,17 +74,6 @@ To update: `git pull && docker compose pull && docker compose up -d`.
 - **Diagnostics** is linked only in a browser that has opened it: open http://127.0.0.1:8000/#diagnostics once, and the bar shows it from then on. It shows what capture saved and skipped and why, nodes with doubtful positions, long links to review and recent packets.
 - Nodes with OK to MQTT off are kept in history but never shown; turning it on shows them again, history included. `SIGSLEUTH_HIDE_OPTED_OUT=false` shows them anyway.
 - There are no accounts: anyone who can reach the page sees everything but Diagnostics. Passwords are sent in the clear, so serve SigSleuth over HTTPS before using them from another machine: see [running and deploying](docs/deployment.md).
-
-## Coverage
-
-MQTT shows only what gateways hear. To see where nodes can be heard from the ground, walk or drive with [Mesh Survey](https://github.com/joroses/mesh-survey), a fork of the Meshtastic Android app ([download](https://github.com/joroses/mesh-survey/releases)). While a survey runs, it records every packet your node hears, with the phone's position, and uploads them to your SigSleuth.
-
-1. Set `SIGSLEUTH_UPLOAD_PASSWORD` and serve SigSleuth over HTTPS ([a public server](docs/deployment.md#a-public-server)).
-2. In the app, open Settings → Advanced → Signal survey, enter the server (`https://your.server`), any user name and the upload password, and press Start.
-
-On the Map, turn on **Coverage**: squares coloured from red (barely heard) to green (room to spare). Click one to see which nodes were heard there. [How it works](docs/coverage.md).
-
-Anyone who can reach the page sees the squares and when they were measured, so tell surveyors what you keep.
 
 ## More
 

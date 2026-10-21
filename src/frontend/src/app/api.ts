@@ -438,8 +438,6 @@ export interface NetworkZonesRequest {
   /** The rule for solid links: the quieter direction heard this often a day, and both directions this far above the floor. */
   perDay: number;
   minMarginDb: number;
-  /** How many solid links between two groups join them into one. */
-  joinLinks: number;
 }
 
 export function networkZonesUrl(request: NetworkZonesRequest): string {
@@ -447,7 +445,6 @@ export function networkZonesUrl(request: NetworkZonesRequest): string {
     window_hours: String(request.windowHours),
     per_day: String(request.perDay),
     min_margin_db: String(request.minMarginDb),
-    join_links: String(request.joinLinks),
   });
   if (request.channel !== null) query.set("channel", request.channel);
   return `/api/v1/zones?${query}`;

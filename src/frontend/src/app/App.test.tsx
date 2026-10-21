@@ -2126,7 +2126,7 @@ describe("Routing", () => {
 
     expect(await screen.findByRole("region", { name: "Zones" })).not.toBeNull();
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2",
+      "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4",
     );
     const channel = await screen.findByLabelText<HTMLSelectElement>("Channel");
     await waitFor(() => expect(channel.value).toBe("MediumFast"));
@@ -2135,22 +2135,22 @@ describe("Routing", () => {
 
     await waitFor(() =>
       expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
-        "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2&channel=LongFast",
+        "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&channel=LongFast",
       ),
     );
     // A slider steps through its choices (1, 2, 3, 5 a day) and asks once it
-    // rests; the graph adds the rule for groups.
+    // rests; two sliders moved together ask once with both.
     fireEvent.change(
       screen.getByLabelText("Observations a day, each direction"),
       { target: { value: "2" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
-    fireEvent.change(screen.getByLabelText("Solid links that join two zones"), {
-      target: { value: "2" },
-    });
+    fireEvent.change(
+      screen.getByLabelText("SNR margin above the channel floor"),
+      { target: { value: "3" } },
+    );
     await waitFor(() =>
       expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
-        "/api/v1/zones?window_hours=72&per_day=3&min_margin_db=4&join_links=3&channel=LongFast",
+        "/api/v1/zones?window_hours=72&per_day=3&min_margin_db=6&channel=LongFast",
       ),
     );
     // Coming back after a reload finds the page as it was left.
@@ -2160,12 +2160,12 @@ describe("Routing", () => {
     render(<App />);
     await screen.findByRole("region", { name: "Zones" });
     expect(fetchMock.mock.calls[0][0]).toBe(
-      "/api/v1/zones?window_hours=72&per_day=3&min_margin_db=4&join_links=3&channel=LongFast",
+      "/api/v1/zones?window_hours=72&per_day=3&min_margin_db=6&channel=LongFast",
     );
     fireEvent.click(await screen.findByRole("button", { name: "Reset" }));
     await waitFor(() =>
       expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
-        "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2&channel=LongFast",
+        "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&channel=LongFast",
       ),
     );
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
@@ -2190,7 +2190,6 @@ describe("Routing", () => {
       text_gateways = 2,
     ) => ({
       zone_id,
-      island: 1,
       name,
       place: null,
       region: null,
@@ -2230,8 +2229,6 @@ describe("Routing", () => {
       no_solid_backup: 0,
       carries: 0,
       only_solid_link_to: [],
-      weak_only_solid_link_to: [],
-      side_panel: true,
       neighbours: 3,
       last_seen_at: now,
       battery_level: null,
@@ -2255,8 +2252,8 @@ describe("Routing", () => {
         },
       ],
       zone_pairs: [
-        // zones.py lists the weakest pair first. Its only solid alternative path is
-        // through Hilltop's zone.
+        // Listed first, so it stays first among equal distances. Its only solid
+        // alternative path is through Hilltop's zone.
         pair(2, 3, {
           warnings: ["no solid link"],
           way_round_links: 2,
@@ -2333,8 +2330,8 @@ describe("Routing", () => {
     window.location.hash = "#zones";
     render(<App />);
 
-    // Text reach each way (weakest pair first): a figure, a zone with no
-    // sender, a zone with no gateway.
+    // Text reach each way: a figure, a zone with no sender, a zone with no
+    // gateway.
     const between = await screen.findByRole("region", {
       name: /Between zones/,
     });
@@ -2416,7 +2413,6 @@ function networkZones(fields: Record<string, unknown> = {}) {
     channel: "MediumFast",
     per_day: 1,
     min_margin_db: 4,
-    join_links: 2,
     days: 3,
     link_count: 40,
     solid_link_count: 12,
@@ -2427,12 +2423,9 @@ function networkZones(fields: Record<string, unknown> = {}) {
     truncated: false,
     zones: [],
     zone_pairs: [],
-    groups: [],
-    group_lines: [],
     rules: {
       weak_margin_db: 4,
       long_route_hops: 4,
-      few_texts: 5,
       key_relay_cut: 2,
     },
     text_reach: [],

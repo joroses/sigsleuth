@@ -1,6 +1,6 @@
 // Presentation helpers for the Zones page: zone colours, shaded areas, relay
-// marks, and the backend's groups and key relays (zones.py decides them)
-// looked up for drawing.
+// marks, and the backend's key relays (zones.py decides them) looked up for
+// drawing.
 
 import type {
   NodeSummary,
@@ -12,7 +12,6 @@ import type {
   ZoneRules,
   ZoneTextReach,
 } from "./api";
-import { SHARE_COLORS, tierOfShare } from "./mapNodeLayers";
 
 /**
  * The chart series colours in styles.css, validated for colour blindness,
@@ -353,7 +352,7 @@ export type PairWarning = ZonePair["warnings"][number];
 
 /**
  * Whether two zones have heard links directly between them. Pairs without
- * are zones of one island joined only through other zones; the map draws no
+ * are zones joined only through other zones; the map draws no
  * line for them.
  */
 export function isDirect(pair: ZonePair): boolean {
@@ -379,139 +378,3 @@ export function worseTextShare(
   );
   return shares.length === 0 ? null : Math.min(...shares);
 }
-
-/**
- * The key relays beside the map (KeyRelay.side_panel), each naming only the
- * zones whose only solid link it holds across a weak connection. The table and the
- * map keep every key relay.
- */
-export function sideRelays(relays: KeyRelay[]): KeyRelay[] {
-  return relays
-    .filter((relay) => relay.side_panel)
-    .map((relay) => ({
-      ...relay,
-      only_solid_link_to: relay.weak_only_solid_link_to,
-    }));
-}
-
-/** A group of zones (ZoneGroup in zones.py), with its pairs looked up. */
-export interface ZoneGroup {
-  key: number;
-  island: number;
-  zones: number[];
-  nodes: number;
-  longitude: number | null;
-  textsInside: [number, number] | null;
-  singleLinks: ZonePair[];
-  // The pairs with the most radio hops between their hubs, all tied for it.
-  farthest: ZonePair[];
-  // The pairs whose worse direction gets the fewest texts across, fewest first.
-  fewestTexts: ZonePair[];
-}
-
-/**
- * How a line between two groups is drawn, as the map draws a zone line: wide
- * with 2 or more solid links, thin with 1, thin and dashed with none.
- */
-export type LinePattern = "solid" | "one solid link" | "weak";
-
-/** The weak connections between two groups (GroupLine in zones.py), drawn as one line. */
-export interface GroupLine {
-  // `${a}-${b}`, of the groups' keys, lower first.
-  key: string;
-  a: number;
-  b: number;
-  // The zone pairs behind it, strongest first.
-  pairs: ZonePair[];
-  // Its solid links, fewer than the setting that joins groups.
-  solidLinks: number;
-  pattern: LinePattern;
-  singleLink: boolean;
-  texts: number | null;
-  // The counted texts behind texts, null with no figure.
-  textCount: number | null;
-  // The worst pair's text reach, as texts is the best's.
-  worstTexts: number | null;
-}
-
-export interface ZoneGraph {
-  // By island, then most nodes first.
-  groups: ZoneGroup[];
-  lines: GroupLine[];
-}
-
-/** A group line's key in selections. */
-export function lineKey(a: number, b: number): string {
-  return a < b ? `${a}-${b}` : `${b}-${a}`;
-}
-
-/** The backend's groups and the lines between them, with their pairs looked up. */
-export function zoneGraph(
-  network: Pick<NetworkZones, "zone_pairs" | "groups" | "group_lines">,
-): ZoneGraph {
-  const pairs = new Map(
-    network.zone_pairs.map((pair) => [pairKey(pair), pair]),
-  );
-  const lookup = (keys: [number, number][]) =>
-    keys.flatMap(([a, b]) => pairs.get(`${a}-${b}`) ?? []);
-  return {
-    groups: network.groups.map((group) => ({
-      key: group.key,
-      island: group.island,
-      zones: group.zones,
-      nodes: group.nodes,
-      longitude: group.longitude,
-      textsInside: group.texts_inside,
-      singleLinks: lookup(group.single_links),
-      farthest: lookup(group.farthest),
-      fewestTexts: lookup(group.fewest_texts),
-    })),
-    lines: network.group_lines.map((line) => ({
-      key: lineKey(line.a, line.b),
-      a: line.a,
-      b: line.b,
-      pairs: lookup(line.pairs),
-      solidLinks: line.solid_links,
-      pattern:
-        line.solid_links >= 2
-          ? "solid"
-          : line.solid_links === 1
-            ? "one solid link"
-            : "weak",
-      singleLink: line.single_link,
-      texts: line.texts,
-      textCount: line.text_count,
-      worstTexts: line.worst_texts,
-    })),
-  };
-}
-
-/**
- * A group's caption: its two biggest zones' names (zones are numbered by
- * size, biggest first), then how many more.
- */
-export function groupCaption(
-  group: ZoneGroup,
-  names: Map<number, string>,
-): string {
-  const shown = [...group.zones]
-    .sort((a, b) => a - b)
-    .slice(0, 2)
-    .map((id) => names.get(id) ?? `${id}`);
-  const more = group.zones.length - shown.length;
-  return more > 0 ? `${shown.join(", ")} +${more}` : shown.join(", ");
-}
-
-/** A line's colour: text reach across it, in the page's tiers, else grey. */
-export function lineColor(line: GroupLine): string {
-  return line.texts === null
-    ? ZONE_GREY
-    : SHARE_COLORS[tierOfShare(line.texts)];
-}
-
-/** What a line's pattern means, for its tooltip and the legend. */
-export const PATTERN_LABELS: Record<GroupLine["pattern"], string> = {
-  solid: "2+ solid links",
-  "one solid link": "one solid link",
-  weak: "no solid link",
-};

@@ -43,23 +43,13 @@ import {
   placed,
   relayConcern,
   relayReason,
-  sideRelays,
   solidPathLinks,
   textReachLookup,
-  type GroupLine,
-  type ZoneGroup,
-  type ZoneGraph as Graph,
   worseTextShare,
   withoutLoneMembers,
   zoneColors,
-  PATTERN_LABELS,
-  ZONE_GREY,
-  groupCaption,
-  lineColor,
-  zoneGraph,
   zoneName,
 } from "./zones";
-import { ZoneGraph } from "./ZoneGraph";
 import { type MapFocus, ZoneMap } from "./ZoneMap";
 import { useSetting, useViewState } from "./remember";
 import { LinkDetails } from "./LinkDetails";
@@ -70,7 +60,7 @@ import {
   linkTierColor,
   marginTier,
 } from "./linkQuality";
-import { type ShareTier, SHARE_COLORS, tierOfShare } from "./mapNodeLayers";
+import { SHARE_COLORS, tierOfShare } from "./mapNodeLayers";
 import {
   formatKm,
   formatNodeId,
@@ -100,9 +90,9 @@ import {
 } from "./ui";
 import { openedAt, useApi } from "./useApi";
 
-// The Network network page: zones of well-linked nodes, how strongly they are
-// joined, and the relays everything depends on. The backend (zones.py) does
-// the graph work; this page lays it out.
+// The Zones page: zones of well-linked nodes, how strongly they are joined,
+// and the relays everything depends on. The backend (zones.py) does the graph
+// work; this page lays it out.
 
 const WINDOW_LABELS: Record<ZoneWindow, string> = {
   24: "24 hours",
@@ -111,7 +101,6 @@ const WINDOW_LABELS: Record<ZoneWindow, string> = {
 };
 const PER_DAY_CHOICES = [1, 2, 3, 5];
 const MARGIN_CHOICES = [0, 2, 4, 6, 10];
-const JOIN_CHOICES = [1, 2, 3, 4];
 // Rows shown before "Show all".
 const PAIR_ROWS = 10;
 const RELAY_ROWS = 10;
@@ -127,14 +116,8 @@ const SOLID_WARNINGS: PairWarning[] = [
 
 type NodeIndex = Map<number, NodeSummary>;
 
-// Opens and closes the build steps and the legend together, in both views.
+// Opens and closes the build steps and the legend together.
 const PANEL_OPEN_KEY = "zonesLegendOpen";
-
-type View = "map" | "graph";
-const VIEWS: { view: View; icon: "map" | "nodes"; label: string }[] = [
-  { view: "map", icon: "map", label: "Map" },
-  { view: "graph", icon: "nodes", label: "Graph" },
-];
 // A moved slider asks for new data once it has rested this long, so dragging
 // across several steps reloads the page once.
 const SLIDER_SETTLE_MS = 400;
@@ -144,10 +127,9 @@ const DEFAULT_REQUEST: NetworkZonesRequest = {
   channel: null,
   perDay: 2,
   minMarginDb: 4,
-  joinLinks: 2,
 };
 
-// The last window, channel and graph rules are kept together; a value no
+// The last window, channel and solid-link rule are kept together; a value no
 // longer offered puts them all back to the default.
 function validRequest(value: unknown): boolean {
   const request = value as NetworkZonesRequest;
@@ -155,7 +137,6 @@ function validRequest(value: unknown): boolean {
     ZONE_WINDOWS.includes(request.windowHours) &&
     PER_DAY_CHOICES.includes(request.perDay) &&
     MARGIN_CHOICES.includes(request.minMarginDb) &&
-    JOIN_CHOICES.includes(request.joinLinks) &&
     (request.channel === null || typeof request.channel === "string")
   );
 }
@@ -195,21 +176,6 @@ export function ZonesView() {
     (value) =>
       ["solid", "observations", "margin", "km"].includes(value as string),
   );
-  // A group of zones, by its key, or a line between two groups, selected in
-  // the graph; a zone or pair chosen from it goes on top and goes back to it.
-  const [selectedGroup, setSelectedGroup] = useViewState<number | null>(
-    "zones.group",
-    null,
-  );
-  const [selectedLine, setSelectedLine] = useViewState<string | null>(
-    "zones.line",
-    null,
-  );
-  const [view, setView] = useSetting<View>(
-    "zones.view",
-    "map",
-    (value) => value === "map" || value === "graph",
-  );
   const [focus, setFocus] = useState<MapFocus | null>(null);
   // A visit minutes after the last shows what was loaded then (openedAt).
   const [openedTime] = useState(() => openedAt("zones"));
@@ -243,20 +209,6 @@ export function ZonesView() {
     setSelectedPair(null);
     setOpenLink(null);
     setSelectedRelay(null);
-    setSelectedGroup(null);
-    setSelectedLine(null);
-  }
-
-  function selectGroup(key: number | null) {
-    setSelectedGroup(key);
-    setSelectedLine(null);
-    selectZone(null);
-  }
-
-  function selectLine(key: string | null) {
-    setSelectedLine(key);
-    setSelectedGroup(null);
-    selectZone(null);
   }
 
   function selectZone(zoneId: number | null) {
@@ -270,8 +222,8 @@ export function ZonesView() {
     setOpenLink(null);
   }
 
-  // A zone row beside the map or in the graph selects the zone and fits the
-  // map to its members, leaving out lone ones as its shaded area does.
+  // A zone row beside the map selects the zone and fits the map to its
+  // members, leaving out lone ones as its shaded area does.
   function selectAndShowZone(zoneId: number) {
     selectZone(zoneId);
     const members = shown?.zones.find((item) => item.zone_id === zoneId);
@@ -281,12 +233,6 @@ export function ZonesView() {
     });
     const area = withoutLoneMembers(points);
     setFocus({ points: area.length > 0 ? area : points });
-  }
-
-  // A solid link row under a line's connection opens the pair with that link.
-  function selectPairLink(key: string, link: string) {
-    selectPair(key);
-    openPairLink(link);
   }
 
   function openPairLink(link: string | null) {
@@ -318,23 +264,7 @@ export function ZonesView() {
     () => textReachLookup(shown ?? { zones: [], text_reach: [] }),
     [shown],
   );
-  const graph = useMemo(
-    () => zoneGraph(shown ?? { zone_pairs: [], groups: [], group_lines: [] }),
-    [shown],
-  );
-  // Groups and lines are chosen in the graph and shown only beside it; the
-  // selection comes back with the graph.
-  const group =
-    view === "graph"
-      ? graph.groups.find((item) => item.key === selectedGroup)
-      : undefined;
-  const line =
-    view === "graph"
-      ? graph.lines.find((item) => item.key === selectedLine)
-      : undefined;
-  // The side panel lists only the key relays that matter most, under a
-  // selected zone; the table under the map keeps them all.
-  const relays = useMemo(() => sideRelays(shown?.key_relays ?? []), [shown]);
+  const relays = shown?.key_relays ?? [];
   // A selected zone's connections, most links first, and its key relays.
   const joins = (shown?.zone_pairs ?? [])
     .filter(
@@ -367,9 +297,6 @@ export function ZonesView() {
       shown?.generated_at,
       selectedZone,
       selectedPair,
-      selectedGroup,
-      selectedLine,
-      view,
       openLink,
       selectedRelay,
       linkSort,
@@ -378,23 +305,7 @@ export function ZonesView() {
 
   return (
     <section className="zones-page" aria-label="Zones">
-      {/* The two views as tabs on the settings panel, whose rules and legend
-          change with them, and beside the tabs what both views show. */}
       <div className="zones-head">
-        <div className="zones-view-tabs" role="group" aria-label="View">
-          {VIEWS.map((item) => (
-            <button
-              key={item.view}
-              type="button"
-              aria-pressed={view === item.view}
-              aria-label={item.label}
-              onClick={() => setView(item.view)}
-            >
-              <Icon name={item.icon} />
-              <strong>{item.label}</strong>
-            </button>
-          ))}
-        </div>
         <div className="zones-controls">
           <label>
             Window
@@ -439,32 +350,19 @@ export function ZonesView() {
           it; narrow screens stack them (styles.css). */}
       <div className="zones-layout">
         {shown === null ? null : (
-          <section
-            className="zones-panel zones-settings zones-tabbed"
-            aria-label="Settings"
-          >
+          <section className="zones-panel zones-settings" aria-label="Settings">
             <BuildSteps
               network={shown}
-              graph={graph}
               request={request}
-              view={view}
               open={panelOpen}
               onToggle={setPanelOpen}
               onChange={change}
             />
-            {view === "graph" ? (
-              <GraphLegend
-                network={shown}
-                open={panelOpen}
-                onToggle={setPanelOpen}
-              />
-            ) : (
-              <MapLegend
-                network={shown}
-                open={panelOpen}
-                onToggle={setPanelOpen}
-              />
-            )}
+            <MapLegend
+              network={shown}
+              open={panelOpen}
+              onToggle={setPanelOpen}
+            />
             {loading ? (
               <p className="zones-note" role="status">
                 Working out the network…
@@ -482,23 +380,6 @@ export function ZonesView() {
             ) : (
               <StatusPanel>Working out the network…</StatusPanel>
             )
-          ) : view === "graph" ? (
-            <section
-              className="zones-panel zones-graph-panel"
-              aria-label="Graph"
-            >
-              <ZoneGraph
-                graph={graph}
-                colors={colors}
-                names={names}
-                selectedGroup={group !== undefined ? selectedGroup : null}
-                selectedLine={line !== undefined ? selectedLine : null}
-                selectedZone={selectedZone}
-                onSelectGroup={selectGroup}
-                onSelectLine={selectLine}
-                onSelectZone={selectAndShowZone}
-              />
-            </section>
           ) : (
             <ZoneMap
               network={shown}
@@ -519,19 +400,11 @@ export function ZonesView() {
         </div>
         {shown !== null ? (
           <div className="zones-column zones-side-column">
-            {/* A group's or line's details are a few rows and grow the
-                panel rather than being cut, as do details too tall to fit
-                beside the map with none of their list's rows. */}
+            {/* Details too tall to fit beside the map with none of their
+                list's rows grow the panel rather than being cut. */}
             <aside
               ref={side}
-              className={`zones-panel zones-side${
-                sideGrows ||
-                (pair === undefined &&
-                  zone === undefined &&
-                  (line !== undefined || group !== undefined))
-                  ? " is-whole"
-                  : ""
-              }`}
+              className={`zones-panel zones-side${sideGrows ? " is-whole" : ""}`}
               aria-label="Zones"
             >
               {relay !== undefined ? (
@@ -583,18 +456,7 @@ export function ZonesView() {
                   backTo={
                     zone !== undefined
                       ? `${zone.zone_id}. ${names.get(zone.zone_id) ?? zone.name}`
-                      : line !== undefined
-                        ? [line.a, line.b]
-                            .flatMap(
-                              (key) =>
-                                graph.groups.find((item) => item.key === key) ??
-                                [],
-                            )
-                            .map((item) => groupCaption(item, names))
-                            .join(" ↔ ")
-                        : group !== undefined
-                          ? groupCaption(group, names)
-                          : undefined
+                      : undefined
                   }
                   onBack={() => selectPair(null)}
                 />
@@ -612,30 +474,6 @@ export function ZonesView() {
                   selectedRelay={selectedRelay}
                   onShowNode={showRelay}
                   onBack={() => selectZone(null)}
-                />
-              ) : line !== undefined ? (
-                <LineDetails
-                  line={line}
-                  graph={graph}
-                  nodes={nodes}
-                  colors={colors}
-                  names={names}
-                  reach={reach}
-                  onSelectGroup={selectGroup}
-                  onSelectPair={selectPair}
-                  onSelectLink={selectPairLink}
-                  onBack={() => selectLine(null)}
-                />
-              ) : group !== undefined ? (
-                <GroupDetails
-                  group={group}
-                  network={shown}
-                  colors={colors}
-                  names={names}
-                  reach={reach}
-                  onSelectZone={selectAndShowZone}
-                  onSelectPair={selectPair}
-                  onBack={() => selectGroup(null)}
                 />
               ) : (
                 <SideLists
@@ -740,10 +578,7 @@ function WarningMark() {
   );
 }
 
-/**
- * A zone line as the map draws it (ZoneMap.tsx), and the graph a line between
- * groups: wide, thin, or thin and dashed.
- */
+/** A zone line as the map draws it (ZoneMap.tsx): wide, thin, or thin and dashed. */
 function legendLine(stroke: number, dashes: string | undefined, width = 28) {
   return (
     <svg width={width} height="10" aria-hidden="true">
@@ -760,41 +595,27 @@ function legendLine(stroke: number, dashes: string | undefined, width = 28) {
   );
 }
 
-/** The text reach each colour stands for, as tierOfShare splits it. */
-const SHARE_TIER_LABELS: { tier: ShareTier; label: string }[] = [
-  { tier: "high", label: "80%+" },
-  { tier: "medium", label: "50–79%" },
-  { tier: "low", label: "21–49%" },
-  { tier: "poor", label: "20% or less" },
-];
-
 /**
- * The rules the graph is built from, as numbered steps, each with its
- * settings and what it gave: links, the solid ones among them, and the groups
- * solid links make. The map uses only the first two, and shows only those.
- * Opens and closes with the legend; closed, only the sliders show.
+ * The rule for solid links, as numbered steps, each with its settings and
+ * what it gave: links, then the solid ones among them. Opens and closes with
+ * the legend; closed, only the sliders show.
  */
 function BuildSteps({
   network,
-  graph,
   request,
-  view,
   open,
   onToggle,
   onChange,
 }: {
   network: NetworkZones;
-  graph: Graph;
   request: NetworkZonesRequest;
-  view: View;
   open: boolean;
   onToggle: (open: boolean) => void;
   onChange: (next: Partial<NetworkZonesRequest>) => void;
 }) {
   const changed =
     request.perDay !== DEFAULT_REQUEST.perDay ||
-    request.minMarginDb !== DEFAULT_REQUEST.minMarginDb ||
-    (view === "graph" && request.joinLinks !== DEFAULT_REQUEST.joinLinks);
+    request.minMarginDb !== DEFAULT_REQUEST.minMarginDb;
   const perDay = (
     <StepSlider
       label="Observations a day, each direction"
@@ -813,15 +634,6 @@ function BuildSteps({
       onChange={(minMarginDb) => onChange({ minMarginDb })}
     />
   );
-  const join = (
-    <StepSlider
-      label="Solid links that join two zones"
-      choices={JOIN_CHOICES}
-      value={request.joinLinks}
-      format={(value) => plural(value, "solid link")}
-      onChange={(joinLinks) => onChange({ joinLinks })}
-    />
-  );
   const reset = changed ? (
     <button
       type="button"
@@ -830,7 +642,6 @@ function BuildSteps({
         onChange({
           perDay: DEFAULT_REQUEST.perDay,
           minMarginDb: DEFAULT_REQUEST.minMarginDb,
-          joinLinks: DEFAULT_REQUEST.joinLinks,
         })
       }
     >
@@ -840,27 +651,21 @@ function BuildSteps({
   return (
     <section
       className={`zones-steps${open ? "" : " is-closed"}`}
-      aria-label="How the graph is built"
+      aria-label="Which links are solid"
     >
       <details
         open={open}
         onToggle={(event) => onToggle(event.currentTarget.open)}
       >
         <summary>
-          <h3>
-            {view === "graph"
-              ? "How this graph is built"
-              : "Which links are solid"}
-          </h3>
+          <h3>Which links are solid</h3>
         </summary>
         {/* Rendered only open, so each slider is on the page once. */}
         {open ? (
           <>
             <div className="zones-steps-heading">
               <span className="muted">
-                {view === "graph"
-                  ? "These settings decide the boxes and lines; changing one redraws the graph."
-                  : "Solid links set the lines' widths and the key relays."}
+                Solid links set the lines' widths and the key relays.
               </span>
               {reset}
             </div>
@@ -882,19 +687,6 @@ function BuildSteps({
                   {plural(network.link_count, "link")} are solid
                 </p>
               </li>
-              {view === "graph" ? (
-                <li>
-                  <strong>Groups</strong>
-                  <p>
-                    Two boxes join when at least {join} link them, counted
-                    across all their zones.
-                  </p>
-                  <p className="zones-step-result">
-                    {plural(network.zones.length, "zone")} in{" "}
-                    {plural(graph.groups.length, "group")}
-                  </p>
-                </li>
-              ) : null}
             </ol>
           </>
         ) : null}
@@ -903,7 +695,6 @@ function BuildSteps({
         <div className="zones-steps-sliders">
           <label>Observations {perDay}</label>
           <label>SNR margin {margin}</label>
-          {view === "graph" ? <label>Joining links {join}</label> : null}
           {reset}
         </div>
       )}
@@ -956,77 +747,6 @@ function StepSlider({
       />
       <output>{format(draft)}</output>
     </span>
-  );
-}
-
-/**
- * Explains the zone graph's marks, in the map legend's place: closed, a
- * one-line key; open, what boxes, lines and colours mean.
- */
-function GraphLegend({
-  network,
-  open,
-  onToggle,
-}: {
-  network: NetworkZones;
-  open: boolean;
-  onToggle: (open: boolean) => void;
-}) {
-  const swatch = (color: string) => (
-    <span className="zones-legend-swatch" style={{ background: color }} />
-  );
-  return (
-    <details
-      className="zones-legend"
-      open={open}
-      onToggle={(event) => onToggle(event.currentTarget.open)}
-    >
-      <summary aria-label="Legend">
-        <span className="zones-legend-key">
-          <span className="zones-legend-heading">
-            Line colour: best text reach
-          </span>
-          {SHARE_TIER_LABELS.map(({ tier, label }) => (
-            <span key={tier} title={`Text reach ${label}`}>
-              {swatch(SHARE_COLORS[tier])} {label}
-            </span>
-          ))}
-          <span
-            title={`No direction with ${network.rules.few_texts} or more texts`}
-          >
-            {swatch(ZONE_GREY)} too few texts
-          </span>
-          <span title="2 or more solid links">
-            {legendLine(6, undefined, 18)} {PATTERN_LABELS.solid}
-          </span>
-          <span title="One solid link or one relay">
-            {legendLine(2, undefined, 18)} {PATTERN_LABELS["one solid link"]}
-          </span>
-          <span title="No solid link">
-            {legendLine(2, "5 3", 18)} {PATTERN_LABELS.weak}
-          </span>
-        </span>
-      </summary>
-      <p>
-        <strong>Boxes</strong> are groups. Under each box, the lowest and
-        highest text reach between two of its zones.
-      </p>
-      <p>
-        <strong>Line labels</strong>: lowest and highest text reach between the
-        groups.
-      </p>
-      <ul
-        className="zones-legend-items"
-        title="Solid links between the groups. One relay: all through one node."
-      >
-        <li>{legendLine(6, undefined)} 2 or more solid links</li>
-        <li>{legendLine(2, undefined)} one solid link or one relay</li>
-        <li>{legendLine(2, "5 3")} no solid link</li>
-      </ul>
-      {network.text_reach_truncated ? (
-        <p>Text reach uses only the newest 10,000 texts on the channel.</p>
-      ) : null}
-    </details>
   );
 }
 
@@ -1266,7 +986,6 @@ function SideLists({
   nodes: NodeIndex;
   colors: Map<number, string>;
   names: Map<number, string>;
-  // The key relays the side panel lists (sideRelays).
   relays: KeyRelay[];
   rows: number;
   onSelectZone: (zoneId: number) => void;
@@ -1283,12 +1002,10 @@ function SideLists({
     0,
   );
   const total = network.zones.length;
-  const islands = new Set(network.zones.map((zone) => zone.island)).size;
   return (
     <>
       <p className="zones-summary">
-        {plural(network.zones.length, "zone")} in {plural(islands, "island")} ·{" "}
-        {plural(members, "node")}
+        {plural(network.zones.length, "zone")} · {plural(members, "node")}
       </p>
       <div className="zones-side-heading">
         <MoreInTable
@@ -1428,383 +1145,6 @@ function ZoneTable({
         })}
       </tbody>
     </table>
-  );
-}
-
-/**
- * Weak connections, with their worst warning and texts each way; a row selects
- * the pair. With onSelectLink, each pair's solid links follow it, strongest
- * first, with their SNR each way, and a link's row opens it.
- */
-function JoinList({
-  pairs,
-  nodes,
-  colors,
-  names,
-  reach,
-  onSelectPair,
-  onSelectLink,
-}: {
-  pairs: ZonePair[];
-  nodes: NodeIndex;
-  colors: Map<number, string>;
-  names: Map<number, string>;
-  reach: ReachLookup;
-  onSelectPair: (pair: string) => void;
-  onSelectLink?: (pair: string, link: string) => void;
-}) {
-  const items = pairs.flatMap((pair) => [
-    { pair, link: null },
-    ...(onSelectLink === undefined ? [] : pairSolidLinks(pair)).map((link) => ({
-      pair,
-      link,
-    })),
-  ]);
-  return (
-    <ul className="zones-pick-list">
-      {items.map(({ pair, link }) => {
-        if (link !== null) {
-          return (
-            <li key={`${pairKey(pair)} ${linkKey(link)}`}>
-              <button
-                type="button"
-                title="Solid link, with its average SNR each way: select it to see both directions"
-                onClick={() => onSelectLink?.(pairKey(pair), linkKey(link))}
-              >
-                <span className="zones-pick-name zones-pick-sub">
-                  <span className="zones-pick-text">
-                    {directionEnd(link.node_a, nodes)}–
-                    {directionEnd(link.node_b, nodes)}
-                  </span>
-                </span>
-                <span className="zones-value">
-                  <LinkSnr link={link} nodes={nodes} />
-                </span>
-              </button>
-            </li>
-          );
-        }
-        const warnings = pair.warnings;
-        return (
-          <li key={pairKey(pair)}>
-            <button
-              type="button"
-              title={[
-                ...warnings.map(
-                  (warning) => warningTitle(warning, pair, nodes) ?? warning,
-                ),
-                `Alternative path: ${wayRoundText(pair, names)}`,
-              ].join("\n")}
-              onClick={() => onSelectPair(pairKey(pair))}
-            >
-              <span className="zones-pick-name">
-                <ZoneNumber zoneId={pair.zone_a} colors={colors} />
-                <ZoneNumber zoneId={pair.zone_b} colors={colors} />
-                <span className="zones-pick-text">
-                  {names.get(pair.zone_a)}–{names.get(pair.zone_b)}
-                </span>
-              </span>
-              <span className="zones-value">
-                <span className="zones-late">{warnings[0]}</span>{" "}
-                <BothWays
-                  left={
-                    <TextReach
-                      from={pair.zone_a}
-                      to={pair.zone_b}
-                      figure={reach(pair.zone_a, pair.zone_b)}
-                    />
-                  }
-                  right={
-                    <TextReach
-                      from={pair.zone_b}
-                      to={pair.zone_a}
-                      figure={reach(pair.zone_b, pair.zone_a)}
-                    />
-                  }
-                />
-              </span>
-            </button>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-/** A pair's solid links, the strongest first. */
-function pairSolidLinks(pair: ZonePair): ZonePairLink[] {
-  return pair.links
-    .filter((link) => link.solid)
-    .sort((a, b) => b.weaker_margin_db - a.weaker_margin_db);
-}
-
-/**
- * A group line's pattern and texts, as a list row's figures; with count, the
- * texts behind the figure too.
- */
-function LineFigures({
-  line,
-  count = false,
-}: {
-  line: GroupLine;
-  count?: boolean;
-}) {
-  return (
-    <span className="zones-value">
-      <span className={line.pattern === "solid" ? undefined : "zones-late"}>
-        {line.solidLinks === 0
-          ? "no solid link"
-          : plural(line.solidLinks, "solid link")}
-      </span>
-      {line.singleLink ? " · only solid route" : ""} ·{" "}
-      <span className="zones-margin">
-        <TierDot color={lineColor(line)} />
-        {line.texts === null ? "no texts" : formatShare(line.texts)}
-      </span>
-      {count && line.textCount !== null ? (
-        <span className="muted"> · {plural(line.textCount, "text")}</span>
-      ) : null}
-    </span>
-  );
-}
-
-/**
- * Zone pairs of a group, with their texts each way and, with hops, the radio
- * hops between their hubs, else how many texts each share counts; a row
- * selects the pair.
- */
-function GroupPairList({
-  pairs,
-  hops,
-  colors,
-  names,
-  reach,
-  onSelectPair,
-}: {
-  pairs: ZonePair[];
-  hops: boolean;
-  colors: Map<number, string>;
-  names: Map<number, string>;
-  reach: ReachLookup;
-  onSelectPair: (pair: string) => void;
-}) {
-  return (
-    <ul className="zones-pick-list">
-      {pairs.map((pair) => (
-        <li key={pairKey(pair)}>
-          <button type="button" onClick={() => onSelectPair(pairKey(pair))}>
-            <span className="zones-pick-name">
-              <ZoneNumber zoneId={pair.zone_a} colors={colors} />
-              <ZoneNumber zoneId={pair.zone_b} colors={colors} />
-              <span className="zones-pick-text">
-                {names.get(pair.zone_a)}–{names.get(pair.zone_b)}
-              </span>
-            </span>
-            <span className="zones-value">
-              {hops ? (
-                <>
-                  <span title="The fewest radio hops between the two zone hubs">
-                    {pair.hub_hops === null
-                      ? "—"
-                      : plural(pair.hub_hops, "hop")}
-                  </span>{" "}
-                </>
-              ) : null}
-              <BothWays
-                left={
-                  <TextReach
-                    from={pair.zone_a}
-                    to={pair.zone_b}
-                    figure={reach(pair.zone_a, pair.zone_b)}
-                    count={!hops}
-                  />
-                }
-                right={
-                  <TextReach
-                    from={pair.zone_b}
-                    to={pair.zone_a}
-                    figure={reach(pair.zone_b, pair.zone_a)}
-                    count={!hops}
-                  />
-                }
-              />
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * A group of zones selected in the graph: its zones, its farthest-apart zone
- * pairs and the pairs that get the fewest texts across. Its lines to other groups are the ones
- * the graph lights up. The panel grows to show it all (styles.css).
- */
-function GroupDetails({
-  group,
-  network,
-  colors,
-  names,
-  reach,
-  onSelectZone,
-  onSelectPair,
-  onBack,
-}: {
-  group: ZoneGroup;
-  network: NetworkZones;
-  colors: Map<number, string>;
-  names: Map<number, string>;
-  reach: ReachLookup;
-  onSelectZone: (zoneId: number) => void;
-  onSelectPair: (pair: string) => void;
-  onBack: () => void;
-}) {
-  const zones = new Map(network.zones.map((zone) => [zone.zone_id, zone]));
-  const [low, high] = group.textsInside ?? [null, null];
-  return (
-    <>
-      <BackButton label="All zones" onClick={onBack} />
-      <div className="zones-zone-title">
-        <h3>{groupCaption(group, names)}</h3>
-      </div>
-      <dl className="zones-facts">
-        <DataItem
-          label="Group"
-          value={`${plural(group.zones.length, "zone")} · ${plural(group.nodes, "node")}`}
-        />
-        {group.zones.length > 1 ? (
-          <DataItem
-            label="Text reach"
-            value={
-              low === null || high === null
-                ? "too few texts"
-                : `${formatShare(low)}–${formatShare(high)} between its zones`
-            }
-          />
-        ) : null}
-      </dl>
-      <h4>Zones ({group.zones.length})</h4>
-      <ul className="zones-group-zones">
-        {group.zones.map((zoneId) => (
-          <li key={zoneId}>
-            <button
-              type="button"
-              className="zones-zone-chip zones-relay-zone"
-              title={`${plural(zones.get(zoneId)?.members.length ?? 0, "node")}. Select zone ${zoneId}`}
-              onClick={() => onSelectZone(zoneId)}
-            >
-              <ZoneNumber zoneId={zoneId} colors={colors} />
-              {names.get(zoneId)}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {group.farthest.length > 0 ? (
-        <>
-          <h4 title="Zone pairs with the most relays between them">
-            Farthest apart
-          </h4>
-          <GroupPairList
-            pairs={group.farthest}
-            hops
-            colors={colors}
-            names={names}
-            reach={reach}
-            onSelectPair={onSelectPair}
-          />
-        </>
-      ) : null}
-      {group.fewestTexts.length > 0 ? (
-        <>
-          <h4 title="Zone pairs where the fewest texts get across">
-            Fewest texts get across
-          </h4>
-          <GroupPairList
-            pairs={group.fewestTexts}
-            hops={false}
-            colors={colors}
-            names={names}
-            reach={reach}
-            onSelectPair={onSelectPair}
-          />
-        </>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * A line between two groups selected in the graph: the weak connections it stands
- * for, strongest first, each followed by its solid links. The panel grows to
- * show them all (styles.css).
- */
-function LineDetails({
-  line,
-  graph,
-  nodes,
-  colors,
-  names,
-  reach,
-  onSelectGroup,
-  onSelectPair,
-  onSelectLink,
-  onBack,
-}: {
-  line: GroupLine;
-  graph: Graph;
-  nodes: NodeIndex;
-  colors: Map<number, string>;
-  names: Map<number, string>;
-  reach: ReachLookup;
-  onSelectGroup: (key: number) => void;
-  onSelectPair: (pair: string) => void;
-  onSelectLink: (pair: string, link: string) => void;
-  onBack: () => void;
-}) {
-  const ends = [line.a, line.b].flatMap(
-    (key) => graph.groups.find((group) => group.key === key) ?? [],
-  );
-  return (
-    <>
-      <BackButton label="All zones" onClick={onBack} />
-      <div className="zones-zone-title">
-        <h3>{ends.map((group) => groupCaption(group, names)).join(" ↔ ")}</h3>
-      </div>
-      <p className="zones-note">
-        <LineFigures line={line} count />
-      </p>
-      <p className="zones-note">
-        {line.solidLinks === 0
-          ? "No solid link joins these groups."
-          : `${plural(line.solidLinks, "solid link")} ${line.solidLinks === 1 ? "joins" : "join"} these groups.`}{" "}
-        {line.singleLink
-          ? "One is the only solid route to part of the network. "
-          : ""}
-        Texts: best pair, weaker direction.
-      </p>
-      <div className="zones-tabs" role="group" aria-label="Groups">
-        {ends.map((group) => (
-          <button
-            key={group.key}
-            type="button"
-            onClick={() => onSelectGroup(group.key)}
-          >
-            {groupCaption(group, names)}
-          </button>
-        ))}
-      </div>
-      <h4>Connections ({line.pairs.length})</h4>
-      <JoinList
-        pairs={line.pairs}
-        nodes={nodes}
-        colors={colors}
-        names={names}
-        reach={reach}
-        onSelectPair={onSelectPair}
-        onSelectLink={onSelectLink}
-      />
-    </>
   );
 }
 
@@ -2395,11 +1735,19 @@ function ZoneDetails({
   ).length;
   const shownJoins = joins.slice(0, rows);
   const shownRelays = relays.slice(0, Math.max(0, rows - joins.length));
-  // The other zones of its island, and those its solid paths on the map reach.
+  // The zones it can reach (its pairs), and those its solid paths on the map
+  // reach.
   const onPaths = new Set(zone.solid_paths.flat());
-  const others = network.zones.filter(
-    (other) => other.island === zone.island && other.zone_id !== zone.zone_id,
+  const paired = new Set(
+    network.zone_pairs.flatMap((pair) =>
+      pair.zone_a === zone.zone_id
+        ? [pair.zone_b]
+        : pair.zone_b === zone.zone_id
+          ? [pair.zone_a]
+          : [],
+    ),
   );
+  const others = network.zones.filter((other) => paired.has(other.zone_id));
   const reached = others.filter((other) =>
     other.members.some((id) => onPaths.has(id)),
   ).length;
@@ -2518,17 +1866,18 @@ function ZoneDetails({
 
 // ------------------------------------------------------------ Between zones
 
-type PairSort =
-  | "warnings"
-  | "zones"
-  | "links"
-  | "texts"
-  | "observations"
-  | "margin"
-  | "hub_hops"
-  | "way_round"
-  | "km"
-  | "solid";
+const PAIR_SORTS = [
+  "zones",
+  "links",
+  "texts",
+  "observations",
+  "margin",
+  "hub_hops",
+  "way_round",
+  "km",
+  "solid",
+] as const;
+type PairSort = (typeof PAIR_SORTS)[number];
 
 interface PairOrder {
   by: PairSort;
@@ -2565,26 +1914,20 @@ function pairSortValue(
       return pair.km;
     case "solid":
       return pair.links.filter((link) => link.solid).length;
-    case "warnings":
-      return null;
   }
 }
 
 /**
- * Zone pairs in the chosen order. Warnings descending is weakest first, the
- * order zones.py lists them in; every other column keeps that among ties.
+ * Zone pairs in the chosen order; ties keep the order zones.py lists them in,
+ * by zone.
  */
 function sortPairs(
   pairs: ZonePair[],
   order: PairOrder,
   reach: ReachLookup,
 ): ZonePair[] {
-  const weakest = [...pairs];
-  if (order.by === "warnings") {
-    return order.descending ? weakest : weakest.reverse();
-  }
   const sign = order.descending ? -1 : 1;
-  return weakest.sort((a, b) => {
+  return [...pairs].sort((a, b) => {
     const x = pairSortValue(a, order.by, reach);
     const y = pairSortValue(b, order.by, reach);
     if (x === null || y === null)
@@ -2620,7 +1963,7 @@ function BetweenZones({
   const [order, setOrder] = useSetting<PairOrder>(
     "zones.pairOrder",
     { by: "km", descending: true },
-    (value) => typeof (value as PairOrder | null)?.by === "string",
+    (value) => PAIR_SORTS.includes((value as PairOrder | null)?.by as PairSort),
   );
   // Zones under their shown names, for the heading and the link tables.
   const zones = useMemo(
@@ -2739,7 +2082,6 @@ function BetweenZones({
                   undefined,
                   "Pairs of zones that can reach each other. Select a row for its links.",
                 )}
-                {heading("Warnings", "warnings")}
                 {heading(
                   "Solid links",
                   "solid",
@@ -2780,7 +2122,6 @@ function BetweenZones({
             <tbody>
               {rows.map((pair) => {
                 const open = pairKey(pair) === selectedPair;
-                const warnings = pair.warnings;
                 const direct = isDirect(pair);
                 const none = <span className="muted">—</span>;
                 // The selected zone goes first, whatever its number.
@@ -2812,23 +2153,6 @@ function BetweenZones({
                           names={names}
                           onSelect={onSelectZone}
                         />
-                      </td>
-                      <td>
-                        {warnings.length === 0 ? (
-                          <span className="muted">—</span>
-                        ) : (
-                          <span className="zones-badges">
-                            {warnings.map((warning) => (
-                              <Badge
-                                key={warning}
-                                tone="amber"
-                                title={warningTitle(warning, pair, nodes)}
-                              >
-                                {warning}
-                              </Badge>
-                            ))}
-                          </span>
-                        )}
                       </td>
                       <td className="number">
                         {direct
@@ -2910,7 +2234,7 @@ function BetweenZones({
                     </tr>
                     {open && direct ? (
                       <tr className="zones-pair-detail">
-                        <td colSpan={11}>
+                        <td colSpan={10}>
                           <PairLinks
                             pair={pair}
                             zones={zones}
@@ -2933,7 +2257,7 @@ function BetweenZones({
   );
 }
 
-/** What a pair warning means, for its badge's tooltip. */
+/** What a pair warning means, for its tooltip. */
 function warningTitle(
   warning: PairWarning,
   pair: ZonePair,

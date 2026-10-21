@@ -3380,14 +3380,13 @@ nodes: 27 items
     longitude: 19.3528
     estimated: false
 
-## GET /api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2
+## GET /api/v1/zones?window_hours=72&per_day=2&min_margin_db=4
 
 generated_at: "2026-10-11T16:25:30.812000Z"
 window_hours: 72
 channel: "ShortFast"
 per_day: 2
 min_margin_db: 4
-join_links: 2
 days: 3
 link_count: 521
 solid_link_count: 3
@@ -3399,7 +3398,6 @@ channels: 2 items
 truncated: false
 zones: 8 items
   - zone_id: 1
-    island: 1
     name: "Node 41cd"
     place: "Częstochowa"
     region: "Śląskie"
@@ -3413,7 +3411,6 @@ zones: 8 items
     longitude: 19.1169
     solid_paths: []
   - zone_id: 2
-    island: 1
     name: "Node 2c3c"
     place: "Łódź"
     region: "Łódzkie"
@@ -3427,7 +3424,6 @@ zones: 8 items
     longitude: 19.4773
     solid_paths: []
   - zone_id: 3
-    island: 1
     name: "Node 4ac9"
     place: "Kraków"
     region: "Małopolskie"
@@ -3441,114 +3437,185 @@ zones: 8 items
     longitude: 19.9688
     solid_paths: []
 zone_pairs: 21 items
-  - zone_a: 2
+  - zone_a: 1
+    zone_b: 2
+    observations: 1263
+    strongest_margin_db: 11.1
+    hub_hops: 2
+    km: 114.9
+    through_nodes_a: 2
+    through_nodes_b: 2
+    solid_links: 0
+    way_round_links: null
+    way_round_zones: []
+    single_link: false
+    hanging_zones: []
+    warnings: ["no solid link"]
+    sole_relay: null
+    links: 4 items
+      - node_a: 2933499666
+        node_b: 702832197
+        observations: 646
+        weaker_margin_db: 2.6
+        km: 39.7
+        solid: false
+        last_seen_at: "2026-10-11T16:21:06.845000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 642
+          snr_samples: 642
+          average_snr: 1.72
+        b_to_a:
+          observations: 4
+          snr_samples: 4
+          average_snr: -4.94
+      - node_a: 2933499666
+        node_b: 3655149723
+        observations: 612
+        weaker_margin_db: 1
+        km: 64.4
+        solid: false
+        last_seen_at: "2026-10-11T16:21:06.845000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 609
+          snr_samples: 609
+          average_snr: -3
+        b_to_a:
+          observations: 3
+          snr_samples: 3
+          average_snr: -6.5
+      - node_a: 96879053
+        node_b: 3655149723
+        observations: 3
+        weaker_margin_db: 4.2
+        km: 135.5
+        solid: false
+        last_seen_at: "2026-10-11T13:56:10.833000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 3
+          snr_samples: 3
+          average_snr: -3.25
+        b_to_a:
+          observations: 0
+          snr_samples: 0
+          average_snr: null
+  - zone_a: 1
     zone_b: 3
-    observations: 0
-    strongest_margin_db: null
-    hub_hops: 4
-    km: 196.9
-    through_nodes_a: 0
-    through_nodes_b: 0
+    observations: 53
+    strongest_margin_db: 11.3
+    hub_hops: 2
+    km: 101.6
+    through_nodes_a: 2
+    through_nodes_b: 1
     solid_links: 0
     way_round_links: null
     way_round_zones: []
     single_link: false
     hanging_zones: []
-    warnings: ["no solid route", "long route"]
+    warnings: ["no solid link"]
     sole_relay: null
-    links: []
-  - zone_a: 2
-    zone_b: 7
-    observations: 0
-    strongest_margin_db: null
-    hub_hops: 5
-    km: 168.3
-    through_nodes_a: 0
-    through_nodes_b: 0
+    links: 2 items
+      - node_a: 96879053
+        node_b: 3806451940
+        observations: 42
+        weaker_margin_db: 7.1
+        km: 50.5
+        solid: false
+        last_seen_at: "2026-10-11T15:54:54.823000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 2
+          snr_samples: 2
+          average_snr: 1.5
+        b_to_a:
+          observations: 40
+          snr_samples: 40
+          average_snr: -0.36
+      - node_a: 740093392
+        node_b: 3806451940
+        observations: 11
+        weaker_margin_db: 11.3
+        km: 25.9
+        solid: false
+        last_seen_at: "2026-10-11T15:14:47.333000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 3
+          snr_samples: 3
+          average_snr: 3.83
+        b_to_a:
+          observations: 8
+          snr_samples: 8
+          average_snr: 6.03
+  - zone_a: 1
+    zone_b: 4
+    observations: 842
+    strongest_margin_db: 13
+    hub_hops: 1
+    km: 131.5
+    through_nodes_a: 13
+    through_nodes_b: 7
     solid_links: 0
     way_round_links: null
     way_round_zones: []
     single_link: false
     hanging_zones: []
-    warnings: ["no solid route", "long route"]
+    warnings: ["no solid link"]
     sole_relay: null
-    links: []
-  - zone_a: 6
-    zone_b: 7
-    observations: 0
-    strongest_margin_db: null
-    hub_hops: 4
-    km: 122.4
-    through_nodes_a: 0
-    through_nodes_b: 0
-    solid_links: 0
-    way_round_links: null
-    way_round_zones: []
-    single_link: false
-    hanging_zones: []
-    warnings: ["no solid route", "long route"]
-    sole_relay: null
-    links: []
-groups: 8 items
-  - key: 1
-    island: 1
-    zones: [1]
-    nodes: 53
-    longitude: 19.1169
-    texts_inside: null
-    single_links: []
-    farthest: []
-    fewest_texts: []
-  - key: 2
-    island: 1
-    zones: [2]
-    nodes: 50
-    longitude: 19.4773
-    texts_inside: null
-    single_links: []
-    farthest: []
-    fewest_texts: []
-  - key: 3
-    island: 1
-    zones: [3]
-    nodes: 49
-    longitude: 19.9688
-    texts_inside: null
-    single_links: []
-    farthest: []
-    fewest_texts: []
-group_lines: 10 items
-  - a: 1
-    b: 2
-    pairs: 1 items
-      - [1, 2]
-    solid_links: 0
-    single_link: false
-    texts: null
-    text_count: null
-    worst_texts: null
-  - a: 1
-    b: 3
-    pairs: 1 items
-      - [1, 3]
-    solid_links: 0
-    single_link: false
-    texts: null
-    text_count: null
-    worst_texts: null
-  - a: 1
-    b: 4
-    pairs: 1 items
-      - [1, 4]
-    solid_links: 0
-    single_link: false
-    texts: null
-    text_count: null
-    worst_texts: null
+    links: 28 items
+      - node_a: 4110175258
+        node_b: 3596185440
+        observations: 127
+        weaker_margin_db: -2.8
+        km: 131.7
+        solid: false
+        last_seen_at: "2026-10-11T15:55:23.414000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 1
+          snr_samples: 1
+          average_snr: -10.25
+        b_to_a:
+          observations: 126
+          snr_samples: 125
+          average_snr: -5.02
+      - node_a: 96879053
+        node_b: 2483997066
+        observations: 119
+        weaker_margin_db: 3.5
+        km: 112.5
+        solid: false
+        last_seen_at: "2026-10-11T15:39:04.832000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 1
+          snr_samples: 1
+          average_snr: -4
+        b_to_a:
+          observations: 118
+          snr_samples: 118
+          average_snr: -2.88
+      - node_a: 3472072206
+        node_b: 2483997066
+        observations: 104
+        weaker_margin_db: 4
+        km: 123
+        solid: false
+        last_seen_at: "2026-10-11T15:55:55.822000Z"
+        spreading_factor: 7
+        a_to_b:
+          observations: 0
+          snr_samples: 0
+          average_snr: null
+        b_to_a:
+          observations: 104
+          snr_samples: 104
+          average_snr: -3.52
 rules:
   weak_margin_db: 4
   long_route_hops: 4
-  few_texts: 5
   key_relay_cut: 2
 path_links: []
 text_reach: []
@@ -3561,8 +3628,6 @@ key_relays: 40 items
     no_solid_backup: 0
     carries: 41
     only_solid_link_to: []
-    weak_only_solid_link_to: []
-    side_panel: true
     neighbours: 34
     last_seen_at: "2026-10-11T15:56:32.706000Z"
     battery_level: 101
@@ -3577,8 +3642,6 @@ key_relays: 40 items
     no_solid_backup: 0
     carries: 18
     only_solid_link_to: []
-    weak_only_solid_link_to: []
-    side_panel: true
     neighbours: 8
     last_seen_at: "2026-10-11T16:02:16.184000Z"
     battery_level: 92
@@ -3593,8 +3656,6 @@ key_relays: 40 items
     no_solid_backup: 0
     carries: 93
     only_solid_link_to: []
-    weak_only_solid_link_to: []
-    side_panel: true
     neighbours: 30
     last_seen_at: "2026-10-11T16:17:50.252000Z"
     battery_level: 100

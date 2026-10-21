@@ -74,9 +74,6 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Zone | Nodes that link to each other more than to the rest (Louvain on heard links), named after a nearby town or its hub. |
 | Hub | A zone's most-linked member. |
 | Cuts off / no solid backup | Nodes that lose every known path / every solid path if a relay goes quiet. |
-| Island | Zones joined by heard links, directly or not. |
-| Group | Zones joined box by box: two boxes join when at least the set number of solid links run between them. |
-| Weak connection | The links between two zones in different groups. |
 | Single link | A zone pair whose solid links are the only solid route between two parts of the network. |
 | Alternative path | The shortest solid path between two zones that avoids their direct links. |
 | Text reach between zones | How often broadcast texts sent in one zone were reported by a gateway in another. |

@@ -657,15 +657,13 @@ def create_app(
         channel: str | None = None,
         per_day: Annotated[float, Query(ge=0, le=100)] = 2,
         min_margin_db: Annotated[float, Query(ge=-30, le=30)] = 4,
-        join_links: Annotated[int, Query(ge=1, le=4)] = 2,
     ) -> NetworkZones:
         """Zones, the links between them, key relays and text reach between
         zones, for one channel's traceroute links and broadcast texts in the
         last window_hours (at most 20,000 of the channel's links, newest
         first). Without channel, the channel with the most links. per_day and
-        min_margin_db set the rule for solid links, and join_links how many
-        solid links between two groups of zones join them into one;
-        zones.py explains both graphs, the groups and text reach.
+        min_margin_db set the rule for solid links; zones.py explains both
+        graphs and text reach.
         window_hours is 24, 72 or 168."""
         if window_hours not in ZONE_WINDOW_HOURS:
             raise _invalid_parameters()
@@ -675,7 +673,6 @@ def create_app(
             channel=channel,
             per_day=per_day,
             min_margin_db=min_margin_db,
-            join_links=join_links,
             link_limit=MAX_MAP_LINKS,
             default_preset=settings.default_preset,
         )

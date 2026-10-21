@@ -576,9 +576,8 @@ export interface paths {
      *     zones, for one channel's traceroute links and broadcast texts in the
      *     last window_hours (at most 20,000 of the channel's links, newest
      *     first). Without channel, the channel with the most links. per_day and
-     *     min_margin_db set the rule for solid links, and join_links how many
-     *     solid links between two groups of zones join them into one;
-     *     zones.py explains both graphs, the groups and text reach.
+     *     min_margin_db set the rule for solid links; zones.py explains both
+     *     graphs and text reach.
      *     window_hours is 24, 72 or 168.
      */
     get: operations["network_zones_page_api_v1_zones_get"];
@@ -1106,28 +1105,6 @@ export interface components {
       minimum: string;
       reason: string;
     };
-    /**
-     * GroupLine
-     * @description The zone pairs with links between two groups (a < b, of their keys),
-     *     drawn as one line. pairs are their (zone_a, zone_b), strongest first: one
-     *     relay, one solid link, then no solid link, each by its strongest link.
-     *     solid_links counts their solid links, fewer than the request's join_links.
-     *     single_link is true when one of them is a single link. texts is the best
-     *     pair's worse-direction text share, leaving out directions with fewer than
-     *     FEW_TEXTS texts, and text_count that direction's counted texts; both None
-     *     with no figure. worst_texts is the
-     *     same share for the worst pair, None with no figure.
-     */
-    GroupLine: {
-      a: number;
-      b: number;
-      pairs: [number, number][];
-      solid_links: number;
-      single_link: boolean;
-      texts: number | null;
-      text_count: number | null;
-      worst_texts: number | null;
-    };
     /** HTTPValidationError */
     HTTPValidationError: {
       detail: components["schemas"]["ValidationError"][];
@@ -1207,12 +1184,8 @@ export interface components {
      *     big zone's hub passes through it. impact is the larger of cuts_off and
      *     no_solid_backup. only_solid_link_to lists the zones whose every solid
      *     link with this relay's zone passes through it: if it goes quiet, no solid
-     *     link joins the two zones directly (_only_solid_links), and
-     *     weak_only_solid_link_to those of them in another group.
-     *     side_panel is true for the relays listed beside the map: there an only
-     *     solid link counts only between groups, and a relay left with nothing
-     *     to show for it (no such zone and an impact under KEY_RELAY_CUT) is left
-     *     out. neighbours counts its heard links. last_seen_at,
+     *     link joins the two zones directly (_only_solid_links).
+     *     neighbours counts its heard links. last_seen_at,
      *     battery_level (reported at battery_observed_at) and firmware are
      *     node_current's; firmware is None until a packet shows a firmware trait.
      */
@@ -1224,8 +1197,6 @@ export interface components {
       no_solid_backup: number;
       carries: number;
       only_solid_link_to: number[];
-      weak_only_solid_link_to: number[];
-      side_panel: boolean;
       neighbours: number;
       last_seen_at: string | null;
       battery_level: number | null;
@@ -1479,13 +1450,11 @@ export interface components {
      *     text_hours (broadcast texts per hour, 8 days so the browser can pick 7
      *     local ones) and active_channels (nodes seen in the last 24 hours by the
      *     radio channel in node_current) cover every channel. link_count and
-     *     solid_link_count count the heard and solid links between nodes, and
-     *     join_links is the request's rule for groups (_groups): the three
-     *     steps the page shows the graph is built from. nodes carry the position
+     *     solid_link_count count the heard and solid links between nodes, as the
+     *     page's steps to solid links show. nodes carry the position
      *     the page draws (db.nodes_by_id), reported or estimated. path_links holds
-     *     every link on a zone's solid paths, once. zone_pairs are weakest first: by the total
-     *     WARNING_WEIGHT of their warnings, then fewer solid links, then the weaker
-     *     strongest link. groups are by island, then most nodes first.
+     *     every link on a zone's solid paths, once. zone_pairs are by zone_a, then
+     *     zone_b.
      */
     NetworkZones: {
       /** Format: date-time */
@@ -1494,7 +1463,6 @@ export interface components {
       channel: string | null;
       per_day: number;
       min_margin_db: number;
-      join_links: number;
       days: number;
       link_count: number;
       solid_link_count: number;
@@ -1502,8 +1470,6 @@ export interface components {
       truncated: boolean;
       zones: components["schemas"]["Zone"][];
       zone_pairs: components["schemas"]["ZonePair"][];
-      groups: components["schemas"]["ZoneGroup"][];
-      group_lines: components["schemas"]["GroupLine"][];
       rules: components["schemas"]["ZoneRules"];
       path_links: components["schemas"]["ZonePairLink"][];
       text_reach: components["schemas"]["ZoneTextReach"][];
@@ -2165,14 +2131,12 @@ export interface components {
      *     has a position.
      *     text_gateways counts members that reported a broadcast text on the channel
      *     in the window, text_senders the members with a text counted in text
-     *     reach, and text_count those senders' counted texts. island numbers the
-     *     zone's island (_islands), 1 for the one with the most members. solid_paths
-     *     lists the links on its shortest solid paths to other zones (_solid_paths)
-     *     as (node_a, node_b) of NetworkZones.path_links.
+     *     reach, and text_count those senders' counted texts. solid_paths lists the
+     *     links on its shortest solid paths to other zones (_solid_paths) as
+     *     (node_a, node_b) of NetworkZones.path_links.
      */
     Zone: {
       zone_id: number;
-      island: number;
       name: string;
       place: string | null;
       region: string | null;
@@ -2187,36 +2151,9 @@ export interface components {
       solid_paths: [number, number][];
     };
     /**
-     * ZoneGroup
-     * @description Zones joined by solid links, as _groups joins them: fewer than the
-     *     request's join_links run between two groups, so the lines between groups
-     *     are where the solid links thin out.
-     *
-     *     key is its lowest zone id. zones go west to east, unplaced ones last;
-     *     longitude is the members' mean, None when no zone is placed. texts_inside
-     *     is the lowest and highest worse-direction text share between two of its
-     *     zones, leaving out directions with fewer than FEW_TEXTS texts; None with
-     *     no figure. single_links are its pairs that are a single link. farthest are
-     *     its pairs with the most hub_hops (radio hops), every pair tied for the most;
-     *     fewest_texts the GROUP_WORST_TEXTS pairs whose worse direction gets the
-     *     smallest share of texts across, the smallest first, leaving out directions
-     *     with fewer than FEW_TEXTS texts. All as (zone_a, zone_b) of zone_pairs.
-     */
-    ZoneGroup: {
-      key: number;
-      island: number;
-      zones: number[];
-      nodes: number;
-      longitude: number | null;
-      texts_inside: [number, number] | null;
-      single_links: [number, number][];
-      farthest: [number, number][];
-      fewest_texts: [number, number][];
-    };
-    /**
      * ZonePair
-     * @description Two zones of one island (zone_a < zone_b), with or without heard links
-     *     directly between them; links is empty when there are none, and then
+     * @description Two zones whose hubs a heard path joins (zone_a < zone_b), with or
+     *     without heard links directly between them; links is empty when there are none, and then
      *     strongest_margin_db is None and the counts 0.
      *
      *     strongest_margin_db is the best of its links' weaker-direction margins.
@@ -2289,13 +2226,12 @@ export interface components {
     };
     /**
      * ZoneRules
-     * @description The thresholds behind the warnings, groups and key relays, for
+     * @description The thresholds behind the warnings and key relays, for
      *     the page to explain them; the constants of the same names.
      */
     ZoneRules: {
       weak_margin_db: number;
       long_route_hops: number;
-      few_texts: number;
       key_relay_cut: number;
     };
     /**
@@ -3087,7 +3023,6 @@ export interface operations {
         channel?: string | null;
         per_day?: number;
         min_margin_db?: number;
-        join_links?: number;
       };
       header?: never;
       path?: never;

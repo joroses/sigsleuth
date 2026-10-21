@@ -190,7 +190,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     # Counts every hop row of the week; the explorer opens on 24 hours.
     yield f"/api/v1/traceroutes/busiest?since={week}", 300
     # Zones runs its graph analysis on every request.
-    yield "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4&join_links=2", 300
+    yield "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4", 300
     yield "/api/v1/diagnostics/summary"
     yield "/api/v1/diagnostics/doubtful-nodes"
     yield "/api/v1/diagnostics/longest-links?offset=0&count=30"

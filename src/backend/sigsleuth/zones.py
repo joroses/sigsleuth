@@ -95,27 +95,12 @@ DAY_MS = 24 * HOUR_MS
 PairWarning = Literal[
     "no solid route", "no solid link", "one solid link", "one relay", "all weak", "long route"
 ]
-# How much each warning makes a pair weak; pairs are listed weakest first.
-WARNING_WEIGHT: dict[PairWarning, int] = {
-    "no solid route": 6,
-    "no solid link": 5,
-    "one solid link": 4,
-    "one relay": 3,
-    "all weak": 2,
-    "long route": 1,
-}
 # A pair whose strongest link has a weaker margin under this is "all weak",
 # as the map's "marginal" tier.
 WEAK_MARGIN_DB = 4.0
 # Hub to hub in this many hops or more is a long route: most senders allow 7,
 # so it rarely means unreachable, but it points to a detour.
 LONG_ROUTE_HOPS = 4
-
-# A direction with fewer texts than this is left out of a group's range of
-# text reach and a group line's texts: too few to show a share.
-FEW_TEXTS = 5
-# A group lists this many of its zone pairs that get the fewest texts across.
-GROUP_WORST_TEXTS = 3
 
 
 @dataclass(frozen=True)
@@ -141,14 +126,12 @@ class Zone:
     has a position.
     text_gateways counts members that reported a broadcast text on the channel
     in the window, text_senders the members with a text counted in text
-    reach, and text_count those senders' counted texts. island numbers the
-    zone's island (_islands), 1 for the one with the most members. solid_paths
-    lists the links on its shortest solid paths to other zones (_solid_paths)
-    as (node_a, node_b) of NetworkZones.path_links.
+    reach, and text_count those senders' counted texts. solid_paths lists the
+    links on its shortest solid paths to other zones (_solid_paths) as
+    (node_a, node_b) of NetworkZones.path_links.
     """
 
     zone_id: int
-    island: int
     name: str
     place: str | None
     region: str | None
@@ -186,8 +169,8 @@ class ZonePairLink:
 
 @dataclass(frozen=True)
 class ZonePair:
-    """Two zones of one island (zone_a < zone_b), with or without heard links
-    directly between them; links is empty when there are none, and then
+    """Two zones whose hubs a heard path joins (zone_a < zone_b), with or
+    without heard links directly between them; links is empty when there are none, and then
     strongest_margin_db is None and the counts 0.
 
     strongest_margin_db is the best of its links' weaker-direction margins.
@@ -254,12 +237,8 @@ class KeyRelay:
     big zone's hub passes through it. impact is the larger of cuts_off and
     no_solid_backup. only_solid_link_to lists the zones whose every solid
     link with this relay's zone passes through it: if it goes quiet, no solid
-    link joins the two zones directly (_only_solid_links), and
-    weak_only_solid_link_to those of them in another group.
-    side_panel is true for the relays listed beside the map: there an only
-    solid link counts only between groups, and a relay left with nothing
-    to show for it (no such zone and an impact under KEY_RELAY_CUT) is left
-    out. neighbours counts its heard links. last_seen_at,
+    link joins the two zones directly (_only_solid_links).
+    neighbours counts its heard links. last_seen_at,
     battery_level (reported at battery_observed_at) and firmware are
     node_current's; firmware is None until a packet shows a firmware trait.
     """
@@ -271,8 +250,6 @@ class KeyRelay:
     no_solid_backup: int
     carries: int
     only_solid_link_to: tuple[int, ...]
-    weak_only_solid_link_to: tuple[int, ...]
-    side_panel: bool
     neighbours: int
     last_seen_at: datetime | None
     battery_level: int | None
@@ -281,70 +258,18 @@ class KeyRelay:
 
 
 @dataclass(frozen=True)
-class ZoneGroup:
-    """Zones joined by solid links, as _groups joins them: fewer than the
-    request's join_links run between two groups, so the lines between groups
-    are where the solid links thin out.
-
-    key is its lowest zone id. zones go west to east, unplaced ones last;
-    longitude is the members' mean, None when no zone is placed. texts_inside
-    is the lowest and highest worse-direction text share between two of its
-    zones, leaving out directions with fewer than FEW_TEXTS texts; None with
-    no figure. single_links are its pairs that are a single link. farthest are
-    its pairs with the most hub_hops (radio hops), every pair tied for the most;
-    fewest_texts the GROUP_WORST_TEXTS pairs whose worse direction gets the
-    smallest share of texts across, the smallest first, leaving out directions
-    with fewer than FEW_TEXTS texts. All as (zone_a, zone_b) of zone_pairs.
-    """
-
-    key: int
-    island: int
-    zones: tuple[int, ...]
-    nodes: int
-    longitude: float | None
-    texts_inside: tuple[float, float] | None
-    single_links: tuple[tuple[int, int], ...]
-    farthest: tuple[tuple[int, int], ...]
-    fewest_texts: tuple[tuple[int, int], ...]
-
-
-@dataclass(frozen=True)
-class GroupLine:
-    """The zone pairs with links between two groups (a < b, of their keys),
-    drawn as one line. pairs are their (zone_a, zone_b), strongest first: one
-    relay, one solid link, then no solid link, each by its strongest link.
-    solid_links counts their solid links, fewer than the request's join_links.
-    single_link is true when one of them is a single link. texts is the best
-    pair's worse-direction text share, leaving out directions with fewer than
-    FEW_TEXTS texts, and text_count that direction's counted texts; both None
-    with no figure. worst_texts is the
-    same share for the worst pair, None with no figure."""
-
-    a: int
-    b: int
-    pairs: tuple[tuple[int, int], ...]
-    solid_links: int
-    single_link: bool
-    texts: float | None
-    text_count: int | None
-    worst_texts: float | None
-
-
-@dataclass(frozen=True)
 class ZoneRules:
-    """The thresholds behind the warnings, groups and key relays, for
+    """The thresholds behind the warnings and key relays, for
     the page to explain them; the constants of the same names."""
 
     weak_margin_db: float
     long_route_hops: int
-    few_texts: int
     key_relay_cut: int
 
 
 RULES = ZoneRules(
     weak_margin_db=WEAK_MARGIN_DB,
     long_route_hops=LONG_ROUTE_HOPS,
-    few_texts=FEW_TEXTS,
     key_relay_cut=KEY_RELAY_CUT,
 )
 
@@ -370,20 +295,17 @@ class NetworkZones:
     text_hours (broadcast texts per hour, 8 days so the browser can pick 7
     local ones) and active_channels (nodes seen in the last 24 hours by the
     radio channel in node_current) cover every channel. link_count and
-    solid_link_count count the heard and solid links between nodes, and
-    join_links is the request's rule for groups (_groups): the three
-    steps the page shows the graph is built from. nodes carry the position
+    solid_link_count count the heard and solid links between nodes, as the
+    page's steps to solid links show. nodes carry the position
     the page draws (db.nodes_by_id), reported or estimated. path_links holds
-    every link on a zone's solid paths, once. zone_pairs are weakest first: by the total
-    WARNING_WEIGHT of their warnings, then fewer solid links, then the weaker
-    strongest link. groups are by island, then most nodes first."""
+    every link on a zone's solid paths, once. zone_pairs are by zone_a, then
+    zone_b."""
 
     generated_at: datetime
     window_hours: int
     channel: str | None
     per_day: float
     min_margin_db: float
-    join_links: int
     days: float
     link_count: int
     solid_link_count: int
@@ -391,8 +313,6 @@ class NetworkZones:
     truncated: bool
     zones: tuple[Zone, ...]
     zone_pairs: tuple[ZonePair, ...]
-    groups: tuple[ZoneGroup, ...]
-    group_lines: tuple[GroupLine, ...]
     rules: ZoneRules
     path_links: tuple[ZonePairLink, ...]
     text_reach: tuple[ZoneTextReach, ...]
@@ -420,7 +340,6 @@ def network_zones(
     channel: str | None,
     per_day: float,
     min_margin_db: float,
-    join_links: int,
     link_limit: int,
     default_preset: str,
 ) -> NetworkZones:
@@ -473,16 +392,12 @@ def network_zones(
     text_reach, text_gateways, text_senders, text_count = _text_reach(
         connection, channel, text_since_id, zone_of
     )
-    zones = _zones(
-        heard, zone_of, nodes, text_gateways, text_senders, text_count, _islands(links, zone_of)
-    )
+    zones = _zones(heard, zone_of, nodes, text_gateways, text_senders, text_count)
     zones = tuple(
         replace(zone, solid_paths=paths)
         for zone, paths in zip(zones, _solid_paths(solid, zones, zone_of, links), strict=True)
     )
-    reach = {(item.from_zone, item.to_zone): item for item in text_reach}
     zone_pairs = _zone_pairs(heard, solid, links, zones, zone_of, nodes)
-    groups, group_lines = _groups(zones, zone_pairs, reach, join_links)
     on_paths = {link for zone in zones for link in zone.solid_paths}
     roots = [zone.hub_node_id for zone in zones[:CARRIER_ROOTS]]
     key_relays = _key_relays(
@@ -493,7 +408,6 @@ def network_zones(
         graph.cuts(solid),
         graph.carriers(heard, roots),
         _only_solid_links(zone_pairs),
-        {zone: group.key for group in groups for zone in group.zones},
         nodes,
     )
 
@@ -503,7 +417,6 @@ def network_zones(
         channel=channel,
         per_day=per_day,
         min_margin_db=min_margin_db,
-        join_links=join_links,
         days=round(days, 2),
         link_count=len(links),
         solid_link_count=sum(link.solid for link in links.values()),
@@ -511,8 +424,6 @@ def network_zones(
         truncated=page.truncated,
         zones=zones,
         zone_pairs=zone_pairs,
-        groups=groups,
-        group_lines=group_lines,
         rules=RULES,
         path_links=tuple(_pair_link(links[key], key[0], nodes) for key in sorted(on_paths)),
         text_reach=text_reach,
@@ -603,7 +514,6 @@ def _zones(
     text_gateways: dict[int, set[int]],
     text_senders: Counter[int],
     text_count: Counter[int],
-    island: dict[int, int],
 ) -> tuple[Zone, ...]:
     members: dict[int, list[int]] = defaultdict(list)
     for node, zone in sorted(zone_of.items()):
@@ -622,7 +532,6 @@ def _zones(
         rows.append(
             Zone(
                 zone_id=zone,
-                island=island[zone],
                 name=_node_name(nodes.get(hub)) or f"!{hub:08x}",
                 place=None,
                 region=None,
@@ -644,23 +553,6 @@ def _zones(
         else row
         for row in rows
     )
-
-
-def _islands(links: dict[tuple[int, int], _Link], zone_of: dict[int, int]) -> dict[int, int]:
-    """Each zone's island, numbered from 1 by members, most first: the groups
-    of zones joined by heard links, directly or through other zones."""
-    size = Counter(zone_of.values())
-    zone_graph: nx.Graph[int] = nx.Graph()
-    zone_graph.add_nodes_from(size)
-    for link in links.values():
-        za, zb = zone_of.get(link.a), zone_of.get(link.b)
-        if za is not None and zb is not None and za != zb:
-            zone_graph.add_edge(za, zb)
-    islands = sorted(
-        nx.connected_components(zone_graph),
-        key=lambda island: (-sum(size[zone] for zone in island), min(island)),
-    )
-    return {zone: number for number, island in enumerate(islands, 1) for zone in island}
 
 
 def _spot(point: tuple[float, float]) -> tuple[float, float]:
@@ -762,15 +654,16 @@ def _zone_pairs(
             _pair_link(link, link.a if za < zb else link.b, nodes)
         )
     by_id = {zone.zone_id: zone for zone in zones}
+    hops_from = {
+        zone.zone_id: nx.single_source_shortest_path_length(heard, zone.hub_node_id)
+        for zone in zones
+    }
     for zone_a, zone_b in combinations(zones, 2):
-        if zone_a.island == zone_b.island:
+        if zone_b.hub_node_id in hops_from[zone_a.zone_id]:
             between.setdefault((zone_a.zone_id, zone_b.zone_id), [])
-    hops_from: dict[int, dict[int, int]] = {}
     rows = []
     for (za, zb), items in sorted(between.items()):
         zone_a, zone_b = by_id[za], by_id[zb]
-        if za not in hops_from:
-            hops_from[za] = nx.single_source_shortest_path_length(heard, zone_a.hub_node_id)
         margins = [item.weaker_margin_db for item in items]
         way_round_links, way_round_zones = _way_round(solid, zone_of, zone_a, zone_b)
         rows.append(
@@ -803,16 +696,7 @@ def _zone_pairs(
         if (row.zone_a, row.zone_b) in single:
             row = replace(row, single_link=True, hanging_zones=_hanging_zones(row, rows, size))
         pairs.append(row)
-    return tuple(
-        sorted(
-            pairs,
-            key=lambda pair: (
-                -sum(WARNING_WEIGHT[warning] for warning in pair.warnings),
-                pair.solid_links,
-                -math.inf if pair.strongest_margin_db is None else pair.strongest_margin_db,
-            ),
-        )
-    )
+    return tuple(pairs)
 
 
 def _warnings(pair: ZonePair) -> tuple[PairWarning, ...]:
@@ -849,16 +733,6 @@ def _sole_relay(items: list[ZonePairLink]) -> int | None:
     return None
 
 
-def _worse_figure(
-    pair: ZonePair, reach: dict[tuple[int, int], ZoneTextReach]
-) -> ZoneTextReach | None:
-    """The pair's direction with the lower text share, of those with FEW_TEXTS
-    texts or more; None with neither."""
-    figures = (reach.get((pair.zone_a, pair.zone_b)), reach.get((pair.zone_b, pair.zone_a)))
-    counted = [item for item in figures if item is not None and item.texts >= FEW_TEXTS]
-    return min(counted, key=lambda item: item.share, default=None)
-
-
 def _hanging_zones(pair: ZonePair, pairs: list[ZonePair], size: dict[int, int]) -> tuple[int, ...]:
     """The zones on the smaller side (fewer nodes) of a single link, on the
     solid zone graph without it."""
@@ -872,117 +746,6 @@ def _hanging_zones(pair: ZonePair, pairs: list[ZonePair], size: dict[int, int]) 
     a, b = (nx.node_connected_component(zone_graph, zone) for zone in (pair.zone_a, pair.zone_b))
     nodes_a, nodes_b = (sum(size[zone] for zone in side) for side in (a, b))
     return tuple(sorted(a if nodes_a <= nodes_b else b))
-
-
-def _groups(
-    zones: tuple[Zone, ...],
-    pairs: tuple[ZonePair, ...],
-    reach: dict[tuple[int, int], ZoneTextReach],
-    join_links: int,
-) -> tuple[tuple[ZoneGroup, ...], tuple[GroupLine, ...]]:
-    """The zones' groups and the lines between them. Each zone starts as its
-    own group, and two groups join while at least join_links solid links run
-    between their zones, each counted, also several through one relay. So a
-    line between two groups carries fewer than join_links solid links."""
-
-    def key(pair: ZonePair) -> tuple[int, int]:
-        return pair.zone_a, pair.zone_b
-
-    solid = {
-        key(pair): count for pair in pairs if (count := sum(link.solid for link in pair.links))
-    }
-    group_of = {zone.zone_id: zone.zone_id for zone in zones}
-    # Joining only adds solid links between groups, so the order does not matter.
-    while True:
-        across: Counter[tuple[int, int]] = Counter()
-        for (a, b), count in solid.items():
-            ga, gb = group_of[a], group_of[b]
-            if ga != gb:
-                across[min(ga, gb), max(ga, gb)] += count
-        merge = next((ends for ends, count in across.items() if count >= join_links), None)
-        if merge is None:
-            break
-        group_of = {
-            zone: merge[0] if group == merge[1] else group for zone, group in group_of.items()
-        }
-    inside: dict[int, list[ZonePair]] = defaultdict(list)
-    between: dict[tuple[int, int], list[ZonePair]] = defaultdict(list)
-    for pair in pairs:
-        a, b = group_of[pair.zone_a], group_of[pair.zone_b]
-        if a == b:
-            inside[a].append(pair)
-        elif pair.links:
-            between[min(a, b), max(a, b)].append(pair)
-
-    def strongest(pair: ZonePair) -> tuple[int, bool, float]:
-        # One relay, then one solid link, then none; the strongest link first.
-        margin = -math.inf if pair.strongest_margin_db is None else pair.strongest_margin_db
-        return -pair.solid_links, "one relay" not in pair.warnings, -margin
-
-    members: dict[int, list[Zone]] = defaultdict(list)
-    for zone in zones:
-        members[group_of[zone.zone_id]].append(zone)
-    groups = []
-    for group, grouped in members.items():
-        placed = [zone for zone in grouped if zone.longitude is not None]
-        placed_nodes = sum(len(zone.members) for zone in placed)
-        worse = sorted(
-            (figure.share, key(pair))
-            for pair in inside[group]
-            if (figure := _worse_figure(pair, reach)) is not None
-        )
-        shares = [share for share, _ in worse]
-        most_hops = max(
-            (pair.hub_hops for pair in inside[group] if pair.hub_hops is not None), default=None
-        )
-        groups.append(
-            ZoneGroup(
-                key=group,
-                island=grouped[0].island,
-                zones=tuple(
-                    zone.zone_id
-                    for zone in sorted(
-                        grouped,
-                        key=lambda zone: (
-                            math.inf if zone.longitude is None else zone.longitude,
-                            zone.zone_id,
-                        ),
-                    )
-                ),
-                nodes=sum(len(zone.members) for zone in grouped),
-                longitude=None
-                if not placed
-                else sum(cast(float, zone.longitude) * len(zone.members) for zone in placed)
-                / placed_nodes,
-                texts_inside=(min(shares), max(shares)) if shares else None,
-                single_links=tuple(key(pair) for pair in inside[group] if pair.single_link),
-                farthest=tuple(
-                    key(pair)
-                    for pair in inside[group]
-                    if most_hops is not None and pair.hub_hops == most_hops
-                ),
-                fewest_texts=tuple(pair for _, pair in worse[:GROUP_WORST_TEXTS]),
-            )
-        )
-    groups.sort(key=lambda group: (group.island, -group.nodes, group.key))
-
-    lines = []
-    for (a, b), joins in sorted(between.items()):
-        figures = [figure for pair in joins if (figure := _worse_figure(pair, reach)) is not None]
-        best = max(figures, key=lambda figure: figure.share, default=None)
-        lines.append(
-            GroupLine(
-                a=a,
-                b=b,
-                pairs=tuple(key(pair) for pair in sorted(joins, key=strongest)),
-                solid_links=sum(solid.get(key(pair), 0) for pair in joins),
-                single_link=any(pair.single_link for pair in joins),
-                texts=None if best is None else best.share,
-                text_count=None if best is None else best.texts,
-                worst_texts=min((figure.share for figure in figures), default=None),
-            )
-        )
-    return tuple(groups), tuple(lines)
 
 
 def _pair_link(link: _Link, a: int, nodes: dict[int, NodeSummary]) -> ZonePairLink:
@@ -1217,7 +980,6 @@ def _key_relays(
     no_solid_backup: dict[int, int],
     carries: dict[int, int],
     only_solid_link_to: dict[int, tuple[int, ...]],
-    group_of: dict[int, int],
     nodes: dict[int, NodeSummary],
 ) -> tuple[KeyRelay, ...]:
     """Key relays, highest impact first (carries breaks ties). CLIENT_MUTE
@@ -1246,11 +1008,6 @@ def _key_relays(
     ):
         node = int(row["node_id"])
         cut, backup = cuts_off.get(node, 0), no_solid_backup.get(node, 0)
-        only = only_solid_link_to.get(node, ())
-        own = zone_of.get(node)
-        weak_only = (
-            only if own is None else tuple(zone for zone in only if group_of[zone] != group_of[own])
-        )
         rows.append(
             KeyRelay(
                 node_id=node,
@@ -1259,9 +1016,7 @@ def _key_relays(
                 cuts_off=cut,
                 no_solid_backup=backup,
                 carries=carries.get(node, 0),
-                only_solid_link_to=only,
-                weak_only_solid_link_to=weak_only,
-                side_panel=not only or bool(weak_only) or max(cut, backup) >= KEY_RELAY_CUT,
+                only_solid_link_to=only_solid_link_to.get(node, ()),
                 neighbours=heard.degree[node],
                 last_seen_at=optional_from_epoch_ms(row["last_seen_at"]),
                 battery_level=row["battery_level"],

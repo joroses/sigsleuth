@@ -12,7 +12,6 @@ import {
 function zone(zone_id: number): Zone {
   return {
     zone_id,
-    island: 1,
     name: `Zone ${zone_id}`,
     place: null,
     region: null,
@@ -201,8 +200,6 @@ describe("relayMark", () => {
     no_solid_backup: 0,
     carries: 3,
     only_solid_link_to: [],
-    weak_only_solid_link_to: [],
-    side_panel: true,
     neighbours: 4,
     last_seen_at: null,
     battery_level: null,
@@ -214,7 +211,6 @@ describe("relayMark", () => {
   const rules = {
     weak_margin_db: 4,
     long_route_hops: 4,
-    few_texts: 5,
     key_relay_cut: 2,
   };
 

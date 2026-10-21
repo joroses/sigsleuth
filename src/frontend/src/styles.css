@@ -1270,7 +1270,6 @@ thead th {
 }
 
 .chat-channel-chip:not([aria-pressed="true"]):hover,
-.zones-tabs button:not([aria-pressed="true"]):hover,
 .chat-fold:hover,
 .filter-chip:hover {
   color: var(--text);
@@ -2828,8 +2827,7 @@ button.chat-quote:hover {
   margin: var(--space-2) auto;
 }
 
-.chat-channel-chip,
-.zones-tabs button {
+.chat-channel-chip {
   padding: 0.125rem var(--space-3);
   color: var(--muted);
   background: var(--surface);
@@ -2838,8 +2836,7 @@ button.chat-quote:hover {
   font-size: var(--text-sm);
 }
 
-.chat-channel-chip[aria-pressed="true"],
-.zones-tabs button[aria-pressed="true"] {
+.chat-channel-chip[aria-pressed="true"] {
   color: var(--accent-strong);
   background: var(--accent-soft);
   border-color: var(--accent);
@@ -4071,10 +4068,7 @@ button.chat-quote:hover {
   height: 100%;
 }
 
-/* The Map and Graph tabs, joined to the top of the settings panel below
-   them: the open one shares the panel's background and has no edge between.
-   The window and channel sit beside them, and wrap above them rather than
-   between the tabs and the panel. */
+/* The window and channel, over the settings panel. */
 .zones-head {
   display: flex;
   flex-wrap: wrap-reverse;
@@ -4083,14 +4077,12 @@ button.chat-quote:hover {
   min-width: 0;
 }
 
-.zones-view-tabs,
 .links-tabs {
   display: flex;
   gap: var(--space-1);
   padding-left: var(--space-3);
 }
 
-.zones-view-tabs button,
 .links-tabs a {
   display: flex;
   align-items: center;
@@ -4105,19 +4097,16 @@ button.chat-quote:hover {
   cursor: pointer;
 }
 
-.zones-view-tabs strong,
 .links-tabs strong {
   font-size: var(--text-lg);
   font-weight: 600;
 }
 
-.zones-view-tabs .icon,
 .links-tabs .icon {
   width: 22px;
   height: 22px;
 }
 
-.zones-view-tabs button[aria-pressed="true"],
 .links-tabs a[aria-current="page"] {
   position: relative;
   color: var(--text);
@@ -4126,19 +4115,16 @@ button.chat-quote:hover {
   box-shadow: inset 0 3px 0 var(--accent);
 }
 
-.zones-view-tabs button[aria-pressed="true"] .icon,
 .links-tabs a[aria-current="page"] .icon {
   color: var(--accent);
 }
 
-.zones-view-tabs button:not([aria-pressed="true"]):hover,
 .links-tabs a:not([aria-current="page"]):hover {
   color: var(--text);
   background: var(--accent-soft);
 }
 
-/* The Links views as tabs in the Zones view tabs' style, on a line over the
-   page rather than over a panel. */
+/* The Links views as tabs on a line over the page. */
 .links-tabs {
   flex-wrap: wrap;
   margin-bottom: var(--space-4);
@@ -4154,12 +4140,8 @@ button.chat-quote:hover {
   border-bottom-color: var(--canvas);
 }
 
-.zones-tabbed {
-  border-top-left-radius: 0;
-}
-
-/* The rules the graph is built from, as numbered steps: the number, the
-   step's name, then its rule with any sliders and what it gave. */
+/* The rule for solid links, as numbered steps: the number, the step's name,
+   then its rule with any sliders and what it gave. */
 .zones-steps {
   font-size: var(--text-sm);
 }
@@ -4300,190 +4282,6 @@ button.chat-quote:hover {
   }
 }
 
-/* The graph view in place of the map: each island's groups as boxes and
-   the lines between them; a wide island scrolls inside its own box. */
-/* The graph, with the grouping rule beside it; below it on narrow screens. */
-.zones-graph {
-  display: grid;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
-.zones-graph-island {
-  min-width: 0;
-}
-
-.zones-graph-island h4 {
-  margin: 0 0 var(--space-1);
-  font-size: var(--text-base);
-}
-
-.zones-graph-island h4 small {
-  margin-left: var(--space-1);
-  color: var(--muted);
-  font-size: var(--text-sm);
-  font-weight: 400;
-}
-
-.zones-graph-scroll {
-  overflow-x: auto;
-}
-
-.zones-graph-scroll svg {
-  display: block;
-}
-
-.zones-graph svg text {
-  font-family: var(--font-sans);
-}
-
-.zones-graph-group,
-.zones-graph-line {
-  cursor: pointer;
-  outline: none;
-}
-
-.zones-graph-box {
-  fill: var(--surface-subtle);
-  stroke: var(--border);
-  stroke-width: 1.5;
-}
-
-.zones-graph-group.selected .zones-graph-box,
-.zones-graph-group:focus-visible .zones-graph-box {
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-
-/* Hovering marks only the group or line under the pointer; selecting one
-   dims the rest. */
-.zones-graph-group:hover:not(.selected) .zones-graph-box {
-  stroke: var(--muted);
-}
-
-.zones-graph-caption {
-  fill: var(--muted);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.zones-graph-note {
-  fill: var(--muted);
-  font-size: 10px;
-}
-
-.zones-graph-zone text {
-  fill: #fff;
-  font-size: 11px;
-  font-weight: 650;
-  stroke: rgb(0 0 0 / 55%);
-  stroke-width: 2px;
-  paint-order: stroke;
-}
-
-.zones-graph-zone.selected rect:first-child {
-  stroke: var(--marker-ring);
-  stroke-width: 2;
-}
-
-.zones-graph-hit {
-  fill: none;
-  stroke: transparent;
-  stroke-width: 14;
-}
-
-/* As the map's zone lines (ZoneMap.tsx): wide with 2+ solid links, thin with
-   one, thin and dashed with none. */
-.zones-graph-stroke {
-  fill: none;
-  stroke-linecap: round;
-  stroke-width: 2.5;
-}
-
-.zones-graph-stroke.wide {
-  stroke-width: 7;
-}
-
-.zones-graph-stroke.dashed {
-  stroke-dasharray: 5 3.75;
-  stroke-linecap: butt;
-}
-
-.zones-graph-line.selected .zones-graph-stroke,
-.zones-graph-line:hover .zones-graph-stroke,
-.zones-graph-line:focus-visible .zones-graph-stroke {
-  stroke-width: 4.5;
-}
-
-.zones-graph-line.selected .zones-graph-stroke.wide,
-.zones-graph-line:hover .zones-graph-stroke.wide,
-.zones-graph-line:focus-visible .zones-graph-stroke.wide {
-  stroke-width: 10;
-}
-
-/* A line's text reach, on a pill of the line's colour; the share colours are
-   all light, so the text is dark in both themes. */
-.zones-graph-label text {
-  fill: #1c1f1d;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.zones-graph-label rect {
-  stroke: rgb(0 0 0 / 25%);
-  stroke-width: 1;
-}
-
-.zones-graph-label.selected rect {
-  stroke: var(--text);
-  stroke-width: 1.5;
-}
-
-.zones-graph .dim {
-  opacity: 0.25;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .zones-graph-group,
-  .zones-graph-line {
-    transition: opacity 0.15s;
-  }
-}
-
-.zones-graph-alone {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.zones-graph-alone .zones-zone-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.zones-graph-alone-zone {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.4rem;
-  height: 1.4rem;
-  padding: 0 0.2rem;
-  color: #fff;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  font-weight: 650;
-  text-shadow: 0 0 2px rgb(0 0 0 / 60%);
-}
-
-.zones-graph-term {
-  text-decoration: underline dotted;
-  cursor: help;
-}
-
 /* The zone map's popups, in the page's colours rather than MapLibre's white. */
 .zones-popup .maplibregl-popup-content {
   color: var(--text);
@@ -4556,27 +4354,11 @@ button.chat-quote:hover {
   overflow: hidden;
 }
 
-/* A graph group's or line's details are a few rows: the panel grows to show
-   them all and makes the page longer instead. */
+/* Details too tall to fit with any of their list's rows: the panel grows to
+   show them all and makes the page longer instead. */
 .zones-side-column > .zones-side.is-whole {
   position: static;
   flex: 1;
-}
-
-/* The graph is as tall as the map, so the column beside it has as much room
-   in both views and switching between them keeps the page's height. */
-.zones-graph-panel {
-  min-height: 36rem;
-}
-
-/* A selected group's zones, wrapping like words. */
-.zones-group-zones {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
 }
 
 .zones-list {
@@ -4626,16 +4408,6 @@ button.chat-quote:hover {
 .zones-summary {
   margin: 0;
   font-size: var(--text-sm);
-}
-
-.zones-tabs {
-  display: flex;
-  gap: var(--space-1);
-}
-
-.zones-tabs button {
-  padding-inline: var(--space-2);
-  cursor: pointer;
 }
 
 /* A side list's heading, with how many of its rows fit and the link to its
@@ -4738,13 +4510,6 @@ button.chat-quote:hover {
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
-}
-
-/* A row under another row's pair, such as one of its solid links. */
-.zones-pick-sub {
-  padding-left: var(--space-6);
-  color: var(--muted);
-  font-size: var(--text-sm);
 }
 
 .zones-pick-text {
@@ -5073,10 +4838,6 @@ button.chat-quote:hover {
     top: auto;
     height: 26rem;
   }
-
-  .zones-graph-panel {
-    min-height: 0;
-  }
 }
 
 .zones-legend {
@@ -5101,12 +4862,6 @@ button.chat-quote:hover {
   align-items: center;
   gap: var(--space-1) var(--space-3);
   vertical-align: middle;
-}
-
-/* What the key's first marks stand for, such as the graph's line colour. */
-.zones-legend-heading {
-  color: var(--text);
-  font-weight: 500;
 }
 
 .zones-legend p {

@@ -189,8 +189,11 @@ def test_a_pair_is_a_single_link_until_a_second_solid_link_backs_it(path: Path) 
     two_groups(path)
     link(path, X1, Y2)
     link(path, X1, Y3)
-    [pair] = get_zones(path)["zone_pairs"]
+    body = get_zones(path)
+    [pair] = body["zone_pairs"]
     assert pair["single_link"]
+    # A tie in nodes: zone_a's side hangs on it.
+    assert pair["hanging_zones"] == [pair["zone_a"]]
 
     link(path, X2, Y3)
     [pair] = get_zones(path)["zone_pairs"]
@@ -218,9 +221,7 @@ def test_a_solid_detour_through_another_zone_does_not_count_as_a_solid_link(path
     assert pair["solid_links"] == 0
     # It is their way round: X1-21-23-Y1, or X2-22-24-Y2, through Z.
     assert (pair["way_round_links"], pair["way_round_zones"]) == (3, [zone_of[21]])
-    # The three zones are one island, and X and Z, Z and Y each have two solid
-    # links, so no pair hangs on one.
-    assert len({zone["island"] for zone in body["zones"]}) == 1
+    # X and Z, Z and Y each have two solid links, so no pair hangs on one.
     assert not any(item["single_link"] for item in body["zone_pairs"])
 
 
@@ -248,7 +249,7 @@ def test_a_zones_solid_paths_take_the_strongest_of_the_shortest_routes(path: Pat
     assert all(item["solid"] for item in body["path_links"])
 
 
-def test_zones_of_one_island_are_paired_through_other_zones_and_islands_are_not(
+def test_zones_are_paired_through_other_zones_but_not_with_a_zone_they_cannot_reach(
     path: Path,
 ) -> None:
     # X and Y are joined only through Z; W hears no other zone.
@@ -260,12 +261,11 @@ def test_zones_of_one_island_are_paired_through_other_zones_and_islands_are_not(
 
     body = get_zones(path)
     zone_of = {node: zone["zone_id"] for zone in body["zones"] for node in zone["members"]}
-    island = {zone["zone_id"]: zone["island"] for zone in body["zones"]}
     pairs = {(item["zone_a"], item["zone_b"]): item for item in body["zone_pairs"]}
     x, y = sorted((zone_of[X1], zone_of[Y1]))
 
-    assert island[zone_of[X1]] == island[zone_of[Y1]] == island[zone_of[21]] == 1
-    assert island[zone_of[31]] == 2
+    # W pairs with no zone: no heard path reaches it.
+    assert zone_of[31] not in {zone for pair in pairs for zone in pair}
     assert len(pairs) == 3
     through = pairs[x, y]
     assert through["links"] == [] and through["strongest_margin_db"] is None
@@ -547,48 +547,17 @@ def test_a_node_without_a_position_is_placed_by_its_radio_neighbours(path: Path)
     assert body["zone_pairs"] == []
 
 
-def groups(body: dict[str, Any], zone_of: dict[int, int]) -> list[set[int]]:
-    """Each group as the set of one node per zone it holds (X1, Y1 or Z1)."""
-    first = {zone_of[node]: node for node in (X1, Y1, Z1) if node in zone_of}
-    return [{first[zone] for zone in group["zones"]} for group in body["groups"]]
-
-
-def test_a_lone_solid_link_splits_two_zones_into_groups_whatever_their_texts(
-    path: Path,
-) -> None:
-    two_groups(path)
-    link(path, X2, Y2)
-    # Texts reach 100% both ways; they colour the line but do not join the zones.
-    texts(path, X1, *[(X3, Y3)] * 5)
-    texts(path, Y1, *[(Y3, X3)] * 5)
-
-    body = get_zones(path)
-    zone_of = {node: zone["zone_id"] for zone in body["zones"] for node in zone["members"]}
-    [pair] = body["zone_pairs"]
-
-    assert pair["warnings"] == ["one solid link"]
-    assert pair["single_link"]
-    assert pair["hanging_zones"] == [min(zone_of[X1], zone_of[Y1])]  # a tie: zone_a's side
-    assert groups(body, zone_of) == [{X1}, {Y1}]
-    [line] = body["group_lines"]
-    assert (line["solid_links"], line["single_link"]) == (1, True)
-    assert (line["texts"], line["text_count"], line["worst_texts"]) == (1.0, 5, 1.0)
-
-
 @pytest.mark.parametrize(
-    ("cross_links", "params", "groups", "warnings"),
+    ("cross_links", "params", "warnings"),
     [
-        (1, {}, 2, ["one solid link"]),
-        (1, {"join_links": 1}, 1, ["one solid link"]),
-        (2, {}, 1, []),
+        (1, {}, ["one solid link"]),
+        (2, {}, []),
         # With a 1 dB floor weak links are solid, under WEAK_MARGIN_DB.
-        (2, {"min_margin_db": 1, "snr": WEAK_SNR}, 1, ["all weak"]),
-        (2, {"join_links": 3}, 2, []),
-        (3, {"join_links": 4}, 2, []),
+        (2, {"min_margin_db": 1, "snr": WEAK_SNR}, ["all weak"]),
     ],
 )
-def test_zones_share_a_group_when_their_solid_links_reach_the_join_setting(
-    path: Path, cross_links: int, params: dict[str, Any], groups: int, warnings: list[str]
+def test_a_pairs_warnings_follow_its_solid_links(
+    path: Path, cross_links: int, params: dict[str, Any], warnings: list[str]
 ) -> None:
     params = dict(params)
     snr = params.pop("snr", STRONG_SNR)
@@ -600,128 +569,5 @@ def test_zones_share_a_group_when_their_solid_links_reach_the_join_setting(
     [pair] = body["zone_pairs"]
 
     assert (pair["solid_links"], pair["warnings"]) == (cross_links, warnings)
-    assert len(body["groups"]) == groups
-    if groups == 2:
-        [line] = body["group_lines"]
-        assert line["solid_links"] == cross_links
     # 12 links inside the cliques, all solid.
-    assert (body["join_links"], body["link_count"], body["solid_link_count"]) == (
-        params.get("join_links", 2),
-        12 + cross_links,
-        12 + cross_links,
-    )
-
-
-def test_two_zones_on_one_solid_link_share_a_group_through_a_third(path: Path) -> None:
-    # X and Y share one solid link, X2-Y2, but each has two solid links to Z.
-    zone_of = three_groups(path)
-    link(path, X2, Y2)
-    for a, b in [(X1, Z1), (Y1, Z1), (X3, Z2), (Y3, Z2)]:
-        link(path, a, b)
-
-    body = get_zones(path)
-    [pair] = [
-        item
-        for item in body["zone_pairs"]
-        if {item["zone_a"], item["zone_b"]} == {zone_of[X1], zone_of[Y1]}
-    ]
-    holder = key_relay(body, X2)
-
-    assert (pair["warnings"], pair["way_round_links"]) == (["one solid link"], 2)
-    assert groups(body, zone_of) == [{X1, Y1, Z1}]
-    # X2 carries X and Y's only solid link, but they share a group and
-    # nothing else depends on X2, so the side panel leaves it out.
-    assert holder is not None
-    assert holder["only_solid_link_to"] == [zone_of[Y1]]
-    assert (holder["weak_only_solid_link_to"], holder["side_panel"]) == ([], False)
-
-
-def test_a_short_way_round_does_not_join_zones(path: Path) -> None:
-    # X and Y share three solid links. Z has two solid links to X, both through
-    # X3, and only a weak one to Y, with the way round Z1-X3-Y3.
-    zone_of = three_groups(path)
-    for a, b in [(X1, Y1), (X2, Y2), (X3, Y3), (Z1, X3), (Z2, X3)]:
-        link(path, a, b)
-    link(path, Z4, 14, snr=WEAK_SNR)
-
-    body = get_zones(path, join_links=3)
-    [pair] = [
-        item
-        for item in body["zone_pairs"]
-        if {item["zone_a"], item["zone_b"]} == {zone_of[Z1], zone_of[Y1]}
-    ]
-
-    assert (pair["solid_links"], pair["way_round_links"]) == (0, 2)
-    assert groups(body, zone_of) == [{X1, Y1}, {Z1}]
-    # Both links through X3 count, so a setting of 2 takes Z in.
-    assert groups(get_zones(path), zone_of) == [{X1, Y1, Z1}]
-
-
-def test_a_zone_joins_a_group_on_one_solid_link_to_each_of_two_of_its_zones(
-    path: Path,
-) -> None:
-    # X and Y are one group; Z has one solid link to each, Z1-X3 and Z2-Y3:
-    # 2 between Z and the group.
-    zone_of = three_groups(path)
-    for a, b in [(X1, Y1), (X2, Y2), (Z1, X3), (Z2, Y3)]:
-        link(path, a, b)
-
-    body = get_zones(path)
-
-    assert groups(body, zone_of) == [{X1, Y1, Z1}]
-    assert body["group_lines"] == []
-    assert len(get_zones(path, join_links=3)["groups"]) == 3
-
-
-def test_a_group_lists_its_farthest_zones_and_those_texts_reach_least(path: Path) -> None:
-    # A chain X-Z-Y, each step two solid links; only X and Y are two zones apart.
-    zone_of = three_groups(path)
-    for a, b in [(X1, Z1), (X3, Z2), (Z3, Y1), (Z4, Y3)]:
-        link(path, a, b)
-    # X's texts reach Z every time but Y once in five; Y's reach both.
-    texts(path, X1, (X2, Z1, Y1), *[(X2, Z1)] * 4)
-    texts(path, Y1, *[(Y2, Z3, X1)] * 5)
-
-    body = get_zones(path)
-    [group] = body["groups"]
-
-    def pair(a: int, b: int) -> list[int]:
-        return sorted((zone_of[a], zone_of[b]))
-
-    assert group["farthest"] == [pair(X1, Y1)]
-    assert group["fewest_texts"][0] == pair(X1, Y1)
-    assert len(group["fewest_texts"]) == 3
-    assert group["texts_inside"] == [0.2, 1.0]
-
-
-W1, W2, W3, W4 = 31, 32, 33, 34
-
-
-def test_every_solid_link_through_one_relay_counts(path: Path) -> None:
-    # Two groups, X with Z and Y with W, each pair joined by four solid links,
-    # enough for a setting of 4.
-    zone_of = three_groups(path)
-    clique(path, W1, W2, W3, W4)
-    for a, b in [(X1, Z1), (X2, Z2), (X3, Z3), (4, Z4)]:
-        link(path, a, b)
-    for a, b in [(Y1, W1), (Y2, W2), (Y3, W3), (14, W4)]:
-        link(path, a, b)
-    # Across: X2 is on every solid link (one relay to Y, one solid link to W),
-    # and Z and Y hear each other only weakly.
-    for a, b in [(X2, Y2), (X2, 14), (X2, W2)]:
-        link(path, a, b)
-    link(path, Z4, 14, snr=WEAK_SNR)
-
-    body = get_zones(path, join_links=4)
-    zone_of = {node: zone["zone_id"] for zone in body["zones"] for node in zone["members"]}
-
-    def zones(a: int, b: int) -> list[int]:
-        return sorted((zone_of[a], zone_of[b]))
-
-    assert len(body["groups"]) == 2
-    [line] = body["group_lines"]
-    # Strongest first: one relay, one solid link, then no solid link.
-    assert line["pairs"] == [zones(X1, Y1), zones(X1, W1), zones(Z1, Y1)]
-    assert line["solid_links"] == 3
-    # 3 join the groups at a setting of 3, though one node carries them.
-    assert len(get_zones(path, join_links=3)["groups"]) == 1
+    assert (body["link_count"], body["solid_link_count"]) == (12 + cross_links, 12 + cross_links)

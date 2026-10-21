@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from derived_rows import link_hour
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, now_ms, open_current_database
@@ -63,10 +64,7 @@ def add_node(
 
 def add_hop(connection: sqlite3.Connection, from_node: int, to_node: int, hours_ago: int) -> None:
     hour_start = NOW - NOW % HOUR_MS - hours_ago * HOUR_MS
-    connection.execute(
-        "INSERT INTO link_hour VALUES ('traceroute', ?, ?, ?, 1, 0, 0, ?, 'LongFast', NULL)",
-        (hour_start, from_node, to_node, hour_start),
-    )
+    link_hour(connection, from_node, to_node, hour_start, link_kind="traceroute")
 
 
 def nodes(path: Path, **params: object) -> dict[str, Any]:

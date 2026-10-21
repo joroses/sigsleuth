@@ -96,12 +96,7 @@ describe("minimapMarkers", () => {
       ),
     );
     // The sender's own uploads are not drawn or counted: they sit on S.
-    expect(markers.map((marker) => [marker.label, marker.tone])).toEqual([
-      ["S", "hop-tone-sender"],
-      ["0", "hop-tone-direct"],
-      ["2", "hop-tone-2"],
-      ["?", "hop-tone-unknown"],
-    ]);
+    expect(markers.map((marker) => marker.label)).toEqual(["S", "0", "2", "?"]);
     expect(unplacedGateways).toBe(0);
   });
 
@@ -113,6 +108,7 @@ describe("minimapMarkers", () => {
           {
             ...reception,
             reception_id: 2,
+            gateway_node_id: 0xcccccccc,
             gateway_latitude: null,
             gateway_longitude: null,
             gateway_estimated: false,
@@ -121,20 +117,28 @@ describe("minimapMarkers", () => {
         null,
       ),
     );
-    expect(markers.map((marker) => marker.key)).toEqual(["reception-1"]);
+    expect(markers.map((marker) => marker.nodeId)).toEqual([0xbbbbbbbb]);
     expect(unplacedGateways).toBe(1);
   });
 
   it("draws a gateway placed only by an estimate, marked as estimated", () => {
     const { markers, unplacedGateways } = minimapMarkers(
       detail(
-        [reception, { ...reception, reception_id: 2, gateway_estimated: true }],
+        [
+          reception,
+          {
+            ...reception,
+            reception_id: 2,
+            gateway_node_id: 0xcccccccc,
+            gateway_estimated: true,
+          },
+        ],
         null,
       ),
     );
-    expect(markers.map((marker) => [marker.key, marker.estimated])).toEqual([
-      ["reception-1", false],
-      ["reception-2", true],
+    expect(markers.map((marker) => [marker.nodeId, marker.estimated])).toEqual([
+      [0xbbbbbbbb, false],
+      [0xcccccccc, true],
     ]);
     expect(unplacedGateways).toBe(0);
   });
@@ -194,7 +198,6 @@ describe("minimapMarkers", () => {
         ["target", "R", target],
         ["relay", "", relay],
       ]);
-      expect(markers[0].title).toBe(`Traceroute from: Node ${requester}`);
       expect(unplacedGateways).toBe(0);
     });
 

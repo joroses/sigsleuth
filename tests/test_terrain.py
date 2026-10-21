@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from derived_rows import link_hour
 from sigsleuth import terrain
 from sigsleuth.db import migrate_database, open_current_database
 from sigsleuth.links import unlikely_links
@@ -129,10 +130,7 @@ def place(connection: sqlite3.Connection, node_id: int, latitude: float, longitu
 
 def heard(connection: sqlite3.Connection, a: int, b: int, km: float, hour: int = 0) -> None:
     with connection:
-        connection.execute(
-            "INSERT INTO link_hour VALUES ('direct', ?, ?, ?, 1, 0, 0, ?, 'LongFast', ?)",
-            (hour * 3_600_000, a, b, hour * 3_600_000 + 1, km),
-        )
+        link_hour(connection, a, b, hour * 3_600_000 + 1, km=km)
 
 
 CHECK = terrain.LongLinkCheck(sea_share=0.0, above_meters=50, confirmed=False, unlikely=True)

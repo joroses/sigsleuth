@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
+from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope, ingest, service_envelope
 from sigsleuth import db, maintenance, terrain
 from sigsleuth.api import create_app
@@ -126,10 +127,7 @@ def test_retention_runs_while_a_terrain_tile_fetch_hangs(
                 " latitude, longitude) VALUES (?, ?, ?, 50.0, ?)",
                 (node, hour, hour, longitude),
             )
-        connection.execute(
-            "INSERT INTO link_hour VALUES ('direct', ?, ?, ?, 1, 0, 0, ?, 'LongFast', 264.0)",
-            (hour, 0x0A0A0A0A, 0x0B0B0B0B, hour + 1),
-        )
+        link_hour(connection, 0x0A0A0A0A, 0x0B0B0B0B, hour + 1, km=264.0)
     work = Maintenance(settings(path), retain=True)
     work.start()
     try:

@@ -5,6 +5,7 @@ import {
   buildLinkFeatureCollection,
   drawnLongEnough,
   linkTierShown,
+  linkKey,
   withinHops,
 } from "./mapLinkLayers";
 import { linkWidth } from "./linkQuality";
@@ -117,19 +118,24 @@ describe("withinHops", () => {
     { linkKind: "direct" as const, link: pair(3, 6) },
     { linkKind: "traceroute" as const, link: pair(7, 8) },
   ];
+  // Each kept link as its kind and node pair, in the order of `links`.
   const sorted = (result: { nodeIds: number[]; linkKeys: string[] }) => ({
     nodeIds: [...result.nodeIds].sort(),
-    linkKeys: [...result.linkKeys].sort(),
+    links: links
+      .filter(({ linkKind, link }) =>
+        result.linkKeys.includes(linkKey(linkKind, link)),
+      )
+      .map(({ linkKind, link }) => [linkKind, link.node_a, link.node_b]),
   });
 
   it("keeps only the node's own links and neighbours at depth 0", () => {
     // 2 – 6 joins two neighbours, not the node itself, so it is left out.
     expect(sorted(withinHops(3, links, 0))).toEqual({
       nodeIds: [2, 3, 4, 6],
-      linkKeys: [
-        "direct:3-6:LongFast",
-        "traceroute:2-3:LongFast",
-        "traceroute:3-4:LongFast",
+      links: [
+        ["traceroute", 2, 3],
+        ["traceroute", 3, 4],
+        ["direct", 3, 6],
       ],
     });
   });
@@ -138,13 +144,13 @@ describe("withinHops", () => {
     // 1 and 5 are two links away.
     expect(sorted(withinHops(3, links, 1))).toEqual({
       nodeIds: [1, 2, 3, 4, 5, 6],
-      linkKeys: [
-        "direct:3-6:LongFast",
-        "traceroute:1-2:LongFast",
-        "traceroute:2-3:LongFast",
-        "traceroute:2-6:LongFast",
-        "traceroute:3-4:LongFast",
-        "traceroute:4-5:LongFast",
+      links: [
+        ["traceroute", 1, 2],
+        ["traceroute", 2, 3],
+        ["traceroute", 3, 4],
+        ["traceroute", 4, 5],
+        ["traceroute", 2, 6],
+        ["direct", 3, 6],
       ],
     });
     // Nodes it can never reach stay out however deep.

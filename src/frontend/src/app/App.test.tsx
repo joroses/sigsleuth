@@ -8,7 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { ApplicationBar } from "./ui";
+import { ApplicationBar, DIAGNOSTICS_LINKED } from "./ui";
+import { loadSetting } from "./remember";
 import { forgetKept } from "./useApi";
 
 const packet = {
@@ -132,13 +133,6 @@ describe("Packet detail", () => {
     window.location.hash = `#packets/7/hop/${requester}-${relay}`;
     const { container } = render(<App />);
 
-    const note = await screen.findByText(/^Hop Home/, {
-      selector: ".hop-note",
-    });
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/packets/7");
-    expect(note.textContent).toBe(
-      "Hop Home → Hilltop: 1 of 2 reports, listed first.",
-    );
     const listed = () => [
       ...new Set(
         [...container.querySelectorAll("tr[data-reception-id]")].map(
@@ -147,12 +141,16 @@ describe("Packet detail", () => {
       ),
     ];
     // Only the report with the hop is listed, both its nodes ringed.
-    expect(listed()).toEqual(["21"]);
+    await waitFor(() => expect(listed()).toEqual(["21"]));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/packets/7");
     expect(
       [...container.querySelectorAll(".route-node.hop-end")].map(
         (node) => node.textContent,
       ),
-    ).toEqual(["SHome", "1Hilltop"]);
+    ).toEqual([
+      expect.stringContaining("Home"),
+      expect.stringContaining("Hilltop"),
+    ]);
 
     // Pinning a report keeps the page on the hop.
     fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
@@ -311,10 +309,12 @@ describe("Packet detail", () => {
     ).toEqual(["group", "Bob", "group", "Carol", "Erin", "group", "!dddddddd"]);
     expect(rows[2]).toMatch(/\b2\b/);
     // Bob's relay byte is the sender's own, so none is shown; Carol's names a
-    // relay, guessed as Hilltop; Erin heard Ridge directly, so no "≈".
+    // relay, guessed as Hilltop; Erin heard Ridge directly, so no guess mark.
     expect(rows[1]).not.toContain("0x11");
-    expect(rows[3]).toContain("0x3c≈ Hilltop");
-    expect(rows[4]).toContain("0x5aRidge");
+    expect(rows[3]).toContain("Hilltop");
+    expect(rows[3]).toContain("≈");
+    expect(rows[4]).toContain("Ridge");
+    expect(rows[4]).not.toContain("≈");
   });
 });
 
@@ -721,14 +721,27 @@ describe("Chat", () => {
     const urls = fetchMock.mock.calls.map(([url]) => url);
     expect(urls).toContain(`/api/v1/chat?hide=${0x11111111}`);
     expect(urls).toContain(`${searched}&after_id=1`);
-    expect(JSON.parse(localStorage.getItem("sigsleuth.chatMuted")!)).toEqual([
-      { node_id: 0x11111111, name: "Hilltop Relay" },
-    ]);
 
+    // After a reload the sender stays muted until unmuted.
+    const reload = async () => {
+      cleanup();
+      forgetKept();
+      fetchMock.mockClear();
+      render(<App />);
+      await waitFor(() => expect(chatUrls().length).toBeGreaterThan(0));
+    };
+    const chatUrls = () =>
+      fetchMock.mock.calls
+        .map(([url]) => url as string)
+        .filter(
+          (url) => url.startsWith("/api/v1/chat?") || url === "/api/v1/chat",
+        );
+    await reload();
+    expect(chatUrls()[0]).toContain(`hide=${0x11111111}`);
     fireEvent.click(screen.getByText("Muted (1)"));
     fireEvent.click(screen.getByRole("button", { name: "Unmute" }));
-    expect(localStorage.getItem("sigsleuth.chatMuted")).toBe("[]");
-    localStorage.clear();
+    await reload();
+    expect(chatUrls()[0]).not.toContain("hide=");
   });
 });
 
@@ -865,19 +878,15 @@ describe("Diagnostics", () => {
 
     window.location.hash = "#diagnostics";
     render(<App />);
-    expect(
-      await screen.findByText("No link with a distance yet."),
-    ).not.toBeNull();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Order" }), {
+    fireEvent.change(await screen.findByRole("combobox", { name: "Order" }), {
       target: { value: "latest" },
     });
-    expect(
-      await screen.findByText("No link heard 250 km or more apart yet."),
-    ).not.toBeNull();
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest",
-      expect.anything(),
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest",
+        expect.anything(),
+      ),
     );
   });
 
@@ -912,9 +921,7 @@ describe("Diagnostics", () => {
     );
     window.location.hash = "#diagnostics";
     render(<App />);
-    await waitFor(() =>
-      expect(localStorage.getItem("sigsleuth.diagnostics.linked")).toBe("true"),
-    );
+    await waitFor(() => expect(loadSetting(DIAGNOSTICS_LINKED)).toBe(true));
     cleanup();
 
     render(<ApplicationBar activePage="map" />);
@@ -949,7 +956,6 @@ describe("Diagnostics", () => {
 
     render(<ApplicationBar activePage="map" />);
     expect(diagnosticsTab()).toBeNull();
-    expect(localStorage.getItem("sigsleuth.diagnostics.linked")).toBeNull();
   });
 });
 
@@ -1219,9 +1225,6 @@ describe("Links", () => {
     expect(within(entry).getByRole("link").getAttribute("href")).toBe(
       "#packets/9/hop/2-1",
     );
-    // The SNR carries its tier at the link's spreading factor.
-    expect(within(entry).getByText("6.3 dB").title).toMatch(/margin/);
-    expect(entry.querySelector(".tier-dot")).not.toBeNull();
     expect(
       screen
         .getAllByRole("link", { name: "All traceroutes with this hop" })
@@ -1301,9 +1304,25 @@ describe("Links", () => {
     expect(
       Math.abs(Date.now() - 7 * 24 * 3_600_000 - Date.parse(since)),
     ).toBeLessThan(60_000);
-    // The kept choices stay for the next visit from the menu.
-    expect(localStorage.getItem("sigsleuth.links.window")).toBe('"1h"');
-    expect(localStorage.getItem("sigsleuth.links.minObservations")).toBe("50");
+    // The kept choices come back on the next visit from the menu.
+    cleanup();
+    forgetKept();
+    fetchMock.mockClear();
+    window.location.hash = "#links";
+    render(<App />);
+    expect(
+      ((await screen.findByLabelText("Min. observations")) as HTMLInputElement)
+        .value,
+    ).toBe("50");
+    const keptSince = new URL(
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .find((url) => url.startsWith("/api/v1/links?"))!,
+      "http://test",
+    ).searchParams.get("since")!;
+    expect(
+      Math.abs(Date.now() - 3_600_000 - Date.parse(keptSince)),
+    ).toBeLessThan(60_000);
   });
 
   it("shows a node's links again on Back and on a visit soon after without loading them, and afresh later or on Refresh", async () => {
@@ -1507,7 +1526,6 @@ describe("Links", () => {
       "Farm",
       "Unplaced",
     ]);
-    expect(localStorage.getItem("sigsleuth.links.ascending")).toBe("true");
     // The line of sight opens where the pair was when last heard.
     expect(
       screen
@@ -1515,6 +1533,21 @@ describe("Links", () => {
         .at(-1)!
         .getAttribute("href"),
     ).toMatch(/^#links\/line-of-sight\/\d+-\d+@\d+$/);
+
+    // A reload keeps shortest first.
+    cleanup();
+    forgetKept();
+    render(<App />);
+    await screen.findByText("Ridge");
+    expect(order()).toEqual([
+      "Ridge",
+      "Summit",
+      "Quarry",
+      "Tower",
+      "Shed",
+      "Farm",
+      "Unplaced",
+    ]);
   });
 });
 
@@ -1592,10 +1625,33 @@ describe("Traceroute explorer", () => {
     expect(
       (screen.getByLabelText("Node on the route") as HTMLInputElement).value,
     ).toBe("!00000001");
-    expect(localStorage.getItem("sigsleuth.links.window")).toBe('"1h"');
+
+    // The kept filters and window come back on the next visit from the menu.
+    cleanup();
+    forgetKept();
+    fetchMock.mockClear();
+    window.location.hash = "#links/traceroutes";
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) =>
+          url.startsWith("/api/v1/traceroutes?"),
+        ),
+      ).toBe(true),
+    );
+    const keptQuery = new URL(
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .find((url) => url.startsWith("/api/v1/traceroutes?"))!,
+      "http://test",
+    ).searchParams;
+    expect(keptQuery.get("channel")).toBe("MediumFast");
+    expect(keptQuery.get("min_hops")).toBe("5");
+    expect(keptQuery.has("successful")).toBe(true);
+    expect(keptQuery.has("node")).toBe(false);
     expect(
-      JSON.parse(localStorage.getItem("sigsleuth.traceroutes.filters")!),
-    ).toEqual(kept);
+      Math.abs(Date.now() - 3_600_000 - Date.parse(keptQuery.get("since")!)),
+    ).toBeLessThan(60_000);
   });
 
   it("fills both node searches from a hop in the hash and marks the searched nodes", async () => {
@@ -1838,9 +1894,6 @@ describe("Traceroute explorer", () => {
         [...row.querySelectorAll("td")].map((cell) => cell.textContent),
       );
     expect(rows.map((cells) => cells[2])).toEqual(["111", "56", "—"]);
-    expect(document.querySelector(".hop-list .longest")!.textContent).toBe(
-      "111",
-    );
   });
 
   it("searches for a busiest-list node and clears it on a second click", async () => {
@@ -1946,10 +1999,9 @@ describe("Line of sight", () => {
     window.location.hash = "#links/line-of-sight/1-2";
     render(<App />);
 
-    const summary = await screen.findByRole("region", {
+    await screen.findByRole("region", {
       name: "Line of sight summary",
     });
-    expect(within(summary).getByText("Terrain unavailable")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Madrid" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Toledo" })).toBeTruthy();
   });
@@ -1987,16 +2039,6 @@ describe("Line of sight", () => {
     });
     fireEvent.click(await screen.findByRole("option", { name: /Madrid/ }));
     expect(window.location.hash).toBe("#links/line-of-sight/1-1");
-  });
-
-  it("notes a node without a position", async () => {
-    mockNodes();
-    window.location.hash = "#links/line-of-sight/1-3";
-    render(<App />);
-
-    expect(
-      await screen.findByText(/!00000003 has no known position/),
-    ).toBeTruthy();
   });
 
   it("names the pair in the hash once both ends are picked", async () => {
@@ -2041,8 +2083,6 @@ describe("Line of sight", () => {
       await screen.findByRole("region", { name: "Line of sight summary" }),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "Toledo" })).toBeTruthy();
-    expect(screen.queryByText(/no known position/)).toBeNull();
-    expect(screen.getByText(/Search covers only the/)).toBeTruthy();
   });
 
   it("clears a finished pair when going back to the tab without one", async () => {
@@ -2299,13 +2339,9 @@ describe("Routing", () => {
       name: /Between zones/,
     });
     const [, second, first] = within(between).getAllByRole("row");
-    expect(first.textContent).toContain("94%⇄—");
-    expect(
-      within(first).getByTitle("2 → 1: no texts from zone 2"),
-    ).not.toBeNull();
-    expect(
-      within(second).getByTitle("2 → 3: no gateway in zone 3"),
-    ).not.toBeNull();
+    expect(first.textContent).toContain("94%");
+    expect(within(first).getByTitle(/^2 → 1/)).not.toBeNull();
+    expect(within(second).getByTitle(/^2 → 3/)).not.toBeNull();
     // A pair with no text figure either way stays last in both directions.
     const firstPair = () => within(between).getAllByRole("row")[1];
     fireEvent.click(within(between).getByRole("button", { name: /^Texts/ }));

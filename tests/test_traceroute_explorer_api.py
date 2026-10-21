@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
+from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
@@ -160,6 +161,7 @@ def judge_unlikely(path: Path, from_node: int, to_node: int) -> None:
         connection.execute(
             """
             INSERT INTO long_link
+                (node_a, node_b, km, sea_share, above_meters, confirmed, unlikely)
             SELECT min(:a, :b), max(:a, :b), max(km), 0.0, 50.0, 0, 1 FROM link_hour
             WHERE from_node_id = :a AND to_node_id = :b
             """,
@@ -338,10 +340,7 @@ def heard_only_far_away(path: Path, node_id: int) -> None:
     hour_start = to_epoch_ms(NOW) - to_epoch_ms(NOW) % 3_600_000
     with closing(open_current_database(path)) as connection:
         with connection:
-            connection.execute(
-                "INSERT INTO link_hour VALUES ('direct', ?, ?, ?, 1, 1, 5.0, ?, 'LongFast', 450.0)",
-                (hour_start, node_id, gateway, hour_start),
-            )
+            link_hour(connection, node_id, gateway, hour_start, snr=[5.0], km=450.0)
         refresh_estimates(connection)
 
 

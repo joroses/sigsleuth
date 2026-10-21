@@ -202,7 +202,7 @@ def test_a_row_that_fails_to_derive_skips_only_itself(
     def unreadable_route(*_: object) -> None:
         raise ValueError("unreadable route")
 
-    monkeypatch.setattr(derive, "_derive_route", unreadable_route)
+    monkeypatch.setattr(derive, "read_traceroute_report", unreadable_route)
     connection.execute("UPDATE derived_state SET version = 0")
     migrate_database(path)
     assert rederive(connection, lambda: False)

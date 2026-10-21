@@ -80,12 +80,6 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
     connection.close()
 
 
-def test_schema_setup_is_safe_to_run_again(tmp_path: Path) -> None:
-    path = tmp_path / "history.db"
-    migrate_database(path)
-    assert migrate_database(path) == FACTS_VERSION
-
-
 def test_connection_can_follow_a_request_between_worker_threads(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)

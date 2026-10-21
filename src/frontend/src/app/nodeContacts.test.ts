@@ -49,12 +49,10 @@ describe("contactLayers", () => {
       origin,
     );
 
-    expect(
-      marks.map((mark) => [mark.contact.node_id, mark.tone, mark.label]),
-    ).toEqual([
-      [1, "hop-tone-direct", "0"],
-      [2, "hop-tone-relay", ""],
-      [3, "hop-tone-3", "5"],
+    expect(marks.map((mark) => [mark.contact.node_id, mark.label])).toEqual([
+      [1, "0"],
+      [2, ""],
+      [3, "5"],
     ]);
     expect(lines.features.map((line) => line.properties.radio)).toEqual([
       true,

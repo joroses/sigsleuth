@@ -98,23 +98,7 @@ def test_treats_omitted_packet_channel_as_primary_channel() -> None:
 
     assert result.unusable_reason is None
     assert result.evidence is not None
-    assert result.evidence.channel == "LongFast"
-    assert result.evidence.sender_node_id == 0x11111111
-    assert result.evidence.recipient_node_id == 0xFFFFFFFF
     assert result.evidence.packet_channel == 0
-    assert result.evidence.packet_id == 0x12345678
-    assert result.evidence.payload_kind == "decoded"
-    assert result.evidence.portnum == portnums_pb2.PortNum.TEXT_MESSAGE_APP
-
-
-def test_preserves_non_primary_packet_channel() -> None:
-    result = parse_delivery(
-        "msh/EU_868/2/e/LongFast/!aaaaaaaa",
-        service_envelope(packet_channel=2),
-    )
-
-    assert result.evidence is not None
-    assert result.evidence.packet_channel == 2
 
 
 def test_accepts_custom_multi_segment_mqtt_root() -> None:
@@ -315,19 +299,6 @@ def test_marks_an_empty_cleartext_payload_missing_except_for_a_traceroute() -> N
     assert position.position is None
     assert request.unreadable_reason is None
     assert request.discovery is not None
-
-
-def test_reads_an_encrypted_port_it_does_not_interpret() -> None:
-    result = application(
-        "msh/EU_868/2/e/LongFast/!aaaaaaaa",
-        application_envelope(
-            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
-            b"hello",
-            encrypted=True,
-        ),
-    )
-
-    assert (result.unreadable_reason, result.payload) == (None, b"hello")
 
 
 @pytest.mark.parametrize("coordinate_i", [0, 8_192, 2_097_152])

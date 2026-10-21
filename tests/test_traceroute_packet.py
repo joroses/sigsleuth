@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
+from derived_rows import node_position
 from meshtastic_fixtures import DEFAULT_CHANNEL_KEY, application_envelope, ingest
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
 
@@ -68,10 +69,7 @@ def place(path: Path, node_id: int, latitude: float) -> None:
             """,
             (node_id, at, at, at, latitude),
         )
-        connection.execute(
-            "INSERT INTO node_position VALUES (?, ?, ?, 2.0, NULL, NULL, 1)",
-            (node_id, at, latitude),
-        )
+        node_position(connection, node_id, at, latitude, 2.0)
 
 
 def rows(path: Path) -> list[dict[str, object]]:

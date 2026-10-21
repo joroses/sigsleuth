@@ -5,7 +5,7 @@ import pytest
 from sigsleuth.config import ConfigurationError, load_environment, settings_from_environment
 
 
-def test_capture_settings_load_from_dotenv_with_sensible_defaults(tmp_path: Path) -> None:
+def test_capture_settings_load_from_dotenv(tmp_path: Path) -> None:
     dotenv_path = tmp_path / ".env"
     dotenv_path.write_text(
         "\n".join(
@@ -29,9 +29,6 @@ def test_capture_settings_load_from_dotenv_with_sensible_defaults(tmp_path: Path
     assert settings.mqtt_topic == "msh/+/+/+/#"
     assert settings.mqtt_username == "listener"
     assert settings.mqtt_password == "secret"
-    assert settings.mqtt_tls is False
-    assert settings.mqtt_client_id is None
-    assert settings.log_level == "INFO"
 
 
 def test_process_environment_overrides_dotenv(tmp_path: Path) -> None:

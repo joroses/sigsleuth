@@ -10,6 +10,7 @@ from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import paho.mqtt.client as mqtt
 import pytest
@@ -21,12 +22,13 @@ from paho.mqtt.reasoncodes import ReasonCode
 import sigsleuth.db
 from meshtastic_fixtures import ingest, service_envelope
 from sigsleuth import maintenance
+from sigsleuth import mqtt as mqtt_module
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database
 from sigsleuth.derive import rederive
 from sigsleuth.maintenance import Maintenance
-from sigsleuth.mqtt import MqttReceiver
+from sigsleuth.mqtt import DATABASE_RETRY_SECONDS, MqttReceiver
 
 
 @dataclass
@@ -223,7 +225,9 @@ def test_database_failure_pauses_capture_then_retries(
     deliver(receiver, message)
     assert count(connection, "reception") == 0
 
-    receiver._retry_at = 0.0
+    # The wait is over.
+    later = time.monotonic() + DATABASE_RETRY_SECONDS
+    monkeypatch.setattr(mqtt_module, "time", SimpleNamespace(monotonic=lambda: later))
     deliver(receiver, message)
     assert receiver.status().status != "stopped"
     assert count(connection, "reception") == 1

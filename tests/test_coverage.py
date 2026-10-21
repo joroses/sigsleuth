@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from derived_rows import insert_row, link_hour
 from sigsleuth import coverage
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
@@ -241,11 +242,7 @@ def link(
     observations: int = 3,
 ) -> None:
     """A link heard this hour: a transmitted, b heard it."""
-    seen = now_ms()
-    connection.execute(
-        "INSERT INTO link_hour VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'LongFast', ?)",
-        (kind, seen - seen % 3_600_000, a, b, observations, seen, km),
-    )
+    link_hour(connection, a, b, now_ms(), link_kind=kind, observations=observations, km=km)
 
 
 def mqtt_report(
@@ -409,8 +406,15 @@ def test_rule_outs_leave_the_only_candidate(
         node(connection, candidate, PHONE[0] + 0.05)
         # Silent sent its last packet three days ago.
         sent = hour - 3 * DAY_MS if candidate == silent else hour
-        connection.execute(
-            "INSERT INTO node_activity_hour VALUES (?, ?, 1, 1, 1, ?)", (sent, candidate, sent)
+        insert_row(
+            connection,
+            "node_activity_hour",
+            hour_start=sent,
+            node_id=candidate,
+            portnum=1,
+            is_broadcast=1,
+            packets=1,
+            last_sent_at=sent,
         )
     connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (mute,))
     connection.execute(

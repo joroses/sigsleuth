@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
+from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
@@ -75,10 +76,7 @@ def link(
     km: float | None = None,
 ) -> None:
     seen = now_ms() - hours_ago * HOUR_MS
-    connection.execute(
-        "INSERT INTO link_hour VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'LongFast', ?)",
-        (kind, seen - seen % HOUR_MS, a, b, observations, seen, km),
-    )
+    link_hour(connection, a, b, seen, link_kind=kind, observations=observations, km=km)
 
 
 def estimates(connection: sqlite3.Connection) -> dict[int, EstimatedPosition]:

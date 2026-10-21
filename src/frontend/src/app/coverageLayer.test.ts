@@ -5,7 +5,6 @@ import {
   buildCoverageLines,
   cellBounds,
   cellsInView,
-  marginColor,
   nextCoverageArea,
 } from "./coverageLayer";
 
@@ -118,15 +117,5 @@ describe("coverage cells", () => {
       [1, true],
       [2, false],
     ]);
-  });
-});
-
-describe("margin colours", () => {
-  it("follow the cells' scale, clamped at its ends", () => {
-    expect(marginColor(-3)).toBe("#d0453a");
-    expect(marginColor(6)).toBe("#e0a526");
-    expect(marginColor(3)).toBe("#d87530");
-    expect(marginColor(40)).toBe("#1f7a3f");
-    expect(marginColor(null)).toBe("#9aa39e");
   });
 });

@@ -91,7 +91,7 @@ describe("buildNodeFeatureCollection", () => {
     Object.fromEntries(
       features.features.map(({ properties: p }) => [
         p.nodeId,
-        [p.shown, p.selected, p.badge, p.badgeIcon],
+        [p.shown, p.selected, p.badge],
       ]),
     );
 
@@ -105,10 +105,10 @@ describe("buildNodeFeatureCollection", () => {
         }),
       ),
     ).toEqual({
-      1: [true, true, "", ""],
-      2: [true, false, "90%", "share-high-90%"],
-      3: [true, false, "20%", "share-poor-20%"],
-      4: [false, false, "", ""],
+      1: [true, true, ""],
+      2: [true, false, "90%"],
+      3: [true, false, "20%"],
+      4: [false, false, ""],
     });
   });
 

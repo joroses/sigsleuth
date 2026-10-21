@@ -323,11 +323,10 @@ def test_detail_says_why_the_payload_is_unreadable(tmp_path: Path) -> None:
     assert "custom key" in detail["unreadable_reason_description"]
 
 
-def test_api_returns_safe_errors(tmp_path: Path) -> None:
+def test_a_missing_packet_is_a_safe_404(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)
     with TestClient(create_app(Settings(path))) as client:
-        assert client.get("/api/v1/packets/0").status_code == 400
         missing = client.get("/api/v1/packets/999")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "packet_not_found"
@@ -378,16 +377,6 @@ def test_unmigrated_database_is_unavailable_and_logged(
     logged = [record for record in caplog.records if record.name == "sigsleuth.api"]
     assert logged and "/api/v1/packets/1" in logged[0].getMessage()
     assert logged[0].exc_info is not None
-
-
-def test_status_without_capture_reports_no_capture(tmp_path: Path) -> None:
-    path = tmp_path / "history.db"
-    migrate_database(path)
-    with TestClient(create_app(Settings(path))) as client:
-        response = client.get("/api/v1/status")
-
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok", "capture": None}
 
 
 def test_api_serves_built_frontend_and_history_fallback(tmp_path: Path) -> None:

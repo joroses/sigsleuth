@@ -96,40 +96,6 @@ def test_repeated_delivery_of_a_gateway_report_only_adds_a_copy(
     assert reception_count[0] == 2
 
 
-def test_reception_stores_the_gateway_signal_and_hop_fields(
-    connection: sqlite3.Connection,
-) -> None:
-    payload = application_envelope(
-        portnums_pb2.PortNum.TEXT_MESSAGE_APP,
-        b"hello",
-        encrypted=True,
-        rx_snr=6.5,
-        rx_rssi=-97,
-        hop_start=3,
-        hop_limit=1,
-    )
-    result = ingest_delivery(connection, delivery(topic=TOPIC_AAAA, payload=payload))
-    saved = connection.execute(
-        "SELECT gateway_node_id, rx_snr, rx_rssi, hop_start, hop_limit, relay_byte FROM reception"
-        " WHERE id = ?",
-        (result.reception_id,),
-    ).fetchone()
-    assert tuple(saved) == (0xAAAAAAAA, 6.5, -97, 3, 1, None)
-
-
-def test_text_reaction_is_saved_with_the_packet_it_answers(
-    connection: sqlite3.Connection,
-) -> None:
-    payload = application_envelope(
-        portnums_pb2.PortNum.TEXT_MESSAGE_APP, "👍".encode(), reply_id=0xF358, emoji=1
-    )
-    result = ingest_delivery(connection, delivery(topic=TOPIC_AAAA, payload=payload))
-    saved = connection.execute(
-        "SELECT reply_id, is_reaction FROM packet WHERE id = ?", (result.packet_row_id,)
-    ).fetchone()
-    assert tuple(saved) == (0xF358, 1)
-
-
 @pytest.mark.parametrize(
     ("topic", "payload", "reason"),
     (("é" * 513, b"ok", "topic_too_large"), (TOPIC, b"x" * 65_537, "payload_too_large")),

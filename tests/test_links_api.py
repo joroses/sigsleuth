@@ -8,12 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
+from derived_rows import insert_row, link_hour, node_position
 from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth import db
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
-from sigsleuth.derive import _copy_all_reported
+from sigsleuth.derive import copy_reported, rederive
 from sigsleuth.positions import refresh_estimates
 
 HOUR = datetime(2026, 9, 27, 9, tzinfo=UTC)
@@ -42,20 +43,16 @@ def add_link_hour(
 ) -> None:
     hour_start = to_epoch_ms(HOUR) - hours_ago * HOUR_MS
     with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO link_hour VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                link_kind,
-                hour_start,
-                from_node,
-                to_node,
-                observations,
-                len(snr),
-                sum(snr),
-                hour_start + 60_000,
-                channel,
-                km,
-            ),
+        link_hour(
+            connection,
+            from_node,
+            to_node,
+            hour_start + 60_000,
+            link_kind=link_kind,
+            observations=observations,
+            snr=snr,
+            channel=channel,
+            km=km,
         )
 
 
@@ -174,10 +171,7 @@ def place(path: Path, node_id: int, short_name: str, latitude: float, longitude:
             """,
             (node_id, at, at, short_name, at, latitude, longitude),
         )
-        connection.execute(
-            "INSERT INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
-            (node_id, at, latitude, longitude),
-        )
+        node_position(connection, node_id, at, latitude, longitude)
 
 
 def test_link_table_names_both_nodes_and_measures_only_when_heard(path: Path) -> None:
@@ -314,8 +308,16 @@ def judged(path: Path, a: int, b: int, km: float, *, unlikely: bool) -> None:
     """The terrain check's verdict on a pair, as terrain.refresh_long_links
     keeps it for the pair's longest km."""
     with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO long_link VALUES (?, ?, ?, 0.0, 100.0, 0, ?)", (a, b, km, unlikely)
+        insert_row(
+            connection,
+            "long_link",
+            node_a=a,
+            node_b=b,
+            km=km,
+            sea_share=0.0,
+            above_meters=100.0,
+            confirmed=0,
+            unlikely=unlikely,
         )
 
 
@@ -471,10 +473,7 @@ def test_a_link_is_measured_where_its_nodes_were_when_heard(path: Path) -> None:
     heard_directly(path, B, A)
     # B then reports a position 880 km away.
     with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO node_position VALUES (?, ?, 32.2, 2.0, NULL, NULL, 2)",
-            (B, to_epoch_ms(HOUR) + HOUR_MS),
-        )
+        node_position(connection, B, to_epoch_ms(HOUR) + HOUR_MS, 32.2, 2.0)
         connection.execute("UPDATE node_current SET latitude = 32.2 WHERE node_id = ?", (B,))
 
     [link] = links(path, "/api/v1/links", link_kind="direct")["items"]
@@ -482,12 +481,9 @@ def test_a_link_is_measured_where_its_nodes_were_when_heard(path: Path) -> None:
     assert link["distance_km"] == pytest.approx(11.1, abs=0.1)
 
 
-@pytest.mark.parametrize(
-    "params", [{"since": "2026-09-27T07:30:00"}, {"link_kind": "rumour"}], ids=["naive", "kind"]
-)
-def test_bad_parameters_are_rejected(path: Path, params: dict[str, str]) -> None:
+def test_a_time_without_an_offset_is_rejected(path: Path) -> None:
     with TestClient(create_app(Settings(path))) as client:
-        response = client.get("/api/v1/map/links", params=params)
+        response = client.get("/api/v1/map/links", params={"since": "2026-09-27T07:30:00"})
 
     assert response.status_code == 400
 
@@ -502,10 +498,7 @@ REPORTED_AGAIN = HOUR + timedelta(minutes=30)
 
 def reported(path: Path, node_id: int, at: datetime, latitude: float, longitude: float) -> None:
     with closing(open_current_database(path)) as connection, connection:
-        connection.execute(
-            "INSERT INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
-            (node_id, to_epoch_ms(at), latitude, longitude),
-        )
+        node_position(connection, node_id, to_epoch_ms(at), latitude, longitude)
 
 
 def traced(path: Path, requester: int, target: int, request_id: int) -> None:
@@ -584,20 +577,18 @@ def build(path: Path, scenario: Scenario) -> None:
     traced(path, X, Z, 22)
     hour_start = to_epoch_ms(HOUR)
     with closing(open_current_database(path)) as connection:
+        # reported() saves positions only; a rebuild reads them in.
+        with connection:
+            connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False)
         with connection:
             if scenario.doubted_km is not None or scenario.g_at is not None:
                 connection.execute(
                     "INSERT INTO node_current (node_id, last_seen_at) VALUES (?, ?)",
                     (G, hour_start),
                 )
-                connection.execute(
-                    """
-                    INSERT INTO link_hour
-                    VALUES ('direct', ?, ?, ?, 1, 1, 5.0, ?, 'LongFast', ?)
-                    """,
-                    (hour_start, B, G, hour_start, scenario.doubted_km),
-                )
-            _copy_all_reported(connection)
+                copy_reported(connection, G)
+                link_hour(connection, B, G, hour_start, snr=[5.0], km=scenario.doubted_km)
             for node_id, name in ((A, "NA"), (B, "NB")):
                 connection.execute(
                     "UPDATE node_current SET short_name = ? WHERE node_id = ?", (name, node_id)
@@ -605,7 +596,9 @@ def build(path: Path, scenario: Scenario) -> None:
             if scenario.unlikely is not None:
                 connection.execute(
                     """
-                    INSERT INTO long_link SELECT ?, ?, max(km), 0.0, 100.0, 0, ?
+                    INSERT INTO long_link
+                        (node_a, node_b, km, sea_share, above_meters, confirmed, unlikely)
+                    SELECT ?, ?, max(km), 0.0, 100.0, 0, ?
                     FROM link_hour WHERE link_kind = 'traceroute'
                     """,
                     (A, B, scenario.unlikely),

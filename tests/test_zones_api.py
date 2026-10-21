@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from derived_rows import link_hour
 from sigsleuth import api
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
@@ -44,19 +45,16 @@ def link(
     directions = [(a, b), (b, a)] if both_ways else [(a, b)]
     with closing(open_current_database(path)) as connection, connection:
         for source, target in directions:
-            connection.execute(
-                "INSERT INTO link_hour VALUES ('traceroute', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    seen - seen % HOUR_MS,
-                    source,
-                    target,
-                    observations,
-                    observations,
-                    observations * snr,
-                    seen,
-                    channel,
-                    km,
-                ),
+            link_hour(
+                connection,
+                source,
+                target,
+                seen,
+                link_kind="traceroute",
+                observations=observations,
+                snr=[snr] * observations,
+                channel=channel,
+                km=km,
             )
 
 
@@ -539,10 +537,7 @@ def test_a_node_without_a_position_is_placed_by_its_radio_neighbours(path: Path)
     seen = now_ms()
     with closing(open_current_database(path)) as connection, connection:
         for neighbour in (X2, X3):
-            connection.execute(
-                "INSERT INTO link_hour VALUES ('direct', ?, ?, ?, 1, 1, 5, ?, 'LongFast', NULL)",
-                (seen - seen % HOUR_MS, neighbour, X1, seen),
-            )
+            link_hour(connection, neighbour, X1, seen, snr=[5.0])
         refresh_estimates(connection)
 
     body = get_zones(path)
@@ -580,57 +575,41 @@ def test_a_lone_solid_link_splits_two_zones_into_groups_whatever_their_texts(
     assert (line["texts"], line["text_count"], line["worst_texts"]) == (1.0, 5, 1.0)
 
 
-def test_two_solid_links_join_zones_whatever_their_other_warnings(path: Path) -> None:
+@pytest.mark.parametrize(
+    ("cross_links", "params", "groups", "warnings"),
+    [
+        (1, {}, 2, ["one solid link"]),
+        (1, {"join_links": 1}, 1, ["one solid link"]),
+        (2, {}, 1, []),
+        # With a 1 dB floor weak links are solid, under WEAK_MARGIN_DB.
+        (2, {"min_margin_db": 1, "snr": WEAK_SNR}, 1, ["all weak"]),
+        (2, {"join_links": 3}, 2, []),
+        (3, {"join_links": 4}, 2, []),
+    ],
+)
+def test_zones_share_a_group_when_their_solid_links_reach_the_join_setting(
+    path: Path, cross_links: int, params: dict[str, Any], groups: int, warnings: list[str]
+) -> None:
+    params = dict(params)
+    snr = params.pop("snr", STRONG_SNR)
     two_groups(path)
-    link(path, X1, Y1, snr=WEAK_SNR)
-    link(path, X2, Y2, snr=WEAK_SNR)
+    for a, b in [(X1, Y1), (X2, Y2), (X3, Y3)][:cross_links]:
+        link(path, a, b, snr=snr)
 
-    # With a 1 dB floor the weak links are solid, but under WEAK_MARGIN_DB.
-    body = get_zones(path, min_margin_db=1)
+    body = get_zones(path, **params)
     [pair] = body["zone_pairs"]
 
-    assert (pair["solid_links"], pair["warnings"], pair["way_round_links"]) == (
-        2,
-        ["all weak"],
-        None,
+    assert (pair["solid_links"], pair["warnings"]) == (cross_links, warnings)
+    assert len(body["groups"]) == groups
+    if groups == 2:
+        [line] = body["group_lines"]
+        assert line["solid_links"] == cross_links
+    # 12 links inside the cliques, all solid.
+    assert (body["join_links"], body["link_count"], body["solid_link_count"]) == (
+        params.get("join_links", 2),
+        12 + cross_links,
+        12 + cross_links,
     )
-    assert len(body["groups"]) == 1
-
-
-def test_the_join_setting_decides_how_many_solid_links_keep_two_zones_together(
-    path: Path,
-) -> None:
-    two_groups(path)
-    link(path, X1, Y1)
-    link(path, X2, Y2)
-
-    assert len(get_zones(path)["groups"]) == 1
-    body = get_zones(path, join_links=3)
-    assert len(body["groups"]) == 2
-    [line] = body["group_lines"]
-    assert line["solid_links"] == 2
-    # 12 links inside the cliques and 2 across, all solid.
-    assert (body["join_links"], body["link_count"], body["solid_link_count"]) == (3, 14, 14)
-
-
-def test_a_line_counts_its_solid_links(path: Path) -> None:
-    two_groups(path)
-    for a, b in [(X1, Y1), (X2, Y2), (X3, Y3)]:
-        link(path, a, b)
-
-    body = get_zones(path, join_links=4)
-
-    assert len(body["groups"]) == 2
-    [line] = body["group_lines"]
-    assert line["solid_links"] == 3
-
-
-def test_one_solid_link_joins_two_zones_when_the_setting_asks_for_one(path: Path) -> None:
-    two_groups(path)
-    link(path, X2, Y2)
-
-    assert len(get_zones(path)["groups"]) == 2
-    assert len(get_zones(path, join_links=1)["groups"]) == 1
 
 
 def test_two_zones_on_one_solid_link_share_a_group_through_a_third(path: Path) -> None:

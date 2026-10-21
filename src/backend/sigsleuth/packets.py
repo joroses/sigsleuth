@@ -331,9 +331,8 @@ def packet_detail(
 def _reply_route(
     connection: sqlite3.Connection, requester: int, request_packet_id: int, hidden: set[int]
 ) -> ReplyRoute | None:
-    # The traceroute_packet table is small (one row per traceroute packet), so it is
-    # read without an index on the run. The reply is found first so that its
-    # receptions are then read by packet, not by scanning them all.
+    # The reply is found first so that its receptions are then read by
+    # packet, not by scanning them all.
     reply = connection.execute(
         """
         SELECT t.id, t.sender_node_id, t.recipient_node_id, t.request_id

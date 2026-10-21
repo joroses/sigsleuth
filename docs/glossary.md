@@ -57,7 +57,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 |---|---|
 | Traceroute | A request from A to B that records each relay and SNR; B's reply carries the route back. Each gateway reports a different version. |
 | Route | One direction of a traceroute as one gateway reported it ("route to target", "route back"). |
-| Traceroute run | A request and its reply, matched by requester and request packet ID. |
+| Traceroute run | A request and its reply, matched by requester and request packet ID. A window lists the runs whose first packet it holds, with all their packets. |
 | Reached | A route known to have reached its end (`traceroute.reached_end`); others are "not confirmed", not failed. |
 | Hop | One step of a route: X transmitted, Y heard it. |
 | Direct reception | A reception where the gateway heard the sender with no relay, by a strict rule (`derive.is_direct_reception`) that misses some. |

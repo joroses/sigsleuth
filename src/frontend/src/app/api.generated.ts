@@ -501,7 +501,7 @@ export interface paths {
     };
     /**
      * Traceroute Runs Page
-     * @description Traceroute runs (a request and its reply) with a packet since `since`,
+     * @description Traceroute runs (a request and its reply) first heard since `since`,
      *     newest first, by the route shown (route: km, then hops) or by the straight
      *     line between the ends (distance). Each run shows its route that worked,
      *     or without one its longest route. successful keeps only runs and routes
@@ -757,8 +757,10 @@ export interface components {
     /**
      * BusiestTraceroutes
      * @description The ten nodes that ran the most traceroute runs, were traced in the most
-     *     runs, and relayed the most traceroute packets (on a reported route but at
-     *     neither end), in the window; and the traceroute packets per channel, most first.
+     *     runs (a run counts in the window of its first packet, as the explorer
+     *     lists it), and relayed the most traceroute packets (on a reported route
+     *     but at neither end), in the window; and the traceroute packets per
+     *     channel, most first.
      */
     BusiestTraceroutes: {
       requesters: components["schemas"]["NodeCount"][];
@@ -2011,9 +2013,10 @@ export interface components {
     /**
      * TracerouteRun
      * @description A traceroute request and its reply, matched by requester and the
-     *     request's packet ID; either may be missing. first_received_at, channel
-     *     and spreading_factor come from the run's earliest saved packet. The
-     *     reception counts are the gateways that reported each packet. distance_km
+     *     request's packet ID; either may be missing. A window lists a run when it
+     *     holds the run's earliest saved packet, which gives first_received_at,
+     *     channel and spreading_factor. The reception counts are the gateways that
+     *     reported each packet. distance_km
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
      *     then; like every link page, it is never measured from where the nodes are

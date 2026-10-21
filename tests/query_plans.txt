@@ -3,6 +3,7 @@
 ingest.group_reception
   SEARCH packet USING INDEX packet_identity_time
 ingest.group_reception
+  SEARCH traceroute_run USING INDEX traceroute_run_first
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
@@ -60,6 +61,14 @@ reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
 derive._save_traceroute
   SEARCH traceroute_packet USING PRIMARY KEY
+derive._save_run
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
 derive._save_hops
   SEARCH traceroute_hop USING PRIMARY KEY
 
@@ -697,13 +706,16 @@ db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
 traceroute_explorer.traceroute_runs
-  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_run USING INDEX traceroute_run_first
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
 links.doubtful_nodes
   SCAN node_doubtful
 links.unlikely_links
@@ -723,13 +735,48 @@ db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
 traceroute_explorer.traceroute_runs
+  SEARCH traceroute_run USING INDEX traceroute_run_first
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 links.unlikely_links
@@ -749,13 +796,42 @@ db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
 traceroute_explorer.traceroute_runs
+  SEARCH traceroute_run USING INDEX traceroute_run_first
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH long_link USING PRIMARY KEY
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 links.unlikely_links
@@ -775,17 +851,22 @@ db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_packet USING PRIMARY KEY
-  SEARCH packet USING PRIMARY KEY
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 traceroute_explorer._matching_nodes
   SCAN node_current
-traceroute_explorer._hop_routes
-  SEARCH traceroute_hop USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING INDEX traceroute_hop_from
+  SEARCH traceroute_hop USING INDEX traceroute_hop_from
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SCAN traceroute_run
+  SEARCH traceroute_run USING INDEX traceroute_run_first
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 links.unlikely_links
@@ -801,17 +882,54 @@ reported.positions_when_heard
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!0a0a0a0a
 
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_packet USING PRIMARY KEY
-  SEARCH packet USING PRIMARY KEY
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH node_current USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 traceroute_explorer._matching_nodes
   SCAN node_current
-traceroute_explorer._hop_routes
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING INDEX traceroute_hop_from
+  SEARCH traceroute_hop USING INDEX traceroute_hop_to
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SCAN traceroute_run
+  SEARCH traceroute_run USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
   SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SCAN node_doubtful
+  SCAN long_link
+  SCAN long_link
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 links.unlikely_links
@@ -834,10 +952,10 @@ db.first_packet_row_id_since
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
 traceroute_explorer.hop_observations.<locals>.direction
-  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING INDEX traceroute_hop_from
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING INDEX packet_identity_time
-  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING INDEX traceroute_hop_to
   SEARCH packet USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -865,7 +983,9 @@ db.first_packet_row_id_since
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
 traceroute_explorer.busiest_traceroutes.<locals>.busiest
-  SEARCH traceroute_packet USING PRIMARY KEY
+  SCAN traceroute_run
+traceroute_explorer.busiest_traceroutes.<locals>.busiest
+  SEARCH traceroute_run USING INDEX traceroute_run_first
 traceroute_explorer.busiest_traceroutes.<locals>.busiest
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
@@ -1138,6 +1258,7 @@ db.first_packet_row_id_since
 retention._delete_oldest_packets
   SEARCH packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_run USING INDEX traceroute_run_first
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH reception USING INDEX sqlite_autoindex_reception_1

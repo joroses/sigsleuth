@@ -147,6 +147,34 @@ CREATE TABLE traceroute_packet (
     success_route_km REAL,
     ends_km REAL
 ) STRICT;
+CREATE INDEX traceroute_packet_run ON traceroute_packet (requester_node_id, request_packet_id);
+-- For the Traceroute explorer's node search and a link's traceroute packets.
+CREATE INDEX traceroute_hop_from ON traceroute_hop (from_node_id, to_node_id);
+CREATE INDEX traceroute_hop_to ON traceroute_hop (to_node_id);
+
+-- One row per traceroute run, for the Traceroute explorer: the route it
+-- shows (route_, the packet, reception and direction whose report holds it)
+-- is the route that worked from its earliest reply with one, else from its
+-- earliest request with one (reached), otherwise its longest route. ends_
+-- is its first packet with an ends_km. A run is in a window, and is deleted,
+-- with its first packet.
+CREATE TABLE traceroute_run (
+    requester_node_id INTEGER NOT NULL,
+    request_packet_id INTEGER NOT NULL,
+    target_node_id INTEGER NOT NULL,  -- the first packet's
+    first_packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL,  -- the first packet's
+    reached INTEGER NOT NULL CHECK (reached IN (0, 1)),
+    route_packet_row_id INTEGER NOT NULL,
+    route_reception_id INTEGER NOT NULL,
+    route_is_return INTEGER NOT NULL CHECK (route_is_return IN (0, 1)),
+    route_hops INTEGER NOT NULL CHECK (route_hops >= 0),
+    route_km REAL,
+    ends_packet_row_id INTEGER,
+    ends_km REAL,
+    PRIMARY KEY (requester_node_id, request_packet_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX traceroute_run_first ON traceroute_run (first_packet_row_id);
 
 -- Hourly link observations per direction, kind and channel: from_node_id
 -- was heard by to_node_id. Kinds and channels are never added together: a

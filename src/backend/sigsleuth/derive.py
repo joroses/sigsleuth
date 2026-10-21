@@ -744,7 +744,8 @@ def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row, placed: Plac
         if ends[0] is not None and ends[1] is not None
         else None
     )
-    _save_traceroute(connection, row, report, routes, ends_km)
+    if _save_traceroute(connection, row, report, routes, ends_km):
+        _save_run(connection, int(row["packet_row_id"]))
 
 
 class RadioHeader(Protocol):
@@ -851,12 +852,13 @@ def _save_traceroute(
     report: TracerouteReport,
     routes: list[Route],
     ends_km: float | None,
-) -> None:
+) -> bool:
     """Add the packet's traceroute_packet row, replace its longest route with this
     report's when that one is longer, and keep the earliest report's successful
     route (see traceroute.py). routes are the report's report_routes, and ends_km
     the distance between requester and target where they were when heard;
-    the first report placing both ends keeps it."""
+    the first report placing both ends keeps it. Return whether the row
+    changed."""
     packet_row_id = int(row["packet_row_id"])
     reception_id = int(row["reception_id"])
     request_id = row["request_id"]
@@ -864,6 +866,7 @@ def _save_traceroute(
     stored = connection.execute(
         "SELECT * FROM traceroute_packet WHERE packet_row_id = ?", (packet_row_id,)
     ).fetchone()
+    changed = stored is None
     if stored is None:
         connection.execute(
             """
@@ -886,6 +889,7 @@ def _save_traceroute(
             ),
         )
     elif stored["ends_km"] is None and ends_km is not None:
+        changed = True
         connection.execute(
             "UPDATE traceroute_packet SET ends_km = ? WHERE packet_row_id = ?",
             (ends_km, packet_row_id),
@@ -894,6 +898,7 @@ def _save_traceroute(
         stored["route_km"] or 0.0,
         stored["route_hops"],
     ):
+        changed = True
         connection.execute(
             """
             UPDATE traceroute_packet SET route_reception_id = ?, route_is_return = ?,
@@ -904,6 +909,7 @@ def _save_traceroute(
         )
     successful = successful_route(routes)
     if successful is not None and (stored is None or stored["success_route_reception_id"] is None):
+        changed = True
         connection.execute(
             """
             UPDATE traceroute_packet SET success_route_reception_id = ?,
@@ -912,6 +918,51 @@ def _save_traceroute(
             """,
             (reception_id, successful.hops, successful.km, packet_row_id),
         )
+    return changed
+
+
+def _save_run(connection: sqlite3.Connection, packet_row_id: int) -> None:
+    """Recompute the traceroute_run row of the packet's run (see derived.sql)."""
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO traceroute_run (
+            requester_node_id, request_packet_id, target_node_id, first_packet_row_id, channel,
+            reached, route_packet_row_id, route_reception_id, route_is_return, route_hops,
+            route_km, ends_packet_row_id, ends_km
+        )
+        WITH run AS (
+            SELECT * FROM traceroute_packet
+            WHERE (requester_node_id, request_packet_id) = (
+                SELECT requester_node_id, request_packet_id FROM traceroute_packet
+                WHERE packet_row_id = :packet
+            )
+        ),
+        first AS (SELECT * FROM run ORDER BY packet_row_id LIMIT 1),
+        shown AS (
+            SELECT * FROM run
+            ORDER BY success_route_hops IS NULL,
+                CASE WHEN success_route_hops IS NOT NULL THEN NOT is_reply END,
+                CASE WHEN success_route_hops IS NULL THEN coalesce(route_km, 0.0) END DESC,
+                CASE WHEN success_route_hops IS NULL THEN route_hops END DESC,
+                packet_row_id
+            LIMIT 1
+        ),
+        ends AS (
+            SELECT packet_row_id, ends_km FROM run WHERE ends_km IS NOT NULL
+            ORDER BY packet_row_id LIMIT 1
+        )
+        SELECT f.requester_node_id, f.request_packet_id, f.target_node_id, f.packet_row_id,
+               t.channel, s.success_route_hops IS NOT NULL, s.packet_row_id,
+               coalesce(s.success_route_reception_id, s.route_reception_id),
+               s.success_route_hops IS NULL AND s.route_is_return,
+               coalesce(s.success_route_hops, s.route_hops),
+               CASE WHEN s.success_route_hops IS NULL THEN s.route_km ELSE s.success_route_km END,
+               e.packet_row_id, e.ends_km
+        FROM first AS f JOIN packet AS t ON t.id = f.packet_row_id
+        CROSS JOIN shown AS s LEFT JOIN ends AS e
+        """,
+        {"packet": packet_row_id},
+    )
 
 
 def raise_firmware(connection: sqlite3.Connection, node_id: int, trait: str | None) -> None:

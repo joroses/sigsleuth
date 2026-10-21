@@ -16,6 +16,7 @@ from sigsleuth.positions import refresh_estimates
 
 NOW = datetime(2026, 9, 27, 9, 30, tzinfo=UTC)
 A, B, R1, R2, OTHER = 0x0A0A0A0A, 0x0B0B0B0B, 0x01010101, 0x02020202, 0x0C0C0C0C
+BROADCAST = 0xFFFFFFFF
 
 
 @pytest.fixture
@@ -106,6 +107,36 @@ def test_a_request_and_its_reply_make_one_run(path: Path) -> None:
         (R1, R2),
         (R2, B),
     ]
+
+
+def test_a_run_is_listed_in_the_window_of_its_first_packet(path: Path) -> None:
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW - timedelta(hours=2),
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1],
+        snr=[20],
+    )
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[R1],
+        snr=[20, 4],
+    )
+
+    since = (NOW - timedelta(hours=1)).isoformat()
+    assert get(path, "/api/v1/traceroutes", since=since)["items"] == []
+    [run] = get(path, "/api/v1/traceroutes")["items"]
+    assert run["request_packet_row_id"] is not None
+    assert run["reply_packet_row_id"] is not None
 
 
 def test_the_route_sort_puts_the_longer_run_first(path: Path) -> None:
@@ -367,6 +398,57 @@ def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Pat
             (to_epoch_ms(NOW + timedelta(hours=1)), B),
         )
     assert order() == [(OTHER, False), (B, True), (R2, False)]
+
+
+def broadcast_run(path: Path, replier: int) -> None:
+    """A traces everyone and replier answers directly; OTHER answers another
+    request of A's directly."""
+    later = NOW + timedelta(seconds=5)
+    traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=BROADCAST, packet_id=7, route=[], snr=[])
+    for target, packet_id in ((replier, 8), (OTHER, 11)):
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            later,
+            sender=target,
+            recipient=A,
+            packet_id=packet_id,
+            request_id=packet_id - 1,
+            route=[],
+            snr=[20],
+        )
+
+
+def test_a_broadcast_run_is_measured_and_ranked_by_its_reply(path: Path) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, B, 41.0, 2.0)
+    place(path, OTHER, 40.5, 2.0)
+    broadcast_run(path, B)
+    place(path, A, 40.0, 2.0, NOW + timedelta(hours=1))
+
+    def order(sort: str) -> list[tuple[int, bool]]:
+        runs = get(path, "/api/v1/traceroutes", sort=sort)["items"]
+        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
+
+    # The run's distance is B's reply's 111 km, pending until B reports
+    # again; its single hop joins A and B, so it is that distance.
+    for sort in ("distance", "route"):
+        assert order(sort) == [(OTHER, False), (BROADCAST, True)]
+    place(path, B, 41.0, 2.0, NOW + timedelta(hours=2))
+    for sort in ("distance", "route"):
+        assert order(sort) == [(BROADCAST, False), (OTHER, False)]
+
+
+def test_a_run_with_an_opted_out_replier_is_left_out(path: Path) -> None:
+    hidden = 0x0D0D0D0D
+    broadcast_run(path, hidden)
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (hidden,))
+
+    for sort in ("newest", "route", "distance"):
+        for successful in (False, True):
+            runs = get(path, "/api/v1/traceroutes", sort=sort, successful=successful)["items"]
+            assert [run["target_node_id"] for run in runs] == [OTHER]
 
 
 @pytest.mark.parametrize("doubt", ["terrain", "doubtful"])

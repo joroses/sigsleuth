@@ -1,11 +1,11 @@
 """The Traceroute explorer's runs and busiest nodes, and the traceroute
 packets that reported a link's hop, for the Links page.
 
-The explorer reads traceroute_packet (one row per traceroute packet, event
-history kept during capture) for its window, and with a node search the
-best route of each traceroute_hop row the search matches, and decodes only the
-page's shown routes. A run shows the route that worked when it has one (see
-traceroute.py), otherwise its longest route.
+The explorer ranks and pages traceroute_run (one row per run, kept during
+capture), with a node search through the best route of each traceroute_hop
+row the search matches, then reads the page's runs' traceroute_packet rows
+and decodes only their shown routes. A run shows the route that worked when
+it has one (see traceroute.py), otherwise its longest route.
 
 A run with an end that turned OK to MQTT off is left out, and such a node on
 a route is a gap, as a relay that could not add itself (opt_out.py).
@@ -15,7 +15,7 @@ import json
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Literal, NamedTuple
+from typing import Literal
 
 from sigsleuth.db import (
     NodeSummary,
@@ -27,6 +27,7 @@ from sigsleuth.db import (
 )
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import (
+    LONG_LINK_KM,
     PENDING_KM,
     Doubt,
     confirmed_sql,
@@ -34,7 +35,7 @@ from sigsleuth.links import (
     link_doubts,
     unlikely_links,
 )
-from sigsleuth.opt_out import opted_out, shown_sql
+from sigsleuth.opt_out import opted_out, opted_out_sql, shown_sql
 from sigsleuth.radio import spreading_factor
 from sigsleuth.reported import HeardPosition, positions_when_heard
 from sigsleuth.traceroute import (
@@ -50,10 +51,6 @@ from sigsleuth.traceroute import (
 BUSIEST_NODES = 10
 
 TracerouteSort = Literal["newest", "route", "distance"]
-
-# A saved route as traceroute_hop names it: its packet's row, the reception
-# whose report holds it, and whether it is a reply's return route.
-_RouteKey = tuple[int, int, bool]
 
 MAX_HOP_OBSERVATIONS = 10
 
@@ -93,10 +90,7 @@ def hop_observations(
     """Up to 10 packets per direction since the start of since's hour, newest
     first, on channel when given. A reply's forward path copies its request's
     hops, so a reply is left out when its request reported the same hop; it
-    stays when the request was not captured.
-
-    There is no index by hop: the query reads the window's hops newest first
-    and stops after 10 matches."""
+    stays when the request was not captured."""
     hidden = opted_out(connection)
     since_ms = 0 if since is None else to_epoch_ms(since)
     since_id = first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
@@ -104,9 +98,6 @@ def hop_observations(
     def direction(from_node: int, to_node: int) -> tuple[HopObservation, ...]:
         if from_node in hidden or to_node in hidden:
             return ()
-        # Add an index on (from_node_id, to_node_id, packet_row_id) if the
-        # worst 14-day live query exceeds about 50 ms (21 ms over 230k hops,
-        # October 2026).
         rows = connection.execute(
             f"""
             SELECT h.packet_row_id, t.first_received_at, h.snr_db,
@@ -183,9 +174,10 @@ class TracerouteRoute:
 @dataclass(frozen=True)
 class TracerouteRun:
     """A traceroute request and its reply, matched by requester and the
-    request's packet ID; either may be missing. first_received_at, channel
-    and spreading_factor come from the run's earliest saved packet. The
-    reception counts are the gateways that reported each packet. distance_km
+    request's packet ID; either may be missing. A window lists a run when it
+    holds the run's earliest saved packet, which gives first_received_at,
+    channel and spreading_factor. The reception counts are the gateways that
+    reported each packet. distance_km
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
     then; like every link page, it is never measured from where the nodes are
@@ -237,52 +229,30 @@ def traceroute_runs(
     offset: int,
     default_preset: str,
 ) -> TracerouteRuns:
-    """One page of the runs with a packet first received since `since`, newest
-    first, longest route first (route) or farthest apart first (distance, the
-    straight line between the ends when heard; runs without one come last).
-    node and next_to are searches as on the Nodes page (name, !hex or
-    number). One search matches either end or a relay on any reported route;
-    two match a hop between a node of each, either way. Each run shows its
-    route that worked, or without one its longest route. A search that does
-    not match an end shows the run's best route through the searched nodes
-    instead: one known to reach its end first, then the longest, from the
-    hops capture saved (traceroute_hop). min_hops and the route sort use the
-    route shown. successful keeps the runs with a successful route (see
-    reached_end) and shows only those routes; the distance sort always does,
-    since an unconfirmed run's ends need not have heard each other. Each
-    sort puts apart the runs with a badge on the km it sorts by. A shown
-    route has one with a hop at a doubtful position (links.doubtful_nodes),
-    while the route has a km, or between a pair the terrain check finds
-    unlikely (links.unlikely_links). The distance sort puts those runs, and
-    the runs whose distance is doubted (TracerouteRun), just before the runs
-    without a distance. The route sort puts last those runs, and the runs
-    whose route is a single reached hop between the ends, the run's
-    distance, with that distance doubted."""
+    """One page of the runs first heard since `since` (by their first packet,
+    traceroute_run), newest first, longest route first (route) or farthest
+    apart first (distance, the straight line between the ends when heard;
+    runs without one come last). node and next_to are searches as on the
+    Nodes page (name, !hex or number). One search matches either end or a
+    relay on any reported route; two match a hop between a node of each,
+    either way. Each run shows its route that worked, or without one its
+    longest route. A search that does not match an end shows the run's best
+    route through the searched nodes instead: one known to reach its end
+    first, then the longest, from the hops capture saved (traceroute_hop).
+    min_hops and the route sort use the route shown. successful keeps the
+    runs with a successful route (see reached_end) and shows only those
+    routes; the distance sort always does, since an unconfirmed run's ends
+    need not have heard each other. Each sort puts apart the runs with a
+    badge on the km it sorts by. A shown route has one with a hop at a
+    doubtful position (links.doubtful_nodes), while the route has a km, or
+    between a pair the terrain check finds unlikely (links.unlikely_links).
+    The distance sort puts those runs, and the runs whose distance is
+    doubted (TracerouteRun), just before the runs without a distance. The
+    route sort puts last those runs, and the runs whose route is a single
+    reached hop between the ends, the run's distance, with that distance
+    doubted."""
     successful = successful or sort == "distance"
     since_id = _since_id(connection, since)
-    # This fetch and Python grouping grow with the entire window, not the
-    # page size; selecting run keys in SQL is the open fix.
-    rows = connection.execute(
-        f"""
-        SELECT tr.*, t.first_received_at, t.channel, t.reception_count,
-               t.sender_node_id, t.recipient_node_id,
-               CASE WHEN tr.ends_km >= :pending_km THEN
-                   {confirmed_sql("tr.requester_node_id", "t.first_received_at")}
-                   AND {confirmed_sql("tr.target_node_id", "t.first_received_at")}
-               END AS ends_confirmed
-        FROM traceroute_packet AS tr JOIN packet AS t ON t.id = tr.packet_row_id
-        WHERE tr.packet_row_id >= :since
-          AND {shown_sql("tr.requester_node_id")} AND {shown_sql("tr.target_node_id")}
-        ORDER BY tr.packet_row_id
-        """,
-        {"since": since_id, "pending_km": PENDING_KM},
-    ).fetchall()
-    # Reused request IDs or broadcast replies can share a run, rarely; split
-    # them only if they cause confusing rows in ordinary browsing.
-    runs: dict[tuple[int, int], list[sqlite3.Row]] = {}
-    for row in rows:
-        runs.setdefault((row["requester_node_id"], row["request_packet_id"]), []).append(row)
-
     hidden = opted_out(connection)
     searches = [
         _matching_nodes(connection, text) - hidden
@@ -291,136 +261,54 @@ def traceroute_runs(
     ]
     first = searches[0] if searches else None
     second = searches[1] if len(searches) == 2 else None
-    # Each matching hop's best route, kept per packet.
-    hop_routes: dict[int, list[sqlite3.Row]] = {}
-    if first is not None:
-        in_first = "IN (SELECT value FROM json_each(:first))"
-        in_second = "IN (SELECT value FROM json_each(:second))"
-        hop_routes = _hop_routes(
-            connection,
-            f"from_node_id {in_first} OR to_node_id {in_first}"
-            if second is None
-            else f"(from_node_id {in_first} AND to_node_id {in_second})"
-            f" OR (from_node_id {in_second} AND to_node_id {in_first})",
-            since_id,
-            first=json.dumps(sorted(first)),
-            second=json.dumps(sorted(second or ())),
+    shown = connection.execute(
+        _page_sql(sort, len(searches)),
+        {
+            "since": since_id,
+            "first": json.dumps(sorted(first or ())),
+            "second": json.dumps(sorted(second or ())),
+            "successful": successful,
+            "channel": channel,
+            "min_hops": min_hops,
+            "long_km": LONG_LINK_KM,
+            "pending_km": PENDING_KM,
+            "limit": limit,
+            "offset": offset,
+        },
+    ).fetchall()
+    has_more = len(shown) > limit
+    shown = shown[:limit]
+    packets_by_run: dict[tuple[int, int], list[sqlite3.Row]] = {}
+    for packet in connection.execute(
+        f"""
+        SELECT tr.*, t.first_received_at, t.channel, t.reception_count,
+               t.sender_node_id, t.recipient_node_id,
+               CASE WHEN tr.ends_km >= :pending_km THEN
+                   {confirmed_sql("tr.requester_node_id", "t.first_received_at")}
+                   AND {confirmed_sql("tr.target_node_id", "t.first_received_at")}
+               END AS ends_confirmed
+        FROM traceroute_packet AS tr JOIN packet AS t ON t.id = tr.packet_row_id
+        WHERE (tr.requester_node_id, tr.request_packet_id) IN (
+            SELECT value ->> 0, value ->> 1 FROM json_each(:runs)
         )
-
-    def any_route(packets: list[sqlite3.Row]) -> bool:
-        """Whether every route of the run will do: no search, or one that
-        matches an end, which is on every route."""
-        if first is None:
-            return True
-        ends = {packets[0]["requester_node_id"], packets[0]["target_node_id"]}
-        return second is None and not first.isdisjoint(ends)
-
-    def searched_route(packets: list[sqlite3.Row]) -> tuple[sqlite3.Row, sqlite3.Row] | None:
-        """The run's best matching hop row and its packet, with successful
-        only from routes known to reach their end; None when there is none."""
-        found = [
-            (hop, packet)
-            for packet in packets
-            for hop in hop_routes.get(packet["packet_row_id"], ())
-            if hop["route_reached"] or not successful
-        ]
-        return max(found, key=lambda item: _hop_route_rank(item[0]), default=None)
-
-    def shown(packets: list[sqlite3.Row]) -> _SavedRoute | None:
-        """The route the run shows; None when no route has the searched
-        nodes."""
-        if any_route(packets):
-            return _stored_route(*_shown(packets))
-        searched = searched_route(packets)
-        if searched is None:
-            return None
-        hop, packet = searched
-        return _SavedRoute(
-            packet,
-            reception_id=int(hop["route_reception_id"]),
-            is_return=bool(hop["route_is_return"]),
-            hops=int(hop["route_hops"]),
-            km=hop["route_km"],
-            reached=bool(hop["route_reached"]),
-        )
-
-    def rank(packets: list[sqlite3.Row]) -> tuple[float, int] | None:
-        """The shown route's km and hops; None when no route has the searched
-        nodes."""
-        route = shown(packets)
-        return None if route is None else (route.km or 0.0, route.hops)
-
-    def keep(packets: list[sqlite3.Row]) -> bool:
-        first_packet = packets[0]
-        if channel is not None and first_packet["channel"] != channel:
-            return False
-        if successful and all(packet["success_route_hops"] is None for packet in packets):
-            return False
-        if not any_route(packets) and searched_route(packets) is None:
-            return False  # without successful: not expected, the hops and routes agree
-        if min_hops > 0:
-            shown = rank(packets)
-            return shown is not None and shown[1] >= min_hops
-        return True
-
-    kept = [packets for packets in runs.values() if keep(packets)]
+        ORDER BY tr.packet_row_id
+        """,
+        {
+            "pending_km": PENDING_KM,
+            "runs": json.dumps(
+                [[row["requester_node_id"], row["request_packet_id"]] for row in shown]
+            ),
+        },
+    ):
+        packets_by_run.setdefault(
+            (packet["requester_node_id"], packet["request_packet_id"]), []
+        ).append(packet)
     doubtful = doubtful_nodes(connection)
     unlikely = unlikely_links(connection)
-    # Hidden nodes are gaps in a shown route, so they badge nothing.
-    through_doubtful, over_unlikely = (
-        (set(), set())
-        if sort == "newest"
-        else _doubted_routes(
-            connection,
-            doubtful - hidden,
-            {pair for pair in unlikely if hidden.isdisjoint(pair)},
-            since_id,
-        )
-    )
-
-    def route_doubted(route: _SavedRoute | None) -> bool:
-        """Whether a shown route gets the page's badge (see traceroute_runs).
-        A hop row keeps its packet's best route with that hop
-        (traceroute_hop), which is the shown one but in rare ties."""
-        return route is not None and (
-            route.key in over_unlikely or (route.km is not None and route.key in through_doubtful)
-        )
-
-    if sort == "distance":
-
-        def apart(packets: list[sqlite3.Row]) -> float:
-            if (heard := _ends_km(packets)) is None:
-                return -2.0
-            if _doubts(packets, doubtful, unlikely) or route_doubted(shown(packets)):
-                return -1.0
-            return heard
-
-        kept.sort(key=lambda packets: (apart(packets), packets[0]["packet_row_id"]), reverse=True)
-    elif sort == "route":
-
-        def longest(packets: list[sqlite3.Row]) -> tuple[bool, float, int, int]:
-            route = shown(packets)
-            if route is None:
-                return (True, 0.0, -1, packets[0]["packet_row_id"])
-            # A reached single hop between the ends is the run's distance,
-            # with its doubts.
-            doubted = route_doubted(route) or (
-                route.reached
-                and route.hops == 1
-                and bool(_doubts(packets, doubtful, unlikely))
-                and _joins_ends(connection, route)
-            )
-            return (not doubted, route.km or 0.0, route.hops, packets[0]["packet_row_id"])
-
-        kept.sort(key=longest, reverse=True)
-    else:
-        kept.reverse()  # runs is in order of each run's first packet
-    page = kept[offset : offset + limit]
     routes = []
-    for packets in page:
-        saved = shown(packets)
-        assert saved is not None  # keep dropped the runs without one
-        route = _saved_route(connection, saved, hidden)
+    for row in shown:
+        packets = packets_by_run[row["requester_node_id"], row["request_packet_id"]]
+        route = _saved_route(connection, packets, row, hidden)
         if first is not None and second is not None:
             route = replace(route, hop=hop_between(route.path, first, second))
         over = any(
@@ -463,8 +351,157 @@ def traceroute_runs(
         nodes=tuple(nodes.values()),
         matched_node_ids=tuple(sorted(node_ids & (first or set()) | node_ids & (second or set()))),
         doubtful_node_ids=tuple(sorted(node_ids & doubtful)),
-        has_more=len(kept) > offset + limit,
+        has_more=has_more,
     )
+
+
+_IN_FIRST = "IN (SELECT value FROM json_each(:first))"
+_IN_SECOND = "IN (SELECT value FROM json_each(:second))"
+_IN_DOUBTFUL = "IN (SELECT node_id FROM node_doubtful)"
+# The nodes a hop needs for a badge: doubtful, or an end of an unlikely pair.
+_SUSPECTS = """(SELECT node_id FROM node_doubtful
+    UNION ALL SELECT node_a FROM long_link WHERE unlikely
+    UNION ALL SELECT node_b FROM long_link WHERE unlikely)"""
+_UNLIKELY_PAIR = """EXISTS (SELECT 1 FROM long_link
+    WHERE unlikely AND node_a = min({a}, {b}) AND node_b = max({a}, {b}))"""
+
+# The newest run first breaks every tie.
+_ORDER = {
+    "newest": "first_packet_row_id DESC",
+    "distance": """CASE WHEN ends_km IS NULL THEN -2.0
+        WHEN ends_doubted OR route_doubted THEN -1.0
+        ELSE ends_km END DESC, first_packet_row_id DESC""",
+    "route": """(route_doubted OR (reached AND route_hops = 1 AND ends_doubted AND joins_ends)),
+        coalesce(route_km, 0.0) DESC, route_hops DESC, first_packet_row_id DESC""",
+}
+
+
+def _page_sql(sort: TracerouteSort, searches: int) -> str:
+    """SQL: traceroute_runs' page and one run more, with each run's shown
+    route in traceroute_run's route_ columns and reached."""
+    # The replies to a broadcast request each name their own target, so a run
+    # is left out when any of its packets' targets opted out.
+    window = f"""r.first_packet_row_id >= :since
+        AND {shown_sql("r.requester_node_id")}
+        AND NOT EXISTS (
+            SELECT 1 FROM traceroute_packet AS p
+            WHERE p.requester_node_id = r.requester_node_id
+              AND p.request_packet_id = r.request_packet_id
+              AND {opted_out_sql("p.target_node_id")})
+        AND (r.reached OR NOT :successful)
+        AND (:channel IS NULL OR r.channel = :channel)"""
+    if searches == 0:
+        runs = f"WITH shown AS (SELECT * FROM traceroute_run AS r WHERE {window})"
+    else:
+        # One search matching an end shows the run's own route, on every
+        # route; otherwise its best route with a matching hop, ranked as
+        # derive ranks a hop's routes (traceroute_hop).
+        ends = (
+            "0"
+            if searches == 2
+            else f"(r.requester_node_id {_IN_FIRST} OR r.target_node_id {_IN_FIRST})"
+        )
+        hops = (
+            f"""(h.from_node_id {_IN_FIRST} AND h.to_node_id {_IN_SECOND})
+                OR (h.from_node_id {_IN_SECOND} AND h.to_node_id {_IN_FIRST})"""
+            if searches == 2
+            else f"h.from_node_id {_IN_FIRST} OR h.to_node_id {_IN_FIRST}"
+        )
+        runs = f"""
+        WITH searched AS (
+            SELECT tr.requester_node_id, tr.request_packet_id, h.packet_row_id,
+                   h.route_reception_id, h.route_is_return, h.route_hops, h.route_km,
+                   h.route_reached,
+                   row_number() OVER (
+                       PARTITION BY tr.requester_node_id, tr.request_packet_id
+                       ORDER BY h.route_reached DESC, coalesce(h.route_km, 0.0) DESC,
+                                h.route_hops DESC, h.route_reception_id,
+                                h.from_node_id, h.to_node_id
+                   ) AS n
+            FROM traceroute_hop AS h
+            JOIN traceroute_packet AS tr ON tr.packet_row_id = h.packet_row_id
+            WHERE h.packet_row_id >= :since AND ({hops})
+              AND (h.route_reached OR NOT :successful)
+        ),
+        found (requester_node_id, request_packet_id) AS (
+            SELECT requester_node_id, request_packet_id FROM searched WHERE n = 1
+            UNION SELECT requester_node_id, request_packet_id FROM traceroute_run AS r
+            WHERE {ends}
+        ),
+        shown AS (
+            SELECT r.requester_node_id, r.request_packet_id, r.target_node_id,
+                   r.first_packet_row_id, r.ends_packet_row_id, r.ends_km,
+                   CASE WHEN {ends} THEN r.route_packet_row_id ELSE s.packet_row_id END
+                       AS route_packet_row_id,
+                   CASE WHEN {ends} THEN r.route_reception_id ELSE s.route_reception_id END
+                       AS route_reception_id,
+                   CASE WHEN {ends} THEN r.route_is_return ELSE s.route_is_return END
+                       AS route_is_return,
+                   CASE WHEN {ends} THEN r.route_hops ELSE s.route_hops END AS route_hops,
+                   CASE WHEN {ends} THEN r.route_km ELSE s.route_km END AS route_km,
+                   CASE WHEN {ends} THEN r.reached ELSE s.route_reached END AS reached
+            FROM found JOIN traceroute_run AS r USING (requester_node_id, request_packet_id)
+            LEFT JOIN searched AS s
+              ON s.n = 1 AND s.requester_node_id = r.requester_node_id
+             AND s.request_packet_id = r.request_packet_id
+            WHERE {window} AND ({ends} OR s.packet_row_id IS NOT NULL)
+        )"""
+    # A hop row keeps its packet's best route with that hop (traceroute_hop),
+    # which is the shown one but in rare ties. Hidden nodes are gaps in a
+    # shown route, so they badge nothing.
+    route_doubted = (
+        "0"
+        if sort == "newest"
+        else f"""EXISTS (
+            SELECT 1 FROM traceroute_hop AS h
+            WHERE h.packet_row_id = k.route_packet_row_id
+              AND h.route_reception_id = k.route_reception_id
+              AND h.route_is_return = k.route_is_return
+              AND (h.from_node_id IN {_SUSPECTS} OR h.to_node_id IN {_SUSPECTS})
+              AND ((k.route_km IS NOT NULL
+                    AND ((h.from_node_id {_IN_DOUBTFUL} AND {shown_sql("h.from_node_id")})
+                         OR (h.to_node_id {_IN_DOUBTFUL} AND {shown_sql("h.to_node_id")})))
+                   OR ({shown_sql("h.from_node_id")} AND {shown_sql("h.to_node_id")}
+                       AND {_UNLIKELY_PAIR.format(a="h.from_node_id", b="h.to_node_id")})))"""
+    )
+    # links.link_doubts of the run's distance, as _doubts judges it: confirmed
+    # at the ends of the packet it was measured on, which in a broadcast run
+    # is a reply, not the first packet.
+    ends_doubted = (
+        "0"
+        if sort == "newest"
+        else f"""CASE WHEN k.ends_km IS NOT NULL THEN
+            k.requester_node_id {_IN_DOUBTFUL} OR k.target_node_id {_IN_DOUBTFUL}
+            OR (k.ends_km >= :long_km
+                AND {_UNLIKELY_PAIR.format(a="k.requester_node_id", b="k.target_node_id")})
+            OR (k.ends_km >= :pending_km AND NOT (
+                SELECT {confirmed_sql("e.requester_node_id", "t.first_received_at")}
+                   AND {confirmed_sql("e.target_node_id", "t.first_received_at")}
+                FROM traceroute_packet AS e JOIN packet AS t ON t.id = e.packet_row_id
+                WHERE e.packet_row_id = k.ends_packet_row_id))
+            ELSE 0 END"""
+    )
+    # A one-hop route needs a saved hop between its packet's ends to be the
+    # run's distance: a request its target's own gateway heard reached the
+    # target, but carries only the hops before the last one.
+    joins_ends = (
+        """EXISTS (
+            SELECT 1 FROM traceroute_packet AS p
+            JOIN traceroute_hop AS h ON h.packet_row_id = p.packet_row_id
+            WHERE p.packet_row_id = k.route_packet_row_id
+              AND ((h.from_node_id = p.requester_node_id AND h.to_node_id = p.target_node_id)
+                OR (h.from_node_id = p.target_node_id AND h.to_node_id = p.requester_node_id)))"""
+        if sort == "route"
+        else "0"
+    )
+    return f"""{runs}
+    SELECT * FROM (
+        SELECT k.*, {route_doubted} AS route_doubted, {ends_doubted} AS ends_doubted,
+               {joins_ends} AS joins_ends
+        FROM shown AS k WHERE k.route_hops >= :min_hops
+    )
+    ORDER BY {_ORDER[sort]} LIMIT :limit + 1 OFFSET :offset
+    """
 
 
 def _run_nodes(packets: list[sqlite3.Row], route: TracerouteRoute) -> set[int]:
@@ -504,38 +541,6 @@ def _doubts(
     )
 
 
-def _doubted_routes(
-    connection: sqlite3.Connection,
-    doubtful: set[int],
-    unlikely: set[tuple[int, int]],
-    since_id: int,
-) -> tuple[set[_RouteKey], set[_RouteKey]]:
-    """The routes since since_id with a saved hop at a doubtful node, and
-    those with one between an unlikely pair (lower ID first), either way.
-    It scans the window's hops once, and only when there are such nodes."""
-    nodes = doubtful | {node for pair in unlikely for node in pair}
-    through: set[_RouteKey] = set()
-    over: set[_RouteKey] = set()
-    if not nodes:
-        return through, over
-    for packet_row_id, reception_id, is_return, from_node, to_node in connection.execute(
-        """
-        SELECT packet_row_id, route_reception_id, route_is_return, from_node_id, to_node_id
-        FROM traceroute_hop
-        WHERE packet_row_id >= :since
-          AND (from_node_id IN (SELECT value FROM json_each(:nodes))
-               OR to_node_id IN (SELECT value FROM json_each(:nodes)))
-        """,
-        {"since": since_id, "nodes": json.dumps(sorted(nodes))},
-    ):
-        key = (int(packet_row_id), int(reception_id), bool(is_return))
-        if from_node in doubtful or to_node in doubtful:
-            through.add(key)
-        if (min(from_node, to_node), max(from_node, to_node)) in unlikely:
-            over.add(key)
-    return through, over
-
-
 @dataclass(frozen=True)
 class NodeCount:
     node_id: int
@@ -551,8 +556,10 @@ class ChannelCount:
 @dataclass(frozen=True)
 class BusiestTraceroutes:
     """The ten nodes that ran the most traceroute runs, were traced in the most
-    runs, and relayed the most traceroute packets (on a reported route but at
-    neither end), in the window; and the traceroute packets per channel, most first."""
+    runs (a run counts in the window of its first packet, as the explorer
+    lists it), and relayed the most traceroute packets (on a reported route
+    but at neither end), in the window; and the traceroute packets per
+    channel, most first."""
 
     requesters: tuple[NodeCount, ...]
     targets: tuple[NodeCount, ...]
@@ -570,19 +577,18 @@ def busiest_traceroutes(
         found = connection.execute(sql, {"since": since_id, "limit": BUSIEST_NODES})
         return tuple(NodeCount(int(row[0]), int(row[1])) for row in found)
 
-    run = "(requester_node_id << 32) | request_packet_id"
     requesters = busiest(
         f"""
-        SELECT requester_node_id, count(DISTINCT {run}) AS runs FROM traceroute_packet
-        WHERE packet_row_id >= :since
+        SELECT requester_node_id, count(*) AS runs FROM traceroute_run
+        WHERE first_packet_row_id >= :since
         GROUP BY requester_node_id HAVING {shown_sql("requester_node_id")}
         ORDER BY runs DESC, requester_node_id LIMIT :limit
         """
     )
     targets = busiest(
         f"""
-        SELECT target_node_id, count(DISTINCT {run}) AS runs FROM traceroute_packet
-        WHERE packet_row_id >= :since
+        SELECT target_node_id, count(*) AS runs FROM traceroute_run
+        WHERE first_packet_row_id >= :since
         GROUP BY target_node_id HAVING {shown_sql("target_node_id")}
         ORDER BY runs DESC, target_node_id LIMIT :limit
         """
@@ -626,34 +632,6 @@ def busiest_traceroutes(
     )
 
 
-def _hop_routes(
-    connection: sqlite3.Connection, condition: str, since_id: int, **values: object
-) -> dict[int, list[sqlite3.Row]]:
-    """The window's traceroute_hop rows matching condition, by packet."""
-    found: dict[int, list[sqlite3.Row]] = {}
-    for row in connection.execute(
-        f"""
-        SELECT packet_row_id, route_reception_id, route_is_return, route_hops, route_km,
-               route_reached
-        FROM traceroute_hop
-        WHERE packet_row_id >= :since AND ({condition})
-        """,
-        {"since": since_id, **values},
-    ):
-        found.setdefault(row["packet_row_id"], []).append(row)
-    return found
-
-
-def _hop_route_rank(row: sqlite3.Row) -> tuple[int, float, int, int]:
-    """A hop row's best route ranked as derive ranks it (see traceroute_hop)."""
-    return (
-        row["route_reached"],
-        row["route_km"] or 0.0,
-        row["route_hops"],
-        -row["route_reception_id"],
-    )
-
-
 def _matching_nodes(connection: sqlite3.Connection, query: str) -> set[int]:
     """Known nodes matching the search, plus an exact !hex or decimal ID even
     when the node is only known from routes."""
@@ -668,24 +646,6 @@ def _matching_nodes(connection: sqlite3.Connection, query: str) -> set[int]:
     if text.isascii() and text.isdigit() and int(text) <= 0xFFFFFFFF:
         found.add(int(text))
     return found
-
-
-def _rank(row: sqlite3.Row, prefix: str) -> tuple[float, int]:
-    """The route_rank of a packet's stored route (prefix "route") or successful route
-    ("success_route"); below every route when it has none."""
-    if row[f"{prefix}_hops"] is None:
-        return (-1.0, -1)
-    return (row[f"{prefix}_km"] or 0.0, row[f"{prefix}_hops"])
-
-
-def _shown(packets: list[sqlite3.Row]) -> tuple[sqlite3.Row, str]:
-    """The run's packet holding the route it shows and that route's columns:
-    the route that worked, from the earliest reply that has one or else the
-    request, otherwise the longest route."""
-    worked = [packet for packet in packets if packet["success_route_hops"] is not None]
-    if worked:
-        return min(worked, key=lambda p: (not p["is_reply"], p["packet_row_id"])), "success_route"
-    return max(packets, key=lambda packet: _rank(packet, "route")), "route"
 
 
 def _run(
@@ -715,67 +675,20 @@ def _run(
     )
 
 
-class _SavedRoute(NamedTuple):
-    """A route that capture saved a summary of, before it is decoded: the
-    packet (a traceroute_packet row joined to its packet) and reception whose
-    report holds it. km uses positions from when the report was derived. A
-    tuple, as the sorts make one per run."""
-
-    packet: sqlite3.Row
-    reception_id: int
-    is_return: bool
-    hops: int
-    km: float | None
-    reached: bool
-
-    @property
-    def key(self) -> _RouteKey:
-        return (int(self.packet["packet_row_id"]), self.reception_id, self.is_return)
-
-
-def _stored_route(packet: sqlite3.Row, prefix: str) -> _SavedRoute:
-    """A packet's longest route (prefix "route") or route that worked
-    ("success_route", always a forward route) as capture stored it."""
-    return _SavedRoute(
-        packet,
-        reception_id=int(packet[f"{prefix}_reception_id"]),
-        is_return=prefix == "route" and bool(packet["route_is_return"]),
-        hops=int(packet[f"{prefix}_hops"]),
-        km=packet[f"{prefix}_km"],
-        reached=prefix == "success_route",
-    )
-
-
-def _joins_ends(connection: sqlite3.Connection, route: _SavedRoute) -> bool:
-    """Whether the route's packet has a saved hop between the run's ends. A
-    one-hop route needs one to measure the run's distance: a request its
-    target's own gateway heard reached the target, but carries only the hops
-    before the last one. Called for the few doubted runs only."""
-    packet = route.packet
-    a, b = int(packet["requester_node_id"]), int(packet["target_node_id"])
-    return (
-        connection.execute(
-            """
-            SELECT 1 FROM traceroute_hop
-            WHERE packet_row_id = ?
-              AND ((from_node_id = ? AND to_node_id = ?) OR (from_node_id = ? AND to_node_id = ?))
-            """,
-            (int(packet["packet_row_id"]), a, b, b, a),
-        ).fetchone()
-        is not None
-    )
-
-
 def _saved_route(
-    connection: sqlite3.Connection, saved: _SavedRoute, hidden: set[int]
+    connection: sqlite3.Connection,
+    packets: list[sqlite3.Row],
+    shown: sqlite3.Row,
+    hidden: set[int],
 ) -> TracerouteRoute:
-    """The route decoded from the one saved report that holds it, with
-    hidden nodes as gaps."""
+    """The route a _page_sql row shows, decoded from the one saved report
+    that holds it, with hidden nodes as gaps."""
     # Recompute summary distances from current positions only if that
     # visibly misleads users.
-    packet = saved.packet
+    packet = next(p for p in packets if p["packet_row_id"] == shown["route_packet_row_id"])
+    is_return = bool(shown["route_is_return"])
     payload = connection.execute(
-        "SELECT route_payload FROM reception WHERE id = ?", (saved.reception_id,)
+        "SELECT route_payload FROM reception WHERE id = ?", (shown["route_reception_id"],)
     ).fetchone()
     report = None if payload is None else _traceroute_report(packet, payload[0], None)
     if report is None:  # not expected: capture only saves readable reports
@@ -783,13 +696,14 @@ def _saved_route(
     else:
         report = without_nodes(report, hidden)
         returned = report.paths.return_path
-        path = returned if saved.is_return and returned else report.paths.forward
+        path = returned if is_return and returned else report.paths.forward
+    km = shown["route_km"]
     return TracerouteRoute(
         packet_row_id=int(packet["packet_row_id"]),
-        is_return=saved.is_return,
-        hops=saved.hops,
-        km=None if saved.km is None else round(saved.km, 1),
-        reached=saved.reached,
+        is_return=is_return,
+        hops=int(shown["route_hops"]),
+        km=None if km is None else round(km, 1),
+        reached=bool(shown["reached"]),
         path=path,
         path_hops=tuple(path_hops(path)),
     )

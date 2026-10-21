@@ -34,6 +34,7 @@ DERIVED_TABLES = (
     "link_hour",
     "traceroute_hop",
     "traceroute_packet",
+    "traceroute_run",
 )
 
 

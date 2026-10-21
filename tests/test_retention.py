@@ -233,5 +233,7 @@ def test_retention_drops_link_hours_before_the_age_limit(tmp_path: Path) -> None
             ("traceroute", to_epoch_ms(kept)),
         ]
         assert connection.execute("SELECT count(*) FROM traceroute_hop").fetchone()[0] == 1
+        runs = connection.execute("SELECT request_packet_id FROM traceroute_run").fetchall()
+        assert [tuple(row) for row in runs] == [(3,)]
     finally:
         connection.close()

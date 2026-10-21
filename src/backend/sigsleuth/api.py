@@ -604,7 +604,7 @@ def create_app(
         limit: PageLimit = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> traceroute_explorer.TracerouteRuns:
-        """Traceroute runs (a request and its reply) with a packet since `since`,
+        """Traceroute runs (a request and its reply) first heard since `since`,
         newest first, by the route shown (route: km, then hops) or by the straight
         line between the ends (distance). Each run shows its route that worked,
         or without one its longest route. successful keeps only runs and routes

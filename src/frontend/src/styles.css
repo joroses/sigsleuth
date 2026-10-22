@@ -625,6 +625,15 @@ thead th {
   gap: var(--space-2);
 }
 
+.coverage-legend-scale > :first-child,
+.coverage-legend-scale > :last-child {
+  white-space: nowrap;
+}
+
+.coverage-legend-scale > :nth-child(2) {
+  text-align: center;
+}
+
 .coverage-popup .maplibregl-popup-content,
 .history-popup .maplibregl-popup-content {
   padding: var(--space-1) var(--space-2);

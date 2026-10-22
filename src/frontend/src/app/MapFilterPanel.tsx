@@ -1,5 +1,6 @@
 import type { LinkKind } from "./api";
 import { MARGIN_STOPS } from "./coverageLayer";
+import { demodulationFloor } from "./linkQuality";
 import { LinkQualityLegend, LinkSwatch } from "./MapLinkDetails";
 import {
   type LinkLayerChoice,
@@ -48,6 +49,7 @@ export function MapFilterPanel({
   onShowTextReach,
   showCoverage,
   onShowCoverage,
+  coverageSpreadingFactor,
 }: {
   seenWindow: SeenWindow;
   onSeenWindow: (window: SeenWindow) => void;
@@ -71,6 +73,8 @@ export function MapFilterPanel({
   onShowTextReach: (shown: boolean) => void;
   showCoverage: boolean;
   onShowCoverage: (shown: boolean) => void;
+  /** The one spreading factor of the cells in view, else null. */
+  coverageSpreadingFactor: number | null;
 }) {
   // Phones start with it closed so the map is visible.
   const [open, setOpen] = useSetting("filterPanelOpen", !isNarrowScreen());
@@ -254,15 +258,25 @@ export function MapFilterPanel({
             <span className="coverage-swatch" aria-hidden="true" />
             <span className="map-filter-name">Coverage</span>
           </label>
-          {showCoverage ? <CoverageLegend /> : null}
+          {showCoverage ? (
+            <CoverageLegend spreadingFactor={coverageSpreadingFactor} />
+          ) : null}
         </fieldset>
       </div>
     </section>
   );
 }
 
-// The cells' margin scale, from the edge of decoding to a strong signal.
-function CoverageLegend() {
+// The cells' margin scale, from the edge of decoding to a strong signal. With
+// one spreading factor, margin is SNR minus that factor's floor, so the same
+// colours read as SNR.
+function CoverageLegend({
+  spreadingFactor,
+}: {
+  spreadingFactor: number | null;
+}) {
+  const floor =
+    spreadingFactor === null ? null : demodulationFloor(spreadingFactor);
   const gradient = MARGIN_STOPS.map(
     ([db, color]) => `${color} ${(db / 25) * 100}%`,
   ).join(", ");
@@ -274,9 +288,19 @@ function CoverageLegend() {
         aria-hidden="true"
       />
       <span className="coverage-legend-scale">
-        <span>0 dB</span>
-        <span>average margin above the floor</span>
-        <span>25 dB</span>
+        {floor === null ? (
+          <>
+            <span>0 dB</span>
+            <span>above the decoding limit</span>
+            <span>25 dB</span>
+          </>
+        ) : (
+          <>
+            <span>{floor} dB</span>
+            <span>average SNR</span>
+            <span>{floor + 25} dB</span>
+          </>
+        )}
       </span>
     </div>
   );

@@ -6,7 +6,7 @@ How the map's coverage layer turns signal surveys into coloured squares (`covera
 
 A survey records each packet its node hears, with the phone's position: a measurement. Uploads drop measurements whose GPS fix is worse than 100 m or older than 10 s.
 
-A square's colour is the average margin of its measurements: how far the SNR sits above the weakest signal the survey node can decode at its spreading factor (−17.5 dB on LongFast). Margins compare across presets where raw SNR does not. The scale runs from red at 0 dB (barely decoded) through amber to dark green at 25 dB or more. Grey means no SNR, or a survey that did not send its radio settings.
+A square's colour is the average margin of its measurements: how far the SNR sits above the weakest signal the survey node can decode at its spreading factor (−17.5 dB on LongFast). Margins compare across presets where raw SNR does not. The scale runs from red at 0 dB (barely decoded) through amber to dark green at 25 dB or more. Grey means no SNR, or a survey that did not send its radio settings. When every square in view comes from surveys on one spreading factor, the legend and a square's hover read in SNR instead (the same colours, as margin is then SNR plus a constant).
 
 - The SNR is that of the transmission that reached the phone, so it measures the node heard (below), not the sender of a relayed packet.
 - The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly ("Heard from it", the default; "All nodes" shows everything). The node page's minimap shows the same.

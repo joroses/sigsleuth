@@ -814,15 +814,18 @@ def cell_level(zoom: float) -> int:
 class CoverageCell:
     """One coverage cell at the list's level: the Web Mercator tile (x, y).
     average_margin and best_margin are the SNR margins above the survey
-    node's floor, in dB; None when no measurement had one. nodes counts the
-    distinct heard nodes; guessed counts measurements whose heard node is a
-    guess (GUESSED)."""
+    node's floor, in dB; None when no measurement had one. spreading_factor
+    is the one all its measurements' surveys ran on, None when they mix or
+    one is unknown. nodes counts the distinct heard nodes; guessed counts
+    measurements whose heard node is a guess (GUESSED)."""
 
     x: int
     y: int
     measurements: int
     average_margin: float | None
     best_margin: float | None
+    average_snr: float | None
+    spreading_factor: int | None
     nodes: int
     guessed: int
 
@@ -869,8 +872,13 @@ def coverage_cells(
         f"""
         SELECT m.cell_x >> :shift AS x, m.cell_y >> :shift AS y, count(*) AS measurements,
                avg(m.margin_db) AS average_margin, max(m.margin_db) AS best_margin,
+               avg(m.rx_snr) AS average_snr,
+               CASE WHEN count(s.spreading_factor) = count(*)
+                    AND min(s.spreading_factor) = max(s.spreading_factor)
+                    THEN min(s.spreading_factor) END AS spreading_factor,
                count(DISTINCT {_SHOWN}) AS nodes, sum({_SHOWN_GUESSED}) AS guessed
         FROM {_MEASUREMENTS}
+        JOIN coverage_session AS s ON s.id = m.session_row_id
         WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
           AND m.heard_at >= :since{filters}
         GROUP BY 1, 2
@@ -895,6 +903,8 @@ def coverage_cells(
             measurements=int(row["measurements"]),
             average_margin=_round(row["average_margin"]),
             best_margin=_round(row["best_margin"]),
+            average_snr=_round(row["average_snr"]),
+            spreading_factor=row["spreading_factor"],
             nodes=int(row["nodes"]),
             guessed=int(row["guessed"]),
         )

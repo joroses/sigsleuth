@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 
 import {
@@ -30,6 +30,7 @@ import {
   coverageCellsUrl,
   coverageExtentUrl,
   nextCoverageArea,
+  viewSpreadingFactor,
 } from "./coverageLayer";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { useSetting } from "./remember";
@@ -93,6 +94,16 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
   const extent = useApi<CoverageExtent | null>(
     showCoverage ? coverageExtentUrl(node.node_id) : null,
   );
+  // For the cell popup, which is set up once with the map.
+  const spreadingFactor = useRef<number | null>(null);
+  useEffect(() => {
+    spreadingFactor.current =
+      coverage.data === null || coverageArea === null
+        ? null
+        : viewSpreadingFactor(
+            cellsInView(coverage.data, coverageArea.view).cells,
+          );
+  }, [coverage.data, coverageArea]);
   const loaded = history !== null || error !== null;
   const items = useMemo(() => history?.items ?? [], [history]);
   const current: Current | null =
@@ -181,7 +192,7 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
           if (cell === undefined) return;
           cellPopup
             .setLngLat(event.lngLat)
-            .setText(cellText(cell))
+            .setText(cellText(cell, spreadingFactor.current))
             .addTo(created);
         });
         created.on("mouseleave", COVERAGE_FILL_LAYER, () => cellPopup.remove());

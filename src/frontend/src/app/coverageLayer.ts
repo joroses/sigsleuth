@@ -111,6 +111,17 @@ export function cellsInView(
 }
 
 /**
+ * The spreading factor every cell shares, else null. Decided for the view,
+ * not per cell, so neighbouring cells don't switch units.
+ */
+export function viewSpreadingFactor(
+  cells: readonly CoverageCell[],
+): number | null {
+  const first = cells[0]?.spreading_factor ?? null;
+  return cells.every((cell) => cell.spreading_factor === first) ? first : null;
+}
+
+/**
  * What the coverage layer shows with a node selected: "heard" the
  * measurements where it was the node the survey node heard (its radio
  * footprint, with its own packets heard directly); "all" ignores it.
@@ -174,7 +185,7 @@ export function cellBounds({ level, x, y }: CellAddress) {
 }
 
 /**
- * Margin colours over 0-25 dB above the floor: red at the edge of decoding,
+ * Margin colours over 0-25 dB above the decoding limit: red at the edge of decoding,
  * amber, then greens. The links' tiers stop at 10 dB, where most survey
  * measurements already are, so cells need a longer scale. Presentation only.
  */
@@ -377,17 +388,25 @@ export function addCoverageLayers(
 }
 
 /**
- * A hovered cell's totals. Its properties come back from MapLibre, which
- * drops nulls.
+ * A hovered cell's totals, in SNR when the view has one spreading factor
+ * (viewSpreadingFactor). Its properties come back from MapLibre, which drops
+ * nulls.
  */
-export function cellText(cell: Record<string, unknown>): string {
+export function cellText(
+  cell: Record<string, unknown>,
+  spreadingFactor: number | null,
+): string {
+  const snr = cell.average_snr;
   const margin = cell.average_margin;
+  const measurements = Number(cell.measurements);
   const nodes = Number(cell.nodes);
-  return `${Number(cell.measurements).toLocaleString()} measurements · ${
-    typeof margin === "number"
-      ? `${margin.toFixed(1)} dB average margin`
-      : "no SNR"
-  } · ${nodes.toLocaleString()} heard ${nodes === 1 ? "node" : "nodes"}`;
+  const signal =
+    spreadingFactor !== null && typeof snr === "number"
+      ? `${snr.toFixed(1)} dB SNR average`
+      : typeof margin === "number"
+        ? `${margin.toFixed(1)} dB above the limit`
+        : "no SNR";
+  return `${measurements.toLocaleString()} ${measurements === 1 ? "measurement" : "measurements"} · ${signal} · ${nodes.toLocaleString()} heard ${nodes === 1 ? "node" : "nodes"}`;
 }
 
 /** The plain words for how a heard node was identified. */

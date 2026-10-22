@@ -201,7 +201,7 @@ function MarginDot({ margin }: { margin: number | null }) {
       title={
         margin === null
           ? "No SNR"
-          : `${margin.toFixed(1)} dB above the floor, coloured as the cells`
+          : `${margin.toFixed(1)} dB above the decoding limit, coloured as the cells`
       }
     />
   );

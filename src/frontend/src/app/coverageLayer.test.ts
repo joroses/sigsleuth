@@ -6,6 +6,7 @@ import {
   cellBounds,
   cellsInView,
   nextCoverageArea,
+  viewSpreadingFactor,
 } from "./coverageLayer";
 
 const heard = (
@@ -77,6 +78,8 @@ describe("coverage cells", () => {
       measurements: 1,
       average_margin: null,
       best_margin: null,
+      average_snr: null,
+      spreading_factor: 7,
       nodes: 1,
       guessed: 0,
     });
@@ -94,6 +97,24 @@ describe("coverage cells", () => {
       zoom: 15,
     };
     expect(cellsInView(list, view).cells.map((c) => c.x)).toEqual([66107]);
+  });
+
+  it("finds the view's spreading factor only when every cell shares it", () => {
+    const cell = (x: number, spreading_factor: number | null) => ({
+      x,
+      y: 48695,
+      measurements: 1,
+      average_margin: 10,
+      best_margin: 10,
+      average_snr: 2.5,
+      spreading_factor,
+      nodes: 1,
+      guessed: 0,
+    });
+    expect(viewSpreadingFactor([cell(1, 7), cell(2, 7)])).toBe(7);
+    expect(viewSpreadingFactor([cell(1, 7), cell(2, 11)])).toBeNull();
+    expect(viewSpreadingFactor([cell(1, 7), cell(2, null)])).toBeNull();
+    expect(viewSpreadingFactor([])).toBeNull();
   });
 
   it("draws solid lines to certain nodes, dashed to guesses, none to undrawn nodes", () => {

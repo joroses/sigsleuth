@@ -895,9 +895,10 @@ export interface components {
      * CoverageCell
      * @description One coverage cell at the list's level: the Web Mercator tile (x, y).
      *     average_margin and best_margin are the SNR margins above the survey
-     *     node's floor, in dB; None when no measurement had one. nodes counts the
-     *     distinct heard nodes; guessed counts measurements whose heard node is a
-     *     guess (GUESSED).
+     *     node's floor, in dB; None when no measurement had one. spreading_factor
+     *     is the one all its measurements' surveys ran on, None when they mix or
+     *     one is unknown. nodes counts the distinct heard nodes; guessed counts
+     *     measurements whose heard node is a guess (GUESSED).
      */
     CoverageCell: {
       x: number;
@@ -905,6 +906,8 @@ export interface components {
       measurements: number;
       average_margin: number | null;
       best_margin: number | null;
+      average_snr: number | null;
+      spreading_factor: number | null;
       nodes: number;
       guessed: number;
     };

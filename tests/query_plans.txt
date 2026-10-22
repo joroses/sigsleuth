@@ -1153,6 +1153,7 @@ coverage.coverage_cells
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
 
 ## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12&since=<time>&node=168430090&channel=LongFast
 
@@ -1165,6 +1166,7 @@ coverage.coverage_cells
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
 
 ## GET /api/v1/coverage/extent?node=168430090
 
@@ -1180,6 +1182,7 @@ coverage.coverage_cells
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
 
 ## GET /api/v1/coverage/cells/17/67320/43265
 

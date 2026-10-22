@@ -42,6 +42,7 @@ import {
   coverageCellsUrl,
   cellsInView,
   nextCoverageArea,
+  viewSpreadingFactor,
   type CellAddress,
   type CoverageFeatureCollection,
   type CoverageLineCollection,
@@ -733,6 +734,15 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
         : cellsInView(coverageCells, coverageView),
     [coverageCells, coverageView],
   );
+  const coverageSpreadingFactor =
+    coverageCellsInView === null
+      ? null
+      : viewSpreadingFactor(coverageCellsInView.cells);
+  // For the cell popup, set up once per style load.
+  const coverageSpreadingFactorRef = useRef(coverageSpreadingFactor);
+  useEffect(() => {
+    coverageSpreadingFactorRef.current = coverageSpreadingFactor;
+  }, [coverageSpreadingFactor]);
   useEffect(() => {
     if (showCoverage && coverageCells === null) return;
     const cells = buildCoverageFeatureCollection(
@@ -869,7 +879,10 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       const cell = event.features?.[0]?.properties;
       if (cell === undefined) return;
       instance.getCanvas().style.cursor = "pointer";
-      cellPopup.setLngLat(event.lngLat).setText(cellText(cell)).addTo(instance);
+      cellPopup
+        .setLngLat(event.lngLat)
+        .setText(cellText(cell, coverageSpreadingFactorRef.current))
+        .addTo(instance);
     };
     const hideCellPopup = () => {
       cellPopup.remove();
@@ -1464,6 +1477,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
           onShowTextReach={setShowTextReach}
           showCoverage={showCoverage}
           onShowCoverage={toggleCoverage}
+          coverageSpreadingFactor={coverageSpreadingFactor}
           minObservations={minObservationsText}
           onMinObservations={setMinObservationsText}
           minKm={minKm}

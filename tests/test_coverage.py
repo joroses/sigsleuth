@@ -681,6 +681,28 @@ def test_a_cell_totals_snr_per_network(client: TestClient) -> None:
     ] == [(7, 62.5, 2, 11.0, 18.5), (11, 250.0, 1, -12.0, 5.5)]
 
 
+def test_a_cell_has_a_spreading_factor_only_when_its_surveys_share_one(
+    client: TestClient,
+) -> None:
+    # Three cells about 1 km apart: SF7 only, SF7 and SF11, SF7 and unknown.
+    upload(client, *(measurement(n, rx_snr=10.0, latitude=41.9 + n * 0.01) for n in (1, 2, 3)))
+    upload(
+        client,
+        measurement(1, rx_snr=-12.0, latitude=41.92),
+        session={**SESSION, "id": "sf11", "spreading_factor": 11, "bandwidth_khz": 250.0},
+    )
+    upload(
+        client,
+        measurement(1, rx_snr=10.0, latitude=41.93),
+        session={**SESSION, "id": "unknown", "spreading_factor": None},
+    )
+    cells = client.get("/api/v1/coverage/cells", params={**AREA, "zoom": 11}).json()["cells"]
+
+    assert sorted(
+        (cell["measurements"], cell["spreading_factor"], cell["average_snr"]) for cell in cells
+    ) == [(1, 7, 10.0), (2, None, -1.0), (2, None, 10.0)]
+
+
 DAY_MS = 24 * 60 * 60 * 1_000
 
 

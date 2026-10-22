@@ -75,6 +75,15 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
     showContacts ? nodeContactsUrl(node.node_id, since) : null,
   );
   const [showCoverage, setShowCoverage] = useSetting("node.coverage", false);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [expanded]);
   const [coverageArea, setCoverageArea] = useState<CoverageArea | null>(null);
   const coverage = useApi<CoverageCellList>(
     showCoverage && coverageArea !== null
@@ -243,64 +252,83 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
   }, [map, showCoverage, coverage.data]);
 
   return (
-    <figure className="node-position">
-      <div className="node-position-head">
-        <h3>Position</h3>
+    <>
+      {expanded ? (
         <div
-          className="minimap-toggles"
-          role="group"
-          aria-label="Show on the map"
-        >
-          <button
-            type="button"
-            aria-pressed={showContacts}
-            title={`Nodes linked with it and gateways that heard it over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
-            onClick={() => setShowContacts(!showContacts)}
-          >
-            <Icon name="nodes" />
-            Contacts
-            <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
-          </button>
-          <button
-            type="button"
-            aria-pressed={showCoverage}
-            title="Where survey nodes heard it, its own packets or ones it relayed"
-            onClick={() => setShowCoverage(!showCoverage)}
-          >
-            <Icon name="coverage" />
-            Coverage
-          </button>
-        </div>
-      </div>
-      {/* Always there, so the card keeps its shape while loading or with
-          nothing to draw; the map fills what the notes leave. */}
-      <div className="node-position-map">
-        {failure !== null ? (
-          <p className="muted">{MAP_FAILURE_MESSAGES[failure]}</p>
-        ) : null}
-        {hasMap ? (
+          className="node-position-backdrop"
+          onClick={() => setExpanded(false)}
+        />
+      ) : null}
+      <figure
+        className={`node-position ${expanded ? "node-position-expanded" : ""}`}
+      >
+        <div className="node-position-head">
+          <h3>Position</h3>
           <div
-            ref={container}
-            className="minimap-canvas"
-            hidden={failure !== null}
-          />
-        ) : null}
-        {contactsState.data !== null && (contacts?.marks.length ?? 0) > 0 ? (
-          <ContactsKey contacts={contactsState.data} />
-        ) : null}
-      </div>
-      <figcaption className="muted">
-        <span className="data-line">{historyNote(history, error)}</span>
-        {showContacts ? (
-          <ContactsNote state={contactsState} contacts={contacts} />
-        ) : null}
-        {showCoverage && hasMap ? (
-          <span className="data-line">
-            {coverageNote(coverage, coverageArea, extent)}
-          </span>
-        ) : null}
-      </figcaption>
-    </figure>
+            className="minimap-toggles"
+            role="group"
+            aria-label="Show on the map"
+          >
+            <button
+              type="button"
+              aria-pressed={showContacts}
+              title={`Nodes linked with it and gateways that heard it over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
+              onClick={() => setShowContacts(!showContacts)}
+            >
+              <Icon name="nodes" />
+              Contacts
+              <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={showCoverage}
+              title="Where survey nodes heard it, its own packets or ones it relayed"
+              onClick={() => setShowCoverage(!showCoverage)}
+            >
+              <Icon name="coverage" />
+              Coverage
+            </button>
+            <button
+              type="button"
+              aria-pressed={expanded}
+              title={expanded ? "Back to the page (Esc)" : "A bigger map"}
+              onClick={() => setExpanded(!expanded)}
+            >
+              <Icon name={expanded ? "collapse" : "expand"} />
+              {expanded ? "Close" : "Expand"}
+            </button>
+          </div>
+        </div>
+        {/* Always there, so the card keeps its shape while loading or with
+          nothing to draw; the map fills what the notes leave. */}
+        <div className="node-position-map">
+          {failure !== null ? (
+            <p className="muted">{MAP_FAILURE_MESSAGES[failure]}</p>
+          ) : null}
+          {hasMap ? (
+            <div
+              ref={container}
+              className="minimap-canvas"
+              hidden={failure !== null}
+            />
+          ) : null}
+          {contactsState.data !== null && (contacts?.marks.length ?? 0) > 0 ? (
+            <ContactsKey contacts={contactsState.data} />
+          ) : null}
+        </div>
+        <figcaption className="muted">
+          <span className="data-line">{historyNote(history, error)}</span>
+          {showContacts ? (
+            <ContactsNote state={contactsState} contacts={contacts} />
+          ) : null}
+          {showCoverage && hasMap ? (
+            <span className="data-line">
+              {coverageNote(coverage, coverageArea, extent)}
+            </span>
+          ) : null}
+        </figcaption>
+      </figure>
+    </>
   );
 }
 

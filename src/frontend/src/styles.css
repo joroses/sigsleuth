@@ -4921,3 +4921,22 @@ button.chat-quote:hover {
   white-space: nowrap;
   vertical-align: bottom;
 }
+
+/* The node page's minimap, expanded over the page. */
+.node-position-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 0.6);
+}
+.node-position.node-position-expanded {
+  position: fixed;
+  inset: 4vh 4vw;
+  z-index: 41;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.5);
+}
+.node-position-expanded .node-position-map,
+.node-position-expanded .minimap-canvas {
+  flex: 1 1 auto;
+  height: 100%;
+}

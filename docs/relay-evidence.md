@@ -122,10 +122,10 @@ Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; thei
 
 ## Decision (2026-10-18)
 
-No signal matching: lines need a direct reception, a radio link or the rule-outs, which anyone can check. Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
+No signal matching: lines need a direct reception, a radio link or the rule-outs, which anyone can check. Since 2026-10-22 one signal rule-out applies, "too strong" (below); signals still name no one. Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
 1. **Solid**: a survey heard the node directly. The measurement had no relay, or the relay byte matches exactly one node a survey heard directly nearby (a survey link: any survey node, same radio settings, 30 km, closest of 1 hour or 60 days). Checked before the rule-outs, so none can overrule a direct reception, and it wins over upload's name.
-2. **Rule-outs**: every row of the rule-out table except the two signal rows.
+2. **Rule-outs**: every row of the rule-out table except the two signal rows. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
 3. **Dashed**: of the candidates left, the first rule that names exactly one: 2d; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left.
 4. **No line** otherwise. The cell lists up to three candidates that pass the rule-outs needing no packet (role, spreading factor, firmware, reach), nearest first.
 5. A measurement with a line, solid or dashed, paints while that node is alive; one without paints for 14 days.
@@ -169,7 +169,26 @@ The signal matches (9 and 9b) are not circular: their averages come from the can
 | Chance (one of them) | 49.1% | 46.1% |
 | Most heard directly | 55.9% right | |
 
-So it reads the relay's signal, but rarely decides. With it, solid lines would be 90.7% (99.7% right) rather than 85.4%, and 2d (47.8% at 98.7%) would be 9b (49.0% at 98.8%). What it mainly buys is half the wrong names when the relay is hidden (9b 2.7% against 2d 5.6%; with the SNR tiers, solid with survey links 4.2% rather than 6.4%), at the cost of two averages per candidate and two bounds to explain.
+So it reads the relay's signal, but rarely decides. With it, solid lines would be 90.7% (99.7% right) rather than 85.4%, and 2d (47.8% at 98.7%) would be 9b (49.0% at 98.8%). What it mainly buys is half the wrong names when the relay is hidden (9b 2.7% against 2d 5.6%; with the SNR tiers, solid with survey links 4.2% rather than 6.4%), at the cost of two averages per candidate and two bounds to explain. Matching still names no one; the one-sided "too strong" check below only rules out.
+
+## Too strong (2026-10-22)
+
+A relayed copy is sent at the relay's own power over its own path, so it cannot arrive much stronger than that node's own packets heard from the same place. Weaker is normal (a pocket, indoors, fading). The signal is `rx_rssi + min(rx_snr, 0)`: RSSI reads the noise below 0 dB SNR, and SNR alone saturates near +12 dB. An RSSI of 0 is missing.
+
+Measured on a copy of live loranet.pl `msh/#`, 2026-09-27 to 2026-10-12, by `scripts/relay-signal.py DATABASE` (about 20 seconds), with the gateway in the phone's place: 278,899 route-truth receptions with an RSSI, each candidate checked against the gateway's own direct receptions of it in the 30 days before. A candidate is ruled out when the copy is over the margin above the strongest of them:
+
+| Margin | True relays ruled out | Wrong candidates heard directly, ruled out |
+|---|---|---|
+| 10 dB | 0.17% | 48% |
+| 20 dB | 0.09% | 30% |
+| 30 dB | 0.035% | 15% |
+| 40 dB | 0% | 6% |
+
+- By reading, at 20 dB with 3 or more readings: the signal 0.086% / 28.0%, RSSI alone 0.025% / 12.6%, SNR alone 0.005% / 0.6%.
+- Where exactly one candidate was heard directly (the survey-link stand-in), 20 dB cuts wrong names from 519 to 394 and names 2.6% more right ones, since it also settles pairs; 30 dB, 519 to 468 and 1.3% more.
+- A "too weak" check against the weakest reading is as safe on gateways (20 dB: 0.021% / 7.3%), but a phone loses signal in pockets and indoors: not used.
+
+Decided: survey links and upload leave out a candidate whose copy is over 30 dB above the strongest signal at which the same survey node heard it directly within 1 km, 60 days either side. The same survey node, because radios read RSSI differently (an LNA); 30 dB, not 20, because a moving phone varies more within 1 km than a fixed gateway. A candidate without such a reading is not checked: a node heard weakly far away may be strong here, and reported positions cannot set a ceiling (about 1 in 10 placed node pairs 10 km or more apart arrive stronger than free-space loss allows). Packet pages could use it with the gateway in the phone's place, but `link_hour` keeps no RSSI.
 
 ### Wording
 
@@ -191,4 +210,4 @@ Every relayed name stays a guess unless it is solid.
 - **Survey links** (30 km, 60 days, any survey node): the stand-in reads one fixed gateway's 7 days. Settled by surveys that hear traceroutes: the phone uploading a traceroute's route would give survey measurements route truth.
 - **Relays MQTT never sees**: hidden figures assume the worst case for each reception; on gateways such relays are 2.4% of relays and 0.1% of receptions, likely more where no gateway listens. Settled by counting survey relay bytes that match no node in `node_current`, and survey direct receptions from nodes MQTT does not place. Live has no direct survey measurement.
 - **Phones at ground level**: shorter, more varied paths; a moving phone's SNR from one relay spreads more than a gateway's. The 6 and 10 dB bounds need survey direct receptions repeated in one place.
-- **RSSI**: `link_hour` keeps SNR only, so the roadmap's `rx_rssi + min(rx_snr, 0)` signal is untested.
+- **Signal at ground level**: the "too strong" rule's 30 dB is measured on gateways (above); how much a phone's signal from one relay varies within 1 km is untested. `link_hour` keeps SNR only, so packet pages can't use it yet.

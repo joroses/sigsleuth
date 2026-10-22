@@ -924,6 +924,113 @@ def test_rederive_refills_survey_links(client: TestClient, connection: sqlite3.C
     assert links(connection) == [(1, RELAY)]
 
 
+# Signals: -118 dBm at -8 dB SNR is -126; -45 dBm at +10 dB is -45.
+WEAK = {"rx_rssi": -118, "rx_snr": -8.0}
+STRONG = {"rx_rssi": -45, "rx_snr": 10.0}
+
+
+def test_a_relay_heard_far_weaker_here_is_not_the_survey_link(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    upload(client, direct(1, RELAY, heard_at_ms=at, **WEAK))
+    upload(client, measurement(2, relay_byte=0x1A, heard_at_ms=at, **STRONG))
+    assert links(connection) == []
+    # Another node ending in 1A, heard 5 km away, is left.
+    upload(client, direct(3, OTHER_RELAY, heard_at_ms=at, latitude=41.965, **WEAK))
+    assert links(connection) == [(2, OTHER_RELAY)]
+
+
+def test_when_the_hours_candidates_are_too_strong_the_older_tier_decides(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    upload(
+        client,
+        direct(1, RELAY, heard_at_ms=at, **WEAK),
+        direct(2, OTHER_RELAY, heard_at_ms=at - 3 * 3_600_000, latitude=41.965),
+        measurement(3, relay_byte=0x1A, heard_at_ms=at, **STRONG),
+    )
+    assert links(connection) == [(3, OTHER_RELAY)]
+
+
+@pytest.mark.parametrize(("rssi", "linked"), [(-70, True), (-69, False)])
+def test_a_copy_over_30_db_stronger_than_the_relay_heard_here_is_not_its(
+    client: TestClient, connection: sqlite3.Connection, rssi: int, linked: bool
+) -> None:
+    at = now_ms() - DAY_MS
+    # -92 dBm at -8 dB is -100, the strongest reading; the copy's positive SNR adds nothing.
+    upload(
+        client,
+        direct(1, RELAY, heard_at_ms=at, rx_rssi=-92, rx_snr=-8.0),
+        direct(3, RELAY, heard_at_ms=at, **WEAK),
+    )
+    upload(client, measurement(2, relay_byte=0x1A, heard_at_ms=at, rx_rssi=rssi, rx_snr=10.0))
+    assert links(connection) == ([(2, RELAY)] if linked else [])
+
+
+def test_only_the_survey_nodes_own_signal_nearby_rules_a_relay_out(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    by_other_node, far, no_rssi, copy_without_rssi, ruled_out = (
+        0x0500002B,
+        0x0500003C,
+        0x0500004D,
+        0x0500005E,
+        0x0500006F,
+    )
+    other_node = {**SESSION, "id": "other-node", "receiver_node_id": 0x0E0E0E6F}
+    upload(client, direct(1, by_other_node, heard_at_ms=at, **WEAK), session=other_node)
+    upload(
+        client,
+        # 1.1 km from the copies.
+        direct(1, far, heard_at_ms=at, latitude=41.93, **WEAK),
+        # 0 is a missing RSSI.
+        direct(2, no_rssi, heard_at_ms=at, rx_rssi=0, rx_snr=-8.0),
+        direct(3, copy_without_rssi, heard_at_ms=at, **WEAK),
+        direct(4, ruled_out, heard_at_ms=at, **WEAK),
+    )
+
+    def relayed(seq: int, relay: int, **fields: Any) -> dict[str, Any]:
+        return measurement(seq, relay_byte=relay & 0xFF, heard_at_ms=at, **{**STRONG, **fields})
+
+    upload(
+        client,
+        relayed(5, by_other_node),
+        relayed(6, far),
+        relayed(7, no_rssi),
+        relayed(8, copy_without_rssi, rx_rssi=None),
+        relayed(9, ruled_out),
+    )
+    assert links(connection) == [(5, by_other_node), (6, far), (7, no_rssi), (8, copy_without_rssi)]
+
+
+def test_upload_names_no_relay_heard_far_weaker_here(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    node(connection, RELAY, PHONE[0] + 0.01)
+
+    def relayed(seq: int, **fields: Any) -> dict[str, Any]:
+        return measurement(
+            seq, sender_node_id=SENDER, packet_id=77, latitude=PHONE[0], hop_limit=1, **fields
+        )
+
+    # Upload decides before saving the batch, so the batch's own reading counts.
+    upload(client, direct(1, RELAY, latitude=PHONE[0], **WEAK), relayed(2, **STRONG))
+    # So do saved ones; a copy 11 dB stronger is not too strong.
+    upload(client, relayed(3, **STRONG), relayed(4, rx_rssi=-110, rx_snr=-5.0))
+    saved = connection.execute(
+        "SELECT seq, heard_node_id, heard_how FROM coverage_measurement ORDER BY seq"
+    ).fetchall()
+    assert [tuple(row) for row in saved] == [
+        (1, RELAY, "direct"),
+        (2, None, "unknown"),
+        (3, None, "unknown"),
+        (4, RELAY, "only_candidate"),
+    ]
+
+
 OPTED_OUT, UNDECODED = 0x0E0E0E01, 0x0E0E0E02
 
 

@@ -105,6 +105,9 @@ positions.own_reach
   SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
+coverage._survey_direct
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
 coverage._mqtt_reports
   SEARCH packet USING INDEX packet_identity_time
   SEARCH reception USING INDEX sqlite_autoindex_reception_1

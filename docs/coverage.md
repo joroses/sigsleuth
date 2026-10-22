@@ -15,8 +15,8 @@ A square's colour is the average margin of its measurements: how far the SNR sit
 ## Which node was heard
 
 1. **Directly**: the survey node heard the sender itself, by the rule links use: no hops used, the relay byte is the sender's own, and a signal was measured.
-2. **Survey link**: a relayed packet names only the last byte of its relay's number. When exactly one node with that byte was heard directly by a survey node on the same radio settings within 30 km and an hour of the measurement (or, if none, 60 days), it is the relay. Later uploads can add or change survey links.
-3. **Guessed from MQTT**: otherwise, the [relay evidence](relay-evidence.md) rules name one at upload, once, from what MQTT knew then: they rule out candidates that could not have relayed it there, then use the gateways' reports of the same packet and their radio links, or the only candidate left.
+2. **Survey link**: a relayed packet names only the last byte of its relay's number. When exactly one node with that byte was heard directly by a survey node on the same radio settings within 30 km and an hour of the measurement (or, if none, 60 days), it is the relay. A node is left out when the packet arrived more than 30 dB stronger (RSSI, plus the SNR when negative) than the same survey node heard it directly within 1 km (60 days either side): a relay cannot be much louder than its own packets from the same place, though it can be quieter. Later uploads can add or change survey links.
+3. **Guessed from MQTT**: otherwise, the [relay evidence](relay-evidence.md) rules name one at upload, once, from what MQTT knew then: they rule out candidates that could not have relayed it there (the 30 dB rule too), then use the gateways' reports of the same packet and their radio links, or the only candidate left.
 4. **Unknown**: none names one. The square's details then suggest up to three nodes with that byte nearest it that could have relayed it.
 
 Clicking a square draws lines from its centre to where each heard node is now: solid for 1 and 2, dashed for 3. Its details say how each node was named.
@@ -44,7 +44,7 @@ A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bi
 
 - A node that stops working keeps its squares for up to 14 days.
 - Moves are noticed only while MQTT sees the node. One that moved while unseen, or in steps under 25 km, keeps its old squares.
-- The survey link bounds (30 km, one hour, 60 days) are not checked against known relays. `scripts/coverage-backtest.py DATABASE` shows how much the rules hide and how other bounds compare.
+- The survey link bounds (30 km, one hour, 60 days) are not checked against known relays, and the 30 dB rule only on gateways, which sit higher and move less than a phone. `scripts/coverage-backtest.py DATABASE` shows how much the rules hide and how other bounds compare.
 - A node that turns OK to MQTT off stays named until a survey or a gateway reports one of its packets with the bit, and one that turns it back on stays unnamed until then. Gateways on firmware 2.7.20 and newer upload no packet with the bit off, so a node behind them is named until a survey hears it.
 - A node that opted out shows its relay byte, the last byte of its number, which about 1 in 256 nodes share.
 - Anyone who can reach the page sees the squares and when they were measured. A survey is a track of where the surveyor was.

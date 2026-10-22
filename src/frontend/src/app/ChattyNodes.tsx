@@ -44,7 +44,9 @@ export function ChattyNodes({
           Chatty nodes
         </button>
         {open ? (
-          <span className="chatty-hint">Select to see text reach</span>
+          <span className="chatty-hint">
+            Select a node to see which gateways hear its messages
+          </span>
         ) : null}
       </div>
       {!open ? null : error !== null ? (

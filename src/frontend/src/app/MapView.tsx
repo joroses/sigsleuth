@@ -301,7 +301,7 @@ interface Selection {
   fit: "node" | "reach" | "coverage";
   /** Set for a chatty node with no recent position, which is not drawn. */
   unplaced?: TextSender;
-  /** Fit "coverage" zooms in too: the Fit coverage button. */
+  /** Fit "coverage" zooms in too: the Fit map to coverage button. */
   zoomIn?: boolean;
 }
 
@@ -1743,6 +1743,14 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                     <dt>Role</dt>
                     <dd className={selectedNode.role === null ? "muted" : ""}>
                       {formatRole(selectedNode.role)}
+                      {selectedNode.last_gateway_at == null ? null : (
+                        <span
+                          className="gateway-note"
+                          title={`Last reported a packet ${new Date(selectedNode.last_gateway_at).toLocaleString()}`}
+                        >
+                          (Gateway)
+                        </span>
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -1976,7 +1984,7 @@ function CoverageSwitch({
         </p>
       )}
       <button type="button" className="text-button" onClick={onFit}>
-        Fit coverage
+        Fit map to coverage
       </button>
     </div>
   );

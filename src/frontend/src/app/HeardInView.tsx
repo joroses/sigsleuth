@@ -33,9 +33,13 @@ export function HeardInView({
       ?.querySelector('[aria-pressed="true"]')
       ?.scrollIntoView?.({ block: "nearest" });
   }, [selectedNodeId, page, open]);
+  // With no measurements in view the section goes; the coverage panel says so.
+  if (error === null && page !== null && isEmpty(page)) return null;
+  // Only the list needs the minimum height; a note or a folded list does not.
+  const listShown = open && error === null && page !== null;
   return (
     <section
-      className={`chatty-nodes heard-in-view ${open ? "" : "chatty-nodes-closed"}`}
+      className={`chatty-nodes heard-in-view ${listShown ? "" : "chatty-nodes-closed"}`}
       aria-label="Heard in view"
     >
       <div className="chatty-heading">
@@ -47,14 +51,11 @@ export function HeardInView({
         >
           Heard in view
         </button>
-        {open ? <span className="chatty-hint">Cells in view</span> : null}
       </div>
       {!open ? null : error !== null ? (
         <p className="sidebar-note">Heard nodes could not load. {error}</p>
       ) : page === null ? (
         <p className="sidebar-note">Loading…</p>
-      ) : page.nodes.length === 0 && page.unknown === 0 ? (
-        <p className="sidebar-note">No measurements in view.</p>
       ) : (
         <ul ref={list}>
           {page.nodes.map((heard) => {
@@ -106,4 +107,8 @@ export function HeardInView({
       ) : null}
     </section>
   );
+}
+
+function isEmpty(page: CoverageNodeList): boolean {
+  return page.nodes.length === 0 && page.unknown === 0;
 }

@@ -3049,6 +3049,11 @@ button.chat-quote:hover {
   border-radius: var(--radius-pill);
 }
 
+/* The map card's gateway note, in the Nodes table's gateway colour. */
+.gateway-note {
+  color: var(--blue);
+}
+
 .map-pin {
   display: inline-flex;
   align-items: center;

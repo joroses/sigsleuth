@@ -3192,6 +3192,35 @@ button.chat-quote:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Heard in view: Chatty's rows with a margin dot first, at a fixed height
+   so Chatty nodes shrinks instead. */
+.sidebar-scroll > .heard-in-view {
+  flex: none;
+  max-height: 16rem;
+}
+
+.heard-in-view li button,
+.heard-in-view .heard-unknown {
+  grid-template-columns: 0.6em minmax(0, 1fr) auto;
+}
+
+.heard-in-view .heard-unknown {
+  display: grid;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.heard-in-view li button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.heard-in-view li button[aria-disabled="true"]:hover {
+  background: none;
+}
+
 /* Node page charts */
 .activity-charts {
   display: grid;

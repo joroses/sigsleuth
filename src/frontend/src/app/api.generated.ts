@@ -664,6 +664,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/coverage/nodes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Coverage Node Page
+     * @description The nodes heard in the coverage cells overlapping the area, in
+     *     most cells first, at most 200, and the measurements of unknown
+     *     relays, from the measurements still true, with channel as in the
+     *     cell list.
+     */
+    get: operations["coverage_node_page_api_v1_coverage_nodes_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/coverage/cells/{level}/{x}/{y}": {
     parameters: {
       query?: never;
@@ -1034,6 +1057,17 @@ export interface components {
       packet_row_id: number | null;
     };
     /**
+     * CoverageNodeList
+     * @description The nodes heard in an area, in most cells first, at most
+     *     MAX_VIEW_NODES (truncated when more were); unknown counts the
+     *     measurements with no heard node shown.
+     */
+    CoverageNodeList: {
+      nodes: components["schemas"]["CoverageViewNode"][];
+      unknown: number;
+      truncated: boolean;
+    };
+    /**
      * CoverageUnknownRelay
      * @description Measurements in a cell whose heard node is unknown, by relay byte
      *     (None when the packet carried none), with the nodes that may have relayed
@@ -1043,6 +1077,19 @@ export interface components {
       relay_byte: number | null;
       measurements: number;
       candidates: components["schemas"]["CoverageCandidate"][];
+    };
+    /**
+     * CoverageViewNode
+     * @description A node heard in an area: cells counts the fine cells it was heard in,
+     *     average_margin is as cells average it.
+     */
+    CoverageViewNode: {
+      node_id: number;
+      long_name: string | null;
+      short_name: string | null;
+      cells: number;
+      measurements: number;
+      average_margin: number | null;
     };
     /** DatabaseInfo */
     DatabaseInfo: {
@@ -3146,6 +3193,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CoverageExtent"] | null;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  coverage_node_page_api_v1_coverage_nodes_get: {
+    parameters: {
+      query: {
+        west: number;
+        south: number;
+        east: number;
+        north: number;
+        channel?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CoverageNodeList"];
         };
       };
       /** @description Validation Error */

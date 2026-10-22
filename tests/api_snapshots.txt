@@ -2243,6 +2243,12 @@ items: 24 items
     last_sent_at: "2026-10-11T12:46:04.013000Z"
 truncated: false
 
+## GET /api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel=ShortFast
+
+nodes: []
+unknown: 0
+truncated: false
+
 ## GET /api/v1/map/text-reach/1128132236?since=2026-10-10T16:25:30.812000Z
 
 node_id: 1128132236

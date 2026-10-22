@@ -576,6 +576,19 @@ db.nodes_by_id
 links.unlikely_links
   SCAN long_link
 
+## GET /api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel=LongFast
+
+coverage.coverage_nodes
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SCAN node_current
+  SCAN coverage_session
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+
 ## GET /api/v1/map/text-reach/168430090?since=<time>
 
 opt_out.is_opted_out
@@ -1189,6 +1202,17 @@ coverage.coverage_extent
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+
+## GET /api/v1/coverage/nodes?west=4&south=51&east=6&north=53
+
+coverage.coverage_nodes
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
   SEARCH coverage_relay USING PRIMARY KEY

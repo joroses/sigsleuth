@@ -15,6 +15,7 @@ import {
   type CoverageCellDetail,
   type CoverageCellList,
   type CoverageExtent,
+  type CoverageNodeList,
   type LinkKind,
   MAP_LINK_LIMIT,
   MAP_NODE_LIMIT,
@@ -42,6 +43,7 @@ import {
   coverageCellUrl,
   coverageCellsUrl,
   coverageExtentUrl,
+  coverageNodesUrl,
   cellsInView,
   nextCoverageArea,
   viewSpreadingFactor,
@@ -52,6 +54,7 @@ import {
   type CoverageArea,
   type CoverageView,
 } from "./coverageLayer";
+import { HeardInView } from "./HeardInView";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { MapLinkDetails } from "./MapLinkDetails";
 import {
@@ -80,6 +83,7 @@ import {
   addNodeLayers,
   clickableNodeLayers,
   applyNodeView,
+  showNodeNames,
   buildNodeFeatureCollection,
   type NodeFeatureCollection,
   type NodeView,
@@ -379,6 +383,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   });
   const linksByKey = useRef(new Map<string, SelectedLink>());
   const selectedLinkKey = useRef<string | null>(null);
+  // The only nodes named, for the next style load; null names them all.
+  const namedNodes = useRef<readonly number[] | null>(null);
   // Clears the hovered cell's highlight and popup, set by setUpMap.
   const forgetCellHover = useRef<() => void>(() => {});
   // The only links shown; null shows them all.
@@ -745,6 +751,31 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       ? coverageCellUrl(selectedCell, coverageNode, coverageChannel)
       : null,
   );
+  // The nodes heard in view, of every node whatever is selected. The last
+  // answer stays until the next one arrives.
+  const heardAnswer = useApi<CoverageNodeList>(
+    showCoverage && coverageArea !== null
+      ? coverageNodesUrl(coverageArea.view, coverageChannel)
+      : null,
+  );
+  const [lastHeard, setLastHeard] = useState<CoverageNodeList | null>(null);
+  if (heardAnswer.data !== null && heardAnswer.data !== lastHeard)
+    setLastHeard(heardAnswer.data);
+  const heardInView = heardAnswer.error === null ? lastHeard : null;
+  // While coverage is on only the nodes heard in view and the selected one
+  // are named, so names leave the cells visible; every node until the first
+  // answer and after an error.
+  const namedIds = useMemo(
+    () =>
+      showCoverage && heardInView !== null
+        ? heardInView.nodes.map((node) => node.node_id)
+        : null,
+    [showCoverage, heardInView],
+  );
+  useEffect(() => {
+    namedNodes.current = namedIds;
+    if (map.current !== null) showNodeNames(map.current, namedIds);
+  }, [namedIds]);
   const coverageCells = coverage.data?.truncated
     ? coverageInView.data
     : coverage.data;
@@ -1208,6 +1239,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
         nodeView.current.data,
         nodeView.current.focusActive,
       );
+      showNodeNames(instance, namedNodes.current);
       measureNodeLayersIdle(instance);
     };
     const onLoad = () => {
@@ -1786,6 +1818,16 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
             }
             keepResults
           />
+          {showCoverage ? (
+            <HeardInView
+              page={heardInView}
+              error={heardAnswer.error}
+              selectedNodeId={focusNodeId}
+              drawn={nodeMap}
+              loadedIds={loadedIds}
+              onChoose={(node) => select(node, "coverage")}
+            />
+          ) : null}
           <ChattyNodes
             page={shownTextSenders}
             error={textSenders.error}

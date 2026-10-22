@@ -128,23 +128,37 @@ export function viewSpreadingFactor(
  */
 export type CoverageNodeMode = "heard" | "all";
 
-export function coverageCellsUrl(
-  view: CoverageView,
-  node: number | null,
-  channel: string | null,
-): string {
+function areaQuery(view: CoverageView): URLSearchParams {
   const round = (value: number) => value.toFixed(4);
-  const query = new URLSearchParams({
+  return new URLSearchParams({
     // MapLibre's bounds can run past the world's edges when zoomed out.
     west: round(Math.max(view.west, -180)),
     south: round(Math.max(view.south, -85)),
     east: round(Math.min(view.east, 180)),
     north: round(Math.min(view.north, 85)),
-    zoom: view.zoom.toFixed(1),
   });
+}
+
+export function coverageCellsUrl(
+  view: CoverageView,
+  node: number | null,
+  channel: string | null,
+): string {
+  const query = areaQuery(view);
+  query.set("zoom", view.zoom.toFixed(1));
   if (node !== null) query.set("node", String(node));
   if (channel !== null) query.set("channel", channel);
   return `/api/v1/coverage/cells?${query}`;
+}
+
+/** The nodes heard in the view, of every node. */
+export function coverageNodesUrl(
+  view: CoverageView,
+  channel: string | null,
+): string {
+  const query = areaQuery(view);
+  if (channel !== null) query.set("channel", channel);
+  return `/api/v1/coverage/nodes?${query}`;
 }
 
 /** The area holding every cell where survey nodes heard a node. */

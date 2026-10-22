@@ -1193,3 +1193,43 @@ def test_retention_and_rederive_refill_opt_outs(
     assert opt_outs(connection) == []
     assert rederive(connection, lambda: False)
     assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]
+
+
+@pytest.mark.usefixtures("known_nodes")
+def test_the_nodes_heard_in_view_most_cells_first(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    connection.execute(
+        "UPDATE node_current SET long_name = 'Hill' WHERE node_id = ?", (LINKED_TO_SENDER,)
+    )
+    # LINKED_TO_SENDER relayed in two cells, SENDER was heard twice in one,
+    # UNDECODED once; one far away, out of view.
+    heard(client, connection, hop_start=2, hop_limit=1)
+    heard(client, connection, hop_start=2, hop_limit=1, latitude=PHONE[0] + 0.003)
+    for _ in range(2):
+        heard(client, connection, hop_start=3, hop_limit=3, relay_byte=SENDER & 0xFF)
+    heard(client, connection, hop_start=3, hop_limit=3, relay_byte=SENDER & 0xFF, latitude=42.2)
+    # Two unknown: no relay byte, and a node that turned OK to MQTT off.
+    heard(client, connection, relay_byte=None)
+    upload(client, direct(7, UNDECODED), direct(8, OPTED_OUT, ok_to_mqtt=False))
+    view = {**AREA, "north": 42.0}
+
+    found = client.get("/api/v1/coverage/nodes", params=view).json()
+
+    assert [
+        (n["node_id"], n["long_name"], n["cells"], n["measurements"], n["average_margin"])
+        for n in found["nodes"]
+    ] == [
+        (LINKED_TO_SENDER, "Hill", 2, 2, 20.2),
+        (SENDER, None, 1, 2, 20.2),
+        (UNDECODED, None, 1, 1, 20.2),
+    ]
+    assert (found["unknown"], found["truncated"]) == (2, False)
+    assert OPTED_OUT not in {n["node_id"] for n in found["nodes"]}
+    # The channel filter applies as for cells; SF7 surveys are not LongFast.
+    assert client.get("/api/v1/coverage/nodes", params={**view, "channel": "LongFast"}).json() == {
+        "nodes": [],
+        "unknown": 0,
+        "truncated": False,
+    }
+    assert client.get("/api/v1/coverage/nodes", params={**view, "west": 3}).status_code == 400

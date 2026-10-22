@@ -947,6 +947,89 @@ def coverage_extent(
     return CoverageExtent(west=west, south=south, east=east, north=north)
 
 
+MAX_VIEW_NODES = 200
+
+
+@dataclass(frozen=True)
+class CoverageViewNode:
+    """A node heard in an area: cells counts the fine cells it was heard in,
+    average_margin is as cells average it."""
+
+    node_id: int
+    long_name: str | None
+    short_name: str | None
+    cells: int
+    measurements: int
+    average_margin: float | None
+
+
+@dataclass(frozen=True)
+class CoverageNodeList:
+    """The nodes heard in an area, in most cells first, at most
+    MAX_VIEW_NODES (truncated when more were); unknown counts the
+    measurements with no heard node shown."""
+
+    nodes: tuple[CoverageViewNode, ...]
+    unknown: int
+    truncated: bool
+
+
+def coverage_nodes(
+    connection: sqlite3.Connection,
+    *,
+    west: float,
+    south: float,
+    east: float,
+    north: float,
+    channel: str | None = None,
+    alive_days: int,
+) -> CoverageNodeList:
+    """The nodes heard in the fine cells overlapping an area, from the
+    measurements coverage_cells counts with channel and no node."""
+    x0, y0 = fine_cell(north, west)
+    x1, y1 = fine_cell(south, east)
+    # The unknown group sorts first so the limit never cuts it.
+    rows = connection.execute(
+        f"""
+        SELECT {_SHOWN} AS shown, count(DISTINCT (m.cell_x << {FINE_LEVEL}) | m.cell_y) AS cells,
+               count(*) AS measurements, avg(m.margin_db) AS average_margin
+        FROM {_MEASUREMENTS}
+        WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
+          {_point_filters(None, channel)}
+        GROUP BY 1
+        ORDER BY shown IS NOT NULL, cells DESC, measurements DESC, shown
+        LIMIT :limit
+        """,
+        {
+            "x0": x0,
+            "x1": x1,
+            "y0": y0,
+            "y1": y1,
+            "limit": MAX_VIEW_NODES + 2,
+            **_filter_values(None, channel, alive_days),
+        },
+    ).fetchall()
+    unknown = int(rows[0]["measurements"]) if rows and rows[0]["shown"] is None else 0
+    heard = [row for row in rows if row["shown"] is not None]
+    names = nodes_by_id(connection, {int(row["shown"]) for row in heard[:MAX_VIEW_NODES]})
+    nodes = []
+    for row in heard[:MAX_VIEW_NODES]:
+        summary = names.get(int(row["shown"]))
+        nodes.append(
+            CoverageViewNode(
+                node_id=int(row["shown"]),
+                long_name=None if summary is None else summary.long_name,
+                short_name=None if summary is None else summary.short_name,
+                cells=int(row["cells"]),
+                measurements=int(row["measurements"]),
+                average_margin=_round(row["average_margin"]),
+            )
+        )
+    return CoverageNodeList(
+        nodes=tuple(nodes), unknown=unknown, truncated=len(heard) > MAX_VIEW_NODES
+    )
+
+
 @dataclass(frozen=True)
 class CoverageHeardNode:
     """A node heard in a cell. how is the most certain way it was identified

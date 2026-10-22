@@ -51,11 +51,13 @@ from sigsleuth.coverage import (
     CoverageCellDetail,
     CoverageCellList,
     CoverageExtent,
+    CoverageNodeList,
     Upload,
     UploadResult,
     coverage_cell,
     coverage_cells,
     coverage_extent,
+    coverage_nodes,
     save_upload,
 )
 from sigsleuth.db import (
@@ -751,6 +753,31 @@ def create_app(
         list; null when none did."""
         return coverage_extent(
             connection, node, channel=channel, alive_days=settings.retention_days
+        )
+
+    @app.get("/api/v1/coverage/nodes")
+    def coverage_node_page(
+        connection: Connection,
+        west: Annotated[float, Query(ge=-180, le=180)],
+        south: Annotated[float, Query(ge=-90, le=90)],
+        east: Annotated[float, Query(ge=-180, le=180)],
+        north: Annotated[float, Query(ge=-90, le=90)],
+        channel: str | None = None,
+    ) -> CoverageNodeList:
+        """The nodes heard in the coverage cells overlapping the area, in
+        most cells first, at most 200, and the measurements of unknown
+        relays, from the measurements still true, with channel as in the
+        cell list."""
+        if west > east or south > north:
+            raise _invalid_parameters()
+        return coverage_nodes(
+            connection,
+            west=west,
+            south=south,
+            east=east,
+            north=north,
+            channel=channel,
+            alive_days=settings.retention_days,
         )
 
     @app.get("/api/v1/coverage/cells/{level}/{x}/{y}")

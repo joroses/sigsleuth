@@ -5,6 +5,7 @@ import {
   buildCoverageLines,
   cellBounds,
   cellsInView,
+  coverageNodesUrl,
   nextCoverageArea,
   viewSpreadingFactor,
 } from "./coverageLayer";
@@ -42,6 +43,16 @@ describe("coverage cells", () => {
     const widthM = (east - west) * 111_320 * Math.cos((41.92 * Math.PI) / 180);
     expect(widthM).toBeGreaterThan(220);
     expect(widthM).toBeLessThan(235);
+  });
+
+  it("asks for the nodes heard in the exact view on the map's channel", () => {
+    const view = { west: -181, south: 40, east: 2.123456, north: 41, zoom: 8 };
+    expect(coverageNodesUrl(view, "LongFast")).toBe(
+      "/api/v1/coverage/nodes?west=-180.0000&south=40.0000&east=2.1235&north=41.0000&channel=LongFast",
+    );
+    expect(coverageNodesUrl(view, null)).toBe(
+      "/api/v1/coverage/nodes?west=-180.0000&south=40.0000&east=2.1235&north=41.0000",
+    );
   });
 
   it("asks again only when the map leaves the area fetched or its level", () => {

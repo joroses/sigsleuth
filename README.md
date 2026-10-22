@@ -1,6 +1,6 @@
 # SigSleuth
 
-A map of your Meshtastic mesh, built from what gateways upload to MQTT. Among other things, it allows you to browse all the routes traceroutes take, analyse links and neighbours, where the nodes split into zones and how far text messages reach. With the [Mesh Survey](https://github.com/joroses/mesh-survey) app, users can contribute signal measurements to the map.
+A map of your Meshtastic mesh, built from what gateways upload to MQTT. Among other things, it allows you to browse all the routes traceroutes take, analyse links and neighbours, where the nodes split into zones and how far text messages reach. With the [Mesh Survey](https://github.com/joroses/mesh-survey) app, users can contribute signal measurements to the map. Check https://sigsleuth.com for an example.
 
 | | |
 |---|---|

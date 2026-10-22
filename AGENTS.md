@@ -1,27 +1,6 @@
 # Agent guide
 
-SigSleuth records one MQTT subscription's Meshtastic traffic and shows recent history in a browser. It never transmits to or manages radios. [README.md](README.md) covers features and code layout.
-
-## Priorities
-
-This app is not an audit system:
-
-1. Show useful information; keep features easy to add.
-2. Stay fast on a big mesh (see Data volume).
-3. Keep the code obvious
-
-History is disposable (14 days at most). Missed messages, approximate grouping, stale or partial results and a recreated database are fine; showing something beats showing nothing. Add complexity only after a real problem in normal use, not for auditability, reproducibility, consistency, hostile users, large installations, compatibility or hypothetical failures.
-
-No security model beyond the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). Everything from the subscription may be shown, except [opted-out nodes](docs/glossary.md#nodes-and-positions) (unless `SIGSLEUTH_HIDE_OPTED_OUT=false`).
-
-## Data volume
-
-Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh/#` (2026-10): ~14 M receptions (1 M/day, dozens of gateways per packet), ~650 k packets, ~400 k `link_hour` rows, ~5 k nodes, 1.2 GB before derived tables and WAL.
-
-- Per-load reads use an index, a bounded query or a small derived table kept by `derive.py` (like `node_current`); never total millions of rows per request behind a cache.
-- Bound API requests with limits or pagination.
-- Current node state is thousands of rows; hourly totals and traceroute summaries grow with traffic.
-- Measure on a realistic database; `scripts/perf.py` times every page against a budget.
+SigSleuth records one MQTT subscription's Meshtastic traffic and shows recent history (14 days at most) in a browser. It never transmits to or manages radios. Showing something beats showing nothing: missed messages and partial or stale results are fine. Everything from the subscription may be shown; the only passwords are the optional `SIGSLEUTH_ADMIN_PASSWORD` (Diagnostics) and `SIGSLEUTH_UPLOAD_PASSWORD` (survey uploads). [README.md](README.md) covers features and code layout.
 
 ## Domain rules
 
@@ -33,8 +12,17 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 - A packet's observed channel is not the node's advertised primary channel.
 - Unavailable-measurement sentinels are missing, not weak values.
 - Label approximations as approximations.
-- No response names an opted-out node, nor hints that one exists: filter new node, packet and link queries with `opt_out.py`, and list new requests in `tests/page_requests.py`, which `tests/test_opt_out.py` checks.
+- No response names an opted-out node, nor hints that one exists: filter new node, packet and link queries with `opt_out.py`, and list new requests in `tests/page_requests.py`, which `tests/test_opt_out.py` checks. `SIGSLEUTH_HIDE_OPTED_OUT=false` shows them.
 - Keep malformed input when easy; otherwise skip it.
+
+## Data volume
+
+Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh/#` (2026-10): ~14 M receptions (1 M/day, dozens of gateways per packet), ~650 k packets, ~400 k `link_hour` rows, ~5 k nodes, 1.2 GB before derived tables and WAL.
+
+- Per-load reads use an index, a bounded query or a small derived table kept by `derive.py` (like `node_current`); never total millions of rows per request behind a cache.
+- Bound API requests with limits or pagination.
+- Current node state is thousands of rows; hourly totals and traceroute summaries grow with traffic.
+- Measure on a realistic database; `scripts/perf.py` times every page against a budget.
 
 ## Code
 
@@ -43,6 +31,11 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 - To change a derived table or rule, raise `DERIVED_VERSION`. No upgrade code, calculation versions, provenance tables or integrity checks.
 - A failed part degrades its own section, never the whole page or response.
 - Add files, dependencies and processes only when behaviour needs them. Setup and checks stay behind `scripts/setup.sh` and `scripts/verify.sh`.
+
+## UI
+
+- Avoid unnecessary secondary labels and descriptions.
+- Don't restate the implementation in user-facing text.
 
 ## Comments and docs
 

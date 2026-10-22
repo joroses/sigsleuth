@@ -227,20 +227,30 @@ function focusTextReach(
   });
 }
 
-// Fit a node's coverage cells, not its position: a far node would shrink its
-// cells to dots.
-function focusCoverage(instance: maplibregl.Map, extent: CoverageExtent) {
-  const camera = instance.cameraForBounds(
-    [
-      [extent.west, extent.south],
-      [extent.east, extent.north],
-    ],
-    { padding: 60 },
-  );
+// Show a node and its coverage cells: only when some are out of view, and
+// without zooming in, unless zoomIn fits them whatever the view.
+function focusCoverage(
+  instance: maplibregl.Map,
+  node: MapNode,
+  extent: CoverageExtent,
+  zoomIn: boolean,
+) {
+  const bounds = new maplibregl.LngLatBounds(
+    [extent.west, extent.south],
+    [extent.east, extent.north],
+  ).extend([node.longitude, node.latitude]);
+  const view = instance.getBounds();
+  if (
+    !zoomIn &&
+    view.contains(bounds.getSouthWest()) &&
+    view.contains(bounds.getNorthEast())
+  )
+    return;
+  const camera = instance.cameraForBounds(bounds, { padding: 60 });
   if (camera === undefined) return;
   instance.flyTo({
     center: camera.center,
-    zoom: Math.min(camera.zoom ?? 0, 14),
+    zoom: Math.min(camera.zoom ?? 0, zoomIn ? 14 : instance.getZoom()),
     offset: sheetOffset(instance),
   });
 }
@@ -291,6 +301,8 @@ interface Selection {
   fit: "node" | "reach" | "coverage";
   /** Set for a chatty node with no recent position, which is not drawn. */
   unplaced?: TextSender;
+  /** Fit "coverage" zooms in too: the Fit coverage button. */
+  zoomIn?: boolean;
 }
 
 /**
@@ -1421,7 +1433,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       fitTextReach();
   }, [selection, reachLoaded, reachFailed, showTextReach]);
 
-  // A node chosen with coverage on is fitted to its cells once their extent
+  // A node chosen with coverage on is shown with its cells once their extent
   // arrives, or centred if it has none or that fails. Each choice fits once,
   // not again when the channel changes.
   const extentUrl =
@@ -1436,7 +1448,13 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     if (instance === null || selectedNode === null || selectedLink !== null)
       return;
     if (extent.data === null) focusNode(instance, selectedNode);
-    else focusCoverage(instance, extent.data);
+    else
+      focusCoverage(
+        instance,
+        selectedNode,
+        extent.data,
+        selection?.zoomIn ?? false,
+      );
   });
   useEffect(() => {
     if (!extentDone || coverageFitted.current === selection) return;
@@ -1791,6 +1809,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                       setSelection({
                         nodeId: selectedNode.node_id,
                         fit: "coverage",
+                        zoomIn: true,
                       })
                     }
                   />

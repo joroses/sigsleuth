@@ -1034,7 +1034,7 @@ describe("Map text reach", () => {
       1: {
         node_id: 1,
         messages: 10,
-        channels: ["MediumFast"],
+        channel: "MediumFast",
         gateways: [
           { node_id: 2, receptions: 9 },
           { node_id: 5, receptions: 4 },
@@ -1107,7 +1107,7 @@ describe("Map text reach", () => {
       9: {
         node_id: 9,
         messages: 2,
-        channels: ["MediumFast"],
+        channel: "MediumFast",
         gateways: [{ node_id: 2, receptions: 2 }],
       },
     });
@@ -1125,6 +1125,11 @@ describe("Map text reach", () => {
         url.startsWith("/api/v1/map/text-reach/9?since="),
       ),
     ).toBe(true);
+    expect(
+      await screen.findByText(
+        /Showing the gateways that reported its 2 texts on MediumFast\./,
+      ),
+    ).not.toBeNull();
   });
 
   it("applies the role filter to the chatty nodes", async () => {

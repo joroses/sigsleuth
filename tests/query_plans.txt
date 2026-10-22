@@ -482,8 +482,13 @@ links.unlikely_links
 
 ## GET /api/v1/map/text-senders?since=<time>
 
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
 map_nodes.text_senders
-  SEARCH node_activity_hour USING INDEX node_activity_text
+  SEARCH packet USING INDEX text_message
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
 
 ## GET /api/v1/links?link_kind=traceroute&since=<time>
@@ -599,6 +604,8 @@ db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
 map_nodes.text_reach
   SEARCH packet USING INDEX packet_sender
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
 map_nodes.text_reach
   SEARCH packet USING INDEX packet_sender
   SEARCH reception USING INDEX sqlite_autoindex_reception_1

@@ -4,8 +4,8 @@ import type { TextSender, TextSenderList } from "./api";
 import { formatNodeId } from "./nodeDisplay";
 
 /**
- * Nodes that sent broadcast text messages in the window, most first, each
- * with its region, such as Śląskie. Those not in placedIds have no recent
+ * Nodes whose broadcast text messages several gateways reported in the
+ * window, most first, each with its region, such as Śląskie. Those not in placedIds have no recent
  * position and are marked. The list folds away under its heading.
  */
 export function ChattyNodes({
@@ -53,7 +53,7 @@ export function ChattyNodes({
         <p className="sidebar-note">Loading…</p>
       ) : page.items.length === 0 ? (
         <p className="sidebar-note">
-          No node sent broadcast text messages in the window.
+          No node's texts reached several gateways in the window.
         </p>
       ) : (
         <ul ref={list}>

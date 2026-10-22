@@ -5,6 +5,7 @@ import {
   type NodeFeatureCollection,
   buildNodeFeatureCollection,
   nodeCategory,
+  textShareBadge,
 } from "./mapNodeLayers";
 
 const node: MapNode = {
@@ -107,7 +108,7 @@ describe("buildNodeFeatureCollection", () => {
     ).toEqual({
       1: [true, true, ""],
       2: [true, false, "90%"],
-      3: [true, false, "20%"],
+      3: [true, false, "2×"],
       4: [false, false, ""],
     });
   });
@@ -119,5 +120,15 @@ describe("buildNodeFeatureCollection", () => {
       shares,
     });
     expect(features.every((feature) => feature.properties.shown)).toBe(true);
+  });
+});
+
+describe("textShareBadge", () => {
+  it("counts a poor share from one or two texts in grey", () => {
+    expect(textShareBadge(2, 132)).toEqual({ tier: "few", label: "2×" });
+    expect(textShareBadge(1, 5)).toEqual({ tier: "few", label: "1×" });
+    expect(textShareBadge(3, 132)).toEqual({ tier: "poor", label: "2%" });
+    expect(textShareBadge(2, 4)).toEqual({ tier: "medium", label: "50%" });
+    expect(textShareBadge(2, 2)).toEqual({ tier: "high", label: "100%" });
   });
 });

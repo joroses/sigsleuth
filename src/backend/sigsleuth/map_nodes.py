@@ -21,6 +21,28 @@ from sigsleuth.positions import EstimatedPosition
 
 # A chatty sender farther than this from any town of 15,000 people has no region.
 SENDER_PLACE_KM = 50
+# Chatty nodes lists a sender only when one of its texts reached this many
+# gateways besides its own. Live 2026-10-22, 3 days: drops 79 of 291 senders
+# with a position, mostly bots and private channels one gateway reports.
+CHATTY_MIN_GATEWAYS = 3
+
+# Per channel: the sender's broadcast texts, the latest, and the most gateways
+# besides its own that reported one of them. reception_count saves reading
+# every reception (270 k for 14 days of texts on live).
+_TEXT_CHANNELS_SQL = """
+    SELECT sender_node_id, channel, count(*) AS messages,
+           max(first_received_at) AS last_sent_at,
+           max(reception_count - EXISTS (
+               SELECT 1 FROM reception AS own
+               WHERE own.packet_row_id = packet.id AND own.gateway_node_id = packet.sender_node_id
+           )) AS gateways
+    FROM packet INDEXED BY {index}
+    WHERE {sender} id >= :since AND portnum = 1 AND recipient_node_id = 4294967295
+    GROUP BY sender_node_id, channel
+"""
+# A sender's text reach channel: the one where a text reached the most other
+# gateways, which shows the most of them on the map, then the one it sent most on.
+_REACH_CHANNEL_ORDER = "gateways DESC, messages DESC, channel"
 
 
 @dataclass(frozen=True)
@@ -142,10 +164,11 @@ def map_nodes(
 
 @dataclass(frozen=True)
 class TextSender:
-    """A node that sent broadcast text messages in the window, with how many.
-    region is the local name of the region (such as Śląskie or Catalunya) of the town or city
-    nearest its latest valid position, so a node near a border may get the
-    neighbouring one. None when no town is within SENDER_PLACE_KM."""
+    """A node that sent broadcast text messages in the window, with how many on
+    its text reach channel. region is the local name of the region (such as
+    Śląskie or Catalunya) of the town or city nearest its latest valid position,
+    so a node near a border may get the neighbouring one. None when no town is
+    within SENDER_PLACE_KM."""
 
     node_id: int
     short_name: str | None
@@ -165,27 +188,34 @@ def text_senders(
     connection: sqlite3.Connection, *, since: datetime | None, limit: int
 ) -> TextSenderList:
     """Senders of broadcast text messages first received since `since`, most
-    messages first. Only senders with a valid position are listed, as only they
-    can be selected on the map. Adds up node_activity_hour from the window's
-    whole hour, so it can include up to an hour more, like the map's links."""
-    since_hour = 0 if since is None else to_epoch_ms(since) - to_epoch_ms(since) % HOUR_MS
+    messages on their text reach channel first, when one of those reached
+    CHATTY_MIN_GATEWAYS other gateways. Only senders with a valid position are
+    listed, as only they can be selected on the map. The window starts at its
+    whole hour, like text_reach, so both count the same messages."""
+    since_ms = None if since is None else to_epoch_ms(since)
+    since_id = (
+        0
+        if since_ms is None
+        else first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
+    )
+    channels = _TEXT_CHANNELS_SQL.format(index="text_message", sender="")
     rows = connection.execute(
         f"""
-        SELECT sent.node_id, sent.messages, sent.last_sent_at,
+        SELECT sent.sender_node_id AS node_id, sent.messages, sent.last_sent_at,
                node.short_name, node.long_name, node.latitude, node.longitude
         FROM (
-            SELECT node_id, sum(packets) AS messages, max(last_sent_at) AS last_sent_at
-            FROM node_activity_hour INDEXED BY node_activity_text
-            WHERE portnum = 1 AND is_broadcast = 1 AND hour_start >= ?
-            GROUP BY node_id
-            HAVING messages > 0
+            SELECT *, row_number() OVER (
+                PARTITION BY sender_node_id ORDER BY {_REACH_CHANNEL_ORDER}
+            ) AS choice
+            FROM ({channels})
         ) AS sent
-        JOIN node_current AS node USING (node_id)
-        WHERE node.latitude IS NOT NULL AND {shown_sql("node.node_id")}
+        JOIN node_current AS node ON node.node_id = sent.sender_node_id
+        WHERE sent.choice = 1 AND sent.gateways >= :min_gateways
+          AND node.latitude IS NOT NULL AND {shown_sql("node.node_id")}
         ORDER BY sent.messages DESC, sent.last_sent_at DESC
-        LIMIT ?
+        LIMIT :limit
         """,
-        (since_hour, limit + 1),
+        {"since": since_id, "min_gateways": CHATTY_MIN_GATEWAYS, "limit": limit + 1},
     ).fetchall()
     items = tuple(
         TextSender(
@@ -219,64 +249,60 @@ class TextReachGateway:
 class TextReach:
     """How widely a node's broadcast text messages were reported.
 
-    messages counts its saved broadcast text messages on every channel; only
-    messages some gateway reported are saved, so each gateway's share,
-    receptions / messages, is an approximation. The sender's own gateway reports
-    are left out. gateways is empty when it sent none in the window.
+    Only its texts on one channel count, the one where a text reached the most
+    other gateways. A gateway uploads only the channels it has, so adding
+    channels together would lower every gateway's share. messages counts
+    its saved broadcast texts on that channel; only messages some gateway
+    reported are saved, so each gateway's share, receptions / messages, is an
+    approximation. The sender's own gateway reports are left out. channel is
+    None and gateways empty when it sent none in the window.
     """
 
     node_id: int
     messages: int
-    channels: tuple[str, ...]
+    channel: str | None
     gateways: tuple[TextReachGateway, ...]
 
 
 def text_reach(
     connection: sqlite3.Connection, node_id: int, *, since: datetime | None
 ) -> TextReach:
-    """The gateways that reported the node's broadcast text messages first received
-    since `since`, most receptions first. The window starts at its whole hour,
-    like text_senders, so a sender's listed count and this one agree. Reads the
-    sender index from the window's first ID, then each message's receptions by
-    their unique key."""
+    """The gateways that reported the node's broadcast text messages on its
+    channel first received since `since`, most receptions first. The window
+    starts at its whole hour, like text_senders. Reads the sender index from the
+    window's first ID, then each message's receptions by their unique key; the
+    channel's text index would read every sender's texts."""
     if is_opted_out(connection, node_id):
-        return TextReach(node_id, 0, (), ())
+        return TextReach(node_id, 0, None, ())
     since_ms = None if since is None else to_epoch_ms(since)
     since_id = (
         0
         if since_ms is None
         else first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
     )
-    messages = connection.execute(
-        """
-        SELECT id, channel FROM packet
-        WHERE sender_node_id = ? AND id >= ? AND portnum = 1
-          AND recipient_node_id = 4294967295
-        """,
-        (node_id, since_id),
-    ).fetchall()
-    channels: dict[str, int] = {}
-    for message in messages:
-        channels[message["channel"]] = channels.get(message["channel"], 0) + 1
+    chosen = connection.execute(
+        _TEXT_CHANNELS_SQL.format(index="packet_sender", sender="sender_node_id = :node AND")
+        + f"ORDER BY {_REACH_CHANNEL_ORDER} LIMIT 1",
+        {"node": node_id, "since": since_id},
+    ).fetchone()
+    if chosen is None:
+        return TextReach(node_id, 0, None, ())
+    channel = str(chosen["channel"])
     rows = connection.execute(
         """
         SELECT r.gateway_node_id, count(*) AS receptions
-        FROM packet AS t
+        FROM packet AS t INDEXED BY packet_sender
         JOIN reception AS r ON r.packet_row_id = t.id
         WHERE t.sender_node_id = :node AND t.id >= :since AND t.portnum = 1
-          AND t.recipient_node_id = 4294967295 AND r.gateway_node_id != :node
+          AND t.recipient_node_id = 4294967295 AND t.channel = :channel
+          AND r.gateway_node_id != :node
         GROUP BY r.gateway_node_id
         ORDER BY receptions DESC, r.gateway_node_id
         """,
-        {"node": node_id, "since": since_id},
+        {"node": node_id, "since": since_id, "channel": channel},
     ).fetchall()
     gateways = tuple(
         TextReachGateway(node_id=int(row["gateway_node_id"]), receptions=int(row["receptions"]))
         for row in rows
     )
-    return TextReach(
-        node_id=node_id,
-        messages=len(messages),
-        channels=tuple(sorted(channels, key=lambda channel: -channels[channel])),
-        gateways=gateways,
-    )
+    return TextReach(node_id, int(chosen["messages"]), channel, gateways)

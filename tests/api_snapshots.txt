@@ -1567,7 +1567,7 @@ truncated: false
 
 ## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
 
-items: 49 items
+items: 45 items
   - node_id: 2740683528
     short_name: "8308"
     long_name: "Node 8308"
@@ -2222,7 +2222,7 @@ truncated: false
 
 ## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
 
-items: 24 items
+items: 22 items
   - node_id: 2740683528
     short_name: "8308"
     long_name: "Node 8308"
@@ -2253,7 +2253,7 @@ truncated: false
 
 node_id: 1128132236
 messages: 20
-channels: ["ShortFast"]
+channel: "ShortFast"
 gateways: 5 items
   - node_id: 2658555076
     receptions: 19

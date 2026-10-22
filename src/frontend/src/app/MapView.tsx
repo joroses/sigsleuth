@@ -651,14 +651,16 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
 
   // With a node selected, only nodes within the hop depth over the links
   // switched on stay. Without any link layer there is nothing to walk, so
-  // every node stays.
+  // only the node itself stays (and the gateways of its texts, below).
   const anyLinkLayer = Object.values(linkChoice).some(Boolean);
   const focusNodeId = selectedNode?.node_id ?? null;
   const hopFocus = useMemo(
     () =>
-      focusNodeId === null || !anyLinkLayer
+      focusNodeId === null
         ? null
-        : withinHops(focusNodeId, loadedLinks, hopDepth),
+        : anyLinkLayer
+          ? withinHops(focusNodeId, loadedLinks, hopDepth)
+          : { nodeIds: [focusNodeId], linkKeys: [] },
     [focusNodeId, anyLinkLayer, loadedLinks, hopDepth],
   );
 
@@ -1910,7 +1912,7 @@ function UnplacedSenderCard({
               ? "Loading its gateways…"
               : reach.gateways.length === 0
                 ? "No gateway reported its texts."
-                : `Showing the gateways that reported its ${reach.messages.toLocaleString()} ${reach.messages === 1 ? "text" : "texts"}.`}
+                : `Showing the gateways that reported its ${reach.messages.toLocaleString()} ${reach.messages === 1 ? "text" : "texts"} on ${reach.channel}.`}
       </p>
     </section>
   );

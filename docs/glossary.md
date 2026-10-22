@@ -63,7 +63,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Direct reception | A reception where the gateway heard the sender with no relay, by a strict rule (`derive.is_direct_reception`) that misses some. |
 | Neighbour info | A node's list of up to 10 nodes it heard directly in the last few hours. |
 | Link | A node pair with radio evidence in the window, per kind (traceroute, direct, neighbour) and per channel, never added together. |
-| Text reach | The share of a sender's broadcast texts each gateway reported. Approximate. |
+| Text reach | The share of a sender's broadcast texts on one channel each gateway reported: the channel where one of its texts reached the most gateways. Approximate. A gateway with 20% or less from only 1 or 2 texts shows that count in grey. |
 | Line of sight | Whether terrain leaves the path between two antennas open (60% of the Fresnel zone clear). Rough: no buildings. |
 
 ## Zones

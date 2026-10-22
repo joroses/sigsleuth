@@ -18,7 +18,10 @@ interface NodeProperties {
   /** Outside the focus a node is hidden. */
   shown: boolean;
   selected: boolean;
-  /** The gateway's share of the selected node's texts, such as "90%", or "". */
+  /**
+   * The gateway's share of the selected node's texts, such as "90%", how many
+   * it reported when too few for a share, such as "2×", or "".
+   */
   badge: string;
   /** The badge's image, with the share drawn on it in its tier's colour, or "". */
   badgeIcon: string;
@@ -88,6 +91,10 @@ export function buildNodeFeatureCollection(
     type: "FeatureCollection",
     features: items.map((node) => {
       const share = sharesById.get(node.node_id);
+      const badge =
+        share === undefined
+          ? null
+          : textShareBadge(share.receptions, share.messages);
       return {
         type: "Feature",
         geometry: {
@@ -101,14 +108,8 @@ export function buildNodeFeatureCollection(
           shown:
             focus === null || focus.has(node.node_id) || share !== undefined,
           selected: node.node_id === selectedId,
-          badge:
-            share === undefined
-              ? ""
-              : textShareLabel(share.receptions, share.messages),
-          badgeIcon:
-            share === undefined
-              ? ""
-              : `share-${shareTier(share.receptions, share.messages)}-${textShareLabel(share.receptions, share.messages)}`,
+          badge: badge?.label ?? "",
+          badgeIcon: badge === null ? "" : `share-${badge.tier}-${badge.label}`,
           estimated: node.estimate !== null,
         },
       };
@@ -324,33 +325,41 @@ export interface TextShare {
 }
 
 export type ShareTier = "high" | "medium" | "low" | "poor";
+/** A badge's tier: "few" is a poor share from too few texts to judge. */
+export type BadgeTier = ShareTier | "few";
+
+// A gateway with a poor share that reported this many texts or fewer is shown
+// in grey with its count: mostly far gateways catching the odd relay. Live
+// 2026-10-22, 7 days: 65% of the red badges; red fell from 15.7% to 5.5%.
+const FEW_TEXTS = 2;
 
 /** 80% and up is high, 50% and up medium, 20% or less poor, the rest low. */
-export function shareTier(receptions: number, messages: number): ShareTier {
-  return tierOfShare(messages === 0 ? 0 : receptions / messages);
-}
-
-/** The tier of a share between 0 and 1. */
 export function tierOfShare(share: number): ShareTier {
   if (share >= 0.8) return "high";
   if (share >= 0.5) return "medium";
   return share > 0.2 ? "low" : "poor";
 }
 
-/** Such as "90%"; the Chatty nodes list has the message count. */
-export function textShareLabel(receptions: number, messages: number): string {
-  const percent =
-    messages === 0 ? 0 : Math.round((100 * receptions) / messages);
-  return `${percent}%`;
+/** A gateway's badge: its tier and the text drawn on it, such as "90%". */
+export function textShareBadge(
+  receptions: number,
+  messages: number,
+): { tier: BadgeTier; label: string } {
+  const share = messages === 0 ? 0 : receptions / messages;
+  const tier = tierOfShare(share);
+  return tier === "poor" && receptions <= FEW_TEXTS
+    ? { tier: "few", label: `${receptions}×` }
+    : { tier, label: `${Math.round(100 * share)}%` };
 }
 
 // Solid badges with dark text read on every basemap, so one set of colours
 // serves them all.
-export const SHARE_COLORS: Record<ShareTier, string> = {
+export const SHARE_COLORS: Record<BadgeTier, string> = {
   high: "#4ade80",
   medium: "#facc15",
   low: "#fb923c",
   poor: "#f87171",
+  few: "#cbd5e1",
 };
 
 /** A canvas of the given size for drawing a map image. */
@@ -394,7 +403,7 @@ function addBadgeImages(map: MapLibreMap, data: NodeFeatureCollection): void {
   for (const { properties } of data.features) {
     const { badge, badgeIcon } = properties;
     if (badgeIcon === "" || map.hasImage(badgeIcon)) continue;
-    const tier = badgeIcon.split("-")[1] as ShareTier;
+    const tier = badgeIcon.split("-")[1] as BadgeTier;
     map.addImage(badgeIcon, badgeImage(badge, SHARE_COLORS[tier]), {
       pixelRatio: 2,
     });

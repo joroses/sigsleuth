@@ -22,6 +22,7 @@ TEXT = portnums_pb2.PortNum.TEXT_MESSAGE_APP
 SENDER = 0x11111111
 NEAR = "!aaaaaaaa"
 FAR = "!bbbbbbbb"
+THIRD = "!cccccccc"
 
 
 @pytest.fixture
@@ -85,23 +86,46 @@ def test_counts_each_gateways_share_of_the_senders_broadcast_texts(path: Path) -
     reach = get(path, f"/api/v1/map/text-reach/{SENDER}", since=since(30))
 
     assert reach["messages"] == 3
-    assert reach["channels"] == ["LongFast"]
+    assert reach["channel"] == "LongFast"
     assert [(g["node_id"], g["receptions"]) for g in reach["gateways"]] == [
         (0xAAAAAAAA, 3),
         (0xBBBBBBBB, 2),
     ]
 
 
-def test_texts_on_two_channels_count_together(path: Path) -> None:
-    report(path, 1, NEAR, channel_id="LongFast")
-    report(path, 2, NEAR, channel_id="MediumFast")
-    report(path, 3, FAR, channel_id="MediumFast")
+def test_the_channel_where_a_text_reached_most_other_gateways_counts(path: Path) -> None:
+    report(path, 1, NEAR, minute=1, channel_id="LongFast")
+    report(path, 1, FAR, minute=1, channel_id="LongFast")
+    # Busier, and as many gateways counting its own, which is left out.
+    for packet_id in (2, 3, 4):
+        report(path, packet_id, NEAR, minute=packet_id, channel_id="MediumFast")
+        report(path, packet_id, "!11111111", minute=packet_id, channel_id="MediumFast")
+    # A later text only its own gateway uploaded makes ShortFast its latest channel.
+    report(path, 5, "!11111111", minute=5, channel_id="ShortFast")
 
     reach = get(path, f"/api/v1/map/text-reach/{SENDER}")
 
-    assert reach["messages"] == 3
-    assert reach["channels"] == ["MediumFast", "LongFast"]
-    assert reach["gateways"][0] == {"node_id": 0xAAAAAAAA, "receptions": 2}
+    assert reach["messages"] == 1
+    assert reach["channel"] == "LongFast"
+    assert [(g["node_id"], g["receptions"]) for g in reach["gateways"]] == [
+        (0xAAAAAAAA, 1),
+        (0xBBBBBBBB, 1),
+    ]
+
+
+def test_with_as_many_gateways_the_busiest_channel_counts(path: Path) -> None:
+    report(path, 1, NEAR, minute=1, channel_id="Gvbh")
+    report(path, 2, FAR, minute=2, channel_id="Gvbh")
+    report(path, 3, FAR, minute=3, channel_id="Test")
+
+    reach = get(path, f"/api/v1/map/text-reach/{SENDER}")
+
+    assert reach["messages"] == 2
+    assert reach["channel"] == "Gvbh"
+    assert [(g["node_id"], g["receptions"]) for g in reach["gateways"]] == [
+        (0xAAAAAAAA, 1),
+        (0xBBBBBBBB, 1),
+    ]
 
 
 def test_a_node_without_broadcast_texts_has_no_gateways(path: Path) -> None:
@@ -109,12 +133,21 @@ def test_a_node_without_broadcast_texts_has_no_gateways(path: Path) -> None:
 
     reach = get(path, f"/api/v1/map/text-reach/{SENDER}")
 
-    assert reach == {"node_id": SENDER, "messages": 0, "channels": [], "gateways": []}
+    assert reach == {"node_id": SENDER, "messages": 0, "channel": None, "gateways": []}
 
 
-def test_senders_with_a_position_are_listed_most_messages_first(path: Path) -> None:
+def test_senders_three_other_gateways_heard_are_listed_most_messages_first(
+    path: Path,
+) -> None:
+    def heard_by_three(packet_id: int, sender: int, **fields: Any) -> None:
+        for gateway in (NEAR, FAR, THIRD):
+            report(path, packet_id, gateway, sender=sender, **{"minute": packet_id, **fields})
+
+    # The window starts at its whole hour, so this one is before it.
+    heard_by_three(1, 0x22222222, minute=-61)
     position = mesh_pb2.Position(latitude_i=404_000_000, longitude_i=-37_000_000)
-    for packet_id, sender in enumerate((0x22222222, 0x33333333, 0x44444444, 0x55555555), 10):
+    senders = (0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x77777777)
+    for packet_id, sender in enumerate(senders, 10):
         report(
             path,
             packet_id,
@@ -123,14 +156,18 @@ def test_senders_with_a_position_are_listed_most_messages_first(path: Path) -> N
             portnum=portnums_pb2.PortNum.POSITION_APP,
             payload=position.SerializeToString(),
         )
-    # The window starts at its whole hour, so this one is before it.
-    report(path, 1, NEAR, sender=0x22222222, minute=-61)
-    for packet_id in (2, 3):
-        report(path, packet_id, NEAR, sender=0x33333333, minute=packet_id)
-    report(path, 4, NEAR, sender=0x44444444, minute=4)
-    report(path, 5, NEAR, sender=0x55555555, minute=5, recipient=0x22222222)
-    for packet_id in (6, 7, 8):  # no position, so it cannot be selected on the map
-        report(path, packet_id, NEAR, sender=0x66666666, minute=packet_id)
+    heard_by_three(2, 0x33333333)
+    report(path, 3, NEAR, sender=0x33333333, minute=3)
+    # Its texts on another channel are left out of its count.
+    for packet_id in (20, 21, 22):
+        report(path, packet_id, NEAR, sender=0x33333333, minute=5, channel_id="Test")
+    heard_by_three(4, 0x44444444)
+    heard_by_three(5, 0x55555555, recipient=0x22222222)
+    heard_by_three(6, 0x66666666)  # no position, so it cannot be selected on the map
+    # Its own gateway does not count towards three.
+    for packet_id in (7, 8, 9):
+        for gateway in (NEAR, FAR, "!77777777"):
+            report(path, packet_id, gateway, sender=0x77777777, minute=packet_id)
 
     page = get(path, "/api/v1/map/text-senders", since=since(1))
 

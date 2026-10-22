@@ -345,9 +345,9 @@ export interface paths {
     };
     /**
      * Text Sender Page
-     * @description Nodes with a valid position that sent broadcast text messages first
-     *     received since `since`, most messages first. truncated is true when more
-     *     senders matched.
+     * @description Nodes with a valid position whose broadcast text messages first
+     *     received since `since` reached a few gateways besides their own, most
+     *     messages first. truncated is true when more senders matched.
      */
     get: operations["text_sender_page_api_v1_map_text_senders_get"];
     put?: never;
@@ -1975,15 +1975,18 @@ export interface components {
      * TextReach
      * @description How widely a node's broadcast text messages were reported.
      *
-     *     messages counts its saved broadcast text messages on every channel; only
-     *     messages some gateway reported are saved, so each gateway's share,
-     *     receptions / messages, is an approximation. The sender's own gateway reports
-     *     are left out. gateways is empty when it sent none in the window.
+     *     Only its texts on one channel count, the one where a text reached the most
+     *     other gateways. A gateway uploads only the channels it has, so adding
+     *     channels together would lower every gateway's share. messages counts
+     *     its saved broadcast texts on that channel; only messages some gateway
+     *     reported are saved, so each gateway's share, receptions / messages, is an
+     *     approximation. The sender's own gateway reports are left out. channel is
+     *     None and gateways empty when it sent none in the window.
      */
     TextReach: {
       node_id: number;
       messages: number;
-      channels: string[];
+      channel: string | null;
       gateways: components["schemas"]["TextReachGateway"][];
     };
     /**
@@ -1997,10 +2000,11 @@ export interface components {
     };
     /**
      * TextSender
-     * @description A node that sent broadcast text messages in the window, with how many.
-     *     region is the local name of the region (such as Śląskie or Catalunya) of the town or city
-     *     nearest its latest valid position, so a node near a border may get the
-     *     neighbouring one. None when no town is within SENDER_PLACE_KM.
+     * @description A node that sent broadcast text messages in the window, with how many on
+     *     its text reach channel. region is the local name of the region (such as
+     *     Śląskie or Catalunya) of the town or city nearest its latest valid position,
+     *     so a node near a border may get the neighbouring one. None when no town is
+     *     within SENDER_PLACE_KM.
      */
     TextSender: {
       node_id: number;

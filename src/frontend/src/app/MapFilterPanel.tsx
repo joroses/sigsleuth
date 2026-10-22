@@ -209,7 +209,7 @@ export function MapFilterPanel({
             <LinkSwatch tier={null} linkKind="neighbor" />
             <span className="map-filter-name">Neighbour info</span>
           </label>
-          <label title="Share of the selected node's texts each gateway reported">
+          <label title="Share of the selected node's texts on its channel each gateway reported. Grey: only 1 or 2 texts, too few for a share.">
             <input
               type="checkbox"
               checked={showTextReach}

@@ -9,7 +9,7 @@ A survey records each packet its node hears, with the phone's position: a measur
 A square's colour is the average margin of its measurements: how far the SNR sits above the weakest signal the survey node can decode at its spreading factor (−17.5 dB on LongFast). Margins compare across presets where raw SNR does not. The scale runs from red at 0 dB (barely decoded) through amber to dark green at 25 dB or more. Grey means no SNR, or a survey that did not send its radio settings. When every square in view comes from surveys on one spreading factor, the legend and a square's hover read in SNR instead (the same colours, as margin is then SNR plus a constant).
 
 - The SNR is that of the transmission that reached the phone, so it measures the node heard (below), not the sender of a relayed packet.
-- The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly ("Heard from it", the default; "All nodes" shows everything). The node page's minimap shows the same.
+- The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly ("Heard from it", the default; "All nodes" shows everything). Choosing a node on the map or in the search zooms to where it was heard; "Fit coverage" does it again. The node page's minimap shows the same.
 - The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys on another spreading factor than the channel's.
 
 ## Which node was heard
@@ -19,7 +19,7 @@ A square's colour is the average margin of its measurements: how far the SNR sit
 3. **Guessed from MQTT**: otherwise, the [relay evidence](relay-evidence.md) rules name one at upload, once, from what MQTT knew then: they rule out candidates that could not have relayed it there (the 30 dB rule too), then use the gateways' reports of the same packet and their radio links, or the only candidate left.
 4. **Unknown**: none names one. The square's details then suggest up to three nodes with that byte nearest it that could have relayed it.
 
-Clicking a square draws lines from its centre to where each heard node is now: solid for 1 and 2, dashed for 3. Its details say how each node was named.
+Clicking a square, also through a node's name drawn over it, draws lines from its centre to where each heard node is now: solid for 1 and 2, dashed for 3. Its details say how each node was named.
 
 ## Which measurements count
 

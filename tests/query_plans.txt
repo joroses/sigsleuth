@@ -1177,6 +1177,18 @@ coverage.coverage_extent
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+
+## GET /api/v1/coverage/extent?node=168430090&channel=LongFast
+
+coverage.coverage_extent
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
+  SEARCH coverage_relay USING INDEX coverage_relay_node
+  SEARCH coverage_measurement USING PRIMARY KEY
+  SCAN node_current
+  SCAN coverage_session
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
   SEARCH coverage_relay USING PRIMARY KEY

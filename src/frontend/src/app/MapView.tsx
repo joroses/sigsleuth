@@ -14,6 +14,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import {
   type CoverageCellDetail,
   type CoverageCellList,
+  type CoverageExtent,
   type LinkKind,
   MAP_LINK_LIMIT,
   MAP_NODE_LIMIT,
@@ -40,6 +41,7 @@ import {
   cellText,
   coverageCellUrl,
   coverageCellsUrl,
+  coverageExtentUrl,
   cellsInView,
   nextCoverageArea,
   viewSpreadingFactor,
@@ -76,6 +78,7 @@ import {
 import {
   NODE_LAYERS,
   addNodeLayers,
+  clickableNodeLayers,
   applyNodeView,
   buildNodeFeatureCollection,
   type NodeFeatureCollection,
@@ -220,6 +223,24 @@ function focusTextReach(
   });
 }
 
+// Fit a node's coverage cells, not its position: a far node would shrink its
+// cells to dots.
+function focusCoverage(instance: maplibregl.Map, extent: CoverageExtent) {
+  const camera = instance.cameraForBounds(
+    [
+      [extent.west, extent.south],
+      [extent.east, extent.north],
+    ],
+    { padding: 60 },
+  );
+  if (camera === undefined) return;
+  instance.flyTo({
+    center: camera.center,
+    zoom: Math.min(camera.zoom ?? 0, 14),
+    offset: sheetOffset(instance),
+  });
+}
+
 const LINK_NAMES: Record<LinkKind, string> = {
   traceroute: "traceroute links",
   direct: "direct links",
@@ -233,7 +254,8 @@ interface SelectedLink {
 
 /**
  * The chosen node and how the camera follows the choice: "node" centres it at
- * once, "reach" fits it and its gateways once its text reach loads. Every
+ * once, "reach" fits it and its gateways once its text reach loads,
+ * "coverage" fits its coverage cells once their extent loads. Every
  * choice is a new object, so choosing the same node again fits again, and any
  * other choice drops a fit still waiting.
  */
@@ -262,7 +284,7 @@ function savedCamera(): Camera | null {
 
 interface Selection {
   nodeId: number;
-  fit: "node" | "reach";
+  fit: "node" | "reach" | "coverage";
   /** Set for a chatty node with no recent position, which is not drawn. */
   unplaced?: TextSender;
 }
@@ -357,6 +379,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   });
   const linksByKey = useRef(new Map<string, SelectedLink>());
   const selectedLinkKey = useRef<string | null>(null);
+  // Clears the hovered cell's highlight and popup, set by setUpMap.
+  const forgetCellHover = useRef<() => void>(() => {});
   // The only links shown; null shows them all.
   const linkFocus = useRef<string[] | null>(null);
   const [seenWindow, setSeenWindow] = useSetting<SeenWindow>(
@@ -743,12 +767,17 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   useEffect(() => {
     coverageSpreadingFactorRef.current = coverageSpreadingFactor;
   }, [coverageSpreadingFactor]);
+  const coverageShown = useRef(showCoverage);
+  useEffect(() => {
+    coverageShown.current = showCoverage;
+  }, [showCoverage]);
   useEffect(() => {
     if (showCoverage && coverageCells === null) return;
     const cells = buildCoverageFeatureCollection(
       showCoverage ? coverageCells : null,
     );
     coverageData.current.cells = cells;
+    forgetCellHover.current();
     setSourceData(map.current, COVERAGE_SOURCE, cells);
   }, [showCoverage, coverageCells]);
   const shownCell = showCoverage ? cellDetail.data : null;
@@ -847,6 +876,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     // until it finishes.
     let styleLoading = true;
     let hoveredId: string | number | null = null;
+    let hoveredCellId: string | number | null = null;
+    const nodeLayers = () => clickableNodeLayers(coverageShown.current);
     // Cells are fetched again when the map stops outside the area fetched.
     // A newer request replaces an unfinished one, so no delay is needed.
     const updateCoverageView = () => {
@@ -875,18 +906,49 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       // Clear of the cursor so the cell about to be clicked stays visible.
       offset: 24,
     });
+    const highlightCell = (id: string | number | null) => {
+      if (id === hoveredCellId) return;
+      if (hoveredCellId !== null && instance.getSource(COVERAGE_SOURCE))
+        instance.removeFeatureState(
+          { source: COVERAGE_SOURCE, id: hoveredCellId },
+          "hover",
+        );
+      if (id !== null)
+        instance.setFeatureState(
+          { source: COVERAGE_SOURCE, id },
+          { hover: true },
+        );
+      hoveredCellId = id;
+    };
+    // Shown only where a click would choose the cell.
     const showCellPopup = (event: maplibregl.MapLayerMouseEvent) => {
-      const cell = event.features?.[0]?.properties;
-      if (cell === undefined) return;
+      const feature = event.features?.[0];
+      if (feature === undefined) return;
+      const above = instance.queryRenderedFeatures(event.point, {
+        layers: [...nodeLayers(), "node-clusters", ...LINK_LAYERS],
+      });
+      if (above.length > 0) {
+        cellPopup.remove();
+        highlightCell(null);
+        return;
+      }
       instance.getCanvas().style.cursor = "pointer";
+      highlightCell(feature.id ?? null);
       cellPopup
         .setLngLat(event.lngLat)
-        .setText(cellText(cell, coverageSpreadingFactorRef.current))
+        .setText(
+          cellText(feature.properties, coverageSpreadingFactorRef.current),
+        )
         .addTo(instance);
     };
     const hideCellPopup = () => {
       cellPopup.remove();
+      highlightCell(null);
       if (hoveredId === null) instance.getCanvas().style.cursor = "";
+    };
+    forgetCellHover.current = () => {
+      cellPopup.remove();
+      highlightCell(null);
     };
     const highlightNode = (id: string | number | null) => {
       if (instance.getSource("nodes") !== undefined) {
@@ -927,7 +989,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     };
     const chooseNode = (node: MapNode) => {
       closeSpider();
-      select(node, "node");
+      select(node, coverageShown.current ? "coverage" : "node");
       setCollapsed(false);
     };
     const openSpider = (nodes: MapNode[]) => {
@@ -963,7 +1025,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       const stacked = nodesAt(event.point);
       if (stacked.length < 2) {
         const top = instance.queryRenderedFeatures(event.point, {
-          layers: [...NODE_LAYERS],
+          layers: nodeLayers(),
         })[0];
         const node = nodesById.current.get(top?.properties?.nodeId);
         if (node !== undefined) chooseNode(node);
@@ -998,7 +1060,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     // A marker over a line wins; selectNode handles that click.
     const selectLink = (event: maplibregl.MapLayerMouseEvent) => {
       const onNode = instance.queryRenderedFeatures(event.point, {
-        layers: [...NODE_LAYERS, "node-clusters"],
+        layers: [...nodeLayers(), "node-clusters"],
       });
       if (onNode.length > 0) return;
       const key = event.features?.[0]?.properties?.linkKey;
@@ -1024,7 +1086,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     // A click on a coverage cell, and nothing above it, chooses the cell.
     const clearSelectionOnEmptyClick = (event: maplibregl.MapMouseEvent) => {
       const hits = instance.queryRenderedFeatures(event.point, {
-        layers: [...NODE_LAYERS, "node-clusters", ...LINK_LAYERS],
+        layers: [...nodeLayers(), "node-clusters", ...LINK_LAYERS],
       });
       if (hits.length > 0) return;
       const cell = instance.queryRenderedFeatures(event.point, {
@@ -1069,8 +1131,9 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
         });
     };
     const onHoverEnter = (event: maplibregl.MapLayerMouseEvent) => {
-      instance.getCanvas().style.cursor = "pointer";
       const feature = event.features?.[0];
+      if (feature?.layer.id === "node-labels" && coverageShown.current) return;
+      instance.getCanvas().style.cursor = "pointer";
       const id = feature?.id ?? feature?.properties?.cluster_id;
       if (typeof id !== "string" && typeof id !== "number") return;
       highlightNode(id);
@@ -1082,7 +1145,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       }
       const stillHovered = instance
         .queryRenderedFeatures(event.point, {
-          layers: [...NODE_LAYERS, "node-clusters"],
+          layers: [...nodeLayers(), "node-clusters"],
         })
         .some((feature) => {
           const id = feature.id ?? feature.properties?.cluster_id;
@@ -1100,6 +1163,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       setMapMessage(null);
       if (instance.getSource("nodes") !== undefined) return;
       hoveredId = null;
+      hoveredCellId = null;
       addNodeLayers(
         instance,
         nodeView.current.data,
@@ -1224,6 +1288,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       instance.off("moveend", updateCoverageView);
       instance.off("moveend", rememberCamera);
       cellPopup.remove();
+      forgetCellHover.current = () => {};
       closeSpider();
       instance.off("styledataloading", onStyleLoading);
       instance.off("error", showBasemapError);
@@ -1323,6 +1388,29 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     )
       fitTextReach();
   }, [selection, reachLoaded, reachFailed, showTextReach]);
+
+  // A node chosen with coverage on is fitted to its cells once their extent
+  // arrives, or centred if it has none or that fails. Each choice fits once,
+  // not again when the channel changes.
+  const extentUrl =
+    selection?.fit === "coverage" && showCoverage
+      ? coverageExtentUrl(selection.nodeId, coverageChannel)
+      : null;
+  const extent = useApi<CoverageExtent | null>(extentUrl);
+  const extentDone = extentUrl !== null && !extent.loading;
+  const coverageFitted = useRef<Selection | null>(null);
+  const fitCoverage = useEffectEvent(() => {
+    const instance = map.current;
+    if (instance === null || selectedNode === null || selectedLink !== null)
+      return;
+    if (extent.data === null) focusNode(instance, selectedNode);
+    else focusCoverage(instance, extent.data);
+  });
+  useEffect(() => {
+    if (!extentDone || coverageFitted.current === selection) return;
+    coverageFitted.current = selection;
+    fitCoverage();
+  }, [selection, extentDone]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
@@ -1667,6 +1755,12 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                     mode={coverageMode}
                     onMode={setCoverageMode}
                     cells={coverageMode === "all" ? null : coverageCellsInView}
+                    onFit={() =>
+                      setSelection({
+                        nodeId: selectedNode.node_id,
+                        fit: "coverage",
+                      })
+                    }
                   />
                 ) : null}
               </>
@@ -1687,7 +1781,9 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
           ) : null}
           <NodeSearch
             nodes={items}
-            onSelect={(node) => select(node, "node")}
+            onSelect={(node) =>
+              select(node, showCoverage ? "coverage" : "node")
+            }
             keepResults
           />
           <ChattyNodes
@@ -1778,10 +1874,12 @@ function CoverageSwitch({
   mode,
   onMode,
   cells,
+  onFit,
 }: {
   mode: CoverageNodeMode;
   onMode: (mode: CoverageNodeMode) => void;
   cells: CoverageCellList | null;
+  onFit: () => void;
 }) {
   let measurements = 0;
   let guessed = 0;
@@ -1814,6 +1912,9 @@ function CoverageSwitch({
             : `${guessed.toLocaleString()} of ${measurements.toLocaleString()} measurements in view identified by guess.`}
         </p>
       )}
+      <button type="button" className="text-button" onClick={onFit}>
+        Fit coverage
+      </button>
     </div>
   );
 }

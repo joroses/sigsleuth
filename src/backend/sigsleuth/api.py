@@ -744,11 +744,14 @@ def create_app(
     def coverage_extent_page(
         connection: Connection,
         node: Annotated[int, Query(ge=1, le=0xFFFFFFFF)],
+        channel: str | None = None,
     ) -> CoverageExtent | None:
         """The area holding every coverage cell where survey nodes heard the
-        node, from the measurements still true as in the cell list; null when
-        none did."""
-        return coverage_extent(connection, node, alive_days=settings.retention_days)
+        node, from the measurements still true, with channel as in the cell
+        list; null when none did."""
+        return coverage_extent(
+            connection, node, channel=channel, alive_days=settings.retention_days
+        )
 
     @app.get("/api/v1/coverage/cells/{level}/{x}/{y}")
     def coverage_cell_detail_page(

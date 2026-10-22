@@ -915,8 +915,8 @@ def coverage_cells(
 
 @dataclass(frozen=True)
 class CoverageExtent:
-    """The area holding every fine cell where a node was heard, for the node
-    minimap to fit its coverage in view."""
+    """The area holding every fine cell where a node was heard, for the maps
+    to fit its coverage in view."""
 
     west: float
     south: float
@@ -925,16 +925,20 @@ class CoverageExtent:
 
 
 def coverage_extent(
-    connection: sqlite3.Connection, node: int, *, alive_days: int
+    connection: sqlite3.Connection,
+    node: int,
+    *,
+    channel: str | None = None,
+    alive_days: int,
 ) -> CoverageExtent | None:
-    """Where survey nodes heard a node, as in coverage_cells with node; None
-    when none did."""
+    """Where survey nodes heard a node, as in coverage_cells with node and
+    channel; None when none did."""
     row = connection.execute(
         f"""
         SELECT min(m.cell_x) AS x0, max(m.cell_x) AS x1, min(m.cell_y) AS y0, max(m.cell_y) AS y1
-        FROM {_MEASUREMENTS} WHERE 1{_point_filters(node, None)}
+        FROM {_MEASUREMENTS} WHERE 1{_point_filters(node, channel)}
         """,
-        _filter_values(node, None, alive_days),
+        _filter_values(node, channel, alive_days),
     ).fetchone()
     if row["x0"] is None:
         return None

@@ -136,6 +136,11 @@ export const NODE_LAYERS = [
   "node-selected",
 ];
 
+/** The node layers that take clicks: with coverage on, names leave them to the cells. */
+export function clickableNodeLayers(coverage: boolean): string[] {
+  return NODE_LAYERS.filter((layer) => !coverage || layer !== "node-labels");
+}
+
 const estimated: ExpressionSpecification = [
   "boolean",
   ["get", "estimated"],

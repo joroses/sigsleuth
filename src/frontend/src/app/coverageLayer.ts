@@ -148,8 +148,13 @@ export function coverageCellsUrl(
 }
 
 /** The area holding every cell where survey nodes heard a node. */
-export function coverageExtentUrl(node: number): string {
-  return `/api/v1/coverage/extent?node=${node}`;
+export function coverageExtentUrl(
+  node: number,
+  channel: string | null = null,
+): string {
+  const query = new URLSearchParams({ node: String(node) });
+  if (channel !== null) query.set("channel", channel);
+  return `/api/v1/coverage/extent?${query}`;
 }
 
 /** One cell's detail, with the same filters as the cells drawn. */
@@ -253,7 +258,8 @@ export function buildCoverageFeatureCollection(
       });
       return {
         type: "Feature",
-        id: `${list.level}/${cell.x}/${cell.y}`,
+        // Numeric, as feature state needs.
+        id: cell.x * 2 ** list.level + cell.y,
         properties: { ...cell, level: list.level },
         geometry: {
           type: "Polygon",

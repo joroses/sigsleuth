@@ -269,6 +269,7 @@ def coverage_requests(client: TestClient, now: datetime) -> Iterator[str]:
     yield f"/api/v1/coverage/cells?{area}"
     yield f"/api/v1/coverage/cells?{area}&since={day}&node={REQUESTER}&channel=LongFast"
     yield f"/api/v1/coverage/extent?node={REQUESTER}"
+    yield f"/api/v1/coverage/extent?node={REQUESTER}&channel=LongFast"
     cells = client.get(f"/api/v1/coverage/cells?{area}").json()
     cell = cells["cells"][0]
     yield f"/api/v1/coverage/cells/{cells['level']}/{cell['x']}/{cell['y']}"

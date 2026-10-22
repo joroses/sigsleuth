@@ -1059,6 +1059,35 @@ describe("Map text reach", () => {
     );
   });
 
+  it("fetches a searched node's coverage extent on the map's channel only while coverage is on", async () => {
+    const fetchMock = mockMap({});
+    const extentRequests = () =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith("/api/v1/coverage/extent"));
+    const chooseValencia = async () => {
+      fireEvent.change(
+        await screen.findByRole("combobox", { name: "Search nodes" }),
+        { target: { value: "Valencia" } },
+      );
+      fireEvent.click(await screen.findByRole("option", { name: /Valencia/ }));
+      await screen.findByRole("heading", { name: "Valencia" });
+    };
+    window.location.hash = "#map";
+    render(<App />);
+
+    await chooseValencia();
+    expect(extentRequests()).toEqual([]);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Coverage/ }));
+    await chooseValencia();
+    await vi.waitFor(() =>
+      expect(extentRequests()).toEqual([
+        "/api/v1/coverage/extent?node=2&channel=LongFast",
+      ]),
+    );
+  });
+
   it("shows a linked node that the saved filters would hide", async () => {
     mockMap({});
     localStorage.setItem(

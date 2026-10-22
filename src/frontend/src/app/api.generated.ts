@@ -652,8 +652,8 @@ export interface paths {
     /**
      * Coverage Extent Page
      * @description The area holding every coverage cell where survey nodes heard the
-     *     node, from the measurements still true as in the cell list; null when
-     *     none did.
+     *     node, from the measurements still true, with channel as in the cell
+     *     list; null when none did.
      */
     get: operations["coverage_extent_page_api_v1_coverage_extent_get"];
     put?: never;
@@ -963,8 +963,8 @@ export interface components {
     };
     /**
      * CoverageExtent
-     * @description The area holding every fine cell where a node was heard, for the node
-     *     minimap to fit its coverage in view.
+     * @description The area holding every fine cell where a node was heard, for the maps
+     *     to fit its coverage in view.
      */
     CoverageExtent: {
       west: number;
@@ -3131,6 +3131,7 @@ export interface operations {
     parameters: {
       query: {
         node: number;
+        channel?: string | null;
       };
       header?: never;
       path?: never;

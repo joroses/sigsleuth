@@ -606,8 +606,9 @@ def test_a_nodes_extent_holds_every_cell_where_it_was_heard(
     heard(client, connection, hop_start=2, hop_limit=1, latitude=PHONE[0] + 0.003)
     heard(client, connection, hop_start=3, hop_limit=3, relay_byte=SENDER & 0xFF, latitude=42.2)
 
-    def extent(node_id: int) -> Any:
-        return client.get("/api/v1/coverage/extent", params={"node": node_id}).json()
+    def extent(node_id: int, **params: Any) -> Any:
+        params["node"] = node_id
+        return client.get("/api/v1/coverage/extent", params=params).json()
 
     near = extent(LINKED_TO_SENDER)
     assert near["south"] < PHONE[0] < PHONE[0] + 0.003 < near["north"] < PHONE[0] + 0.006
@@ -615,6 +616,13 @@ def test_a_nodes_extent_holds_every_cell_where_it_was_heard(
     sender = extent(SENDER)
     assert sender["south"] < 42.2 < sender["north"] < 42.21
     assert extent(GATEWAY) is None
+    # A survey on SF11 heard it too, farther south: only LongFast keeps it.
+    sf11 = {**SESSION, "id": "sf11", "spreading_factor": 11, "bandwidth_khz": 250.0}
+    direct = {"hop_start": 3, "hop_limit": 3, "relay_byte": SENDER & 0xFF}
+    upload(client, measurement(4, sender_node_id=SENDER, latitude=41.7, **direct), session=sf11)
+    assert extent(SENDER)["south"] < 41.7
+    assert 42.19 < extent(SENDER, channel="SFNarrow")["south"] < 42.2
+    assert extent(SENDER, channel="LongFast")["north"] < 41.71
 
 
 @pytest.mark.usefixtures("known_nodes")

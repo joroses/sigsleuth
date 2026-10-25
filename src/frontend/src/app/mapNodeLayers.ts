@@ -23,6 +23,7 @@ interface NodeProperties {
    * it reported when too few for a share, such as "2×", or "".
    */
   badge: string;
+  badgeTier: BadgeTier | "";
   /** The badge's image, with the share drawn on it in its tier's colour, or "". */
   badgeIcon: string;
   /** Drawn at an estimate, as a hollow marker. */
@@ -109,6 +110,7 @@ export function buildNodeFeatureCollection(
             focus === null || focus.has(node.node_id) || share !== undefined,
           selected: node.node_id === selectedId,
           badge: badge?.label ?? "",
+          badgeTier: badge?.tier ?? "",
           badgeIcon: badge === null ? "" : `share-${badge.tier}-${badge.label}`,
           estimated: node.estimate !== null,
         },
@@ -424,6 +426,20 @@ function addShareLayer(map: MapLibreMap): void {
       "icon-anchor": "bottom-left",
       "icon-offset": [5, -5],
       "icon-allow-overlap": true,
+      // Overlapping badges draw from grey through red, orange and yellow to green.
+      "symbol-sort-key": [
+        "match",
+        ["get", "badgeTier"],
+        "high",
+        4,
+        "medium",
+        3,
+        "low",
+        2,
+        "poor",
+        1,
+        0,
+      ],
     },
   });
 }

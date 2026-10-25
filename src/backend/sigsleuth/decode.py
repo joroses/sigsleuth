@@ -459,14 +459,19 @@ def node_number(node_id: str) -> int | None:
 def _unusable_reason(topic: str, envelope: mqtt_pb2.ServiceEnvelope) -> str | None:
     """Why a packet uploaded to <root>/2/e/<channel>/<gateway> cannot be grouped, if it can't.
 
-    The topic root is a gateway setting, not a radio network, so it is checked
-    for shape only and never used to identify nodes or packets.
+    Some gateways upload to <root>/e/<channel>/<gateway>, without the 2; those
+    packets are read the same way. The topic root is a gateway setting, not a
+    radio network, so it is checked for shape only and never used to identify
+    nodes or packets.
     """
     topic_parts = topic.split("/")
+    root = topic_parts[:-3]
+    if root[-1:] == ["2"]:
+        root = root[:-1]
     if (
-        len(topic_parts) < 6
-        or topic_parts[-4:-2] != ["2", "e"]
-        or not all(topic_parts[:-2])
+        topic_parts[-3:-2] != ["e"]
+        or len(root) < 2
+        or not all(root)
         or not envelope.gateway_id
         or topic_parts[-1] != envelope.gateway_id
     ):

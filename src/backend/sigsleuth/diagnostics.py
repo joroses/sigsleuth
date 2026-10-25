@@ -53,8 +53,8 @@ REASON_DESCRIPTIONS = {
     "missing_packet_identity": "The sender node number or packet ID is missing or 0.",
     "missing_packet_payload": "The packet has neither a decoded nor an encrypted payload.",
     "unrecognized_topic": (
-        "The topic is not <root>/2/e/<channel>/<gateway>, the envelope names no gateway, "
-        "or the topic's gateway differs from the envelope's."
+        "The topic is not <root>/2/e/<channel>/<gateway> or <root>/e/<channel>/<gateway>, "
+        "the envelope names no gateway, or the topic's gateway differs from the envelope's."
     ),
     "unrecognized_gateway": "The gateway ID is not a node ID of the form !aabbccdd.",
     "conflicting_channel_names": (

@@ -122,6 +122,40 @@ def test_resolves_channel_from_custom_root_topic_without_envelope_channel() -> N
     assert result.evidence.channel == "LongFast"
 
 
+def test_reads_a_topic_without_the_2_like_the_usual_one() -> None:
+    envelope = application_envelope(
+        portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+        b"hello",
+        rx_snr=-7.25,
+        rx_rssi=-110,
+        hop_start=3,
+        hop_limit=2,
+        relay_node=0x4F,
+        bitfield=0,  # OK to MQTT off: the packet keeps it on either topic
+    )
+
+    old = parse_delivery("msh/PL/e/LongFast/!aaaaaaaa", envelope)
+
+    assert old.unusable_reason is None
+    assert old == parse_delivery("msh/PL/2/e/LongFast/!aaaaaaaa", envelope)
+
+
+@pytest.mark.parametrize(
+    ("topic", "envelope", "reason"),
+    [
+        ("msh/PL/e/LongFast/!bbbbbbbb", service_envelope(), "unrecognized_topic"),
+        ("msh/e/LongFast/!aaaaaaaa", service_envelope(), "unrecognized_topic"),
+        ("msh/2/e/LongFast/!aaaaaaaa", service_envelope(), "unrecognized_topic"),
+        ("msh/PL/c/LongFast/!aaaaaaaa", service_envelope(), "unrecognized_topic"),
+        ("msh/PL/e/Other/!aaaaaaaa", service_envelope(), "conflicting_channel_names"),
+    ],
+)
+def test_checks_a_topic_without_the_2_like_the_usual_one(
+    topic: str, envelope: bytes, reason: str
+) -> None:
+    assert parse_delivery(topic, envelope).unusable_reason == reason
+
+
 def test_leaves_custom_root_topic_with_wrong_suffix_marker_ungrouped() -> None:
     result = parse_delivery(
         "site/msh/EU_868/2/map/LongFast/!aaaaaaaa",

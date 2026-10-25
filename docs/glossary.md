@@ -7,7 +7,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Term | Meaning |
 |---|---|
 | Broker / subscription | The MQTT server gateways upload to / the topic filter SigSleuth listens to, which may span several networks. |
-| Topic root | The part of a topic before `/2/e/<channel>/<gateway>`, chosen by each gateway. One mesh often uploads under several, so it is never part of node or packet identity. |
+| Topic root | The part of a topic before `/2/e/<channel>/<gateway>` (or `/e/<channel>/<gateway>`, which some gateways use), chosen by each gateway. One mesh often uploads under several, so it is never part of node or packet identity. |
 | Delivery | One MQTT message. Capture saves it, or skips it with a reason shown on Diagnostics. |
 | Reception (gateway report) | One gateway's report of a packet. |
 | Copies | Repeated MQTT deliveries of the same reception; they add to its copy count, not to receptions. |

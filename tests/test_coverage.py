@@ -241,8 +241,11 @@ def link(
     kind: str = "direct",
     observations: int = 3,
 ) -> None:
-    """A link heard this hour: a transmitted, b heard it."""
-    link_hour(connection, a, b, now_ms(), link_kind=kind, observations=observations, km=km)
+    """A link heard when measurements are by default: a transmitted, b heard
+    it. Its hour then never starts after the measurement, as now's would in
+    the first minute of an hour."""
+    heard = now_ms() - 60_000
+    link_hour(connection, a, b, heard, link_kind=kind, observations=observations, km=km)
 
 
 def mqtt_report(
@@ -440,6 +443,19 @@ def test_rule_outs_leave_the_only_candidate(
     mqtt_report(connection, earlier, hop_limit=3, relay_byte=0x33)
 
     assert heard(client, connection, relay_byte=0x3D)[:3] == (relay, "only_candidate", 1)
+
+
+def test_the_only_candidate_left_is_named_within_its_reach(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    relay = 0x0100004F
+    # 33 km away: inside the 50 km rule-out floor, so it is left, but past
+    # the 20 km a node with no longer link is named within.
+    node(connection, relay, PHONE[0] + 0.3)
+    assert heard(client, connection, relay_byte=0x4F)[:3] == (None, "unknown", 1)
+    # A 40 km link of its own reaches the phone.
+    link(connection, relay, 0x0C0C0C01, km=40.0)
+    assert heard(client, connection, relay_byte=0x4F)[:3] == (relay, "only_candidate", 1)
 
 
 # Packet pages name a gateway's relay by the same rules, the gateway in the

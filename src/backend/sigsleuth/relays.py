@@ -289,7 +289,7 @@ def name_relay(
     - reported: an MQTT gateway sending the byte, within its reach, reported
       the packet with one more hop left. It rebroadcast the packet, but the
       receiver may have heard another node's copy;
-    - only_candidate: no other is left.
+    - only_candidate: no other is left, and it is within its reach.
     """
     if not left:
         return None
@@ -323,7 +323,10 @@ def name_relay(
     reported = [node for node in left if node in reporters and within_reach(node)]
     if len(reported) == 1:
         return reported[0], "reported"
-    if len(left) == 1:
+    # Like the steps above, only within its reach: a far one left alone
+    # mostly stands in for a relay SigSleuth does not know
+    # (docs/relay-evidence.md, 2026-10-23).
+    if len(left) == 1 and within_reach(left[0]):
         return left[0], "only_candidate"
     return None
 

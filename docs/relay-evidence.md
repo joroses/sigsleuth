@@ -126,7 +126,7 @@ No signal matching: lines need a direct reception, a radio link or the rule-outs
 
 1. **Solid**: a survey heard the node directly. The measurement had no relay, or the relay byte matches exactly one node a survey heard directly nearby (a survey link: any survey node, same radio settings, 30 km, closest of 1 hour or 60 days). Checked before the rule-outs, so none can overrule a direct reception, and it wins over upload's name.
 2. **Rule-outs**: every row of the rule-out table except the two signal rows. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
-3. **Dashed**: of the candidates left, the first rule that names exactly one: 2d; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left.
+3. **Dashed**: of the candidates left, the first rule that names exactly one: 2d; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left, also only within its reach (since 2026-10-23, below).
 4. **No line** otherwise. The cell lists up to three candidates that pass the rule-outs needing no packet (role, spreading factor, firmware, reach), nearest first.
 5. A measurement with a line, solid or dashed, paints while that node is alive; one without paints for 14 days.
 
@@ -156,6 +156,8 @@ Each step at its turn, with survey links / without: names someone, right when it
 | Only candidate left | dashed | 0.8%, 80.6%; 22.2% | 11.8%, 92.5%; 22.9% |
 
 The only candidate left is the one step that leans on what SigSleuth knows: when the true relay is hidden, it names another node in 22% of receptions. On MQTT that is rare: 22 of the 901 relays traceroutes name (2.4%) never sent a packet MQTT saw, 0.1% of route receptions. Nodes that turn OK to MQTT off, or relay where no gateway listens, are the risk, accepted.
+
+Since 2026-10-23 that step also names only within the candidate's own reach (20 km floor), like the steps before it: a far candidate left alone mostly stands in for a relay SigSleuth does not know. On every 10th traceroute of the same data (30,012 receptions with route truth), without survey links: wrong lines with the true relay hidden 31.7% → 15.8%, named node right 95.1% → 95.7%, named 72.1% → 71.3%; with them, wrong lines with the true relay hidden 35.4% → 19.7%. A later live copy (2026-10-09 to 10-23, every 20th traceroute, 23,110) agrees: 30.8% → 15.4%, right 95.6% → 96.0%, named 70.0% → 69.4%. The tables above are from before the change.
 
 ### Why no SNR
 

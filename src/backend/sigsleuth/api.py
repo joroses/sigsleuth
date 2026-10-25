@@ -309,8 +309,7 @@ def create_app(
         connection: Connection,
         packet_row_id: Annotated[int, ApiPath(gt=0)],
     ) -> FloodRoutes:
-        """The guessed hops between the relays of a packet's replay, for the
-        packet page's replay when it starts: too slow for every packet page."""
+        """Likely routes between a packet's relays, loaded when its relay map opens."""
         page = packet_detail(
             connection,
             packet_row_id,

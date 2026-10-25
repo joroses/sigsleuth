@@ -1,4 +1,10 @@
-import type { Feature, FeatureCollection, LineString, Point } from "geojson";
+import type {
+  Feature,
+  FeatureCollection,
+  LineString,
+  Point,
+  Position,
+} from "geojson";
 
 import type {
   NodeSummary,
@@ -667,10 +673,13 @@ function mercatorY(latitude: number): number {
   return Math.log(Math.tan(Math.PI / 4 + (latitude * Math.PI) / 360));
 }
 
-/** The middle of a line as the map draws it, so an arrow sits on the line. */
+/**
+ * The middle of a line as the map draws it, straight in Web Mercator, so an
+ * arrow sits on the line. Crossing the antimeridian is not handled.
+ */
 export function mercatorMidpoint(
-  start: [number, number],
-  end: [number, number],
+  start: Position,
+  end: Position,
 ): [number, number] {
   const y = (mercatorY(start[1]) + mercatorY(end[1])) / 2;
   const latitude = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * (180 / Math.PI);

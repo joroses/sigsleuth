@@ -96,8 +96,7 @@ export interface paths {
     };
     /**
      * Packet Flood Routes
-     * @description The guessed hops between the relays of a packet's replay, for the
-     *     packet page's replay when it starts: too slow for every packet page.
+     * @description Likely routes between a packet's relays, loaded when its relay map opens.
      */
     get: operations["packet_flood_routes_api_v1_packets__packet_row_id__flood_routes_get"];
     put?: never;
@@ -1183,8 +1182,8 @@ export interface components {
     /**
      * FloodRouteHop
      * @description to_node_id heard the packet from from_node_id, whose copy had used
-     *     step hops: the replay step it shows at, the same as to_node_id's on a
-     *     0-cost hop. probability is the score's, for a probable hop only.
+     *     step hops, the same as to_node_id's on a 0-cost hop. probability is the
+     *     score's, for a probable hop only.
      */
     FloodRouteHop: {
       from_node_id: number;

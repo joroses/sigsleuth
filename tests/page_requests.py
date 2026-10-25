@@ -155,7 +155,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/packets/{subjects.packet}"
     yield f"/api/v1/packets/{subjects.traceroute_packet}"
     # Live copy 2026-10-23: 220-245 ms for broadcasts heard by 61-64
-    # gateways. Asked for only when a replay starts.
+    # gateways. Asked for only when the relay map opens.
     yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 400
     for sort in ("last_sent", "traceroute", "packets", "texts"):
         yield f"/api/v1/nodes?sort={sort}&limit=20&offset=0"

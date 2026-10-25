@@ -2264,9 +2264,15 @@ dd {
   margin-bottom: var(--space-1);
 }
 
-.packet-minimap figcaption {
-  margin-top: var(--space-2);
+.packet-relay-legend {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
+}
+
+.packet-minimap:not(.node-position-expanded) .node-position-map {
+  flex: none;
+  height: min(34rem, 75vh);
 }
 
 .minimap-marker {
@@ -2548,13 +2554,6 @@ code {
   min-width: 1ch;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-}
-
-/* Link swatches in the filter panel and link details. */
-.link-tier {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 /* A short line in the tier's colour, set through `color`. */

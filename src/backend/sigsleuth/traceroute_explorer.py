@@ -556,7 +556,7 @@ def _with_hop_costs(
         own = {} if route.is_return or request is None else pinned.get(request, {})
         costs = route_hop_costs(
             ((hop.from_node_id, hop.to_node_id) for hop in route.path_hops),
-            _ends(packets),
+            _route_ends(packets, route),
             own,
             learned,
             str(packets[0]["channel"]),
@@ -573,6 +573,13 @@ def _run_nodes(packets: list[sqlite3.Row], route: TracerouteRoute) -> set[int]:
     """The run's ends and the known nodes on its shown route."""
     ends = {int(packets[0]["requester_node_id"]), int(packets[0]["target_node_id"])}
     return ends | {node_id for node_id in route.path.nodes if node_id is not None}
+
+
+def _route_ends(packets: list[sqlite3.Row], route: TracerouteRoute) -> tuple[int, int]:
+    """The ends of the packet that carried route: a broadcast request's
+    replies each name their own target."""
+    packet = next(p for p in packets if p["packet_row_id"] == route.packet_row_id)
+    return int(packet["requester_node_id"]), int(packet["target_node_id"])
 
 
 def _ends(packets: list[sqlite3.Row]) -> tuple[int, int]:

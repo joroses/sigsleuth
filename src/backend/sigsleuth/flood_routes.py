@@ -1,4 +1,4 @@
-"""Guessed hops between the relays of a packet's flood replay: for each node a
+"""Guessed hops between a packet's relays: for each node a
 reception names as its relay (packets._with_relays), the node it heard the
 packet from, then that node's, back toward the sender while each guess is
 sure enough (docs/relay-evidence.md).
@@ -53,8 +53,8 @@ FloodHopHow = Literal["heard_directly", "reported", "one_hop", "zero_cost", "pro
 @dataclass(frozen=True)
 class FloodRouteHop:
     """to_node_id heard the packet from from_node_id, whose copy had used
-    step hops: the replay step it shows at, the same as to_node_id's on a
-    0-cost hop. probability is the score's, for a probable hop only."""
+    step hops, the same as to_node_id's on a 0-cost hop. probability is the
+    score's, for a probable hop only."""
 
     from_node_id: int
     to_node_id: int
@@ -219,8 +219,8 @@ def route_hops(
     2. else after one hop, when T has a ZERO_COST_ROLES role and was never
        heard hearing the sender: the one node that also sent after one hop
        and whose copies T passes on for free (OneHopLinks), which also
-       transmitted at level 1; no hop when there are several, or it is
-       hidden;
+       transmitted at level 1; no hop when free partners are known but none
+       or several sent at level 1, or the one partner is hidden;
     3. else after one hop, the sender;
     4. else the best candidate of _scores when at least ROUTE_SURE, unless
        it is hidden; else no hop.
@@ -386,13 +386,12 @@ class _Walker:
         """route_hops' rules 2 and 3. The hop shows at step 1 even when the
         partner is a gateway that heard the sender directly."""
         free_from = self.free_from.get(node)
-        if free_from is not None and node not in self.heard_sender:
+        if free_from and node not in self.heard_sender:
             partners = (free_from & self.facts.sent_first) - {node, *walk}
-            if len(partners) > 1:
+            if len(partners) != 1:
                 return None
-            if partners:
-                (partner,) = partners
-                return FloodRouteHop(partner, node, 1, "zero_cost", None)
+            (partner,) = partners
+            return FloodRouteHop(partner, node, 1, "zero_cost", None)
         return self._hop_from(self.facts.sender, node, 1, "one_hop")
 
     def _hop_from(

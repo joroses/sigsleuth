@@ -73,7 +73,7 @@ ALLOWED_SCANS = {
     "chat.chat_channels": "text messages only",
 }
 REQUESTER, RELAY, TARGET = 0x0A0A0A0A, 0x0B0B0B0B, 0x0C0C0C0C
-# A text the gateways heard through RELAY, for the replay's routes.
+# A text the gateways heard through RELAY, for the packet's relay routes.
 RELAYED_TEXT = 90
 GATEWAYS = ("!aaaaaaaa", "!bbbbbbbb")
 
@@ -265,7 +265,7 @@ def capture_some_history(connection: sqlite3.Connection, start: datetime) -> Non
         hop_limit=1,
         relay_node=RELAY & 0xFF,
         rx_snr=-2.0,
-        # After one hop there, so the replay asks about the router at both.
+        # After one hop there, so route inference asks about the router at both.
         second={"hop_limit": 2},
     )
 

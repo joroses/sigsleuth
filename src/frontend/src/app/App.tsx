@@ -55,7 +55,7 @@ type Route =
       sender: number | null;
       heardDirectlyBy: number | null;
     }
-  | { page: "packet"; id: number; hop: DirectedHop | null }
+  | { page: "packet"; id: number; hop: DirectedHop | null; relays: boolean }
   | { page: "node"; id: number };
 
 export function App() {
@@ -141,9 +141,10 @@ export function App() {
             />
           ) : route.page === "packet" ? (
             <LazyPacketDetail
-              key={`${route.id}-${route.hop?.fromNodeId}-${route.hop?.toNodeId}`}
+              key={`${route.id}-${route.hop?.fromNodeId}-${route.hop?.toNodeId}-${route.relays}`}
               packetRowId={route.id}
               hop={route.hop}
+              relaysOnOpen={route.relays}
               openedFrom={openedFrom === null ? null : pageLabel(openedFrom)}
             />
           ) : route.page === "node" ? (
@@ -231,9 +232,9 @@ function routeFromHash(hash: string): Route {
     };
   }
   // A packet, optionally showing only the reports where the first node
-  // was heard by the second.
+  // was heard by the second, or showing its relays.
   const packet = hash.match(
-    /^#packets\/([1-9]\d*)(?:\/hop\/([1-9]\d*)-([1-9]\d*))?$/,
+    /^#packets\/([1-9]\d*)(?:\/hop\/([1-9]\d*)-([1-9]\d*)|\/(relays))?$/,
   );
   if (packet !== null && Number.isSafeInteger(Number(packet[1]))) {
     const hop =
@@ -243,7 +244,12 @@ function routeFromHash(hash: string): Route {
             fromNodeId: Number(packet[2]),
             toNodeId: Number(packet[3]),
           };
-    return { page: "packet", id: Number(packet[1]), hop };
+    return {
+      page: "packet",
+      id: Number(packet[1]),
+      hop,
+      relays: packet[4] !== undefined,
+    };
   }
   const node = hash.match(/^#nodes\/([1-9]\d*)$/);
   if (node !== null && Number(node[1]) <= 0xffffffff) {

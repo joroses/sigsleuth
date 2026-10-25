@@ -211,7 +211,7 @@ CREATE INDEX link_hour_pair ON link_hour (from_node_id, to_node_id, km);
 -- free when to_node_id passed on from_node_id's copy without spending a hop
 -- (from firmware 2.7.11, a router role relaying a favourite router), costly
 -- when it spent one. It holds for that channel only: from 2.8 a relay that
--- cannot decrypt a packet always spends a hop. Read for the flood replay's
+-- cannot decrypt a packet always spends a hop. Read for the packet
 -- relays after one hop (flood_routes.py) and a node's links.
 CREATE TABLE hop_cost_hour (
     hour_start INTEGER NOT NULL,

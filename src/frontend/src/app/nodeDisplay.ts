@@ -65,6 +65,11 @@ export function diagnosticsPacketsHref(
     : `#diagnostics/packets/${sender}-${heardDirectlyBy}`;
 }
 
+/** A packet's page showing its relays. */
+export function packetRelaysHref(packetRowId: number): string {
+  return `#packets/${packetRowId}/relays`;
+}
+
 /** A packet's page showing only the reports where from_node was heard by to_node. */
 export function packetHopHref(
   packetRowId: number,

@@ -9,7 +9,7 @@ import {
   linkTierColor,
   linkWidth,
 } from "./linkQuality";
-import { arrowRotation } from "./minimapMarkers";
+import { arrowRotation, mercatorMidpoint } from "./minimapMarkers";
 
 interface LinkHalfProperties {
   linkKey: string;
@@ -130,6 +130,7 @@ export function linkHalves(
   start: Position,
   end: Position,
 ): LinkFeatureCollection["features"] {
+  // The halves meet where the map draws the line's middle.
   const middle = mercatorMidpoint(start, end);
   const shared = {
     linkKey: key,
@@ -155,16 +156,6 @@ export function linkHalfTiers(link: HalvedLink): [LinkTier, LinkTier] {
     linkTier(link.b_to_a.average_snr, link.spreading_factor),
     linkTier(link.a_to_b.average_snr, link.spreading_factor),
   ];
-}
-
-// The map draws lines straight in Web Mercator, so the halves meet at the
-// Mercator midpoint. Crossing the antimeridian is not handled.
-function mercatorMidpoint(start: Position, end: Position): Position {
-  const toY = (latitude: number) =>
-    Math.log(Math.tan(Math.PI / 4 + (latitude * Math.PI) / 360));
-  const y = (toY(start[1]) + toY(end[1])) / 2;
-  const latitude = ((2 * Math.atan(Math.exp(y)) - Math.PI / 2) * 180) / Math.PI;
-  return [(start[0] + end[0]) / 2, latitude];
 }
 
 /**

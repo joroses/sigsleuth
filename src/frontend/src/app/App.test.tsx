@@ -226,6 +226,125 @@ describe("Packet detail", () => {
     expect(rows.find((row) => row.includes("Carol"))).toContain("+20.0 s");
   });
 
+  it("opens a packet's relay map from the hash and loads its routes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          packet: {
+            ...packet,
+            channel: "LongFast",
+            sender_node_id: 0x11111111,
+            recipient_node_id: 0xffffffff,
+            packet_id: 1234,
+            portnum: null,
+          },
+          hops: [],
+          route_nodes: [],
+          relay_nodes: [],
+          spreading_factor: 11,
+          traceroute: null,
+          reply_route: null,
+          hop_costs: [],
+          receptions: [
+            reception,
+            {
+              ...reception,
+              reception_id: 22,
+              gateway_node_id: 0xcccccccc,
+              hop_limit: 2,
+              direct: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ hops: [], nodes: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    window.location.hash = "#packets/7/relays";
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Packet 1234" });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/packets/7");
+    await waitFor(() =>
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        "/api/v1/packets/7/flood-routes",
+      ),
+    );
+  });
+
+  it("shows a packet's map on a known relay when nothing else is placed", async () => {
+    const unplaced = {
+      ...reception,
+      gateway_latitude: null,
+      gateway_longitude: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          packet: {
+            ...packet,
+            channel: "LongFast",
+            sender_node_id: 0x11111111,
+            recipient_node_id: 0xffffffff,
+            packet_id: 1234,
+            portnum: null,
+          },
+          hops: [],
+          route_nodes: [],
+          relay_nodes: [
+            {
+              node_id: 42,
+              long_name: "Known relay",
+              short_name: "KR",
+              latitude: 41,
+              longitude: 2,
+              estimated: false,
+            },
+          ],
+          sender_latitude: null,
+          sender_longitude: null,
+          spreading_factor: 11,
+          traceroute: null,
+          reply_route: null,
+          hop_costs: [],
+          receptions: [
+            unplaced,
+            {
+              ...unplaced,
+              reception_id: 22,
+              gateway_node_id: 0xcccccccc,
+              relay_node: {
+                node_id: 42,
+                name: "Known relay",
+                candidates: 1,
+                how: "heard_directly",
+              },
+              hop_limit: 2,
+              direct: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ hops: [], nodes: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    window.location.hash = "#packets/7";
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Packet 1234" });
+    // The relays are the map, so they show and load their routes.
+    const relays = screen.getByRole("button", { name: "Relays" });
+    expect(relays.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText(/No map/)).toBeNull();
+    await waitFor(() =>
+      expect(fetchMock.mock.calls[1]?.[0]).toBe(
+        "/api/v1/packets/7/flood-routes",
+      ),
+    );
+  });
+
   it("groups receptions by hops, as the API orders them", async () => {
     vi.stubGlobal(
       "fetch",

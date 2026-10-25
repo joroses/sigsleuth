@@ -242,12 +242,24 @@ def test_only_router_roles_pass_on_for_free() -> None:
     assert (SENDER, R2, 0, "one_hop") in found
 
 
-def test_a_free_partner_not_heard_after_one_hop_is_no_predecessor() -> None:
-    # Learned on another channel, or not sending at level 1 in this packet.
+def test_a_router_without_a_free_partner_keeps_the_sender() -> None:
     assert (SENDER, R2, 0, "one_hop") in walk(AFTER_ONE_HOP, places=ROUTERS)
-    receptions = [reception(0xAA, 2, R1), reception(0xAB, 1, R2)]
+
+
+@pytest.mark.parametrize("partner_hops", [None, 2])
+def test_a_free_partner_missing_at_one_hop_leaves_a_gap(partner_hops: int | None) -> None:
+    receptions = [reception(0xAB, 1, R2)]
+    if partner_hops is not None:
+        receptions.append(reception(0xAA, partner_hops, R1))
     found = walk(receptions, places=ROUTERS, free_from={R2: {R1}})
-    assert (SENDER, R2, 0, "one_hop") in found
+    assert not any(hop[1] == R2 for hop in found)
+
+
+def test_a_routers_own_report_wins_over_a_missing_free_partner() -> None:
+    receptions = [reception(0xAB, 1, R2), reception(R2, 0, direct=True)]
+    assert walk(receptions, places=ROUTERS, free_from={R2: {R1}}) == [
+        (SENDER, R2, 0, "heard_directly")
+    ]
 
 
 def test_two_free_partners_leave_a_gap() -> None:
@@ -284,7 +296,7 @@ def test_a_report_naming_a_hidden_predecessor_leaves_a_gap() -> None:
 
 
 @pytest.mark.parametrize("partner_count", [1, 2])
-def test_replay_does_not_replace_a_hidden_free_partner(tmp_path: Path, partner_count: int) -> None:
+def test_route_does_not_replace_a_hidden_free_partner(tmp_path: Path, partner_count: int) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)
     at = 1_790_000_000_000

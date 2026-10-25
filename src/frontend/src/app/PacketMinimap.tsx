@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 
+import { type PacketRelays, relayPositions } from "./packetRelays";
 import { LinkQualityLegend } from "./MapLinkDetails";
+import {
+  ARROW_HALO,
+  ARROW_IMAGE,
+  addArrowImage,
+  zeroCostColor,
+} from "./mapLinkLayers";
 import { nodeHref } from "./nodeDisplay";
+import { useSetting } from "./remember";
 import {
   TWO_WAY_OFFSET,
   type HopLines,
   type MinimapContents,
 } from "./minimapMarkers";
-import { NodeLink } from "./ui";
+import { Icon, NodeLink } from "./ui";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
 /**
@@ -23,7 +31,6 @@ export type MinimapFocus =
 
 const HOPS_SOURCE = "hops";
 const HOP_SNR_LAYER = "hop-snr";
-const ARROW_IMAGE = "hop-arrow";
 // Each hop is one observation, so every line is drawn the same width.
 const HOP_LINE_WIDTH = 2.5;
 const HOP_LINE_OPACITY = 0.8;
@@ -38,6 +45,18 @@ const isMark: maplibregl.ExpressionSpecification = [
   "Point",
 ];
 const hasSnr: maplibregl.ExpressionSpecification = ["!=", ["get", "snr"], null];
+
+const FLOOD_SOURCE = "flood";
+const FLOOD_ROUTE_LINES = "flood-routes";
+const FLOOD_ROUTE_GUESS_LINES = "flood-routes-guess";
+const ROUTE_LINE_WIDTH = 1.5;
+const FLOOD_ARROWS = "flood-arrows";
+const FLOOD_RELAYS = "flood-relays";
+const FLOOD_RELAY_NAMES = "flood-relay-names";
+const RELAY_DOT_COLOR = "#64748b";
+// With its stroke, 22 px across: as big as a gateway marker (.minimap-marker).
+const RELAY_DOT_RADIUS = 9;
+const RELAY_DOT_STROKE = 2;
 
 // The sender and gateways of one packet, or a traceroute's ends, relays
 // and hops, on the basemap chosen on the map page. Nodes sit where their own
@@ -69,6 +88,10 @@ export function PacketMinimap({
   onNodeHover,
   onReceptionHover,
   showLegend = true,
+  relayMap = null,
+  relaysOnOpen = false,
+  onRelaysShow,
+  expandable = false,
 }: {
   contents: MinimapContents;
   focus: MinimapFocus;
@@ -82,12 +105,44 @@ export function PacketMinimap({
   /** Called with a gateway's reception when hovered, then null. */
   onReceptionHover?: (receptionId: number | null) => void;
   showLegend?: boolean;
+  /** Offers the packet's relays and their connections. */
+  relayMap?: PacketRelays | null;
+  /** Show relays once the map is ready. */
+  relaysOnOpen?: boolean;
+  /** Called when relays are shown. */
+  onRelaysShow?: () => void;
+  /** Offers a bigger map over the page. */
+  expandable?: boolean;
 }) {
   const markerElements = useRef(new Map<string, HTMLElement>());
   // Kept in refs so a new handler does not rebuild the map.
   const relayClick = useRef(onRelayClick);
   const nodeHover = useRef(onNodeHover);
   const receptionHover = useRef(onReceptionHover);
+  const [relaysEnabled, setRelaysEnabled] = useSetting(
+    "packet.map.relays",
+    relaysOnOpen,
+  );
+  const [gatewaysEnabled, setGatewaysEnabled] = useSetting(
+    "packet.map.gateways",
+    !relaysOnOpen,
+  );
+  // With nothing else placed, the relays are the map.
+  const onlyRelays = markers.length === 0;
+  const relaysShown = relayMap !== null && (relaysEnabled || onlyRelays);
+  const gatewaysShown = relayMap === null || gatewaysEnabled;
+  useEffect(() => {
+    if (relaysShown) onRelaysShow?.();
+  }, [relaysShown, onRelaysShow]);
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    if (!expanded) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [expanded]);
   const focusedHops =
     focus?.kind === "reception"
       ? receptionHops.get(focus.receptionId)
@@ -126,15 +181,19 @@ export function PacketMinimap({
 
   const { container, map, failure } = useBasemapMap(
     {
-      enabled: markers.length > 0,
+      enabled: markers.length > 0 || relayPositions(relayMap).length > 0,
       // Arrow and label directions assume north is up and the map is flat.
       flat: true,
       view: () => ({
-        bounds: markerBounds(markers),
+        bounds: onlyRelays
+          ? pointBounds(relayPositions(relayMap))
+          : markerBounds(markers),
         fitBoundsOptions: { padding: 40, maxZoom: 12 },
       }),
-      onStyleLoad: (created, basemap) =>
-        addHopLayers(created, basemap.darkLabels === false),
+      onStyleLoad: (created, basemap) => {
+        addHopLayers(created, basemap.darkLabels === false);
+        addFloodLayers(created, basemap.darkLabels === false);
+      },
       setup: (created) => {
         // Later markers are drawn on top, so add them from the last. The sender is
         // a pin standing above its position, so a marker at the same spot stays
@@ -206,6 +265,34 @@ export function PacketMinimap({
   }, [map, shown, labelled]);
 
   useEffect(() => {
+    if (map === null) return;
+    map.getSource<maplibregl.GeoJSONSource>(FLOOD_SOURCE)?.setData({
+      type: "FeatureCollection",
+      features: relaysShown && relayMap !== null ? relayMap.features : [],
+    });
+  }, [map, relayMap, relaysShown]);
+
+  useEffect(() => {
+    if (map === null) return;
+    for (const marker of markers) {
+      if (marker.kind !== "gateway") continue;
+      const element = markerElements.current.get(marker.key);
+      element?.classList.toggle("off-route", !gatewaysShown);
+    }
+  }, [map, markers, gatewaysShown]);
+
+  useEffect(() => {
+    if (map === null) return;
+    const bounds = markerBounds(
+      markers.filter((marker) => marker.kind !== "gateway" || gatewaysShown),
+    );
+    if (relaysShown) {
+      for (const position of relayPositions(relayMap)) bounds.extend(position);
+    }
+    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, maxZoom: 12 });
+  }, [map, markers, relayMap, relaysShown, gatewaysShown]);
+
+  useEffect(() => {
     const element =
       focusedMarkerKey === null
         ? undefined
@@ -274,72 +361,146 @@ export function PacketMinimap({
     />
   );
   return (
-    <figure className="packet-minimap">
-      {failure !== null ? (
-        <p className="muted">{MAP_FAILURE_MESSAGES[failure]}</p>
+    <>
+      {expanded ? (
+        <div
+          className="node-position-backdrop"
+          onClick={() => setExpanded(false)}
+        />
       ) : null}
-      <div
-        ref={container}
-        className="minimap-canvas"
-        hidden={failure !== null}
-      />
-      <figcaption className="muted">
-        Positions when heard, else latest.
-        {unplacedGateways > 0
-          ? ` ${unplacedGateways} ${unplacedGateways === 1 ? "gateway has" : "gateways have"} no known position.`
-          : null}
-        {focusedHops !== undefined
-          ? focusedHops.hops === 0
-            ? " This gateway's report has no hops."
-            : " Showing what this gateway reported."
-          : null}
-        {focusedReports !== undefined && relayMarker !== undefined ? (
-          <>
-            {" "}
-            Reports through{" "}
-            <NodeLink
-              nodeId={relayMarker.nodeId}
-              name={relayMarker.name}
-            />: {focusedReports.receptionIds.size} of {reports} reports.
-          </>
-        ) : null}
-        {focus?.kind === "hop" ? (
-          focusedReports !== undefined ? (
-            <>
-              {" "}
-              Reports with the hop {markedNode(focus.fromNodeId)} →{" "}
-              {markedNode(focus.toNodeId)}: {focusedReports.receptionIds.size}{" "}
-              of {reports} reports.{" "}
-              {onClearFocus !== undefined ? (
+      <figure
+        className={`packet-minimap node-position ${expanded ? "node-position-expanded" : ""}`}
+      >
+        <div className="node-position-head">
+          <h3>Position</h3>
+          <div
+            className="minimap-toggles"
+            role="group"
+            aria-label="Show on the map"
+          >
+            {relayMap !== null ? (
+              <>
                 <button
                   type="button"
-                  className="text-button"
-                  onClick={onClearFocus}
+                  aria-pressed={relaysShown}
+                  disabled={onlyRelays}
+                  onClick={() => setRelaysEnabled(!relaysEnabled)}
                 >
-                  Show all reports
+                  <Icon name="route" />
+                  Relays
                 </button>
-              ) : null}
-            </>
-          ) : (
+                <button
+                  type="button"
+                  aria-pressed={gatewaysShown}
+                  onClick={() => setGatewaysEnabled(!gatewaysEnabled)}
+                >
+                  <Icon name="radio" />
+                  Gateways
+                </button>
+              </>
+            ) : null}
+            {expandable ? (
+              <button
+                type="button"
+                aria-pressed={expanded}
+                title={expanded ? "Back to the page (Esc)" : "A bigger map"}
+                onClick={() => setExpanded(!expanded)}
+              >
+                <Icon name={expanded ? "collapse" : "expand"} />
+                {expanded ? "Close" : "Expand"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="node-position-map">
+          {failure !== null ? (
+            <p className="muted">{MAP_FAILURE_MESSAGES[failure]}</p>
+          ) : null}
+          <div
+            ref={container}
+            className="minimap-canvas"
+            hidden={failure !== null}
+          />
+        </div>
+        <figcaption className="muted">
+          Positions when heard, else latest.
+          {unplacedGateways > 0
+            ? ` ${unplacedGateways} ${unplacedGateways === 1 ? "gateway has" : "gateways have"} no known position.`
+            : null}
+          {focusedHops !== undefined
+            ? focusedHops.hops === 0
+              ? " This gateway's report has no hops."
+              : " Showing what this gateway reported."
+            : null}
+          {focusedReports !== undefined && relayMarker !== undefined ? (
             <>
               {" "}
-              No listed report has the hop {markedNode(focus.fromNodeId)} →{" "}
-              {markedNode(focus.toNodeId)}, so all reports are shown.
+              Reports through{" "}
+              <NodeLink
+                nodeId={relayMarker.nodeId}
+                name={relayMarker.name}
+              />: {focusedReports.receptionIds.size} of {reports} reports.
             </>
-          )
+          ) : null}
+          {focus?.kind === "hop" ? (
+            focusedReports !== undefined ? (
+              <>
+                {" "}
+                Reports with the hop {markedNode(focus.fromNodeId)} →{" "}
+                {markedNode(focus.toNodeId)}: {focusedReports.receptionIds.size}{" "}
+                of {reports} reports.{" "}
+                {onClearFocus !== undefined ? (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={onClearFocus}
+                  >
+                    Show all reports
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {" "}
+                No listed report has the hop {markedNode(
+                  focus.fromNodeId,
+                )} → {markedNode(focus.toNodeId)}, so all reports are shown.
+              </>
+            )
+          ) : null}
+          {undrawnHopsNote(shown)}
+        </figcaption>
+        {showLegend && relaysShown ? (
+          <p className="packet-relay-legend muted">
+            Relays shown are likely to have forwarded this packet. Lines show
+            likely routes between them. Zero-hop forwarding can make these
+            estimates less reliable.
+          </p>
         ) : null}
-        {undrawnHopsNote(shown)}
-      </figcaption>
-      {showLegend && allHops.hops > 0 ? <LinkQualityLegend /> : null}
-    </figure>
+        {showLegend && allHops.hops > 0 ? (
+          <LinkQualityLegend
+            zeroCost={allHops.features.features.some(
+              (feature) => feature.properties.zeroCost,
+            )}
+          />
+        ) : null}
+      </figure>
+    </>
   );
 }
 
 function markerBounds(markers: MinimapContents["markers"]) {
+  return pointBounds(
+    markers.map((marker): [number, number] => [
+      marker.longitude,
+      marker.latitude,
+    ]),
+  );
+}
+
+function pointBounds(points: [number, number][]) {
   const bounds = new maplibregl.LngLatBounds();
-  for (const marker of markers) {
-    bounds.extend([marker.longitude, marker.latitude]);
-  }
+  for (const point of points) bounds.extend(point);
   return bounds;
 }
 
@@ -354,7 +515,7 @@ function undrawnHopsNote({ hops, undrawnHops }: HopLines): string | null {
 // the arrows. A pair crossed both ways is drawn as two lines, each offset to
 // its own right like a two-way road.
 function addHopLayers(map: maplibregl.Map, darkBasemap: boolean): void {
-  map.addImage(ARROW_IMAGE, arrowImage(), { sdf: true, pixelRatio: 2 });
+  addArrowImage(map);
   map.addSource(HOPS_SOURCE, {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
@@ -394,8 +555,13 @@ function addHopLayers(map: maplibregl.Map, darkBasemap: boolean): void {
       "icon-ignore-placement": true,
     },
     paint: {
-      "icon-color": ["get", "color"],
-      "icon-halo-color": halo,
+      "icon-color": [
+        "case",
+        ["get", "zeroCost"],
+        zeroCostColor(),
+        ["get", "color"],
+      ],
+      "icon-halo-color": ["case", ["get", "zeroCost"], ARROW_HALO, halo],
       "icon-halo-width": 1,
     },
   });
@@ -420,36 +586,93 @@ function addHopLayers(map: maplibregl.Map, darkBasemap: boolean): void {
   });
 }
 
-// A triangle pointing east as a signed distance field, so MapLibre can tint it
-// with each line's colour: alpha 191 is the edge, rising 32 a pixel inwards.
-const ARROW_SIZE = 28;
-const ARROW_CORNERS: [number, number][] = [
-  [5, 5],
-  [24, 14],
-  [5, 23],
-];
-
-function arrowImage(): {
-  width: number;
-  height: number;
-  data: Uint8Array;
-} {
-  const data = new Uint8Array(ARROW_SIZE * ARROW_SIZE * 4);
-  for (let y = 0; y < ARROW_SIZE; y += 1) {
-    for (let x = 0; x < ARROW_SIZE; x += 1) {
-      // Distance inside the triangle: the least distance to an edge, negative outside.
-      let inside = Infinity;
-      for (let index = 0; index < 3; index += 1) {
-        const [ax, ay] = ARROW_CORNERS[index];
-        const [bx, by] = ARROW_CORNERS[(index + 1) % 3];
-        const length = Math.hypot(bx - ax, by - ay);
-        const distance =
-          ((bx - ax) * (y + 0.5 - ay) - (by - ay) * (x + 0.5 - ax)) / length;
-        inside = Math.min(inside, distance);
-      }
-      const alpha = Math.max(0, Math.min(255, 191 + inside * 32));
-      data[(y * ARROW_SIZE + x) * 4 + 3] = alpha;
-    }
-  }
-  return { width: ARROW_SIZE, height: ARROW_SIZE, data };
+// Relay connections are dashed when guessed; hollow dots mark estimated positions.
+function addFloodLayers(map: maplibregl.Map, darkBasemap: boolean): void {
+  map.addSource(FLOOD_SOURCE, {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+  const halo = darkBasemap ? "#0f172a" : "#ffffff";
+  const routePaint = {
+    "line-color": ["get", "color"],
+    "line-width": ROUTE_LINE_WIDTH,
+  } satisfies maplibregl.LineLayerSpecification["paint"];
+  map.addLayer({
+    id: FLOOD_ROUTE_LINES,
+    filter: [
+      "all",
+      ["==", ["get", "kind"], "route"],
+      ["==", ["get", "certainty"], "known"],
+    ],
+    type: "line",
+    source: FLOOD_SOURCE,
+    paint: routePaint,
+  });
+  map.addLayer({
+    id: FLOOD_ROUTE_GUESS_LINES,
+    filter: [
+      "all",
+      ["==", ["get", "kind"], "route"],
+      ["==", ["get", "certainty"], "guess"],
+    ],
+    type: "line",
+    source: FLOOD_SOURCE,
+    paint: { ...routePaint, "line-dasharray": [2, 2] },
+  });
+  map.addLayer({
+    id: FLOOD_ARROWS,
+    filter: ["==", ["get", "kind"], "route-arrow"],
+    type: "symbol",
+    source: FLOOD_SOURCE,
+    layout: {
+      "icon-image": ARROW_IMAGE,
+      "icon-rotate": ["get", "rotation"],
+      "icon-rotation-alignment": "map",
+      "icon-size": 0.7,
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+    paint: {
+      "icon-color": ["get", "color"],
+      "icon-halo-color": halo,
+      "icon-halo-width": 1,
+    },
+  });
+  map.addLayer({
+    id: FLOOD_RELAYS,
+    filter: ["==", ["get", "kind"], "relay"],
+    type: "circle",
+    source: FLOOD_SOURCE,
+    paint: {
+      "circle-radius": RELAY_DOT_RADIUS,
+      "circle-color": ["case", ["get", "estimated"], halo, RELAY_DOT_COLOR],
+      "circle-stroke-color": [
+        "case",
+        ["get", "estimated"],
+        RELAY_DOT_COLOR,
+        halo,
+      ],
+      "circle-stroke-width": RELAY_DOT_STROKE,
+    },
+  });
+  map.addLayer({
+    id: FLOOD_RELAY_NAMES,
+    filter: ["==", ["get", "kind"], "relay"],
+    type: "symbol",
+    source: FLOOD_SOURCE,
+    layout: {
+      "text-field": ["coalesce", ["get", "label"], ""],
+      "text-font": ["Noto Sans Bold"],
+      "text-size": 11,
+      "text-anchor": "left",
+      // In ems of the 11 px text: clear of the dot's edge by 3 px.
+      "text-offset": [(RELAY_DOT_RADIUS + RELAY_DOT_STROKE + 3) / 11, 0],
+      "text-optional": true,
+    },
+    paint: {
+      "text-color": darkBasemap ? "#f8fafc" : "#1e293b",
+      "text-halo-color": halo,
+      "text-halo-width": 1.5,
+    },
+  });
 }

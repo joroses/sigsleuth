@@ -1,10 +1,12 @@
 import { useMemo, useState, type MouseEvent } from "react";
 
 import {
+  type FloodRoutes,
   ReplyRoute,
   PacketDetail,
   PacketReception,
   RoutePath,
+  floodRoutesUrl,
   packetUrl,
 } from "./api";
 import {
@@ -15,6 +17,8 @@ import {
   hopTone,
   nodeName,
 } from "./nodeDisplay";
+import { packetRelays, relayPositions } from "./packetRelays";
+import { fadeMargin, linkTierColor, marginTier } from "./linkQuality";
 import { type MinimapFocus, PacketMinimap } from "./PacketMinimap";
 import {
   type DirectedHop,
@@ -38,23 +42,27 @@ import {
   ReturnLink,
   StatusPanel,
   ShortTime,
+  TierDot,
 } from "./ui";
 
 export function PacketDetailView({
   packetRowId,
   hop = null,
+  relaysOnOpen = false,
   openedFrom = null,
 }: {
   packetRowId: number;
   /** List the reports that crossed this hop first, with the rest collapsed. */
   hop?: DirectedHop | null;
+  /** Open the relay map. */
+  relaysOnOpen?: boolean;
   /** The page this one was opened from, for a link back. */
   openedFrom?: { href: string; label: string } | null;
 }) {
   const { data: detail, error } = useApi<PacketDetail>(packetUrl(packetRowId));
 
   return (
-    <section aria-labelledby="detail-heading">
+    <section className="packet-detail-page" aria-labelledby="detail-heading">
       {openedFrom !== null ? (
         <ReturnLink
           href={openedFrom.href}
@@ -66,7 +74,11 @@ export function PacketDetailView({
       ) : null}
       {error !== null ? <StatusPanel tone="error">{error}</StatusPanel> : null}
       {detail !== null ? (
-        <PacketDetailContent detail={detail} hop={hop} />
+        <PacketDetailContent
+          detail={detail}
+          hop={hop}
+          relaysOnOpen={relaysOnOpen}
+        />
       ) : null}
     </section>
   );
@@ -75,12 +87,26 @@ export function PacketDetailView({
 function PacketDetailContent({
   detail,
   hop,
+  relaysOnOpen,
 }: {
   detail: PacketDetail;
   hop: DirectedHop | null;
+  relaysOnOpen: boolean;
 }) {
   const { packet, receptions } = detail;
   const minimap = useMemo(() => minimapMarkers(detail, hop), [detail, hop]);
+  // Load guessed connections only when the relay map is opened.
+  const [relaysOpened, setRelaysOpened] = useState(relaysOnOpen);
+  const canShowRelays = useMemo(() => packetRelays(detail) !== null, [detail]);
+  const { data: routes } = useApi<FloodRoutes>(
+    relaysOpened && canShowRelays ? floodRoutesUrl(packet.packet_row_id) : null,
+  );
+  const relayMap = useMemo(
+    () => packetRelays(detail, routes),
+    [detail, routes],
+  );
+  const placed =
+    minimap.markers.length > 0 || relayPositions(relayMap).length > 0;
   const { groups, hidden } = useMemo(
     () =>
       detail.traceroute === null
@@ -270,14 +296,14 @@ function PacketDetailContent({
               ? `${hidden} ${hidden === 1 ? "report repeats" : "reports repeat"} one shown or only its start, and ${hidden === 1 ? "is" : "are"} hidden. `
               : null}
             Times are when reports reached the server.
-            {minimap.markers.length === 0
+            {!placed
               ? detail.traceroute === null
-                ? " No map: neither the sender nor any gateway has a known position."
+                ? " No map: neither the sender nor any gateway or relay has a known position."
                 : " No map: no node on the traceroute has a known position."
               : null}
           </p>
         </div>
-        {minimap.markers.length > 0 ? (
+        {placed ? (
           <PacketMinimap
             contents={minimap}
             focus={focus}
@@ -291,6 +317,10 @@ function PacketDetailContent({
             }
             {...(detail.traceroute !== null ? highlight : {})}
             onReceptionHover={setHovered}
+            relayMap={relayMap}
+            relaysOnOpen={relaysOnOpen}
+            onRelaysShow={() => setRelaysOpened(true)}
+            expandable
           />
         ) : null}
       </div>
@@ -364,7 +394,7 @@ function ReceptionTable({
     groups.map(({ label, tone, rows }) => (
       <tbody key={`${part}-${label}`}>
         <tr className={`hop-group-row ${tone}`}>
-          <th colSpan={6} scope="colgroup">
+          <th colSpan={7} scope="colgroup">
             {label} <span className="muted">· {rows.length}</span>
           </th>
         </tr>
@@ -417,6 +447,9 @@ function ReceptionTable({
           <tr>
             <th scope="col">Gateway</th>
             <th scope="col" className="number">
+              Distance<span className="heading-note">km</span>
+            </th>
+            <th scope="col" className="number">
               SNR
             </th>
             <th scope="col" className="number">
@@ -435,7 +468,7 @@ function ReceptionTable({
         {others !== null && others.groups.length > 0 ? (
           <tbody>
             <tr className="others-row">
-              <td colSpan={6}>
+              <td colSpan={7}>
                 <button
                   type="button"
                   className="text-button"
@@ -504,21 +537,18 @@ function ReportKm({
   reception: PacketReception;
   sender: ReportSender;
 }) {
-  if (reception.km === null) return null;
+  if (reception.km === null) return "—";
   const rough = sender.estimated || reception.gateway_estimated;
-  const text = `${rough ? "~" : ""}${formatKm(reception.km)} km`;
   return (
-    <span className="muted">
-      {" · "}
-      <span
-        title={
-          reception.direct
-            ? "Heard directly"
-            : "From the sender, though relays carried it"
-        }
-      >
-        {text}
-      </span>
+    <span
+      title={
+        reception.direct
+          ? "Heard directly"
+          : "From the sender, though relays carried it"
+      }
+    >
+      {rough ? "~" : ""}
+      {formatKm(reception.km)}
     </span>
   );
 }
@@ -568,12 +598,13 @@ function ReplyRows({
         </td>
         <td className="number">—</td>
         <td className="number">—</td>
+        <td className="number">—</td>
         <td className="mono">—</td>
         <td className="number">—</td>
         <PinCell pinned={pinned} />
       </tr>
       <tr {...props} className={`${props.className} route-row`}>
-        <td colSpan={6}>
+        <td colSpan={7}>
           <dl>
             <RouteItem
               label="Route to the target"
@@ -621,6 +652,7 @@ function ReceptionRows({
 } & NodeHighlight &
   RouteMarkers) {
   const offset = (Date.parse(reception.received_at) - earliest) / 1000;
+  const margin = fadeMargin(reception.rx_snr, highlight.spreadingFactor);
   const props = rowProps(reception.reception_id, hovered, pinned);
   const paths = reception.paths;
   const forward =
@@ -645,10 +677,24 @@ function ReceptionRows({
               </span>
             ) : null}
             <AlsoReported count={alsoReported} />
-            <ReportKm reception={reception} sender={sender} />
           </div>
         </td>
-        <td className="number">{reception.rx_snr ?? "—"}</td>
+        <td className="number">
+          <ReportKm reception={reception} sender={sender} />
+        </td>
+        <td
+          className="number"
+          title={margin === null ? undefined : `${margin.toFixed(1)} dB margin`}
+        >
+          {reception.rx_snr === null ? (
+            "—"
+          ) : (
+            <>
+              <TierDot color={linkTierColor(marginTier(margin))} />
+              {reception.rx_snr}
+            </>
+          )}
+        </td>
         <td className="number">{reception.rx_rssi ?? "—"}</td>
         <RelayCell reception={reception} />
         <td className="number">
@@ -663,7 +709,7 @@ function ReceptionRows({
       </tr>
       {paths !== null && (forward !== null || paths.return_path !== null) ? (
         <tr {...props} className={`${props.className} route-row`}>
-          <td colSpan={6}>
+          <td colSpan={7}>
             <dl>
               {forward !== null ? (
                 <RouteItem

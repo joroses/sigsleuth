@@ -927,3 +927,27 @@ def test_a_packets_hops_spent_count_its_requests_copies_and_return_first_hop(
     assert spent(reply["hop_costs"])[R2, R3] == (0, None)
     assert spent(reply["hop_costs"])[B, R2] == (1, None)
     assert spent(reply["hop_costs"])[R2, A] == (None, "unknown")
+
+
+def test_a_broadcast_runs_return_route_starts_at_its_replier(path: Path) -> None:
+    traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=BROADCAST, packet_id=7, route=[], snr=[])
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(seconds=5),
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[],
+        snr=[20],
+        route_back=[R1, R2],
+        snr_back=[12, 16, 8],
+    )
+
+    # Searching a relay shows the reply's return route, which only it has.
+    [run] = get(path, "/api/v1/traceroutes", node=R1)["items"]
+
+    assert run["route"]["is_return"] is True
+    # The return route's first hop leaves B, the reply's sender, so it costs.
+    assert spent(run["route"]["hop_costs"])[B, R1] == (1, None)

@@ -34,7 +34,9 @@ import {
   hopsUsed,
   longLabel,
   nodeHref,
+  packetRelaysHref,
 } from "./nodeDisplay";
+import { packetRelays } from "./packetRelays";
 import { useSetting, useViewState } from "./remember";
 import { useApi, withBeforeId } from "./useApi";
 import { ErrorPanel, Icon, RelayCell, StatusPanel } from "./ui";
@@ -909,6 +911,12 @@ function ReceptionPopover({
             <a href={`#packets/${packetRowId}`}>
               ↗ Packet, {detail.packet.channel}
             </a>
+            {packetRelays(detail) !== null ? (
+              <>
+                {" · "}
+                <a href={packetRelaysHref(packetRowId)}>Where it went</a>
+              </>
+            ) : null}
           </p>
           <table>
             <thead>

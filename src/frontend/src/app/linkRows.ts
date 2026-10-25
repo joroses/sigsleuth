@@ -1,7 +1,7 @@
 // What the Links page and a node page's links share: kind names, row order,
 // and figures from both directions.
 
-import type { LinkKind, LinkRow } from "./api";
+import type { LinkKind, LinkRow, MapLink } from "./api";
 import { bothWaysObservations, fadeMargin } from "./linkQuality";
 
 export const LINK_KIND_LABELS: Record<LinkKind, string> = {
@@ -67,7 +67,7 @@ export function sortLinks<T extends LinkRow>(
  * The weaker direction's average margin; a link heard one way uses that
  * direction. Null when no heard direction has an SNR.
  */
-export function weakerMargin(link: LinkRow): number | null {
+export function weakerMargin(link: MapLink): number | null {
   const margins = [link.a_to_b, link.b_to_a]
     .map((direction) =>
       fadeMargin(direction.average_snr, link.spreading_factor),
@@ -87,7 +87,7 @@ export function touches(link: LinkRow, nodeIds: ReadonlySet<number>): boolean {
 }
 
 /** The link with nodeId as node_a, so the node's figures come first. */
-export function fromNode(link: LinkRow, nodeId: number): LinkRow {
+export function fromNode<T extends MapLink>(link: T, nodeId: number): T {
   if (link.node_a === nodeId) return link;
   return {
     ...link,

@@ -60,6 +60,8 @@ import {
 import { HeardInView } from "./HeardInView";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { MapLinkDetails } from "./MapLinkDetails";
+import { bothWaysObservations } from "./linkQuality";
+import { fromNode, weakerMargin } from "./linkRows";
 import {
   LINK_KINDS,
   LINK_LAYERS,
@@ -94,21 +96,20 @@ import {
   type NodeView,
   type TextShare,
 } from "./mapNodeLayers";
-import {
-  SPIDER_MIN_ZOOM,
-  SPIDER_OVERLAP_PX,
-  spiderElement,
-} from "./mapNodeSpider";
+import { spiderElement } from "./mapNodeSpider";
 import { ChattyNodes } from "./ChattyNodes";
 import { nearestLine } from "./lineHit";
 import { isNarrowScreen } from "./narrowScreen";
 import {
+  formatHardware,
+  formatKm,
   formatNodeId,
   formatRole,
   nodeHref,
   nodeLabel,
   nodeMarkerLabel,
   positionSource,
+  shortLabel,
 } from "./nodeDisplay";
 import {
   ANY,
@@ -143,9 +144,11 @@ import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 import { formatHours } from "./zones";
 import {
+  BothWays,
   CopyValue,
   Icon,
   IconButton,
+  MarginValue,
   ShareButton,
   ShortTime,
   SidebarNav,
@@ -751,6 +754,21 @@ export function MapView({
   // when they no longer hide it, as a node does.
   const selectedLink =
     chosenLinkKey === null ? null : (loadedByKey.get(chosenLinkKey) ?? null);
+  const nodeTracerouteLinks = useMemo(
+    () =>
+      selectedNode === null
+        ? NO_LINKS
+        : tracerouteLinks
+            .filter(
+              (link) =>
+                (link.node_a === selectedNode.node_id ||
+                  link.node_b === selectedNode.node_id) &&
+                nodeMap.has(link.node_a) &&
+                nodeMap.has(link.node_b),
+            )
+            .sort((a, b) => bothWaysObservations(b) - bothWaysObservations(a)),
+    [selectedNode, tracerouteLinks, nodeMap],
+  );
 
   // With a node selected, only nodes within the hop depth over the links
   // switched on stay. Without any link layer there is nothing to walk, so
@@ -1162,8 +1180,7 @@ export function MapView({
       }
       return [...found.values()];
     };
-    // A click on markers that overlap spreads them into a ring at high zoom,
-    // and below it zooms in on them first.
+    // A click on markers that overlap spreads them into a ring, at any zoom.
     const selectNode = (event: maplibregl.MapMouseEvent) => {
       if (instance.getLayer("nodes") === undefined) return;
       const stacked = nodesAt(event.point);
@@ -1175,31 +1192,7 @@ export function MapView({
         if (node !== undefined) chooseNode(node);
         return;
       }
-      if (instance.getZoom() >= SPIDER_MIN_ZOOM) {
-        openSpider(stacked);
-        return;
-      }
-      const bounds = new maplibregl.LngLatBounds();
-      for (const node of stacked)
-        bounds.extend([node.longitude, node.latitude]);
-      // Zooming may split them; the largest stack left is spread. Screen
-      // distances work as soon as the zoom ends, before the markers redraw.
-      const spreadIfStillStacked = () => {
-        if (instance.getZoom() < SPIDER_MIN_ZOOM) return;
-        const points = stacked.map((node) =>
-          instance.project([node.longitude, node.latitude]),
-        );
-        let largest: MapNode[] = [];
-        for (const point of points) {
-          const still = stacked.filter(
-            (_, index) => point.dist(points[index]) <= SPIDER_OVERLAP_PX,
-          );
-          if (still.length > largest.length) largest = still;
-        }
-        if (largest.length >= 2) openSpider(largest);
-      };
-      instance.once("moveend", spreadIfStillStacked);
-      instance.easeTo({ center: bounds.getCenter(), zoom: SPIDER_MIN_ZOOM });
+      openSpider(stacked);
     };
     // Markers and coverage cells take priority over links.
     const selectLink = (event: maplibregl.MapMouseEvent) => {
@@ -1716,8 +1709,41 @@ export function MapView({
           .map((node) => node.node_id)
       : (shownTextSenders?.items ?? []).map((sender) => sender.node_id);
   const stepIndex =
-    shown === "node" && viewedId !== null ? stepIds.indexOf(viewedId) : -1;
+    shown === "link"
+      ? nodeTracerouteLinks.findIndex(
+          (link) => linkKey("traceroute", link) === chosenLinkKey,
+        )
+      : shown === "node" && viewedId !== null
+        ? stepIds.indexOf(viewedId)
+        : -1;
+  const details = useRef<HTMLDivElement>(null);
+  const nodeLinkScroll = useRef<{ nodeId: number; top: number } | null>(null);
+  useEffect(() => {
+    if (shown !== "node" || nodeLinkScroll.current === null) return;
+    if (details.current !== null && nodeLinkScroll.current.nodeId === viewedId)
+      details.current.scrollTop = nodeLinkScroll.current.top;
+    nodeLinkScroll.current = null;
+  }, [shown, viewedId]);
+  function openNodeLink(key: string) {
+    if (shown === "node" && viewedId !== null)
+      nodeLinkScroll.current = {
+        nodeId: viewedId,
+        top: details.current?.scrollTop ?? 0,
+      };
+    if (details.current !== null) details.current.scrollTop = 0;
+    setChosenLinkKey(key);
+    setSelectedCell(null);
+    const chosen = loadedByKey.get(key);
+    if (readyMap === null || chosen === undefined) return;
+    const a = nodeMap.get(chosen.link.node_a);
+    const b = nodeMap.get(chosen.link.node_b);
+    if (a !== undefined && b !== undefined) focusLink(readyMap, a, b);
+  }
   function stepTo(index: number) {
+    if (shown === "link") {
+      openNodeLink(linkKey("traceroute", nodeTracerouteLinks[index]));
+      return;
+    }
     const nodeId = stepIds[index];
     if (activeTab === "heard") {
       const node = heardShown?.nodes.find((node) => node.node_id === nodeId);
@@ -1933,7 +1959,7 @@ export function MapView({
             )}
           </div>
           {shown === null ? null : (
-            <div className="sidebar-details">
+            <div ref={details} className="sidebar-details">
               <SidebarNav
                 backTo={backTo}
                 onBack={goBack}
@@ -1942,8 +1968,11 @@ export function MapView({
                     ? undefined
                     : {
                         index: stepIndex,
-                        total: stepIds.length,
-                        noun: "node",
+                        total:
+                          shown === "link"
+                            ? nodeTracerouteLinks.length
+                            : stepIds.length,
+                        noun: shown === "link" ? "link" : "node",
                         onStep: stepTo,
                       }
                 }
@@ -2035,6 +2064,16 @@ export function MapView({
                       </dd>
                     </div>
                     <div>
+                      <dt>Hardware model</dt>
+                      <dd
+                        className={
+                          detailNode.hardware_model === null ? "muted" : ""
+                        }
+                      >
+                        {formatHardware(detailNode.hardware_model)}
+                      </dd>
+                    </div>
+                    <div>
                       <dt>Position</dt>
                       <dd
                         className={shownPosition === null ? "muted" : ""}
@@ -2096,6 +2135,14 @@ export function MapView({
                     </div>
                   </dl>
                   {selectedCoverage}
+                  {selectedNode === null ? null : (
+                    <NodeTracerouteLinks
+                      nodeId={selectedNode.node_id}
+                      links={nodeTracerouteLinks}
+                      nodes={nodeMap}
+                      onOpen={openNodeLink}
+                    />
+                  )}
                 </section>
               ) : null}
             </div>
@@ -2107,6 +2154,83 @@ export function MapView({
 }
 
 type ListTab = "chatty" | "heard";
+
+function NodeTracerouteLinks({
+  nodeId,
+  links,
+  nodes,
+  onOpen,
+}: {
+  nodeId: number;
+  links: MapLink[];
+  nodes: ReadonlyMap<number, MapNode>;
+  onOpen: (key: string) => void;
+}) {
+  if (links.length === 0) return null;
+  return (
+    <div className="node-traceroute-links">
+      <h4 className="section-label">Traceroute hops</h4>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Node</th>
+            <th scope="col" title="Times heard out and in">
+              Seen
+            </th>
+            <th scope="col" title="Weaker direction's signal margin">
+              Margin
+            </th>
+            <th scope="col">km</th>
+          </tr>
+        </thead>
+        <tbody>
+          {links.map((raw) => {
+            const key = linkKey("traceroute", raw);
+            const link = fromNode(raw, nodeId);
+            const other = nodes.get(link.node_b)!;
+            const origin = nodes.get(nodeId)!;
+            const km =
+              origin.estimate === null && other.estimate === null
+                ? drawnKm(origin, other)
+                : null;
+            const margin = weakerMargin(link);
+            return (
+              <tr
+                key={key}
+                onClick={(event) => {
+                  if ((event.target as Element).closest("button")) return;
+                  onOpen(key);
+                }}
+              >
+                <td>
+                  <button
+                    type="button"
+                    className="text-button"
+                    title={nodeLabel(other)}
+                    aria-label={`Show link to ${nodeLabel(other)}`}
+                    onClick={() => onOpen(key)}
+                  >
+                    {shortLabel(other.node_id, other.short_name)}
+                  </button>
+                </td>
+                <td>
+                  <BothWays
+                    left={link.a_to_b.observations.toLocaleString()}
+                    right={link.b_to_a.observations.toLocaleString()}
+                  />
+                </td>
+                <td>
+                  {margin === null ? "—" : <MarginValue value={margin} />}
+                </td>
+                <td>{formatKm(km)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function SelectedCoverage({
   cells,

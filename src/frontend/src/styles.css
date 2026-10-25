@@ -1559,6 +1559,45 @@ thead th {
   margin-left: var(--space-2);
 }
 
+.node-traceroute-links {
+  margin-top: var(--space-4);
+  overflow-x: auto;
+}
+
+.node-traceroute-links h4 {
+  margin: 0 0 var(--space-2);
+}
+
+.node-traceroute-links table {
+  font-size: var(--text-xs);
+}
+
+.node-traceroute-links th,
+.node-traceroute-links td {
+  padding: var(--space-2) var(--space-1);
+}
+
+.node-traceroute-links thead th {
+  font-size: inherit;
+}
+
+.node-traceroute-links th:not(:first-child),
+.node-traceroute-links td:not(:first-child) {
+  text-align: center;
+}
+
+.node-traceroute-links tbody tr {
+  cursor: pointer;
+}
+
+.node-traceroute-links tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+.node-traceroute-links .text-button {
+  font-size: inherit;
+}
+
 /* Label and value side by side; a value may stack a few lines, such as a time and its packet link. */
 .node-summary {
   margin: 0 0 var(--space-5);

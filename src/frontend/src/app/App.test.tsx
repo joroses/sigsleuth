@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { KeyRelay } from "./api";
+import type { KeyRelay, MapLink } from "./api";
 import { ApplicationBar, DIAGNOSTICS_LINKED } from "./ui";
 import { loadSetting } from "./remember";
 import { forgetKept } from "./useApi";
@@ -1430,6 +1430,114 @@ describe("Map text reach", () => {
         "/api/v1/coverage/extent?node=2&channel=LongFast",
       ]),
     );
+  });
+
+  it("orders a node's traceroute links, opens and steps through them, then returns to the node", async () => {
+    const link = (
+      node_a: number,
+      node_b: number,
+      out: number,
+      into: number,
+      channel = "LongFast",
+    ): MapLink => ({
+      node_a,
+      node_b,
+      channel,
+      last_seen_at: "2026-09-25T09:00:00Z",
+      spreading_factor: 11,
+      a_to_b: { observations: out, snr_samples: out, average_snr: 2 },
+      b_to_a: { observations: into, snr_samples: into, average_snr: 1 },
+    });
+    const fetchMock = vi.fn((url: string) => {
+      const body = url.startsWith("/api/v1/map/nodes")
+        ? {
+            items: [
+              mapNode(1, "Alpha", "ALPH"),
+              mapNode(2, "Origin", "ORIG"),
+              mapNode(3, "Beta", "BETA"),
+              mapNode(4, "Gamma", "GAMM"),
+            ],
+            truncated: false,
+          }
+        : url.startsWith("/api/v1/map/links?")
+          ? {
+              items: [
+                link(2, 3, 10, 12),
+                link(1, 2, 40, 30),
+                link(2, 4, 100, 0),
+                link(1, 3, 500, 500),
+                link(2, 5, 80, 80),
+                link(2, 3, 300, 300, "MediumFast"),
+              ],
+              truncated: false,
+            }
+          : url.startsWith("/api/v1/traceroutes/hops")
+            ? { a_to_b: [], b_to_a: [], nodes: [] }
+            : url.startsWith("/api/v1/map/text-reach/")
+              ? { node_id: 2, messages: 0, channel: null, gateways: [] }
+              : { items: [], truncated: false };
+      return Promise.resolve(jsonResponse(body));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#map/2?show=traceroute&channel=LongFast";
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    const first = await within(side).findByRole("button", {
+      name: "Show link to Alpha",
+    });
+    const table = first.closest("table")!;
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(
+      rows.map((row) => within(row).getByRole("button").textContent),
+    ).toEqual(["ALPH", "BETA", "GAMM"]);
+    expect(within(rows[0]).getAllByRole("cell")[1].textContent).toBe("30⇄40");
+
+    const details = side.querySelector<HTMLElement>(".sidebar-details")!;
+    details.scrollTop = 240;
+    fireEvent.click(rows[0]);
+    expect(details.scrollTop).toBe(0);
+    const openHop = () =>
+      within(side)
+        .getByRole("link", { name: "All traceroutes" })
+        .getAttribute("href");
+    expect(openHop()).toBe("#links/traceroutes/1-2");
+    expect(side.querySelector(".sidebar-step")?.textContent).toBe("1 / 3");
+
+    fireEvent.click(within(side).getByRole("button", { name: "Next link" }));
+    expect(openHop()).toBe("#links/traceroutes/2-3");
+    expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 3");
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Previous link" }),
+    );
+    expect(openHop()).toBe("#links/traceroutes/1-2");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) => {
+          if (!url.startsWith("/api/v1/traceroutes/hops")) return false;
+          const query = new URL(url, "http://localhost").searchParams;
+          return (
+            query.get("node_a") === "1" &&
+            query.get("node_b") === "2" &&
+            query.get("channel") === "LongFast" &&
+            hoursBefore(url, "since") > 71
+          );
+        }),
+      ).toBe(true),
+    );
+
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Back to Origin" }),
+    );
+    expect(
+      within(side).getByRole("heading", { name: "Origin" }),
+    ).not.toBeNull();
+    expect(
+      within(side).getByRole("button", { name: "Show link to Alpha" }),
+    ).not.toBeNull();
+    expect(details.scrollTop).toBe(240);
   });
 
   it("shows a linked node that the saved filters would hide", async () => {

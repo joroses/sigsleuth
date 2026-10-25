@@ -1,14 +1,9 @@
-// Markers at one spot spread into a ring when clicked at high zoom, so each
+// Markers at one spot spread into a ring when clicked, so each
 // can be picked. The ring is one DOM element anchored at the spot, so it
 // follows pans; legs and dots keep their screen size.
 import type { MapNode } from "./api";
 import { NODE_COLORS, nodeCategory } from "./mapNodeLayers";
 import { formatNodeId, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
-
-/** Below this zoom a click on overlapping markers zooms in instead. */
-export const SPIDER_MIN_ZOOM = 12;
-/** Dots whose centres are this close overlap at SPIDER_MIN_ZOOM, rims included. */
-export const SPIDER_OVERLAP_PX = 20;
 
 // Dots on the ring sit this far apart, centre to centre, in pixels.
 const SPACING = 40;

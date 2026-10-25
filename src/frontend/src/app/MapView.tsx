@@ -180,29 +180,18 @@ function fitPadding(instance: maplibregl.Map): maplibregl.PaddingOptions {
   return { top: 60 + half, bottom: 60 + half, left: 60, right: 60 };
 }
 
-// Fit the drawn links, or centre an unconnected node with about 300 km around it.
-function focusNode(
+function moveCamera(
   instance: maplibregl.Map,
-  node: MapNode,
-  linkedNodes: MapNode[] = NO_NODES,
+  options: maplibregl.FlyToOptions,
 ) {
-  if (linkedNodes.length > 0) {
-    const bounds = new maplibregl.LngLatBounds(
-      [node.longitude, node.latitude],
-      [node.longitude, node.latitude],
-    );
-    for (const end of linkedNodes) bounds.extend([end.longitude, end.latitude]);
-    const camera = instance.cameraForBounds(bounds, {
-      padding: fitPadding(instance),
-    });
-    if (camera === undefined) return;
-    instance.flyTo({
-      center: camera.center,
-      zoom: Math.min(Math.max(camera.zoom ?? 0, LINK_MIN_ZOOM), 14),
-      offset: sheetOffset(instance),
-    });
-    return;
-  }
+  // flyTo drops the sheet offset when reduced motion is enabled.
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    instance.easeTo({ ...options, duration: 0 });
+  else instance.flyTo(options);
+}
+
+// Centre an unconnected node with about 300 km around it.
+function focusNode(instance: maplibregl.Map, node: MapNode) {
   const { latitude, longitude } = node;
   const latitudeDelta = FOCUS_HALF_SIDE_KM / KM_PER_DEGREE_LATITUDE;
   // Clamped so the box stays finite near the poles.
@@ -212,7 +201,7 @@ function focusNode(
     [longitude - longitudeDelta, latitude - latitudeDelta],
     [longitude + longitudeDelta, latitude + latitudeDelta],
   ]);
-  instance.flyTo({
+  moveCamera(instance, {
     center: [longitude, latitude],
     zoom: Math.max(camera?.zoom ?? 0, instance.getZoom()),
     offset: sheetOffset(instance),
@@ -233,7 +222,7 @@ function focusLink(instance: maplibregl.Map, a: MapNode, b: MapNode) {
     { padding: fitPadding(instance) },
   );
   if (camera === undefined) return;
-  instance.flyTo({
+  moveCamera(instance, {
     center: camera.center,
     zoom: Math.min(
       Math.max(camera.zoom ?? 0, LINK_MIN_ZOOM),
@@ -264,7 +253,7 @@ function focusTextReach(
     padding: fitPadding(instance),
   });
   if (camera === undefined) return;
-  instance.flyTo({
+  moveCamera(instance, {
     center: camera.center,
     zoom: Math.max(camera.zoom ?? 0, TEXT_REACH_MIN_ZOOM),
     offset: sheetOffset(instance),
@@ -301,7 +290,7 @@ function focusCoverage(
     padding: fitPadding(instance),
   });
   if (camera === undefined) return;
-  instance.flyTo({
+  moveCamera(instance, {
     center: camera.center,
     zoom: Math.min(
       Math.max(camera.zoom ?? 0, otherNodes.length > 0 ? LINK_MIN_ZOOM : 0),
@@ -349,7 +338,7 @@ function savedCamera(): Camera | null {
 interface Selection {
   nodeId: number;
   /** "view" fits all enabled layers together. */
-  fit: "node" | "reach" | "coverage" | "view";
+  fit: "none" | "coverage" | "view";
   /** Set for a chatty node with no recent position, which is not drawn. */
   unplaced?: TextSender;
   /** Fit coverage even when it is already in view, allowing a closer zoom. */
@@ -658,12 +647,9 @@ export function MapView({
     () => new Map(items.map((node) => [node.node_id, node])),
     [items],
   );
-  // A shared link frames its node with what it shows of it.
-  const linkedFit: Selection["fit"] = linkView === null ? "node" : "view";
   const [selection, setSelection] = useState<Selection | null>(() =>
-    nodeId === null ? null : { nodeId, fit: linkedFit, zoomIn: true },
+    nodeId === null ? null : { nodeId, fit: "view", zoomIn: true },
   );
-  const pendingNodeFit = useRef(selection);
   // The chosen link's key; it shows only while the filters keep the link.
   const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
   // A selected node the filters hide shows as nothing selected, and comes
@@ -685,16 +671,11 @@ export function MapView({
   const shownBasemap = useRef(basemap);
 
   // The only ways the node selection changes.
-  const select = useCallback(
-    (node: MapNode, fit: Selection["fit"], zoomIn = false) => {
-      const next = { nodeId: node.node_id, fit, zoomIn };
-      pendingNodeFit.current = next;
-      setSelection(next);
-      setChosenLinkKey(null);
-      setCoverageMode("heard");
-    },
-    [],
-  );
+  const select = useCallback((node: MapNode) => {
+    setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
+    setChosenLinkKey(null);
+    setCoverageMode("heard");
+  }, []);
   const clearSelection = useCallback(() => {
     setSelection(null);
     setChosenLinkKey(null);
@@ -957,7 +938,7 @@ export function MapView({
     if (typeof wanted !== "number" || page === null) return;
     restoredNodeId.current = null;
     if (page.items.some((node) => node.node_id === wanted))
-      setSelection({ nodeId: wanted, fit: "node" });
+      setSelection({ nodeId: wanted, fit: "none" });
   }, [page]);
 
   // Select the node from #map/<node number> once, when the first nodes arrive;
@@ -969,7 +950,7 @@ export function MapView({
     const loaded = page.items.find((node) => node.node_id === wanted);
     if (loaded !== undefined) {
       pendingNodeId.current = null;
-      select(loaded, linkedFit, true);
+      select(loaded);
       return;
     }
     const controller = new AbortController();
@@ -979,14 +960,14 @@ export function MapView({
         pendingNodeId.current = null;
         if (linked === null) return;
         setLinkedNode(linked);
-        select(linked, linkedFit, true);
+        select(linked);
       })
       .catch(() => {
         // The map still works without the linked node.
         if (!controller.signal.aborted) pendingNodeId.current = null;
       });
     return () => controller.abort();
-  }, [page, select, linkedFit]);
+  }, [page, select]);
 
   // Once another node is chosen or the selection is cleared, the hash no
   // longer names the linked node and the filters apply to it again.
@@ -1146,7 +1127,7 @@ export function MapView({
     };
     const chooseNode = (node: MapNode) => {
       closeSpider();
-      select(node, coverageShown.current ? "coverage" : "node");
+      select(node);
       setCollapsed(false);
     };
     const openSpider = (nodes: MapNode[]) => {
@@ -1539,65 +1520,26 @@ export function MapView({
     }
     return [...ends.values()];
   }
-  const fitNode = useEffectEvent(() => {
-    if (readyMap === null || selectedNode === null || selectedLink !== null)
-      return;
-    pendingNodeFit.current = null;
-    focusNode(readyMap, selectedNode, nodesOnFocusedLinks());
-  });
-  useEffect(() => {
-    if (
-      selection?.fit === "node" &&
-      pendingNodeFit.current === selection &&
-      linksReady
-    )
-      fitNode();
-  }, [selection, linksReady, readyMap, selectedNode, selectedLink]);
-
-  // A sender chosen from Chatty nodes is fitted with its drawn gateways once
-  // its text reach arrives, or on its own if that fails or the text
-  // reach layer is off. A link chosen meanwhile keeps the camera where it is.
-  const reachLoaded = textReach !== null;
-  const reachFailed = textReachError !== null;
-  const fitTextReach = useEffectEvent(() => {
-    const instance = map.current;
+  const extentUrl =
+    (selection?.fit === "coverage" || selection?.fit === "view") &&
+    showCoverage &&
+    selection.unplaced === undefined
+      ? coverageExtentUrl(selection.nodeId, coverageChannel)
+      : null;
+  const extent = useApi<CoverageExtent | null>(extentUrl);
+  const fitReady =
+    !extent.loading &&
+    (selection?.fit === "view"
+      ? !reach.loading && linksReady
+      : selection?.fit === "coverage" && showCoverage);
+  const fittedSelection = useRef<Selection | null>(null);
+  const fitSelection = useEffectEvent(() => {
+    const instance = readyMap;
     if (
       instance === null ||
       (selectedNode === null && unplacedSender === null) ||
       selectedLink !== null
     )
-      return;
-    const gateways = (textReach?.gateways ?? []).flatMap((gateway) => {
-      const node = nodeMap.get(gateway.node_id);
-      return node === undefined ? [] : [node];
-    });
-    focusTextReach(instance, selectedNode, gateways);
-  });
-  useEffect(() => {
-    if (
-      selection?.fit === "reach" &&
-      (reachLoaded || reachFailed || !showTextReach)
-    )
-      fitTextReach();
-  }, [selection, reachLoaded, reachFailed, showTextReach]);
-
-  // A shared view waits for every enabled layer, fitting whatever loaded.
-  // Each choice fits once, not again when the channel changes.
-  const extentUrl =
-    (selection?.fit === "coverage" || selection?.fit === "view") && showCoverage
-      ? coverageExtentUrl(selection.nodeId, coverageChannel)
-      : null;
-  const extent = useApi<CoverageExtent | null>(extentUrl);
-  const coverageReady =
-    (extentUrl !== null && !extent.loading) ||
-    (selection?.fit === "view" && !showCoverage);
-  const fitReady =
-    coverageReady &&
-    (selection?.fit !== "view" || (!reach.loading && linksReady));
-  const coverageFitted = useRef<Selection | null>(null);
-  const fitCoverage = useEffectEvent(() => {
-    const instance = readyMap;
-    if (instance === null || selectedNode === null || selectedLink !== null)
       return;
     const otherNodes =
       selection?.fit === "view"
@@ -1609,7 +1551,11 @@ export function MapView({
             }),
           ]
         : NO_NODES;
-    coverageFitted.current = selection;
+    fittedSelection.current = selection;
+    if (selectedNode === null) {
+      focusTextReach(instance, null, otherNodes);
+      return;
+    }
     focusCoverage(
       instance,
       selectedNode,
@@ -1619,19 +1565,26 @@ export function MapView({
     );
   });
   useEffect(() => {
-    if (!fitReady || coverageFitted.current === selection) return;
-    fitCoverage();
-  }, [selection, fitReady, readyMap, selectedNode, selectedLink]);
+    if (!fitReady || fittedSelection.current === selection) return;
+    fitSelection();
+  }, [
+    selection,
+    fitReady,
+    readyMap,
+    selectedNode,
+    selectedLink,
+    unplacedSender,
+  ]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
     setShowTextReach(true);
     const node = nodeMap.get(sender.node_id);
     if (node !== undefined) {
-      select(node, "reach");
+      select(node);
       return;
     }
-    setSelection({ nodeId: sender.node_id, fit: "reach", unplaced: sender });
+    setSelection({ nodeId: sender.node_id, fit: "view", unplaced: sender });
     setChosenLinkKey(null);
   }
 
@@ -1658,7 +1611,7 @@ export function MapView({
   // A node chosen in the cell card shows where it was heard, without moving
   // the map away from the cell.
   function chooseHeardNode(nodeId: number) {
-    setSelection({ nodeId, fit: "node" });
+    setSelection({ nodeId, fit: "none" });
     setChosenLinkKey(null);
     setCoverageMode("heard");
     setSelectedCell(null);
@@ -2015,13 +1968,7 @@ export function MapView({
               onClose={() => setSelectedCell(null)}
             />
           ) : null}
-          <NodeSearch
-            nodes={items}
-            onSelect={(node) =>
-              select(node, showCoverage ? "coverage" : "node")
-            }
-            keepResults
-          />
+          <NodeSearch nodes={items} onSelect={select} keepResults />
           {showCoverage ? (
             <HeardInView
               page={heardInView}
@@ -2029,7 +1976,7 @@ export function MapView({
               selectedNodeId={focusNodeId}
               drawn={nodeMap}
               loadedIds={loadedIds}
-              onChoose={(node) => select(node, "coverage")}
+              onChoose={select}
             />
           ) : null}
           <ChattyNodes

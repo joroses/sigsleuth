@@ -274,17 +274,141 @@ for (const { width, linked } of [
   });
 }
 
-for (const { width, late, failed, kind } of [
-  { width: 1280, late: "reach", failed: null, kind: "traceroute" },
-  { width: 390, late: "links", failed: null, kind: "direct" },
-  { width: 390, late: "coverage", failed: "coverage", kind: "neighbor" },
-  { width: 1280, late: "reach", failed: "reach", kind: "direct" },
-  { width: 390, late: "links", failed: "links", kind: "traceroute" },
+for (const { width, late, failed, kind, entry, show } of [
+  {
+    width: 1280,
+    late: "reach",
+    failed: null,
+    kind: "traceroute",
+    entry: "shared",
+    show: "traceroute,reach,coverage",
+  },
+  {
+    width: 390,
+    late: "links",
+    failed: null,
+    kind: "direct",
+    entry: "shared",
+    show: "direct,reach,coverage",
+  },
+  {
+    width: 390,
+    late: "coverage",
+    failed: "coverage",
+    kind: "neighbor",
+    entry: "shared",
+    show: "neighbor,reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "reach",
+    failed: "reach",
+    kind: "direct",
+    entry: "shared",
+    show: "direct,reach,coverage",
+  },
+  {
+    width: 390,
+    late: "links",
+    failed: "links",
+    kind: "traceroute",
+    entry: "shared",
+    show: "traceroute,reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "reach",
+    failed: null,
+    kind: "traceroute",
+    entry: "chatty",
+    show: "traceroute,reach",
+  },
+  {
+    width: 390,
+    late: "links",
+    failed: null,
+    kind: "direct",
+    entry: "chatty",
+    show: "direct,reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "reach",
+    failed: null,
+    kind: "neighbor",
+    entry: "map",
+    show: "neighbor,reach",
+  },
+  {
+    width: 390,
+    late: "links",
+    failed: "links",
+    kind: "traceroute",
+    entry: "search",
+    show: "traceroute,reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "coverage",
+    failed: null,
+    kind: "direct",
+    entry: "heard",
+    show: "direct,coverage",
+  },
+  {
+    width: 1280,
+    late: "reach",
+    failed: "reach",
+    kind: "neighbor",
+    entry: "map",
+    show: "neighbor,reach,coverage",
+  },
+  {
+    width: 390,
+    late: "coverage",
+    failed: "coverage",
+    kind: "direct",
+    entry: "chatty",
+    show: "reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "coverage",
+    failed: null,
+    kind: "traceroute",
+    entry: "search",
+    show: "reach,coverage",
+  },
+  {
+    width: 390,
+    late: "links",
+    failed: null,
+    kind: "traceroute",
+    entry: "chatty",
+    show: "traceroute,direct,neighbor,reach,coverage",
+  },
+  {
+    width: 1280,
+    late: "reach",
+    failed: null,
+    kind: "traceroute",
+    entry: "unplaced",
+    show: "reach",
+  },
+  {
+    width: 390,
+    late: "coverage",
+    failed: null,
+    kind: "traceroute",
+    entry: "search",
+    show: "coverage",
+  },
 ]) {
-  test(`a shared link fits its layers (${width}px, ${kind}, ${late} last, ${failed ?? "none"} fails)`, async ({
+  test(`a ${entry} selection fits ${show} (${width}px, ${late} last, ${failed ?? "none"} fails)`, async ({
     page,
     request,
   }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width, height: 844 });
     const { items }: { items: MapNode[] } = await (
       await request.get("/api/v1/map/nodes")
@@ -296,22 +420,70 @@ for (const { width, late, failed, kind } of [
     const node = { ...items[0], longitude: 0, latitude: 40 };
     const gateway = { ...items[1], longitude: 1, latitude: 40.5 };
     const peer = { ...items[2], longitude: -1.2, latitude: 40.2 };
+    const peers = {
+      traceroute: peer,
+      direct: { ...items[3], longitude: -0.8, latitude: 40.8 },
+      neighbor: { ...items[4], longitude: -0.5, latitude: 39.6 },
+    };
     const extent = { west: -0.2, south: 39.9, east: 0.1, north: 40.1 };
     await page.route("**/api/v1/map/nodes?*", (route) =>
       route.fulfill({
-        json: { items: [node, gateway, peer], truncated: false },
+        json: {
+          items: [
+            ...(entry === "unplaced" ? [] : [node]),
+            gateway,
+            ...Object.values(peers),
+          ],
+          truncated: false,
+        },
       }),
     );
-    await page.addInitScript((kind) => {
+    const enabled = show.split(",");
+    await page.route("**/api/v1/map/text-senders*", (route) =>
+      route.fulfill({
+        json: {
+          items: [{ ...node, messages: 3, region: null }],
+          truncated: false,
+        },
+      }),
+    );
+    await page.route("**/api/v1/coverage/nodes?*", (route) =>
+      route.fulfill({
+        json: {
+          nodes: [{ ...node, cells: 1, average_margin: 10 }],
+          unknown: 0,
+          truncated: false,
+        },
+      }),
+    );
+    await page.addInitScript((enabled) => {
+      localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
+      localStorage.setItem(
+        "sigsleuth.nodeFilter",
+        JSON.stringify({ channel: "*" }),
+      );
+      localStorage.setItem("sigsleuth.filterPanelOpen", "false");
+      localStorage.setItem(
+        "sigsleuth.map.camera",
+        JSON.stringify({ center: [0, 40], zoom: 10 }),
+      );
+      localStorage.setItem(
+        "sigsleuth.textReach",
+        JSON.stringify(enabled.includes("reach")),
+      );
+      localStorage.setItem(
+        "sigsleuth.coverage",
+        JSON.stringify(enabled.includes("coverage")),
+      );
       localStorage.setItem(
         "sigsleuth.linkLayers",
         JSON.stringify({
-          traceroute: kind !== "traceroute",
-          direct: kind !== "direct",
-          neighbor: kind !== "neighbor",
+          traceroute: enabled.includes("traceroute"),
+          direct: enabled.includes("direct"),
+          neighbor: enabled.includes("neighbor"),
         }),
       );
-    }, kind);
+    }, enabled);
     let release = () => {};
     const waiting = new Promise<void>((resolve) => {
       release = resolve;
@@ -347,12 +519,27 @@ for (const { width, late, failed, kind } of [
             : "**/api/v1/map/links?*";
       await page.route(url, async (route) => {
         if (layer === late) await waiting;
+        const answer =
+          layer === "links"
+            ? {
+                ...answers.links,
+                items: answers.links.items.map((link) => ({
+                  ...link,
+                  node_b:
+                    peers[
+                      new URL(route.request().url()).searchParams.get(
+                        "link_kind",
+                      ) as keyof typeof peers
+                    ].node_id,
+                })),
+              }
+            : answers[layer];
         await route.fulfill({
           status: layer === failed ? 503 : 200,
           json:
             layer === failed
               ? { error: { code: "unavailable", message: "Unavailable" } }
-              : answers[layer],
+              : answer,
         });
       });
     }
@@ -361,33 +548,83 @@ for (const { width, late, failed, kind } of [
         ? ["reach", "coverage"]
         : ["links", late === "reach" ? "coverage" : "reach"];
     const first = Promise.all(
-      early.map((layer) =>
-        page.waitForResponse((response) =>
-          response
-            .url()
-            .includes(
-              layer === "reach"
-                ? "/map/text-reach/"
-                : layer === "coverage"
-                  ? "/coverage/extent?"
-                  : "/map/links?",
-            ),
+      early
+        .filter((layer) =>
+          layer === "links" ? enabled.includes(kind) : enabled.includes(layer),
+        )
+        .map((layer) =>
+          page.waitForResponse((response) =>
+            response
+              .url()
+              .includes(
+                layer === "reach"
+                  ? "/map/text-reach/"
+                  : layer === "coverage"
+                    ? "/coverage/extent?"
+                    : "/map/links?",
+              ),
+          ),
         ),
-      ),
     );
     await page.goto(
-      `/#map/${node.node_id}?show=${kind},reach,coverage&window=all`,
+      entry === "shared"
+        ? `/#map/${node.node_id}?show=${show}&window=all`
+        : "/#map",
     );
+    if (entry === "chatty" || entry === "heard" || entry === "unplaced") {
+      if (width <= 700)
+        await page.getByRole("button", { name: "Expand map sidebar" }).click();
+      await page
+        .getByRole("region", {
+          name: entry === "heard" ? "Heard in view" : "Chatty nodes",
+        })
+        .getByRole("button")
+        .filter({ has: page.locator(".chatty-name") })
+        .click();
+    } else if (entry === "search") {
+      if (width <= 700)
+        await page.getByRole("button", { name: "Expand map sidebar" }).click();
+      await page
+        .getByRole("combobox", { name: "Search nodes" })
+        .fill(node.node_id.toString(16));
+      await page.getByRole("option").click();
+    } else if (entry === "map") {
+      await expect
+        .poll(() =>
+          page.evaluate((nodeId) => {
+            const map = window.sigsleuthMap;
+            return (
+              map?.getLayer("nodes") !== undefined &&
+              map
+                .queryRenderedFeatures({ layers: ["nodes"] })
+                .some((feature) => feature.properties.nodeId === nodeId)
+            );
+          }, node.node_id),
+        )
+        .toBe(true);
+      const point = await page.evaluate(() => {
+        const map = window.sigsleuthMap!;
+        const { x, y } = map.project([0, 40]);
+        const box = map.getContainer().getBoundingClientRect();
+        return { x: box.left + x, y: box.top + y };
+      });
+      await page.mouse.click(point.x, point.y);
+    }
     await expect(
       page.getByRole("button", { name: "Clear selected node" }),
     ).toBeVisible();
     await first;
     release();
 
-    const points = [[node.longitude, node.latitude]];
-    if (failed !== "links") points.push([peer.longitude, peer.latitude]);
-    if (failed !== "reach") points.push([gateway.longitude, gateway.latitude]);
-    if (failed !== "coverage")
+    const points =
+      entry === "unplaced" ? [] : [[node.longitude, node.latitude]];
+    if (failed !== "links")
+      for (const [kind, peer] of Object.entries(peers))
+        if (enabled.includes(kind))
+          points.push([peer.longitude, peer.latitude]);
+    if (enabled.includes("reach") && failed !== "reach")
+      points.push([gateway.longitude, gateway.latitude]);
+    if (enabled.includes("coverage") && failed !== "coverage")
       points.push([extent.west, extent.south], [extent.east, extent.north]);
     await expect
       .poll(() =>

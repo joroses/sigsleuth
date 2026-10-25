@@ -202,6 +202,10 @@ function PacketDetailContent({
     <>
       <div className="packet-heading">
         <h2 id="detail-heading">Packet {packet.packet_id}</h2>
+        <ShareButton
+          hash={`#packets/${packet.packet_row_id}`}
+          title={`Packet ${packet.packet_id}`}
+        />
         <span>{packet.portnum ?? "Unknown application"}</span>
         <span>
           Reported by {packet.reception_count}{" "}

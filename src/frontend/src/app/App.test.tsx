@@ -173,10 +173,24 @@ describe("Packet detail", () => {
       expect.stringContaining("Hilltop"),
     ]);
 
+    fireEvent.click(
+      within(container.querySelector(".packet-heading")!).getByRole("button", {
+        name: "Share a link to this view",
+      }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL("#packets/7", window.location.href).href,
+      ),
+    );
+    writeText.mockClear();
+
     // Pinning a report keeps the page on the hop.
     fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
     expect(listed()).toEqual(["21"]);
-    const firstShare = screen.getByRole("button", {
+    const firstShare = within(
+      container.querySelector("tr[data-reception-id='21']")!,
+    ).getByRole("button", {
       name: "Share a link to this view",
     });
     fireEvent.click(firstShare);

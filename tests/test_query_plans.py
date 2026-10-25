@@ -54,6 +54,7 @@ BIG_TABLES = {
     "packet",
     "reception",
     "link_hour",
+    "hop_cost_hour",
     "node_activity_hour",
     "traceroute_hop",
     "traceroute_packet",
@@ -173,18 +174,24 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
 
 def capture_some_history(connection: sqlite3.Connection, start: datetime) -> None:
     """A little of everything the pages read: names, positions, telemetry, texts
-    with a reply, neighbour info, a traceroute with its reply and a text
-    relayed by a node the gateways heard directly, each heard by two gateways."""
-    deliveries: list[tuple[int, bytes, dict[str, float]]] = []
+    with a reply, neighbour info, a traceroute with its reply, one whose route
+    pins a free hop, and a text relayed by a router the gateways heard
+    directly, each heard by two gateways."""
+    deliveries: list[tuple[int, bytes, dict[str, float], dict[str, float]]] = []
 
-    def send(portnum: int, payload: bytes, **fields: float) -> None:
-        deliveries.append((portnum, payload, fields))
+    def send(
+        portnum: int, payload: bytes, second: dict[str, float] | None = None, **fields: float
+    ) -> None:
+        """second: what the second gateway heard otherwise."""
+        deliveries.append((portnum, payload, fields, second or {}))
 
     for node, latitude in ((REQUESTER, 52.0), (RELAY, 52.1), (TARGET, 52.2)):
         position = mesh_pb2.Position(latitude_i=int(latitude * 1e7), longitude_i=int(4.9e7))
         send(portnums_pb2.PortNum.POSITION_APP, position.SerializeToString(), sender=node)
     user = mesh_pb2.User(long_name="Hilltop", short_name="HILL", hw_model=9)
     send(portnums_pb2.PortNum.NODEINFO_APP, user.SerializeToString(), sender=REQUESTER)
+    router = mesh_pb2.User(long_name="Mast", short_name="MAST", role=2)  # ROUTER
+    send(portnums_pb2.PortNum.NODEINFO_APP, router.SerializeToString(), sender=RELAY)
     metrics = telemetry_pb2.Telemetry(
         device_metrics=telemetry_pb2.DeviceMetrics(channel_utilization=12.5, air_util_tx=1.5)
     )
@@ -223,6 +230,16 @@ def capture_some_history(connection: sqlite3.Connection, start: datetime) -> Non
         packet_id=71,
         request_id=70,
     )
+    # One hop used over two relays: TARGET passed on RELAY's copy for free.
+    send(
+        portnums_pb2.PortNum.TRACEROUTE_APP,
+        mesh_pb2.RouteDiscovery(route=[RELAY, TARGET], snr_towards=[20, 12]).SerializeToString(),
+        sender=REQUESTER,
+        recipient=0x0D0D0D0D,
+        hop_start=3,
+        hop_limit=2,
+        relay_node=TARGET & 0xFF,
+    )
     # The requester then moves a little, so pages read where it was before.
     moved = mesh_pb2.Position(latitude_i=int(52.01e7), longitude_i=int(4.9e7))
     send(portnums_pb2.PortNum.POSITION_APP, moved.SerializeToString(), sender=REQUESTER)
@@ -244,13 +261,16 @@ def capture_some_history(connection: sqlite3.Connection, start: datetime) -> Non
         hop_limit=1,
         relay_node=RELAY & 0xFF,
         rx_snr=-2.0,
+        # After one hop there, so the replay asks about the router at both.
+        second={"hop_limit": 2},
     )
 
-    for number, (portnum, payload, fields) in enumerate(deliveries, start=1):
+    for number, (portnum, payload, fields, second) in enumerate(deliveries, start=1):
         # OK to MQTT on: refreshes whether the sender opted out, hiding none.
         header = {"packet_id": number, "bitfield": 1, **fields}
         for gateway in GATEWAYS:
-            envelope = application_envelope(portnum, payload, gateway_id=gateway, **header)  # type: ignore[arg-type]
+            heard = header if gateway == GATEWAYS[0] else {**header, **second}
+            envelope = application_envelope(portnum, payload, gateway_id=gateway, **heard)  # type: ignore[arg-type]
             received_at = to_epoch_ms(start + timedelta(seconds=number))
             topic = f"msh/EU_868/2/e/LongFast/{gateway}"
             ingest_delivery(connection, MqttDelivery(received_at, topic, envelope))

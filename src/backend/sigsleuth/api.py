@@ -311,7 +311,12 @@ def create_app(
     ) -> FloodRoutes:
         """The guessed hops between the relays of a packet's replay, for the
         packet page's replay when it starts: too slow for every packet page."""
-        page = packet_detail(connection, packet_row_id, default_preset=settings.default_preset)
+        page = packet_detail(
+            connection,
+            packet_row_id,
+            default_preset=settings.default_preset,
+            include_hidden_relays=True,
+        )
         if page is None:
             raise ApiError(404, "packet_not_found", "Packet not found.")
         return flood_routes(connection, page)

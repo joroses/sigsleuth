@@ -431,6 +431,67 @@ describe("Node detail", () => {
     expect(screen.getByRole("link", { name: "Mill Gate" })).not.toBeNull();
   });
 
+  it("tags a node's traceroute link 0-cost only on the hop's partner and channel", async () => {
+    const direction = { observations: 3, snr_samples: 0, average_snr: null };
+    const row = (other: number, kind: string, channel: string) => ({
+      node_a: 0x11111111,
+      node_b: other,
+      last_seen_at: "2026-09-19T09:00:00Z",
+      channel,
+      spreading_factor: 11,
+      a_to_b: direction,
+      b_to_a: direction,
+      link_kind: kind,
+      distance_km: null,
+      doubts: [],
+    });
+    const table = {
+      items: [
+        row(0x22222222, "traceroute", "LongFast"),
+        row(0x22222222, "traceroute", "MediumFast"),
+        row(0x22222222, "direct", "LongFast"),
+        row(0x33333333, "traceroute", "LongFast"),
+      ],
+      nodes: [],
+      doubtful_node_ids: [],
+      truncated: false,
+      // The node relays 0x22222222's copies for free on LongFast.
+      zero_cost_hops: [
+        {
+          from_node_id: 0x22222222,
+          to_node_id: 0x11111111,
+          channel: "LongFast",
+          free: 4,
+          costly: 0,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith("/api/v1/nodes/286331153/links")
+              ? table
+              : url.includes("/packets")
+                ? { packets: [], next_before_id: null }
+                : { node: null, ports: [] },
+          ),
+        ),
+      ),
+    );
+
+    window.location.hash = "#nodes/286331153";
+    render(<App />);
+
+    const [tag] = await screen.findAllByText("0-cost");
+    expect(screen.getAllByText("0-cost")).toHaveLength(1);
+    const cells = tag.closest("tr")!.querySelectorAll("td");
+    expect(cells[1].textContent).toBe("!22222222");
+    expect(tag.closest("tr")!.textContent).toContain("LongFast");
+    expect(tag.getAttribute("title")).toMatch(/^This node relays its copies/);
+  });
+
   it("still lists packets for a node with nothing current known", async () => {
     vi.stubGlobal(
       "fetch",

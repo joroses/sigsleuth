@@ -10,11 +10,23 @@ import {
   sortLinks,
 } from "./linkRows";
 import { LinkDetails } from "./LinkDetails";
-import { CONTACT_DAYS } from "./nodeContacts";
+import {
+  CONTACT_DAYS,
+  zeroCostKey,
+  zeroCostTitle,
+  zeroCostWays,
+} from "./nodeContacts";
 import { formatNodeId } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 import { useSetting, useViewState } from "./remember";
-import { ErrorPanel, IconButton, NodeName, StatusPanel, WideTable } from "./ui";
+import {
+  Badge,
+  ErrorPanel,
+  IconButton,
+  NodeName,
+  StatusPanel,
+  WideTable,
+} from "./ui";
 import type { ApiState } from "./useApi";
 
 const ROWS_STEP = 10;
@@ -59,6 +71,10 @@ export function NodeLinks({
   );
   const links = useMemo(
     () => (data?.items ?? []).map((link) => fromNode(link, nodeId)),
+    [data, nodeId],
+  );
+  const zeroCost = useMemo(
+    () => zeroCostWays(nodeId, data?.zero_cost_hops ?? []),
     [data, nodeId],
   );
   // The other ends, named or not, so an unnamed node is found by its ID.
@@ -163,6 +179,10 @@ export function NodeLinks({
                 {sorted.slice(0, shown).map((link) => {
                   const key = `${link.link_kind}:${link.node_b}:${link.channel}`;
                   const expanded = open === key;
+                  const free =
+                    link.link_kind === "traceroute"
+                      ? zeroCost.get(zeroCostKey(link.node_b, link.channel))
+                      : undefined;
                   const toggle = () => setOpen(expanded ? null : key);
                   return (
                     <Fragment key={key}>
@@ -180,7 +200,17 @@ export function NodeLinks({
                         <td className="link-node mono muted">
                           {formatNodeId(link.node_b)}
                         </td>
-                        <td>{LINK_KIND_LABELS[link.link_kind]}</td>
+                        <td>
+                          {LINK_KIND_LABELS[link.link_kind]}
+                          {free === undefined ? null : (
+                            <>
+                              {" "}
+                              <Badge tone="blue" title={zeroCostTitle(free)}>
+                                0-cost
+                              </Badge>
+                            </>
+                          )}
+                        </td>
                         <ExplorerCell link={link} />
                         <LinkCells
                           link={link}

@@ -1344,6 +1344,17 @@ nodes: 41 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: 2 items
+  - from_node_id: 2224775088
+    to_node_id: 3655149723
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 3655149723
+    to_node_id: 1770269756
+    channel: "ShortFast"
+    free: 7
+    costly: 0
 
 ## GET /api/v1/map/nodes
 
@@ -1744,6 +1755,7 @@ nodes: 224 items
     estimated: true
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=traceroute&since=2026-10-04T16:25:30.812000Z
 
@@ -1820,6 +1832,7 @@ nodes: 359 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/map/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
 
@@ -1940,6 +1953,7 @@ nodes: 20 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=direct&since=2026-10-04T16:25:30.812000Z
 
@@ -2016,6 +2030,7 @@ nodes: 27 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/map/links?link_kind=neighbor&since=2026-10-10T16:25:30.812000Z
 
@@ -2136,6 +2151,7 @@ nodes: 134 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=neighbor&since=2026-10-04T16:25:30.812000Z
 
@@ -2212,6 +2228,7 @@ nodes: 181 items
     estimated: false
 doubtful_node_ids: []
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/map/links?link_kind=traceroute
 

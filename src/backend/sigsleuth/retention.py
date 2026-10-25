@@ -138,8 +138,8 @@ def database_used_bytes(connection: sqlite3.Connection) -> int:
 def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
     """Delete the current state last updated before the age limit: nodes last
     seen before it with their reported state and map report, positions from
-    before it except each node's newest then, and hourly link and node
-    activity totals. Totals go by whole hours, so the
+    before it except each node's newest then, and hourly link, hop cost and
+    node activity totals. Totals go by whole hours, so the
     hour holding the limit stays. A node still sending survey measurements
     keeps its OK to MQTT bit."""
     hour = cutoff - cutoff % HOUR_MS
@@ -186,7 +186,8 @@ def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
             """,
             (hour,),
         )
-        connection.execute("DELETE FROM node_activity_hour WHERE hour_start < ?", (hour,))
+        for table in ("hop_cost_hour", "node_activity_hour"):
+            connection.execute(f"DELETE FROM {table} WHERE hour_start < ?", (hour,))
 
 
 def _delete_oldest_packets(

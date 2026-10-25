@@ -148,7 +148,7 @@ _FACTS_UPGRADES = {
     FROM node_current WHERE position_observed_at IS NOT NULL;
     """,
 }
-DERIVED_VERSION = 42
+DERIVED_VERSION = 43
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

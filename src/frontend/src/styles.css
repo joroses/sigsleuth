@@ -2071,6 +2071,13 @@ dd {
   width: 0.375rem;
 }
 
+/* A 0-cost hop's tag at the middle of its contact line. */
+.minimap-zero-cost {
+  padding: 0 var(--space-1);
+  font-size: 0.625rem;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+}
+
 .contacts-legend-hops {
   display: grid;
   place-items: center;

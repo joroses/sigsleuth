@@ -1,9 +1,10 @@
 from sigsleuth.decode import RouteDiscovery
 from sigsleuth.radio import spreading_factor
-from sigsleuth.traceroute import Hop, report_hops, report_paths
+from sigsleuth.traceroute import Hop, pinned_costs, report_hops, report_paths
 
 A, B = 0xA0A0A0A0, 0xB0B0B0B0
 R1, R2, R3 = 0x11111111, 0x22222222, 0x33333333
+GATEWAY = 0x44444444
 GAP = 0xFFFFFFFF
 
 
@@ -83,3 +84,54 @@ def test_spreading_factor_comes_from_a_preset_channel_name_or_the_default() -> N
     assert spreading_factor("SFNarrow", "LongFast") == 7
     assert spreading_factor("longslow", "LongFast") == 12
     assert spreading_factor("Canarias", "MediumFast") == 9
+
+
+def costs(
+    relays: tuple[int, ...], hops: int, snr: tuple[int, ...] | None = None, own_byte: bool = False
+) -> list[tuple[int, int, bool]]:
+    """pinned_costs of a request copy from A to B that GATEWAY heard after hops."""
+    snr = tuple(20 for _ in relays) if snr is None else snr
+    paths = report_paths(route(relays, snr), A, B, None)
+    return [
+        (hop.from_node_id, hop.to_node_id, free)
+        for hop, free in pinned_costs(paths.forward, GATEWAY, hops, own_byte)
+    ]
+
+
+def test_one_hop_over_several_relays_makes_every_later_hop_free() -> None:
+    # The first hop always costs, so it pins nothing.
+    assert costs((R1, R2, R3), 1) == [(R1, R2, True), (R2, R3, True)]
+    assert costs((R1,), 1) == []
+
+
+def test_as_many_hops_as_relays_makes_every_later_hop_costly() -> None:
+    assert costs((R1, R2, R3), 3) == [(R1, R2, False), (R2, R3, False)]
+
+
+def test_other_hop_counts_pin_nothing() -> None:
+    assert costs((R1, R2, R3), 2) == []
+    # Fewer relays than hops: older firmware left some out.
+    assert costs((R1, R2), 3) == []
+    assert costs((R1, R2), 0) == []
+
+
+def test_full_routes_and_gaps_pin_nothing() -> None:
+    assert costs((R1, R2, R3, *range(1, 6)), 8) == []
+    assert costs((R1, GAP, R2, R3), 4) == []
+
+
+def test_a_gateway_uploading_its_own_rebroadcast_is_the_last_relay() -> None:
+    assert costs((R1, R2, GATEWAY), 1, own_byte=True) == [(R1, R2, True), (R2, GATEWAY, True)]
+    assert costs((R1, R2, GATEWAY), 3, own_byte=True) == [(R1, R2, False), (R2, GATEWAY, False)]
+    # Its own byte without adding itself: the route and the header disagree.
+    assert costs((R1, R2), 1, own_byte=True) == []
+
+
+def test_a_gateway_that_added_itself_to_a_copy_it_heard_is_no_relay() -> None:
+    assert costs((R1, R2, GATEWAY), 2) == [(R1, R2, False)]
+
+
+def test_hops_that_are_no_hops_pin_nothing() -> None:
+    # 0 dB likely crossed MQTT; a missing slot is a hop not measured.
+    assert costs((R1, R2, R3), 1, (20, 0, 20)) == [(R2, R3, True)]
+    assert costs((R1, R2, R3), 1, (20, 20)) == [(R1, R2, True)]

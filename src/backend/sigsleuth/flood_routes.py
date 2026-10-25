@@ -4,9 +4,12 @@ packet from, then that node's, back toward the sender while each guess is
 sure enough (docs/relay-evidence.md).
 
 A relay that is itself a gateway names whom it heard in its own report, and
-after one hop a relay mostly heard the sender. Other hops are a score over the
-relay's radio partners, not one checkable fact as in relays.py, so only sure
-ones are kept: a walk stops at its first unsure hop, leaving a gap.
+after one hop a relay mostly heard the sender. A router relay that never
+heard the sender more likely passed on a favourite router's copy without
+spending a hop, as traceroutes show it does (hop_cost_hour). Other hops are a
+score over the relay's radio partners, not one checkable fact as in
+relays.py, so only sure ones are kept: a walk stops at its first unsure hop,
+leaving a gap.
 
 A walk stops at an opted-out node rather than name it or pin its copy on the
 next best candidate (opt_out.py).
@@ -41,17 +44,22 @@ PER_LN_TRACEROUTE_HOPS = 1.053
 PER_PROGRESS = -0.957
 WRONG_LEVEL = -4.262
 
+# Firmware 2.7.11 and newer: only these relay a favourite router's copy
+# without spending a hop.
+ZERO_COST_ROLES = frozenset({"ROUTER", "ROUTER_LATE", "CLIENT_BASE"})
+
 # How a hop's sender was found: the receiver's own report, sure when it heard
 # the sender directly or its relay was heard_directly, else a guess; the
-# sender of a copy heard after one hop (87% right); or the score.
-FloodHopHow = Literal["heard_directly", "reported", "one_hop", "probable"]
+# sender of a copy heard after one hop (87% right); the one node a router
+# relay passes on for free (zero_cost); or the score.
+FloodHopHow = Literal["heard_directly", "reported", "one_hop", "zero_cost", "probable"]
 
 
 @dataclass(frozen=True)
 class FloodRouteHop:
     """to_node_id heard the packet from from_node_id, whose copy had used
-    step hops: the replay step it shows at. probability is the score's, for a
-    probable hop only."""
+    step hops: the replay step it shows at, the same as to_node_id's on a
+    0-cost hop. probability is the score's, for a probable hop only."""
 
     from_node_id: int
     to_node_id: int
@@ -81,6 +89,18 @@ class RouteLinks:
     places: dict[int, NodeSummary] = field(default_factory=dict)
 
 
+@dataclass
+class OneHopLinks:
+    """What the one-hop rule reads for router relays: those heard hearing the
+    sender (a direct, neighbour or traceroute link from it within
+    LINK_WINDOW_MS, on any channel), and for each the nodes whose copies it
+    passed on for free in traceroutes on the packet's channel, at least as
+    often as it spent a hop on them."""
+
+    heard_sender: set[int] = field(default_factory=set)
+    free_from: dict[int, set[int]] = field(default_factory=dict)
+
+
 def flood_routes(connection: sqlite3.Connection, detail: PacketDetail) -> FloodRoutes:
     """The guessed hops between the relays of a packet packets.packet_detail
     read."""
@@ -99,7 +119,12 @@ def flood_routes(connection: sqlite3.Connection, detail: PacketDetail) -> FloodR
         places.update(found.places)
         return found
 
-    hops = route_hops(sender, detail.receptions, dict(places), links, opted_out(connection))
+    def one_hop(nodes: set[int]) -> OneHopLinks:
+        return one_hop_links(connection, sender, nodes, at, detail.packet.channel)
+
+    hops = route_hops(
+        sender, detail.receptions, dict(places), links, one_hop, opted_out(connection)
+    )
     on_hops = {node for hop in hops for node in (hop.from_node_id, hop.to_node_id)}
     return FloodRoutes(
         tuple(hops), tuple(places[node] for node in sorted(on_hops - shown) if node in places)
@@ -140,11 +165,53 @@ def route_links(connection: sqlite3.Connection, nodes: Collection[int], at: int)
     return found
 
 
+def one_hop_links(
+    connection: sqlite3.Connection, sender: int, nodes: Collection[int], at: int, channel: str
+) -> OneHopLinks:
+    """OneHopLinks for these nodes around at (epoch ms), for a packet from
+    sender on channel. A free hop learned on one channel says nothing about
+    another: from firmware 2.8 a relay that cannot decrypt a packet always
+    spends a hop."""
+    start = at - LINK_WINDOW_MS
+    values = {
+        "sender": sender,
+        "nodes": json.dumps(sorted(nodes)),
+        "start": start - start % HOUR_MS,
+        "end": at + LINK_WINDOW_MS,
+        "channel": channel,
+    }
+    found = OneHopLinks()
+    # By pair: the primary key would read every link's hours in the window.
+    for (node,) in connection.execute(
+        """
+        SELECT DISTINCT to_node_id FROM link_hour INDEXED BY link_hour_pair
+        WHERE from_node_id = :sender AND to_node_id IN (SELECT value FROM json_each(:nodes))
+          AND link_kind IN ('direct', 'neighbor', 'traceroute')
+          AND hour_start BETWEEN :start AND :end
+        """,
+        values,
+    ):
+        found.heard_sender.add(int(node))
+    for node, partner in connection.execute(
+        """
+        SELECT to_node_id, from_node_id FROM hop_cost_hour
+        WHERE to_node_id IN (SELECT value FROM json_each(:nodes)) AND channel = :channel
+          AND hour_start BETWEEN :start AND :end
+        GROUP BY 1, 2
+        HAVING sum(free) > 0 AND sum(free) >= sum(costly)
+        """,
+        values,
+    ):
+        found.free_from.setdefault(int(node), set()).add(int(partner))
+    return found
+
+
 def route_hops(
     sender: int,
     receptions: Iterable[PacketReception],
     places: Mapping[int, NodeSummary],
     links: Callable[[set[int]], RouteLinks],
+    one_hop: Callable[[set[int]], OneHopLinks],
     hidden: Collection[int],
 ) -> list[FloodRouteHop]:
     """Walk back from each named relay T whose copy a gateway heard after k
@@ -154,17 +221,25 @@ def route_hops(
     1. T's own report, when T is a gateway that heard the packet at k - 1 or
        k (k on a 0-cost hop, where a favourite router relays without spending
        a hop);
-    2. else after one hop, the sender;
-    3. else the best candidate of _scores when at least ROUTE_SURE, unless
+    2. else after one hop, when T has a ZERO_COST_ROLES role and was never
+       heard hearing the sender: the one node that also sent after one hop
+       and whose copies T passes on for free (OneHopLinks), which also
+       transmitted at level 1; no hop when there are several, or it is
+       hidden;
+    3. else after one hop, the sender;
+    4. else the best candidate of _scores when at least ROUTE_SURE, unless
        it is hidden; else no hop.
 
-    Then on from P at k - 1, until the sender or a gap. A walk never comes
-    back to a node it passed, and a node is walked from once per level.
+    Then on from P at the level it transmitted at, until the sender or a
+    gap: k on a 0-cost hop (_hop_from), else k - 1. A walk never comes back
+    to a node it passed, and a node is walked from once per level. Mutual
+    guesses leave gaps; a reported direction wins over a reverse guess.
     places has the packet's sender, gateways and relays; links reads
-    RouteLinks for the relays the score needs, a batch per level of walking.
+    RouteLinks for the relays the score needs, and one_hop OneHopLinks for
+    the router relays after one hop, a batch each per level of walking.
     """
     facts = _Facts(sender, receptions)
-    walker = _Walker(facts, dict(places), links, hidden)
+    walker = _Walker(facts, dict(places), links, one_hop, hidden)
     return walker.walk()
 
 
@@ -195,6 +270,9 @@ class _Facts:
                 self.named_at[reception.relay_node.node_id].add(hops)
                 self.relays_at[hops].add(reception.relay_node.node_id)
             self.maybe_at[hops].update(maybe.node_id for maybe in reception.relay_maybe)
+        # Named after one hop, or a gateway that heard it in time to relay then.
+        self.sent_first = {node for node, levels in self.named_at.items() if 1 in levels}
+        self.sent_first |= {gateway for gateway, heard in self.heard_at.items() if heard in (0, 1)}
 
     def own_report(self, node: int) -> tuple[int, bool] | None:
         """The node its own reception names as whom it heard, and whether that
@@ -222,14 +300,18 @@ class _Walker:
         facts: _Facts,
         places: dict[int, NodeSummary],
         links: Callable[[set[int]], RouteLinks],
+        one_hop: Callable[[set[int]], OneHopLinks],
         hidden: Collection[int],
     ) -> None:
         self.facts = facts
         self.places = places
         self.links = links
+        self.one_hop = one_hop
         self.hidden = hidden
         self.partners: dict[int, set[int]] = {}
         self.heard: dict[int, dict[int, int]] = {}
+        self.heard_sender: set[int] = set()
+        self.free_from: dict[int, set[int]] = {}
 
     def walk(self) -> list[FloodRouteHop]:
         facts = self.facts
@@ -255,27 +337,46 @@ class _Walker:
                 for node in needed:
                     self.partners[node] = found.partners.get(node, set())
                     self.heard[node] = found.heard.get(node, {})
+            routers = {
+                node
+                for level, node, _ in frontier
+                if level == 1
+                and (node, level) not in walked
+                and facts.report_at(node, level) is None
+                and self._role(node) in ZERO_COST_ROLES
+            } - self.free_from.keys()
+            if routers:
+                one_hop = self.one_hop(routers)
+                self.heard_sender |= one_hop.heard_sender & routers
+                for node in routers:
+                    self.free_from[node] = one_hop.free_from.get(node, set())
             later: list[tuple[int, int, tuple[int, ...]]] = []
             for level, node, walk in frontier:
                 if (node, level) in walked:
                     continue
                 walked.add((node, level))
                 hop = self._hop(node, level, walk)
-                if hop is None or hop.from_node_id in walk:
+                if hop is None or hop.from_node_id in self.hidden or hop.from_node_id in walk:
                     continue
                 hops.setdefault((hop.from_node_id, node, hop.step), hop)
-                if hop.from_node_id != facts.sender and level > 1:
-                    later.append((level - 1, hop.from_node_id, (*walk, hop.from_node_id)))
+                if hop.from_node_id != facts.sender and hop.step >= 1:
+                    later.append((hop.step, hop.from_node_id, (*walk, hop.from_node_id)))
             frontier = later
-        return sorted(hops.values(), key=lambda hop: (hop.step, hop.from_node_id, hop.to_node_id))
+        # Independent walks can choose each other without revisiting a node.
+        drawn = [
+            hop
+            for hop in hops.values()
+            if hop.how != "zero_cost" or (hop.to_node_id, hop.from_node_id, hop.step) not in hops
+        ]
+        return sorted(drawn, key=lambda hop: (hop.step, hop.from_node_id, hop.to_node_id))
 
     def _hop(self, node: int, level: int, walk: tuple[int, ...]) -> FloodRouteHop | None:
         report = self.facts.report_at(node, level)
         if report is not None:
             how: FloodHopHow = "heard_directly" if report[1] else "reported"
-            return FloodRouteHop(report[0], node, level - 1, how, None)
+            return self._hop_from(report[0], node, level, how)
         if level == 1:
-            return FloodRouteHop(self.facts.sender, node, 0, "one_hop", None)
+            return self._one_hop(node, walk)
         scores = self._scores(node, level, walk)
         if not scores:
             return None
@@ -284,7 +385,42 @@ class _Walker:
         probability = 1 / sum(math.exp(score - top) for score in scores.values())
         if probability < ROUTE_SURE or best in self.hidden:
             return None
-        return FloodRouteHop(best, node, level - 1, "probable", round(probability, 3))
+        return self._hop_from(best, node, level, "probable", round(probability, 3))
+
+    def _one_hop(self, node: int, walk: tuple[int, ...]) -> FloodRouteHop | None:
+        """route_hops' rules 2 and 3. The hop shows at step 1 even when the
+        partner is a gateway that heard the sender directly."""
+        free_from = self.free_from.get(node)
+        if free_from is not None and node not in self.heard_sender:
+            partners = (free_from & self.facts.sent_first) - {node, *walk}
+            if len(partners) > 1:
+                return None
+            if partners:
+                (partner,) = partners
+                return FloodRouteHop(partner, node, 1, "zero_cost", None)
+        return self._hop_from(self.facts.sender, node, 1, "one_hop")
+
+    def _hop_from(
+        self,
+        heard_from: int,
+        node: int,
+        level: int,
+        how: FloodHopHow,
+        probability: float | None = None,
+    ) -> FloodRouteHop:
+        """The hop into node, which transmitted at level, at the step
+        heard_from transmitted at: level on a 0-cost hop, when its copy was
+        heard at level and not a level lower, or node's own report names it
+        and node heard the packet at level; else level - 1."""
+        facts = self.facts
+        levels = facts.named_at.get(heard_from, set())
+        if level in levels and level - 1 not in levels:
+            step = level
+        elif how in ("heard_directly", "reported") and facts.heard_at.get(node) == level:
+            step = level
+        else:
+            step = level - 1
+        return FloodRouteHop(heard_from, node, step, how, probability)
 
     def _scores(self, node: int, level: int, walk: tuple[int, ...]) -> dict[int, float]:
         """The score of each node that may have sent node the copy it

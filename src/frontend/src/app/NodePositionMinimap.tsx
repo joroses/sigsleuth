@@ -43,7 +43,7 @@ import {
 import { LinkSwatch } from "./MapLinkDetails";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { useSetting } from "./remember";
-import { Icon } from "./ui";
+import { Badge, Icon } from "./ui";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -141,6 +141,7 @@ export function NodePositionMinimap({
             node.node_id,
             contactsState.data.items,
             links?.items ?? [],
+            links?.zero_cost_hops ?? [],
             current,
             { traceroutes: showTraceroutes, gateways: showGateways },
           )
@@ -374,6 +375,7 @@ export function NodePositionMinimap({
               contacts={contactsState.data}
               traceroutes={showTraceroutes}
               gateways={showGateways}
+              zeroCost={(contacts?.zeroCost.length ?? 0) > 0}
             />
           ) : null}
         </div>
@@ -426,10 +428,12 @@ function ContactsKey({
   contacts,
   traceroutes,
   gateways,
+  zeroCost,
 }: {
   contacts: NodeContactList;
   traceroutes: boolean;
   gateways: boolean;
+  zeroCost: boolean;
 }) {
   return (
     <ul className="coverage-line-legend minimap-key" aria-label="Key">
@@ -437,6 +441,12 @@ function ContactsKey({
         <li>
           <LinkSwatch tier={null} linkKind="traceroute" />
           traceroute
+        </li>
+      ) : null}
+      {zeroCost ? (
+        <li title="Where one node relays the other's copies without spending a hop, as for a favourite router">
+          <Badge tone="blue">0-cost</Badge>
+          no hop spent
         </li>
       ) : null}
       {gateways ? (
@@ -510,6 +520,15 @@ function drawContacts(
     className: "history-popup",
     maxWidth: "none",
   });
+  const zeroCostMarkers = contacts.zeroCost.map((mark) => {
+    const element = document.createElement("span");
+    element.className = "badge badge-blue minimap-zero-cost";
+    element.title = mark.title;
+    element.textContent = "0-cost";
+    return new maplibregl.Marker({ element })
+      .setLngLat([mark.longitude, mark.latitude])
+      .addTo(map);
+  });
   const markers = contacts.marks.map((mark) => {
     const element = document.createElement("button");
     element.type = "button";
@@ -534,7 +553,7 @@ function drawContacts(
   });
   return () => {
     popup.remove();
-    for (const marker of markers) marker.remove();
+    for (const marker of [...zeroCostMarkers, ...markers]) marker.remove();
     for (const layer of LINK_LAYERS) {
       if (map.getLayer(layer)) map.removeLayer(layer);
     }

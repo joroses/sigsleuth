@@ -50,6 +50,7 @@ from sigsleuth.traceroute import (
     Route,
     TracerouteReport,
     path_hops,
+    pinned_costs,
     read_traceroute_report,
     report_routes,
     route_rank,
@@ -738,6 +739,8 @@ def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row, placed: Plac
     positions = _placed_at(connection, {(node, heard_at) for node in report.node_ids}, placed)
     routes = report_routes(report, positions)
     _save_hops(connection, row, routes)
+    if not report.is_reply:
+        _count_hop_costs(connection, row, report)
     ends = (positions.get(report.requester), positions.get(report.target))
     ends_km = (
         round(great_circle_km(*ends[0], *ends[1]), 1)
@@ -844,6 +847,49 @@ def _save_hops(connection: sqlite3.Connection, row: sqlite3.Row, routes: list[Ro
                 """,
                 values,
             )
+
+
+def _count_hop_costs(
+    connection: sqlite3.Connection, row: sqlite3.Row, report: TracerouteReport
+) -> None:
+    """Count the hops this request copy pins as free or costly
+    (traceroute.pinned_costs) in hop_cost_hour, once per packet: the first
+    copy to pin a hop marks its traceroute_hop row."""
+    sender, gateway = int(row["sender_node_id"]), int(row["gateway_node_id"])
+    header = SavedHeader.of(row)
+    if gateway == sender or header.hop_start is None or header.hop_limit is None:
+        return
+    own_byte = header.relay_byte == relay_byte_of(gateway)
+    seen_at = int(row["first_received_at"])
+    for hop, free in pinned_costs(
+        report.paths.forward, gateway, header.hop_start - header.hop_limit, own_byte
+    ):
+        values = {
+            "packet": row["packet_row_id"],
+            "from_node": hop.from_node_id,
+            "to_node": hop.to_node_id,
+            "free": free,
+            "hour_start": seen_at - seen_at % HOUR_MS,
+            "channel": row["channel"],
+        }
+        if not connection.execute(
+            """
+            UPDATE traceroute_hop SET free = :free
+            WHERE packet_row_id = :packet AND from_node_id = :from_node
+              AND to_node_id = :to_node AND free IS NULL
+            """,
+            values,
+        ).rowcount:
+            continue
+        connection.execute(
+            """
+            INSERT INTO hop_cost_hour (hour_start, from_node_id, to_node_id, channel, free, costly)
+            VALUES (:hour_start, :from_node, :to_node, :channel, :free, NOT :free)
+            ON CONFLICT (hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
+                free = free + excluded.free, costly = costly + excluded.costly
+            """,
+            values,
+        )
 
 
 def _save_traceroute(

@@ -1,4 +1,10 @@
-import type { ContactLink, LinkKind, LinkRow, NodeContact } from "./api";
+import type {
+  ContactLink,
+  LinkKind,
+  LinkRow,
+  NodeContact,
+  ZeroCostHop,
+} from "./api";
 import { fromNode } from "./linkRows";
 import { type LinkFeatureCollection, linkHalves } from "./mapLinkLayers";
 import { formatKm } from "./nodeDisplay";
@@ -34,8 +40,58 @@ export interface ContactLayers {
    * channel), in halves coloured by signal as on the Map.
    */
   lines: Record<LinkKind, LinkFeatureCollection>;
+  /** The middle of each traceroute line with a 0-cost hop, and its title. */
+  zeroCost: { longitude: number; latitude: number; title: string }[];
   /** Contacts with no position, not drawn. */
   unplaced: number;
+}
+
+/**
+ * A partner's 0-cost hops with the node on one channel: out when the partner
+ * relays the node's copies without spending a hop, into when the node
+ * relays the partner's.
+ */
+export interface ZeroCostWays {
+  out: ZeroCostHop | null;
+  into: ZeroCostHop | null;
+}
+
+/** The node's 0-cost hops by zeroCostKey of partner and channel. */
+export function zeroCostWays(
+  nodeId: number,
+  hops: ZeroCostHop[],
+): Map<string, ZeroCostWays> {
+  const ways = new Map<string, ZeroCostWays>();
+  for (const hop of hops) {
+    const out = hop.from_node_id === nodeId;
+    const key = zeroCostKey(
+      out ? hop.to_node_id : hop.from_node_id,
+      hop.channel,
+    );
+    const found = ways.get(key) ?? { out: null, into: null };
+    ways.set(key, out ? { ...found, out: hop } : { ...found, into: hop });
+  }
+  return ways;
+}
+
+export function zeroCostKey(partner: number, channel: string): string {
+  return `${partner}:${channel}`;
+}
+
+/** What a 0-cost tag says, a sentence a way. */
+export function zeroCostTitle({ out, into }: ZeroCostWays): string {
+  const times = (hop: ZeroCostHop) =>
+    `${hop.free.toLocaleString()} of ${(hop.free + hop.costly).toLocaleString()} traceroutes`;
+  return [
+    out === null
+      ? null
+      : `It relays this node's copies without spending a hop, as for a favourite router: ${times(out)}.`,
+    into === null
+      ? null
+      : `This node relays its copies without spending a hop, as for a favourite router: ${times(into)}.`,
+  ]
+    .filter((line) => line !== null)
+    .join(" ");
 }
 
 /**
@@ -45,12 +101,14 @@ export interface ContactLayers {
  * packets after, as on a packet page, labelled with that number; a
  * traceroute partner alone is muted. Lines are the node's `links` (its Links
  * table's rows) of the shown groups, from `origin`, the node's current
- * position, to placed contacts; none without an origin.
+ * position, to placed contacts; none without an origin. Traceroute lines
+ * with one of the node's `zeroCost` hops get a mark.
  */
 export function contactLayers(
   nodeId: number,
   contacts: NodeContact[],
   links: LinkRow[],
+  zeroCost: ZeroCostHop[],
   origin: Place | null,
   shown: ContactGroups,
 ): ContactLayers {
@@ -94,6 +152,8 @@ export function contactLayers(
     features: [],
   });
   const lines = { traceroute: empty(), direct: empty(), neighbor: empty() };
+  const zeroCostMarks: ContactLayers["zeroCost"] = [];
+  const ways = zeroCostWays(nodeId, zeroCost);
   if (origin !== null) {
     for (const row of links) {
       // node_a is the node, so the half at its end shows what it hears.
@@ -102,17 +162,21 @@ export function contactLayers(
       const group =
         link.link_kind === "traceroute" ? shown.traceroutes : shown.gateways;
       if (place === undefined || !group) continue;
-      lines[link.link_kind].features.push(
-        ...linkHalves(
-          `${link.link_kind}:${link.node_b}:${link.channel}`,
-          link,
-          [origin.longitude, origin.latitude],
-          [place.longitude, place.latitude],
-        ),
+      const halves = linkHalves(
+        `${link.link_kind}:${link.node_b}:${link.channel}`,
+        link,
+        [origin.longitude, origin.latitude],
+        [place.longitude, place.latitude],
       );
+      lines[link.link_kind].features.push(...halves);
+      const free = ways.get(zeroCostKey(link.node_b, link.channel));
+      if (link.link_kind === "traceroute" && free !== undefined) {
+        const [longitude, latitude] = halves[0].geometry.coordinates[1];
+        zeroCostMarks.push({ longitude, latitude, title: zeroCostTitle(free) });
+      }
     }
   }
-  return { marks, lines, unplaced };
+  return { marks, lines, zeroCost: zeroCostMarks, unplaced };
 }
 
 function contactHopTone(contact: NodeContact): string {

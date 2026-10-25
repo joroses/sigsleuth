@@ -114,6 +114,9 @@ CREATE TABLE long_link (
 -- to_node_id heard it. Later gateways repeating the hop add nothing, so a row
 -- is one observation. The route_ columns are the packet's best route with the
 -- hop (as in traceroute_packet), for the Traceroute explorer's node search.
+-- free is whether the first request copy to pin the hop's cost
+-- (traceroute.pinned_costs) found it free, NULL until one does; it counts the
+-- hop once in hop_cost_hour.
 CREATE TABLE traceroute_hop (
     packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
     from_node_id INTEGER NOT NULL CHECK (from_node_id BETWEEN 0 AND 4294967295),
@@ -124,6 +127,7 @@ CREATE TABLE traceroute_hop (
     route_hops INTEGER NOT NULL CHECK (route_hops >= 0),
     route_km REAL,
     route_reached INTEGER NOT NULL CHECK (route_reached IN (0, 1)),
+    free INTEGER CHECK (free IN (0, 1)),
     PRIMARY KEY (packet_row_id, from_node_id, to_node_id)
 ) STRICT, WITHOUT ROWID;
 
@@ -201,6 +205,25 @@ CREATE TABLE link_hour (
 ) STRICT, WITHOUT ROWID;
 -- Also gives each direction's longest km without reading the table.
 CREATE INDEX link_hour_pair ON link_hour (from_node_id, to_node_id, km);
+
+-- Hourly counts of traceroute request hops whose cost a single copy pins
+-- (traceroute.pinned_costs), per direction and channel, once per packet:
+-- free when to_node_id passed on from_node_id's copy without spending a hop
+-- (from firmware 2.7.11, a router role relaying a favourite router), costly
+-- when it spent one. It holds for that channel only: from 2.8 a relay that
+-- cannot decrypt a packet always spends a hop. Read for the flood replay's
+-- relays after one hop (flood_routes.py) and a node's links.
+CREATE TABLE hop_cost_hour (
+    hour_start INTEGER NOT NULL,
+    from_node_id INTEGER NOT NULL CHECK (from_node_id BETWEEN 0 AND 4294967295),
+    to_node_id INTEGER NOT NULL CHECK (to_node_id BETWEEN 0 AND 4294967295),
+    channel TEXT NOT NULL CHECK (length(CAST(channel AS BLOB)) BETWEEN 1 AND 1024),
+    free INTEGER NOT NULL CHECK (free >= 0),
+    costly INTEGER NOT NULL CHECK (costly >= 0),
+    PRIMARY KEY (hour_start, from_node_id, to_node_id, channel)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX hop_cost_hour_to ON hop_cost_hour (to_node_id, free, costly);
+CREATE INDEX hop_cost_hour_from ON hop_cost_hour (from_node_id, free, costly);
 
 -- Hourly counts of each node's own packets by port and broadcast or not.
 -- portnum is -1 until a report is readable; then the count moves to its port.

@@ -55,6 +55,7 @@ export type NodeContact = Schemas["NodeContact"];
 export type ContactLink = Schemas["ContactLink"];
 export type LinkRow = Schemas["LinkRow"];
 export type LinkTable = Schemas["LinkTable"];
+export type ZeroCostHop = Schemas["ZeroCostHop"];
 export type HeardPositionList = Schemas["HeardPositionList"];
 export type TracerouteRoute = Schemas["TracerouteRoute"];
 export type TracerouteRun = Schemas["TracerouteRun"];

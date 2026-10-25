@@ -225,10 +225,15 @@ class PacketDetail:
 
 
 def packet_detail(
-    connection: sqlite3.Connection, packet_row_id: int, *, default_preset: str
+    connection: sqlite3.Connection,
+    packet_row_id: int,
+    *,
+    default_preset: str,
+    include_hidden_relays: bool = False,
 ) -> PacketDetail | None:
     """Return the packet and its receptions, nearest the sender first, or None
-    if it does not exist or is not shown."""
+    if it does not exist or is not shown. include_hidden_relays is for internal
+    inference only: the caller must filter its output before serving it."""
     row = connection.execute(
         """
         SELECT t.*,
@@ -279,7 +284,7 @@ def packet_detail(
         sender,
         at=int(row["first_received_at"]),
         spreading_factor=channel_spreading_factor(str(row["channel"])),
-        hidden=hidden,
+        hidden=set() if include_hidden_relays else hidden,
     )
     payload = (
         None

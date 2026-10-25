@@ -48,8 +48,9 @@ groups, orders and draws what the API sends.
 
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
+from itertools import pairwise
 
-from sigsleuth.decode import UNKNOWN_NODE, RouteDiscovery, read_route_discovery
+from sigsleuth.decode import MAX_ROUTE_ENTRIES, UNKNOWN_NODE, RouteDiscovery, read_route_discovery
 from sigsleuth.radio import great_circle_km
 
 UNKNOWN_SNR = -128  # quarter decibels, i.e. -32 dB
@@ -205,6 +206,40 @@ def path_hops(path: RoutePath) -> list[Hop]:
         ):
             hops.append(Hop(from_node, to_node, snr_db))
     return hops
+
+
+def pinned_costs(
+    path: RoutePath, gateway: int, hops_used: int, own_byte: bool
+) -> list[tuple[Hop, bool]]:
+    """The hops of a request copy's forward route that this copy alone shows
+    were free (True: the relay kept the previous relay's hop count) or cost a
+    hop (False), from the hops its gateway heard it after (hops_used).
+
+    The copy went from the requester through relays R1..Rk. One hop used over
+    k >= 2 relays: every hop after R1 was free. k hops over k relays: every
+    one cost a hop. Otherwise it pins none. The first hop always costs
+    (firmware), so it is left out. A gateway that added itself and uploads its
+    own rebroadcast (own_byte) is Rk, at the header's hops; one that added
+    itself to a copy it heard is no relay of it. Full routes, gaps and routes
+    with fewer relays than hops (older firmware omitted some) pin nothing.
+    Only path_hops' hops count."""
+    relays = path.nodes[1:-1]
+    if hops_used < 1 or len(relays) >= MAX_ROUTE_ENTRIES or None in relays:
+        return []
+    appended = bool(relays) and relays[-1] == gateway
+    if appended:
+        relays = relays[:-1]
+    elif own_byte:
+        return []
+    chain = (path.nodes[0], *relays, *((gateway,) if own_byte else ()))
+    if hops_used == len(chain) - 1:
+        free = False
+    elif hops_used == 1:
+        free = True
+    else:
+        return []
+    later = set(pairwise(chain[1:]))
+    return [(hop, free) for hop in path_hops(path) if (hop.from_node_id, hop.to_node_id) in later]
 
 
 @dataclass(frozen=True)

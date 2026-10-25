@@ -237,3 +237,28 @@ def test_retention_drops_link_hours_before_the_age_limit(tmp_path: Path) -> None
         assert [tuple(row) for row in runs] == [(3,)]
     finally:
         connection.close()
+
+
+def test_retention_drops_hop_costs_before_the_age_limit(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    # One hop used over two relays: 0x44444444 relayed 0x33333333's copy for free.
+    request = mesh_pb2.RouteDiscovery(
+        route=[0x33333333, 0x44444444], snr_towards=[20, 16]
+    ).SerializeToString()
+    traceroute = (portnums_pb2.PortNum.TRACEROUTE_APP, request)
+    header: dict[str, Any] = {"hop_start": 3, "hop_limit": 2, "relay_node": 0x44}
+    save_packet(path, now - timedelta(days=15), 1, traceroute, **header)
+    kept = now - timedelta(days=2)
+    save_packet(path, kept, 2, traceroute, **header)
+
+    retain(path, retention_days=14, now=now)
+
+    connection = open_database(path)
+    try:
+        rows = connection.execute("SELECT hour_start, free, costly FROM hop_cost_hour").fetchall()
+        hour = to_epoch_ms(kept) - to_epoch_ms(kept) % 3_600_000
+        assert [tuple(row) for row in rows] == [(hour, 1, 0)]
+    finally:
+        connection.close()

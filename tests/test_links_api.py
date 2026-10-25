@@ -215,6 +215,39 @@ def test_a_nodes_links_list_every_kind_and_keep_ends_with_no_position(path: Path
     assert {item["link_kind"] for item in links(path, "/api/v1/links")["items"]} == {"traceroute"}
 
 
+def test_a_nodes_links_list_its_0_cost_hops_either_way_but_no_hidden_partner(
+    path: Path,
+) -> None:
+    d, hidden = 0x0D0D0D0D, 0x0E0E0E0E
+    with closing(open_current_database(path)) as connection, connection:
+        for hours_ago, a, b, free, costly in (
+            (0, B, A, 2, 1),  # A passes on B's copies for free
+            (0, A, C, 1, 0),  # C passes on A's
+            (0, A, d, 1, 2),  # mostly costly
+            (30, A, d, 5, 0),  # before since
+            (0, hidden, A, 3, 0),
+        ):
+            insert_row(
+                connection,
+                "hop_cost_hour",
+                hour_start=to_epoch_ms(HOUR) - hours_ago * HOUR_MS,
+                from_node_id=a,
+                to_node_id=b,
+                channel="LongFast",
+                free=free,
+                costly=costly,
+            )
+        insert_row(connection, "node_opt_out", node_id=hidden)
+
+    table = links(path, f"/api/v1/nodes/{A}/links", since="2026-09-27T00:00:00Z")
+
+    assert table["zero_cost_hops"] == [
+        {"from_node_id": A, "to_node_id": C, "channel": "LongFast", "free": 1, "costly": 0},
+        {"from_node_id": B, "to_node_id": A, "channel": "LongFast", "free": 2, "costly": 1},
+    ]
+    assert links(path, "/api/v1/links")["zero_cost_hops"] == []
+
+
 def report_again(path: Path, node_id: int, hours_later: int, *, moved: bool = False) -> None:
     """node_id reports its position again hours_later than place's HOUR, as a
     move when moved."""

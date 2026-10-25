@@ -1,19 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import type { ContactLink, LinkRow, NodeContact } from "./api";
-import { contactLayers } from "./nodeContacts";
+import { contactLayers, zeroCostTitle, zeroCostWays } from "./nodeContacts";
 
 const origin = { latitude: 50.0, longitude: 21.0 };
 const NODE = 100;
 const both = { traceroutes: true, gateways: true };
 
 // A Links table row between the node and another, with the node as node_b.
-function row(other: number, kind: LinkRow["link_kind"]): LinkRow {
+function row(
+  other: number,
+  kind: LinkRow["link_kind"],
+  channel = "LongFast",
+): LinkRow {
   return {
     node_a: other,
     node_b: NODE,
     last_seen_at: "2026-10-11T05:40:00Z",
-    channel: "LongFast",
+    channel,
     spreading_factor: 11,
     // What the node hears from the other.
     a_to_b: { observations: 3, snr_samples: 3, average_snr: 5 },
@@ -72,6 +76,7 @@ describe("contactLayers", () => {
         row(2, "traceroute"),
         row(4, "direct"),
       ],
+      [],
       origin,
       both,
     );
@@ -98,11 +103,64 @@ describe("contactLayers", () => {
       NODE,
       [contact(1, ["direct"], 0)],
       [row(1, "direct")],
+      [],
       null,
       both,
     );
 
     expect(marks).toHaveLength(1);
     expect(lines.direct.features).toEqual([]);
+  });
+});
+
+describe("0-cost hops", () => {
+  const free = (from: number, to: number, channel = "LongFast") => ({
+    from_node_id: from,
+    to_node_id: to,
+    channel,
+    free: 3,
+    costly: 1,
+  });
+
+  it("marks the traceroute line on the hop's channel only", () => {
+    const { zeroCost } = contactLayers(
+      NODE,
+      [
+        contact(1, ["direct", "traceroute"], 0),
+        contact(2, ["traceroute"], null),
+      ],
+      [
+        row(1, "direct"),
+        row(1, "traceroute"),
+        row(1, "traceroute", "MediumFast"),
+        row(2, "traceroute"),
+      ],
+      [free(1, NODE), free(NODE, 2, "MediumFast")],
+      origin,
+      both,
+    );
+
+    expect(zeroCost).toHaveLength(1);
+    // At the line's middle, between the node and its partner.
+    expect(zeroCost[0].latitude).toBeGreaterThan(origin.latitude);
+    expect(zeroCost[0].latitude).toBeLessThan(50.5);
+    expect(zeroCost[0].title).toMatch(/^This node relays its copies/);
+  });
+
+  it("keeps which of the two relays the other's copies for free", () => {
+    const ways = zeroCostWays(NODE, [
+      free(NODE, 1),
+      free(1, NODE),
+      free(NODE, 2),
+    ]);
+
+    expect(ways.get("1:LongFast")).toEqual({
+      out: free(NODE, 1),
+      into: free(1, NODE),
+    });
+    expect(ways.get("2:LongFast")).toEqual({ out: free(NODE, 2), into: null });
+    expect(zeroCostTitle(ways.get("2:LongFast")!)).toMatch(
+      /^It relays this node's copies/,
+    );
   });
 });

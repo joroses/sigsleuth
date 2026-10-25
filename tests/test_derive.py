@@ -35,6 +35,7 @@ DERIVED_TABLES = (
     "traceroute_hop",
     "traceroute_packet",
     "traceroute_run",
+    "hop_cost_hour",
 )
 
 
@@ -117,6 +118,24 @@ def capture_some_history(connection: sqlite3.Connection) -> None:
             ),
             gateway,
         )
+    # One hop used over two relays: SENDER passed on RELAY's copy for free.
+    send(
+        connection,
+        32,
+        application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(
+                route=[RELAY, SENDER], snr_towards=[20, 16]
+            ).SerializeToString(),
+            sender=REQUESTER,
+            recipient=TARGET,
+            packet_id=9,
+            hop_start=3,
+            hop_limit=2,
+            relay_node=SENDER & 0xFF,
+        ),
+        "!aaaaaaaa",
+    )
     neighbors = mesh_pb2.NeighborInfo(
         node_id=RELAY, neighbors=[mesh_pb2.Neighbor(node_id=TARGET, snr=-3.5)]
     )
@@ -242,3 +261,40 @@ def test_relay_byte_sql_matches_relay_byte_of() -> None:
             for node in nodes
         ]
     assert found == [relay_byte_of(node) for node in nodes] == [0x42, 0xFF, 0xFF, 0xFF]
+
+
+def test_hop_costs_count_once_per_packet_on_its_channel(connection: sqlite3.Connection) -> None:
+    def request(
+        packet_id: int, gateway: str, channel: str, route: list[int], hops: int, seconds: int = 0
+    ) -> None:
+        envelope = application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(route=route, snr_towards=[20] * len(route)).SerializeToString(),
+            sender=REQUESTER,
+            recipient=TARGET,
+            packet_id=packet_id,
+            hop_start=7,
+            hop_limit=7 - hops,
+            relay_node=route[-1] & 0xFF,
+            channel_id=channel,
+            gateway_id=gateway,
+        )
+        topic = f"msh/EU_868/2/e/{channel}/{gateway}"
+        delivery = MqttDelivery(SENT_AT + seconds * 1_000, topic, envelope)
+        assert ingest_delivery(connection, delivery).reception_id is not None
+
+    # Two gateways heard the same free copy, and one an MQTT repeat of it.
+    request(1, "!aaaaaaaa", "LongFast", [SENDER, RELAY], 1)
+    request(1, "!bbbbbbbb", "LongFast", [SENDER, RELAY], 1)
+    request(1, "!bbbbbbbb", "LongFast", [SENDER, RELAY], 1, seconds=1)
+    # A later copy of another packet that spent both hops, and one on another channel.
+    request(2, "!aaaaaaaa", "LongFast", [SENDER, RELAY], 2, seconds=60)
+    request(3, "!aaaaaaaa", "MediumFast", [SENDER, RELAY], 1, seconds=120)
+
+    rows = connection.execute(
+        "SELECT from_node_id, to_node_id, channel, free, costly FROM hop_cost_hour ORDER BY 3"
+    ).fetchall()
+    assert [tuple(row) for row in rows] == [
+        (SENDER, RELAY, "LongFast", 1, 1),
+        (SENDER, RELAY, "MediumFast", 1, 0),
+    ]

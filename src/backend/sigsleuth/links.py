@@ -434,15 +434,30 @@ class LinkRow(MapLink):
 
 
 @dataclass(frozen=True)
+class ZeroCostHop:
+    """to_node_id passed on from_node_id's copies on channel without
+    spending a hop in free of the traceroute copies that showed, and spent
+    one in costly (hop_cost_hour)."""
+
+    from_node_id: int
+    to_node_id: int
+    channel: str
+    free: int
+    costly: int
+
+
+@dataclass(frozen=True)
 class LinkTable:
     """doubtful_node_ids are the table's nodes with a doubtful position
-    (doubtful_nodes), the suspects of a link doubted for one."""
+    (doubtful_nodes), the suspects of a link doubted for one. A node's table
+    has its zero_cost_hops either way, those free at least as often as not."""
 
     items: tuple[LinkRow, ...]
     nodes: tuple[NodeSummary, ...]
     doubtful_node_ids: tuple[int, ...]
     # Some link kind had more than MAX_LINK_ROWS links.
     truncated: bool
+    zero_cost_hops: tuple[ZeroCostHop, ...]
 
 
 def link_table(
@@ -483,5 +498,35 @@ def link_table(
             )
     nodes = nodes_by_id(connection, {n for link in items for n in (link.node_a, link.node_b)})
     return LinkTable(
-        tuple(items), tuple(nodes.values()), tuple(sorted(doubtful & set(nodes))), truncated
+        tuple(items),
+        tuple(nodes.values()),
+        tuple(sorted(doubtful & set(nodes))),
+        truncated,
+        () if node is None else zero_cost_hops(connection, node, since),
+    )
+
+
+def zero_cost_hops(
+    connection: sqlite3.Connection, node: int, since: datetime | None
+) -> tuple[ZeroCostHop, ...]:
+    """The node's hops either way, from since's hour, that traceroutes found
+    free at least as often as costly, by partner and channel."""
+    since_ms = 0 if since is None else to_epoch_ms(since)
+
+    def one_way(end: str) -> str:
+        return f"""
+            SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+            FROM hop_cost_hour INDEXED BY hop_cost_hour_{end}
+            WHERE {end}_node_id = :node AND hour_start >= :since
+            GROUP BY 1, 2, 3
+            HAVING sum(free) > 0 AND sum(free) >= sum(costly)
+               AND {shown_sql("from_node_id")} AND {shown_sql("to_node_id")}
+        """
+
+    return tuple(
+        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), int(row[3]), int(row[4]))
+        for row in connection.execute(
+            f"{one_way('to')} UNION ALL {one_way('from')} ORDER BY 1, 2, 3",
+            {"node": node, "since": since_ms - since_ms % HOUR_MS},
+        )
     )

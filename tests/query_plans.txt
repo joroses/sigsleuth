@@ -71,6 +71,8 @@ derive._save_run
   SEARCH packet USING PRIMARY KEY
 derive._save_hops
   SEARCH traceroute_hop USING PRIMARY KEY
+derive._count_hop_costs
+  SEARCH traceroute_hop USING PRIMARY KEY
 
 ## POST /api/v1/coverage/uploads
 
@@ -193,7 +195,7 @@ db.nodes_by_id
 packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
 
-## GET /api/v1/packets/13/flood-routes
+## GET /api/v1/packets/15/flood-routes
 
 packets.packet_detail
   SEARCH packet USING PRIMARY KEY
@@ -242,6 +244,10 @@ packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
 flood_routes.route_links
   SEARCH link_hour USING PRIMARY KEY
+flood_routes.one_hop_links
+  SEARCH link_hour USING INDEX link_hour_pair
+flood_routes.one_hop_links
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_to
 
 ## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0
 
@@ -495,6 +501,9 @@ links._hourly_links
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+links.zero_cost_hops
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_to
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
 
 ## GET /api/v1/map/nodes
 
@@ -1346,6 +1355,8 @@ retention._prune_current_state
   SEARCH node_position USING PRIMARY KEY
 retention._prune_current_state
   SEARCH link_hour USING PRIMARY KEY
+retention._prune_current_state
+  SEARCH hop_cost_hour USING PRIMARY KEY
 retention._prune_current_state
   SEARCH node_activity_hour USING PRIMARY KEY
 retention._delete_oldest_packets

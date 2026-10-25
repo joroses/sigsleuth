@@ -1181,15 +1181,15 @@ export interface components {
     /**
      * FloodRouteHop
      * @description to_node_id heard the packet from from_node_id, whose copy had used
-     *     step hops: the replay step it shows at. probability is the score's, for a
-     *     probable hop only.
+     *     step hops: the replay step it shows at, the same as to_node_id's on a
+     *     0-cost hop. probability is the score's, for a probable hop only.
      */
     FloodRouteHop: {
       from_node_id: number;
       to_node_id: number;
       step: number;
       /** @enum {string} */
-      how: "heard_directly" | "reported" | "one_hop" | "probable";
+      how: "heard_directly" | "reported" | "one_hop" | "zero_cost" | "probable";
       probability: number | null;
     };
     /**
@@ -1345,13 +1345,15 @@ export interface components {
     /**
      * LinkTable
      * @description doubtful_node_ids are the table's nodes with a doubtful position
-     *     (doubtful_nodes), the suspects of a link doubted for one.
+     *     (doubtful_nodes), the suspects of a link doubted for one. A node's table
+     *     has its zero_cost_hops either way, those free at least as often as not.
      */
     LinkTable: {
       items: components["schemas"]["LinkRow"][];
       nodes: components["schemas"]["NodeSummary"][];
       doubtful_node_ids: number[];
       truncated: boolean;
+      zero_cost_hops: components["schemas"]["ZeroCostHop"][];
     };
     /**
      * LongLink
@@ -2221,6 +2223,19 @@ export interface components {
       type: string;
       input: unknown;
       ctx: Record<string, never>;
+    };
+    /**
+     * ZeroCostHop
+     * @description to_node_id passed on from_node_id's copies on channel without
+     *     spending a hop in free of the traceroute copies that showed, and spent
+     *     one in costly (hop_cost_hour).
+     */
+    ZeroCostHop: {
+      from_node_id: number;
+      to_node_id: number;
+      channel: string;
+      free: number;
+      costly: number;
     };
     /**
      * Zone

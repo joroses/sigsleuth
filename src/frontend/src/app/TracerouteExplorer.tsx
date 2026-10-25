@@ -27,7 +27,8 @@ import {
   nodeName,
   packetHopHref,
 } from "./nodeDisplay";
-import { RouteHopList, RouteItem } from "./RouteItem";
+import { type NodeHighlight, RouteHopList, RouteItem } from "./RouteItem";
+import { type MinimapFocus } from "./PacketMinimap";
 import { useSetting, useViewState } from "./remember";
 import { useApi } from "./useApi";
 import {
@@ -427,9 +428,22 @@ function RunTable({
   onSort: (sort: TracerouteSort) => void;
 }) {
   const [open, setOpen] = useViewState<number | null>("traceroutes.open", null);
-  // A node of the open run hovered in its route text or on its route map.
   const [highlightedNode, setHighlightedNode] = useState<number | null>(null);
-  const highlight = { highlightedNode, onNodeHover: setHighlightedNode };
+  const [hoveredHop, setHoveredHop] = useState<DirectedHop | null>(null);
+  const [pinned, setPinned] = useState<MinimapFocus>(null);
+  const highlight = {
+    highlightedNode:
+      highlightedNode ??
+      (hoveredHop === null && pinned?.kind === "relay" ? pinned.nodeId : null),
+    highlightedHop:
+      highlightedNode === null
+        ? (hoveredHop ?? (pinned?.kind === "hop" ? pinned : null))
+        : null,
+    onNodeHover: (nodeId: number | null) => {
+      setHighlightedNode(nodeId);
+      if (nodeId !== null) setHoveredHop(null);
+    },
+  };
   const names = useMemo(
     () =>
       new Map(
@@ -500,6 +514,8 @@ function RunTable({
           const toggle = () => {
             setOpen(open === key ? null : key);
             setHighlightedNode(null);
+            setHoveredHop(null);
+            setPinned(null);
           };
           return (
             <tbody key={key} className="traceroute-run">
@@ -600,6 +616,27 @@ function RunTable({
                         doubtedNames(nodeIds, doubtful, nodes)
                       }
                       {...highlight}
+                      focus={pinned?.kind === "relay" ? pinned : null}
+                      onRelayClick={(nodeId) =>
+                        setPinned((current) =>
+                          current?.kind === "relay" && current.nodeId === nodeId
+                            ? null
+                            : { kind: "relay", nodeId },
+                        )
+                      }
+                      onHopHover={(hop) => {
+                        setHoveredHop(hop);
+                        if (hop !== null) setHighlightedNode(null);
+                      }}
+                      onHopClick={(hop) =>
+                        setPinned((current) =>
+                          current?.kind === "hop" &&
+                          current.fromNodeId === hop.fromNodeId &&
+                          current.toNodeId === hop.toNodeId
+                            ? null
+                            : { kind: "hop", ...hop },
+                        )
+                      }
                     />
                   </td>
                 </tr>
@@ -666,16 +703,23 @@ function LegMap({
   placed,
   doubted,
   highlightedNode,
+  highlightedHop,
   onNodeHover,
+  focus,
+  onRelayClick,
+  onHopHover,
+  onHopClick,
 }: {
   run: TracerouteRun;
   nodes: NodeMap;
   names: ReadonlyMap<number, string | null>;
   placed: ReadonlySet<number>;
   doubted: (nodeIds: number[]) => string[];
-  highlightedNode: number | null;
-  onNodeHover: (nodeId: number | null) => void;
-}) {
+  focus: MinimapFocus;
+  onRelayClick: (nodeId: number) => void;
+  onHopHover: (hop: DirectedHop | null) => void;
+  onHopClick: (hop: DirectedHop) => void;
+} & NodeHighlight) {
   const contents = useMemo(() => routeMinimap(run, nodes), [run, nodes]);
   const at = useMemo(
     () => new Map(run.positions.map((heard) => [heard.node_id, heard])),
@@ -692,9 +736,13 @@ function LegMap({
         <Suspense fallback={<p className="muted">Loading map…</p>}>
           <PacketMinimap
             contents={contents}
-            focus={null}
+            focus={focus}
             highlightedNode={highlightedNode}
+            highlightedHop={highlightedHop}
             onNodeHover={onNodeHover}
+            onRelayClick={onRelayClick}
+            onHopHover={onHopHover}
+            onHopClick={onHopClick}
             showLegend={false}
           />
         </Suspense>
@@ -712,6 +760,7 @@ function LegMap({
           at={at}
           doubted={doubted}
           highlightedNode={highlightedNode}
+          highlightedHop={highlightedHop}
           onNodeHover={onNodeHover}
         />
         <a

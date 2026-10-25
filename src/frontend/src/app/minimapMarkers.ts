@@ -43,7 +43,7 @@ export interface MinimapMarker {
 /** How far a line heard both ways sits to its own right, in pixels. */
 export const TWO_WAY_OFFSET = 3;
 
-export interface HopLineProperties {
+export interface HopLineProperties extends DirectedHop {
   snr: number | null;
   tier: LinkTier;
   color: string;
@@ -594,6 +594,8 @@ function drawHops(
     const end = positions.get(hop.to_node_id)!;
     const tier = linkTier(hop.snr_db, spreadingFactor);
     const line: HopLineProperties = {
+      fromNodeId: hop.from_node_id,
+      toNodeId: hop.to_node_id,
       snr: hop.snr_db,
       tier,
       color: linkTierColor(tier),

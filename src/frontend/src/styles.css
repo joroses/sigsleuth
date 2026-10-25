@@ -372,6 +372,10 @@ input::placeholder {
   background: transparent;
 }
 
+a.icon-button {
+  color: var(--accent);
+}
+
 .icon-button:hover {
   color: var(--accent);
   border-color: var(--border);
@@ -2481,14 +2485,10 @@ dd {
   outline-offset: 1px;
 }
 
-/* The node highlighted on the minimap. */
-.route-node.highlighted {
+.route-node.highlighted a {
   border-radius: var(--radius-sm);
   background: var(--marker-ring);
   box-shadow: 0 0 0 2px var(--marker-ring);
-}
-
-.route-node.highlighted a {
   color: var(--marker-ring-edge);
 }
 
@@ -4120,11 +4120,11 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 }
 
 /* Each run is a tbody; stripe runs, not rows, and keep a run's rows joined. */
-.table-wrap .traceroute-table tbody tr {
+.table-wrap .traceroute-table > tbody > tr {
   background: none;
 }
 
-.table-wrap .traceroute-table tbody:nth-of-type(even) tr {
+.table-wrap .traceroute-table > tbody:nth-of-type(even) > tr {
   background: var(--surface-stripe);
 }
 
@@ -4196,7 +4196,7 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   padding: var(--space-1) var(--space-2);
   text-align: left;
   white-space: nowrap;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .hop-list th {
@@ -4211,9 +4211,10 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 
 .hop-list tbody tr {
   border-top: 1px solid var(--border);
+  background: var(--surface);
 }
 
-.hop-list tbody tr.highlighted {
+.hop-list tbody tr:nth-child(even) {
   background: var(--surface-subtle);
 }
 

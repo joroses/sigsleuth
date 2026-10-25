@@ -8,8 +8,15 @@ import {
 } from "./api";
 import { distanceMeters, type LatLon } from "./lineOfSight";
 import { type DirectedHop } from "./minimapMarkers";
-import { formatKm, formatNodeId, formatRole } from "./nodeDisplay";
-import { DoubtfulBadge, HopSnr, NodeLink } from "./ui";
+import {
+  formatKm,
+  formatNodeId,
+  formatRole,
+  lineOfSightHref,
+  linkDetailsHref,
+  tracerouteHopHref,
+} from "./nodeDisplay";
+import { DoubtfulBadge, HopSnr, Icon, NodeLink } from "./ui";
 
 // A traceroute path as this gateway reported it: each arrow carries the SNR at
 // the node it points to, after a dot in its minimap line's tier colour, and a
@@ -33,6 +40,7 @@ export function RouteItem({
   hop = null,
   endExtra,
   highlightedNode = null,
+  highlightedHop = null,
   onNodeHover,
   zeroCostHops,
 }: {
@@ -50,12 +58,12 @@ export function RouteItem({
 } & RouteMarkers &
   Partial<NodeHighlight>) {
   // The hop from node index - 1 to node index is measured when it has an SNR slot.
-  const isHop = (index: number) =>
-    hop !== null &&
+  const isHop = (index: number, selected = hop) =>
+    selected !== null &&
     index > 0 &&
     index - 1 < path.snr_db.length &&
-    path.nodes[index - 1] === hop.fromNodeId &&
-    path.nodes[index] === hop.toNodeId;
+    path.nodes[index - 1] === selected.fromNodeId &&
+    path.nodes[index] === selected.toNodeId;
   return (
     <div className="route-item">
       <dt>{label}</dt>
@@ -85,7 +93,11 @@ export function RouteItem({
                 <span
                   className={[
                     "route-node",
-                    nodeId === highlightedNode ? "highlighted" : "",
+                    nodeId === highlightedNode ||
+                    isHop(index, highlightedHop) ||
+                    isHop(index + 1, highlightedHop)
+                      ? "highlighted"
+                      : "",
                     matched?.has(nodeId) ? "searched-node" : "",
                     isHop(index) || isHop(index + 1) ? "hop-end" : "",
                     nodeId === ends.requester || nodeId === ends.target
@@ -152,9 +164,10 @@ export interface RouteMarkers {
   zeroCostHops: ReadonlySet<string>;
 }
 
-/** A traceroute node highlighted in the route text and on the minimap. */
+/** A traceroute node or directed hop highlighted beside the minimap. */
 export interface NodeHighlight {
   highlightedNode: number | null;
+  highlightedHop?: DirectedHop | null;
   onNodeHover: (nodeId: number | null) => void;
 }
 
@@ -203,6 +216,7 @@ export function RouteHopList({
   at,
   doubted,
   highlightedNode,
+  highlightedHop = null,
   onNodeHover,
 }: {
   route: TracerouteRoute;
@@ -243,7 +257,11 @@ export function RouteHopList({
     };
   });
   const longest = Math.max(...hops.map((hop) => hop.km ?? -1));
-  const node = (nodeId: number | null, index: number) => (
+  const node = (
+    nodeId: number | null,
+    index: number,
+    hopHighlighted: boolean,
+  ) => (
     <HopNode
       nodeId={nodeId}
       label={
@@ -255,7 +273,9 @@ export function RouteHopList({
       }
       name={nodeId === null ? null : (nodeNames.get(nodeId) ?? null)}
       placed={nodeId !== null && placed.has(nodeId)}
-      highlighted={nodeId !== null && nodeId === highlightedNode}
+      highlighted={
+        nodeId !== null && (nodeId === highlightedNode || hopHighlighted)
+      }
       onNodeHover={onNodeHover}
     />
   );
@@ -271,50 +291,82 @@ export function RouteHopList({
           <th scope="col" className="number">
             Hops spent
           </th>
+          <th scope="col">
+            <span className="visually-hidden">Actions</span>
+          </th>
         </tr>
       </thead>
       <tbody>
-        {hops.map(({ index, from, to, snr, km, measured, cost }) => (
-          <tr
-            key={index}
-            className={
-              highlightedNode !== null &&
-              (from === highlightedNode || to === highlightedNode)
-                ? "highlighted"
-                : undefined
-            }
-          >
-            <td>
-              {node(from, index)}
-              <span className="muted"> → </span>
-              {node(to, index + 1)}
-            </td>
-            <td>
-              <HopSnr snr={snr} spreadingFactor={spreadingFactor} />
-            </td>
-            <td className="number">
-              <span className={km !== null && km === longest ? "longest" : ""}>
-                {formatKm(km)}
-              </span>
-              <DoubtfulBadge
-                suspects={
-                  km === null
-                    ? []
-                    : doubted([from, to].filter((nodeId) => nodeId !== null))
-                }
-              />
-            </td>
-            <td className="number">
-              {measured ? (
-                <HopsSpent
-                  cost={cost}
-                  firstHop={from === ends.requester || from === ends.target}
-                  nodeName={nodeName}
+        {hops.map(({ index, from, to, snr, km, measured, cost }) => {
+          const hopHighlighted =
+            highlightedHop !== null &&
+            from === highlightedHop.fromNodeId &&
+            to === highlightedHop.toNodeId;
+          return (
+            <tr key={index}>
+              <td>
+                {node(from, index, hopHighlighted)}
+                <span className="muted"> → </span>
+                {node(to, index + 1, hopHighlighted)}
+              </td>
+              <td>
+                <HopSnr snr={snr} spreadingFactor={spreadingFactor} />
+              </td>
+              <td className="number">
+                <span
+                  className={km !== null && km === longest ? "longest" : ""}
+                >
+                  {formatKm(km)}
+                </span>
+                <DoubtfulBadge
+                  suspects={
+                    km === null
+                      ? []
+                      : doubted([from, to].filter((nodeId) => nodeId !== null))
+                  }
                 />
-              ) : null}
-            </td>
-          </tr>
-        ))}
+              </td>
+              <td className="number">
+                {measured ? (
+                  <HopsSpent
+                    cost={cost}
+                    firstHop={from === ends.requester || from === ends.target}
+                    nodeName={nodeName}
+                  />
+                ) : null}
+              </td>
+              <td>
+                {from !== null && to !== null && from !== to
+                  ? (
+                      [
+                        [
+                          linkDetailsHref("traceroute", from, to),
+                          "Link details",
+                          "links",
+                        ],
+                        [
+                          tracerouteHopHref(from, to),
+                          "All traceroutes with this hop",
+                          "route",
+                        ],
+                        [lineOfSightHref(from, to), "Line of sight", "profile"],
+                      ] as const
+                    ).map(([href, label, icon]) => (
+                      <a
+                        key={icon}
+                        className="icon-button"
+                        href={href}
+                        title={label}
+                        aria-label={label}
+                      >
+                        <Icon name={icon} />
+                      </a>
+                    ))
+                  : null}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

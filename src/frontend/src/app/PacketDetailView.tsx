@@ -158,15 +158,18 @@ function PacketDetailContent({
       : (pinned ?? (narrowed && !othersShown ? { kind: "hop", ...hop } : null));
   const hopName = (nodeId: number) =>
     nodeNames.get(nodeId) ?? formatNodeId(nodeId);
-  // A traceroute node hovered or focused in the route text or on the minimap,
-  // highlighted in both. The route text also keeps the pinned relay
-  // highlighted; the minimap already rings it.
   const [highlightedNode, setHighlightedNode] = useState<number | null>(null);
-  const highlight = { highlightedNode, onNodeHover: setHighlightedNode };
+  const [hoveredHop, setHoveredHop] = useState<DirectedHop | null>(null);
+  const [pinnedHop, setPinnedHop] = useState<DirectedHop | null>(null);
   const routeHighlight = {
-    ...highlight,
     highlightedNode:
-      highlightedNode ?? (pinned?.kind === "relay" ? pinned.nodeId : null),
+      highlightedNode ??
+      (hoveredHop === null && pinned?.kind === "relay" ? pinned.nodeId : null),
+    highlightedHop: highlightedNode === null ? (hoveredHop ?? pinnedHop) : null,
+    onNodeHover: (nodeId: number | null) => {
+      setHighlightedNode(nodeId);
+      if (nodeId !== null) setHoveredHop(null);
+    },
   };
   // The route text labels each node like its marker. Only traceroutes have
   // route text, so the ends of other packets are never used.
@@ -280,13 +283,14 @@ function PacketDetailContent({
             {...routeMarkers}
             pinned={(id) => id === pinnedReception || !!pinnedRoutes?.has(id)}
             onHover={setHovered}
-            onPin={(id) =>
+            onPin={(id) => {
+              setPinnedHop(null);
               setPinned(
                 id === pinnedReception
                   ? null
                   : { kind: "reception", receptionId: id },
-              )
-            }
+              );
+            }}
           />
           <p className="end-note">
             {receptions.length < packet.reception_count
@@ -308,14 +312,28 @@ function PacketDetailContent({
             contents={minimap}
             focus={focus}
             onClearFocus={() => setOthersShown(true)}
-            onRelayClick={(nodeId) =>
+            onRelayClick={(nodeId) => {
+              setPinnedHop(null);
               setPinned((current) =>
                 current?.kind === "relay" && current.nodeId === nodeId
                   ? null
                   : { kind: "relay", nodeId },
-              )
-            }
-            {...(detail.traceroute !== null ? highlight : {})}
+              );
+            }}
+            {...(detail.traceroute !== null ? routeHighlight : {})}
+            onHopHover={(hop) => {
+              setHoveredHop(hop);
+              if (hop !== null) setHighlightedNode(null);
+            }}
+            onHopClick={(hop) => {
+              setPinned(null);
+              setPinnedHop((current) =>
+                current?.fromNodeId === hop.fromNodeId &&
+                current.toNodeId === hop.toNodeId
+                  ? null
+                  : hop,
+              );
+            }}
             onReceptionHover={setHovered}
             relayMap={relayMap}
             relaysOnOpen={relaysOnOpen}

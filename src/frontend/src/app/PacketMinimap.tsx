@@ -13,6 +13,7 @@ import { nodeHref } from "./nodeDisplay";
 import { useSetting } from "./remember";
 import {
   TWO_WAY_OFFSET,
+  type DirectedHop,
   type HopLines,
   type MinimapContents,
 } from "./minimapMarkers";
@@ -31,7 +32,8 @@ export type MinimapFocus =
 
 const HOPS_SOURCE = "hops";
 const HOP_SNR_LAYER = "hop-snr";
-// Each hop is one observation, so every line is drawn the same width.
+const HOP_HIT_LAYER = "hop-hit";
+// Each hop is one observation, so unhighlighted lines have the same width.
 const HOP_LINE_WIDTH = 2.5;
 const HOP_LINE_OPACITY = 0.8;
 const isLine: maplibregl.ExpressionSpecification = [
@@ -58,17 +60,7 @@ const RELAY_DOT_COLOR = "#64748b";
 const RELAY_DOT_RADIUS = 9;
 const RELAY_DOT_STROKE = 2;
 
-// The sender and gateways of one packet, or a traceroute's ends, relays
-// and hops, on the basemap chosen on the map page. Nodes sit where their own
-// positions placed them when the packet was heard, else where they are now
-// (minimapMarkers). With a reception in focus, its gateway's
-// marker stands out and, for a traceroute, only the routes that gateway
-// reported are drawn, with each relay's place on them. With a relay in focus,
-// the reports through it are drawn, and with a hop in focus the reports that
-// crossed it. Either way, relays off the drawn reports are hidden. Clicking a relay asks to focus it. On a traceroute, hovering or
-// focusing S, R or a relay reports its node, and the highlighted node's marker
-// stands out, so the route text beside the map can point at it. On other
-// packets, hovering a gateway reports its reception.
+// Packet reports and traceroute hops on the map page's chosen basemap.
 export function PacketMinimap({
   contents: {
     markers,
@@ -85,7 +77,10 @@ export function PacketMinimap({
   onClearFocus,
   onRelayClick,
   highlightedNode = null,
+  highlightedHop = null,
   onNodeHover,
+  onHopHover,
+  onHopClick,
   onReceptionHover,
   showLegend = true,
   relayMap = null,
@@ -100,6 +95,9 @@ export function PacketMinimap({
   /** Relays are buttons calling this; without it they link to their node. */
   onRelayClick?: (nodeId: number) => void;
   highlightedNode?: number | null;
+  highlightedHop?: DirectedHop | null;
+  onHopHover?: (hop: DirectedHop | null) => void;
+  onHopClick?: (hop: DirectedHop) => void;
   /** Called with S, R or a relay's node when hovered or focused, then null. */
   onNodeHover?: (nodeId: number | null) => void;
   /** Called with a gateway's reception when hovered, then null. */
@@ -119,6 +117,9 @@ export function PacketMinimap({
   const relayClick = useRef(onRelayClick);
   const nodeHover = useRef(onNodeHover);
   const receptionHover = useRef(onReceptionHover);
+  const hopHover = useRef(onHopHover);
+  const hopClick = useRef(onHopClick);
+  const interactiveHops = onHopHover !== undefined;
   const [relaysEnabled, setRelaysEnabled] = useSetting(
     "packet.map.relays",
     relaysOnOpen,
@@ -177,7 +178,9 @@ export function PacketMinimap({
     relayClick.current = onRelayClick;
     nodeHover.current = onNodeHover;
     receptionHover.current = onReceptionHover;
-  }, [onRelayClick, onNodeHover, onReceptionHover]);
+    hopHover.current = onHopHover;
+    hopClick.current = onHopClick;
+  }, [onRelayClick, onNodeHover, onReceptionHover, onHopHover, onHopClick]);
 
   const { container, map, failure } = useBasemapMap(
     {
@@ -206,9 +209,10 @@ export function PacketMinimap({
           if (marker.kind === "relay" && relayClick.current !== undefined) {
             element = document.createElement("button");
             element.setAttribute("type", "button");
-            element.addEventListener("click", () =>
-              relayClick.current?.(marker.nodeId),
-            );
+            element.addEventListener("click", (event) => {
+              event.stopPropagation();
+              relayClick.current?.(marker.nodeId);
+            });
           } else {
             const link = document.createElement("a");
             link.href = nodeHref(marker.nodeId);
@@ -263,6 +267,75 @@ export function PacketMinimap({
       labelled ? "visible" : "none",
     );
   }, [map, shown, labelled]);
+
+  useEffect(() => {
+    if (map === null || !interactiveHops) return;
+    const layers = [HOP_HIT_LAYER, "hop-arrows", HOP_SNR_LAYER];
+    let hovered: DirectedHop | null = null;
+    const hopAt = (
+      event: maplibregl.MapLayerMouseEvent,
+    ): DirectedHop | null => {
+      if (
+        event.originalEvent.target instanceof Element &&
+        event.originalEvent.target.closest(".minimap-marker")
+      )
+        return null;
+      const properties = event.features?.[0]?.properties;
+      return typeof properties?.fromNodeId === "number" &&
+        typeof properties.toNodeId === "number"
+        ? { fromNodeId: properties.fromNodeId, toNodeId: properties.toNodeId }
+        : null;
+    };
+    const move = (event: maplibregl.MapLayerMouseEvent) => {
+      const hop = hopAt(event);
+      if (
+        hop?.fromNodeId === hovered?.fromNodeId &&
+        hop?.toNodeId === hovered?.toNodeId
+      )
+        return;
+      hovered = hop;
+      map.getCanvas().style.cursor = hop === null ? "" : "pointer";
+      hopHover.current?.(hop);
+    };
+    const leave = () => {
+      hovered = null;
+      map.getCanvas().style.cursor = "";
+      hopHover.current?.(null);
+    };
+    const click = (event: maplibregl.MapLayerMouseEvent) => {
+      const hop = hopAt(event);
+      if (hop !== null) hopClick.current?.(hop);
+    };
+    map.on("mousemove", layers, move);
+    map.on("mouseleave", layers, leave);
+    map.on("click", layers, click);
+    return () => {
+      map.off("mousemove", layers, move);
+      map.off("mouseleave", layers, leave);
+      map.off("click", layers, click);
+      leave();
+    };
+  }, [map, interactiveHops]);
+
+  useEffect(() => {
+    if (map === null) return;
+    const width: maplibregl.ExpressionSpecification | number =
+      highlightedHop === null
+        ? HOP_LINE_WIDTH
+        : [
+            "case",
+            [
+              "all",
+              ["==", ["get", "fromNodeId"], highlightedHop.fromNodeId],
+              ["==", ["get", "toNodeId"], highlightedHop.toNodeId],
+            ],
+            5,
+            HOP_LINE_WIDTH,
+          ];
+    for (const layer of ["hop-lines", "hop-lines-no-snr"]) {
+      map.setPaintProperty(layer, "line-width", width);
+    }
+  }, [map, highlightedHop]);
 
   useEffect(() => {
     if (map === null) return;
@@ -527,6 +600,13 @@ function addHopLayers(map: maplibregl.Map, darkBasemap: boolean): void {
     "line-opacity": HOP_LINE_OPACITY,
     "line-offset": ["case", ["get", "twoWay"], TWO_WAY_OFFSET, 0],
   } satisfies maplibregl.LineLayerSpecification["paint"];
+  map.addLayer({
+    id: HOP_HIT_LAYER,
+    type: "line",
+    source: HOPS_SOURCE,
+    filter: isLine,
+    paint: { ...linePaint, "line-width": 10, "line-opacity": 0 },
+  });
   map.addLayer({
     id: "hop-lines",
     type: "line",

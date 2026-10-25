@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
-  type EstimatedPosition,
   type LinkTable,
   NodeDetail,
   NodeOverview,
@@ -154,187 +153,244 @@ function NodeSummary({
 }) {
   return (
     <div className="node-facts">
-      <dl>
-        <DataItem label="Long name" value={node.long_name ?? "Not reported"} />
-        <DataItem
-          label="Short name"
-          value={node.short_name ?? "Not reported"}
-        />
-        <DataItem
-          label="Node ID"
-          value={
-            <CopyValue value={formatNodeId(node.node_id)} label="node ID" />
-          }
-        />
-        <DataItem
-          label="Node number"
-          value={<CopyValue value={String(node.node_id)} label="node number" />}
-        />
-        <DataItem label="Role" value={formatRole(node.role)} />
-        <DataItem label="Channel" value={node.channel ?? "Unknown"} />
-        <DataItem
-          label="Last seen"
-          value={
-            <>
-              <span className="data-line">
-                <Age now={now} at={node.last_seen_at} bands={SEEN_BANDS} />
-              </span>
-              <span className="data-line muted">{seenReason(node)}</span>
-            </>
-          }
-        />
-        <DataItem
-          label="Last packet sent"
-          value={
-            node.last_sent_at === null ? (
-              "No own packet observed"
-            ) : (
-              <Age
-                now={now}
-                at={node.last_sent_at}
-                packetRowId={node.last_sent_packet_row_id}
-                bands={SENT_BANDS}
-              />
-            )
-          }
-        />
-        <DataItem
-          label="NodeInfo received"
-          value={
-            node.node_info_observed_at === null ? (
-              "Not reported"
-            ) : (
-              <Age
-                now={now}
-                at={node.node_info_observed_at}
-                packetRowId={node.node_info_packet_row_id}
-              />
-            )
-          }
-        />
-        <DataItem
-          label="Position"
-          value={<PositionText node={node} now={now} />}
-        />
-        <DataItem
-          label="Hardware"
-          value={formatHardware(node.hardware_model)}
-        />
-        <DataItem
-          label={
-            node.map_report?.firmware_version
-              ? "Firmware"
-              : "Firmware (estimate)"
-          }
-          value={
-            node.map_report?.firmware_version ? (
-              <>
-                <span className="data-line mono">
-                  {node.map_report.firmware_version}
-                </span>
-                <span className="data-line muted">From its map report</span>
-              </>
-            ) : node.firmware === null ? (
-              "Unknown"
-            ) : (
+      <div className="fact-groups">
+        <FactGroup title="Identity">
+          <DataItem
+            label="Long name"
+            value={node.long_name ?? "Not reported"}
+          />
+          <DataItem
+            label="Short name"
+            value={node.short_name ?? "Not reported"}
+          />
+          <DataItem
+            label="Node ID"
+            value={
+              <CopyValue value={formatNodeId(node.node_id)} label="node ID" />
+            }
+          />
+          <DataItem
+            label="Node number"
+            value={
+              <CopyValue value={String(node.node_id)} label="node number" />
+            }
+          />
+          <DataItem label="Role" value={formatRole(node.role)} />
+          <DataItem label="Channel" value={node.channel ?? "Unknown"} />
+        </FactGroup>
+        <FactGroup title="Activity">
+          <DataItem
+            label="Last seen"
+            value={
               <>
                 <span className="data-line">
-                  {node.firmware.minimum} or newer
+                  <Age now={now} at={node.last_seen_at} bands={SEEN_BANDS} />
                 </span>
-                <span className="data-line muted">{node.firmware.reason}</span>
+                <span className="data-line muted">{seenReason(node)}</span>
               </>
-            )
-          }
-        />
-        <DataItem
-          label="Gateway uploads"
-          value={
-            node.last_gateway_at === null ? (
-              <span className="muted">No uploads seen</span>
-            ) : (
-              <>
-                Last upload{" "}
-                <Age now={now} at={node.last_gateway_at} bands={SEEN_BANDS} />
-              </>
-            )
-          }
-        />
-        <DataItem
-          label="Map report"
-          value={
-            node.map_report === null ? (
-              "None received"
-            ) : (
-              <>
-                <span className="data-line">
-                  {formatRole(node.map_report.modem_preset)}
-                  {node.map_report.region === null
-                    ? ", region not set"
-                    : `, ${node.map_report.region}`}
-                </span>
-                <span className="data-line">
-                  Heard {node.map_report.nodes_online_local.toLocaleString()}{" "}
-                  {node.map_report.nodes_online_local === 1 ? "node" : "nodes"}{" "}
-                  locally in 2 hours
-                </span>
-                <span className="data-line muted">
-                  <Age now={now} at={node.map_report.received_at} />
-                </span>
-              </>
-            )
-          }
-        />
-      </dl>
+            }
+          />
+          <DataItem
+            label="Last packet sent"
+            value={
+              node.last_sent_at === null ? (
+                "No own packet observed"
+              ) : (
+                <Age
+                  now={now}
+                  at={node.last_sent_at}
+                  packetRowId={node.last_sent_packet_row_id}
+                  bands={SENT_BANDS}
+                />
+              )
+            }
+          />
+          <DataItem
+            label="NodeInfo received"
+            value={
+              node.node_info_observed_at === null ? (
+                "Not reported"
+              ) : (
+                <Age
+                  now={now}
+                  at={node.node_info_observed_at}
+                  packetRowId={node.node_info_packet_row_id}
+                />
+              )
+            }
+          />
+          <DataItem
+            label="Gateway uploads"
+            value={
+              node.last_gateway_at === null ? (
+                <span className="muted">No uploads seen</span>
+              ) : (
+                <>
+                  Last upload{" "}
+                  <Age now={now} at={node.last_gateway_at} bands={SEEN_BANDS} />
+                </>
+              )
+            }
+          />
+        </FactGroup>
+        <FactGroup title="Position">
+          <PositionItems node={node} now={now} />
+        </FactGroup>
+        <FactGroup title="Device">
+          <DataItem
+            label="Hardware"
+            value={formatHardware(node.hardware_model)}
+          />
+          <DataItem
+            label={
+              node.map_report?.firmware_version
+                ? "Firmware"
+                : "Firmware (estimate)"
+            }
+            value={
+              node.map_report?.firmware_version ? (
+                <>
+                  <span className="data-line mono">
+                    {node.map_report.firmware_version}
+                  </span>
+                  <span className="data-line muted">From its map report</span>
+                </>
+              ) : node.firmware === null ? (
+                "Unknown"
+              ) : (
+                <>
+                  <span className="data-line">
+                    {node.firmware.minimum} or newer
+                  </span>
+                  <span className="data-line muted">
+                    {node.firmware.reason}
+                  </span>
+                </>
+              )
+            }
+          />
+          <DataItem
+            label="Map report"
+            value={
+              node.map_report === null ? (
+                "None received"
+              ) : (
+                <>
+                  <span className="data-line">
+                    {formatRole(node.map_report.modem_preset)}
+                    {node.map_report.region === null
+                      ? ", region not set"
+                      : `, ${node.map_report.region}`}
+                  </span>
+                  <span className="data-line">
+                    Heard {node.map_report.nodes_online_local.toLocaleString()}{" "}
+                    {node.map_report.nodes_online_local === 1
+                      ? "node"
+                      : "nodes"}{" "}
+                    locally in 2 hours
+                  </span>
+                  <span className="data-line muted">
+                    <Age now={now} at={node.map_report.received_at} />
+                  </span>
+                </>
+              )
+            }
+          />
+        </FactGroup>
+      </div>
       <NodePositionMinimap node={node} links={links} linkView={linkView} />
     </div>
   );
 }
 
+function FactGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="fact-group">
+      <h3>{title}</h3>
+      <dl>{children}</dl>
+    </section>
+  );
+}
+
 /** The node's current position: reported, from its map report, or estimated. */
-function PositionText({ node, now }: { node: NodeDetail; now: number }) {
+function PositionItems({ node, now }: { node: NodeDetail; now: number }) {
   if (node.estimate !== null) {
-    return <EstimatedPositionItem estimate={node.estimate} />;
-  }
-  if (node.position === null) {
-    return "Not reported";
-  }
-  if (node.position.from_map_report) {
+    const { estimate } = node;
     return (
       <>
-        <span className="data-line mono">
-          ≈ {node.position.latitude.toFixed(3)},{" "}
-          {node.position.longitude.toFixed(3)}
-        </span>
-        <span className="data-line muted">
-          {mapReportPositionText(node.position.precision_km)}{" "}
-          <Age now={now} at={node.position.observed_at} />
-        </span>
+        <DataItem
+          label="Coordinates"
+          value={
+            <span className="mono">
+              ≈ {estimate.latitude.toFixed(3)}, {estimate.longitude.toFixed(3)}
+            </span>
+          }
+        />
+        <DataItem label="Source" value={estimateText(estimate)} />
+      </>
+    );
+  }
+  if (node.position === null) {
+    return <DataItem label="Coordinates" value="Not reported" />;
+  }
+  const { position } = node;
+  if (position.from_map_report) {
+    return (
+      <>
+        <DataItem
+          label="Coordinates"
+          value={
+            <span className="mono">
+              ≈ {position.latitude.toFixed(3)}, {position.longitude.toFixed(3)}
+            </span>
+          }
+        />
+        <DataItem
+          label="Source"
+          value={mapReportPositionText(position.precision_km)}
+        />
+        <DataItem
+          label="Updated"
+          value={<Age now={now} at={position.observed_at} />}
+        />
       </>
     );
   }
   return (
     <>
-      <span className="data-line mono">
-        {node.position.latitude.toFixed(5)},{" "}
-        {node.position.longitude.toFixed(5)}
-      </span>
-      {node.position.altitude_meters == null ? null : (
-        <span className="data-line">
-          Altitude {node.position.altitude_meters} m
-        </span>
+      <DataItem
+        label="Coordinates"
+        value={
+          <span className="mono">
+            {position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}
+          </span>
+        }
+      />
+      {position.altitude_meters == null ? null : (
+        <DataItem label="Altitude" value={`${position.altitude_meters} m`} />
       )}
       {node.location_source === null ? null : (
-        <span className="data-line">
-          {LOCATION_SOURCES[node.location_source] ?? node.location_source}
-        </span>
-      )}
-      <span className="data-line muted">
-        <Age
-          now={now}
-          at={node.position.observed_at}
-          packetRowId={node.position.packet_row_id}
+        <DataItem
+          label="Source"
+          value={LOCATION_SOURCES[node.location_source] ?? node.location_source}
         />
-      </span>
+      )}
+      <DataItem
+        label="Updated"
+        value={
+          <Age
+            now={now}
+            at={position.observed_at}
+            packetRowId={position.packet_row_id}
+          />
+        }
+      />
     </>
   );
 }
@@ -345,18 +401,6 @@ const LOCATION_SOURCES: Record<string, string> = {
   LOC_INTERNAL: "From the node's own GPS",
   LOC_EXTERNAL: "From an external GPS, such as a phone",
 };
-
-// A node with no reported position, placed by its neighbours.
-function EstimatedPositionItem({ estimate }: { estimate: EstimatedPosition }) {
-  return (
-    <>
-      <span className="data-line mono">
-        ≈ {estimate.latitude.toFixed(3)}, {estimate.longitude.toFixed(3)}
-      </span>
-      <span className="data-line muted">{estimateText(estimate)}</span>
-    </>
-  );
-}
 
 // Hours after which a time turns amber, then red. A node with default
 // settings sends device telemetry every 30 minutes, so an hour without being

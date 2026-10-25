@@ -44,6 +44,7 @@ import {
 } from "./mapLinkLayers";
 import { LinkSwatch, ZeroCostKey } from "./MapLinkDetails";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
+import { spacedPositions } from "./nodePositionHistory";
 import { useLinkedSetting } from "./remember";
 import { type NodeLinkView, nodeViewHref } from "./routes";
 import { Icon, ShareButton } from "./ui";
@@ -58,24 +59,8 @@ const POPUP_PACKETS = 5;
 
 type Current = { latitude: number; longitude: number; estimated: boolean };
 
-// Where the node's own position packets placed it, as dots joined in time
-// order (newer dots stronger), with a pin at its current position: reported,
-// from its map report, or estimated (hollow). Clicking a dot lists the
-// position packets sent from that spot, with their dates and links.
-//
-// "Contacts" adds everything that tells where the node is over the last
-// CONTACT_DAYS, with no map rule hiding any: its links drawn as on the Map, to
-// each placed node linked with it (its Links table's rows, `links`), and a
-// marker on each gateway that heard its packets (contactLayers).
-// Clicking a contact lists its links' distances when heard, so a link
-// measured from a wrong position stands out by its range.
-//
-// "Coverage" adds the signal survey cells where survey nodes heard it,
-// its own packets or ones it relayed, as on the Map's "Heard from it"; not
-// what its own survey uploaded. Cells are fetched for the area in view.
-//
-// The view fits all that is shown, with every contact and every cell. A
-// shared link (`linkView`) may open it expanded and choose its switches.
+// Reported position history, contacts and survey coverage, with a pin at
+// the current reported or estimated position.
 export function NodePositionMinimap({
   node,
   links,
@@ -139,7 +124,7 @@ export function NodePositionMinimap({
           );
   }, [coverage.data, coverageArea]);
   const loaded = history !== null || error !== null;
-  const items = useMemo(() => history?.items ?? [], [history]);
+  const items = useMemo(() => spacedPositions(history?.items ?? []), [history]);
   const current: Current | null =
     node.position !== null
       ? { ...node.position, estimated: false }
@@ -404,7 +389,9 @@ export function NodePositionMinimap({
           ) : null}
         </div>
         <figcaption className="muted">
-          <span className="data-line">{historyNote(history, error)}</span>
+          <span className="data-line">
+            {historyNote(history, error, items.length)}
+          </span>
           {showContacts ? (
             <ContactsNote state={contactsState} contacts={contacts} />
           ) : null}
@@ -610,6 +597,7 @@ function contactContent(mark: ContactMark): HTMLElement {
 function historyNote(
   history: NodePositionHistory | null,
   error: string | null,
+  shown: number,
 ): string {
   if (error !== null) return `Position history could not load: ${error}`;
   if (history === null) return "Loading position history…";
@@ -617,7 +605,7 @@ function historyNote(
   const count =
     items.length === 0
       ? "No valid position packets of its own."
-      : `${items.length.toLocaleString()} ${items.length === 1 ? "position" : "positions"} · click a dot for its packet`;
+      : `${shown.toLocaleString()} ${shown === 1 ? "position" : "positions"}${shown < items.length ? " · 3 km spacing" : ""} · click a dot for its packet`;
   const skipped = invalid > 0 ? ` · ${invalid.toLocaleString()} invalid` : "";
   const older = limited ? " · older not drawn" : "";
   return count + skipped + older;

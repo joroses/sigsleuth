@@ -67,11 +67,57 @@ export function HopCostLine({
 }
 
 /**
+ * One direction's hop cost in a few words, for a link's card: a 0-hop badge
+ * with how many traceroutes showed it free, or a muted note; the hover title
+ * says why. Nothing until it loads.
+ */
+export function HopCostTag({
+  hops,
+  direction,
+  name,
+}: {
+  hops: ApiState<HopObservations>;
+  direction: "a_to_b" | "b_to_a";
+  name: (nodeId: number) => string;
+}) {
+  const cost = hops.data?.[`${direction}_cost`] ?? null;
+  if (cost === null) return null;
+  const { text, title } = hopCostText(cost, name);
+  const hover = title === undefined ? text : `${text}. ${title}`;
+  switch (cost.verdict) {
+    case "free":
+      return (
+        <span className="hop-cost-tag" title={hover}>
+          <Badge tone="blue">0-hop</Badge>
+          <span className="muted">
+            {cost.free.toLocaleString()} of{" "}
+            {(cost.free + cost.costly).toLocaleString()}
+          </span>
+        </span>
+      );
+    case "costly":
+    case "never_free":
+      return (
+        <span className="hop-cost-tag muted" title={hover}>
+          Costs a hop
+        </span>
+      );
+    case "unknown":
+      return (
+        <span className="hop-cost-tag muted" title={title}>
+          Hop cost unknown
+        </span>
+      );
+  }
+}
+
+/**
  * The newest traceroute packets that reported one direction of a link, from
  * one request for both directions. Each opens its packet page showing
  * only the reports with this hop. Loading, an empty window and an error each
  * show as one muted line, so the rest of the page stays. Compact, for the
- * narrow map sidebar, is a collapsed list of just the time and SNR.
+ * narrow map sidebar, is just the time and SNR, collapsed unless
+ * collapsible is false (when the caller collapses it).
  */
 export function HopObservationList({
   hops,
@@ -80,6 +126,7 @@ export function HopObservationList({
   toNodeId,
   spreadingFactor,
   compact = false,
+  collapsible = compact,
 }: {
   hops: ApiState<HopObservations>;
   direction: "a_to_b" | "b_to_a";
@@ -89,6 +136,7 @@ export function HopObservationList({
   /** Rates each SNR's tier; without it the SNRs have no dot. */
   spreadingFactor?: number;
   compact?: boolean;
+  collapsible?: boolean;
 }) {
   if (hops.error !== null) return <p className="muted">{hops.error}</p>;
   if (hops.data === null) return <p className="muted">Loading…</p>;
@@ -138,7 +186,7 @@ export function HopObservationList({
       ))}
     </ul>
   );
-  if (!compact) return list;
+  if (!collapsible) return list;
   return (
     <details className="hop-observations-toggle">
       <summary>Latest {items.length}</summary>

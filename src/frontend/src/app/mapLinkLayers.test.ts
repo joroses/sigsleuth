@@ -64,19 +64,19 @@ describe("zeroCostArrows", () => {
   });
   const arrows = (hops: ReturnType<typeof free>[]) =>
     zeroCostArrows([link], hops, nodes).features.map(
-      ({ properties: { rotation, offset } }) => ({ rotation, offset }),
+      ({ properties: { rotation, both } }) => ({ rotation, both }),
     );
 
   it("points the free way, only on the hop's channel", () => {
-    expect(arrows([free(1, 2)])).toEqual([{ rotation: -90, offset: [0, 0] }]);
-    expect(arrows([free(2, 1)])).toEqual([{ rotation: 90, offset: [0, 0] }]);
+    expect(arrows([free(1, 2)])).toEqual([{ rotation: -90, both: false }]);
+    expect(arrows([free(2, 1)])).toEqual([{ rotation: 90, both: false }]);
     expect(arrows([free(1, 2, "MediumFast")])).toEqual([]);
   });
 
   it("puts two back to back when free both ways", () => {
     expect(arrows([free(1, 2), free(2, 1)])).toEqual([
-      { rotation: -90, offset: [5, 0] },
-      { rotation: 90, offset: [5, 0] },
+      { rotation: -90, both: true },
+      { rotation: 90, both: true },
     ]);
   });
 });

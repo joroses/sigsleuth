@@ -1,3 +1,5 @@
+import type { LinkKind } from "./api";
+
 export function formatNodeId(value: number): string {
   return `!${value.toString(16).padStart(8, "0")}`;
 }
@@ -21,6 +23,15 @@ export function nodeLinksHref(nodeId: number): string {
 /** The traceroute explorer's runs through the node. */
 export function nodeTraceroutesHref(nodeId: number): string {
   return `#links/traceroutes/${nodeId}`;
+}
+
+/** The Links page with this link's row expanded. */
+export function linkDetailsHref(
+  linkKind: LinkKind,
+  nodeA: number,
+  nodeB: number,
+): string {
+  return `#links/${nodeA}-${nodeB}?kind=${linkKind}`;
 }
 
 /**

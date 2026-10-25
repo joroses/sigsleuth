@@ -145,11 +145,31 @@ describe("0-cost hops", () => {
       both,
     );
 
-    expect(zeroCost).toHaveLength(1);
+    expect(zeroCost.features).toHaveLength(1);
     // At the line's middle, between the node and its partner.
-    expect(zeroCost[0].latitude).toBeGreaterThan(origin.latitude);
-    expect(zeroCost[0].latitude).toBeLessThan(50.5);
-    expect(zeroCost[0].title).toMatch(/^This node relays its copies/);
+    const [, latitude] = zeroCost.features[0].geometry.coordinates;
+    expect(latitude).toBeGreaterThan(origin.latitude);
+    expect(latitude).toBeLessThan(50.5);
+  });
+
+  it("draws no arrow without both positions and a visible traceroute line", () => {
+    const arrows = (
+      placed: boolean,
+      position: typeof origin | null,
+      traceroutes: boolean,
+    ) =>
+      contactLayers(
+        NODE,
+        [contact(1, ["direct", "traceroute"], 0, placed)],
+        [row(1, "direct"), row(1, "traceroute")],
+        [free(NODE, 1)],
+        position,
+        { traceroutes, gateways: true },
+      ).zeroCost.features;
+
+    expect(arrows(false, origin, true)).toEqual([]);
+    expect(arrows(true, null, true)).toEqual([]);
+    expect(arrows(true, origin, false)).toEqual([]);
   });
 
   it("points the arrowhead the free way, two back to back both ways", () => {
@@ -169,13 +189,17 @@ describe("0-cost hops", () => {
         hops,
         origin,
         both,
-      ).zeroCost.map(({ rotation, both }) => ({ rotation, both }));
+      ).zeroCost.features.map(({ properties: { rotation, both } }) => ({
+        rotation,
+        both,
+      }));
 
     // Out: the partner passes the node's copies on for free.
     expect(arrows([free(NODE, 1)])).toEqual([{ rotation: -90, both: false }]);
     expect(arrows([free(1, NODE)])).toEqual([{ rotation: 90, both: false }]);
     expect(arrows([free(1, NODE), free(NODE, 1)])).toEqual([
       { rotation: -90, both: true },
+      { rotation: 90, both: true },
     ]);
   });
 

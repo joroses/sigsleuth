@@ -6,8 +6,12 @@ import type {
   ZeroCostHop,
 } from "./api";
 import { fromNode } from "./linkRows";
-import { type LinkFeatureCollection, linkHalves } from "./mapLinkLayers";
-import { arrowRotation } from "./minimapMarkers";
+import {
+  type LinkFeatureCollection,
+  type ZeroCostArrows,
+  linkHalves,
+  zeroCostArrows,
+} from "./mapLinkLayers";
 import { formatKm } from "./nodeDisplay";
 
 /** The node page's contacts cover this many days. */
@@ -41,18 +45,7 @@ export interface ContactLayers {
    * channel), in halves coloured by signal as on the Map.
    */
   lines: Record<LinkKind, LinkFeatureCollection>;
-  /**
-   * An arrowhead at the middle of each traceroute line with a 0-cost hop,
-   * turned the free way (arrowRotation), two back to back when free both
-   * ways, with its title.
-   */
-  zeroCost: {
-    longitude: number;
-    latitude: number;
-    rotation: number;
-    both: boolean;
-    title: string;
-  }[];
+  zeroCost: ZeroCostArrows;
   /** Contacts with no position, not drawn. */
   unplaced: number;
 }
@@ -172,9 +165,9 @@ export function contactLayers(
     features: [],
   });
   const lines = { traceroute: empty(), direct: empty(), neighbor: empty() };
-  const zeroCostMarks: ContactLayers["zeroCost"] = [];
-  const ways = zeroCostWays(nodeId, zeroCost);
+  const traceroutes: LinkRow[] = [];
   if (origin !== null) {
+    places.set(nodeId, origin);
     for (const row of links) {
       // node_a is the node, so the half at its end shows what it hears.
       const link = fromNode(row, nodeId);
@@ -189,25 +182,15 @@ export function contactLayers(
         [place.longitude, place.latitude],
       );
       lines[link.link_kind].features.push(...halves);
-      const free = ways.get(zeroCostKey(link.node_b, link.channel));
-      if (link.link_kind === "traceroute" && free !== undefined) {
-        const [longitude, latitude] = halves[0].geometry.coordinates[1];
-        const node: [number, number] = [origin.longitude, origin.latitude];
-        const partner: [number, number] = [place.longitude, place.latitude];
-        zeroCostMarks.push({
-          longitude,
-          latitude,
-          rotation:
-            free.out !== null
-              ? arrowRotation(node, partner)
-              : arrowRotation(partner, node),
-          both: free.out !== null && free.into !== null,
-          title: zeroCostTitle(free),
-        });
-      }
+      if (link.link_kind === "traceroute") traceroutes.push(link);
     }
   }
-  return { marks, lines, zeroCost: zeroCostMarks, unplaced };
+  return {
+    marks,
+    lines,
+    zeroCost: zeroCostArrows(traceroutes, zeroCost, places),
+    unplaced,
+  };
 }
 
 function contactHopTone(contact: NodeContact): string {

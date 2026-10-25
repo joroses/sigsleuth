@@ -114,18 +114,42 @@ describe("A selected traceroute link", () => {
         first.compareDocumentPosition(second) &
         Node.DOCUMENT_POSITION_FOLLOWING,
       );
-    // The SVG arrow has an accessible label rather than text content.
-    const hears = screen.getByText("Madrid Valencia", { selector: "p" });
-    const heard = screen.getByText("Valencia Madrid", { selector: "p" });
-    expect(within(hears).getByRole("img", { name: "to" })).toBeTruthy();
-    expect(within(heard).getByRole("img", { name: "to" })).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "Madrid" }).getAttribute("href"),
+    ).toBe("#nodes/1");
+    // The card: each way's SNR, tier, times heard and hop cost (Madrid
+    // first; no short names, so the ids' last digits), then the distance.
+    const card = screen.getByRole("region", { name: "Link summary" });
+    expect(
+      [...card.querySelectorAll(".link-card-way")].map(
+        (way) => way.textContent,
+      ),
+    ).toEqual([
+      "0001 → 00024.0 dBGood2 observationsCosts a hop",
+      "0002 → 0001—Not heard0 observations0-hop5 of 6",
+    ]);
+    expect(within(card).getByText("Costs a hop").getAttribute("title")).toMatch(
+      /^Costs a hop: Valencia is Client mute\./,
+    );
+    expect(card.querySelector(".link-card-channel")!.textContent).toBe(
+      "LongFast",
+    );
+    expect(card.textContent).toContain("Last seen");
+    expect(card.textContent).toContain("Distance unknown");
+    expect(within(card).queryByRole("link", { name: /Line of sight/ })).toBe(
+      null,
+    );
+    // Each way's packets under the card, in the same order.
+    const hears = screen.getByText("Madrid → Valencia");
+    const heard = screen.getByText("Valencia → Madrid");
     const none = screen.getByText("None in this window");
-    expect(before(hears, entry) && before(entry, heard)).toBe(true);
-    expect(before(heard, none)).toBe(true);
-    const spends = screen.getByText("Costs a hop: Valencia is Client mute");
-    const free = screen.getByText("0-hop: free in 5 of 6 traceroutes");
-    expect(before(hears, spends) && before(spends, heard)).toBe(true);
-    expect(before(heard, free)).toBe(true);
+    expect(before(card, hears) && before(hears, entry)).toBe(true);
+    expect(before(entry, heard) && before(heard, none)).toBe(true);
+    expect(
+      screen
+        .getByRole("link", { name: /All traceroutes/ })
+        .getAttribute("href"),
+    ).toBe("#links/traceroutes/1-2");
     expect(within(entry).getByRole("link").getAttribute("href")).toBe(
       "#packets/9/hop/1-2",
     );

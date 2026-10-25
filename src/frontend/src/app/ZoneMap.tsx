@@ -21,6 +21,7 @@ import {
   hullCentre,
   zoneHull,
 } from "./zones";
+import { nearestLine } from "./lineHit";
 import { linkTierColor, marginTier } from "./linkQuality";
 import {
   addLinkLayers,
@@ -204,29 +205,23 @@ export function ZoneMap({
       view: () => ({ center: [0, 20], zoom: 1, cooperativeGestures: true }),
       onStyleLoad: (created) => {
         addLayers(created);
-        const pointer = (layer: string) => {
-          created.on("mouseenter", layer, () => {
-            created.getCanvas().style.cursor = "pointer";
-          });
-          created.on("mouseleave", layer, () => {
-            created.getCanvas().style.cursor = "";
-          });
+        // What a click at the point takes: key relays first, then a selected
+        // pair's links, zone tags, the lines between zones and the zone areas.
+        // Lines are taken from a few pixels away (nearestLine), the nearest
+        // first.
+        const at = (point: maplibregl.Point) => {
+          const exact = (layers: string[]) =>
+            created.queryRenderedFeatures(point, { layers })[0];
+          return (
+            exact([`${RELAYS}-warnings`, `${RELAYS}-markers`]) ??
+            nearestLine(created, point, PAIR_LINK_LAYERS) ??
+            exact([`${ZONES}-label`]) ??
+            nearestLine(created, point, LINE_LAYERS) ??
+            exact([`${ZONES}-fill`])
+          );
         };
-        // The top-most feature wins: key relays are drawn above everything,
-        // zone tags above the lines, and lines above the areas they cross. A selected pair's links are drawn above the lines between
-        // zones.
         created.on("click", (event) => {
-          const [hit] = created.queryRenderedFeatures(event.point, {
-            layers: [
-              `${RELAYS}-warnings`,
-              `${RELAYS}-markers`,
-              ...PAIR_LINK_LAYERS,
-              `${ZONES}-label`,
-              ...LINE_LAYERS,
-              `${ZONES}-fill`,
-            ],
-          });
-          const properties = hit?.properties ?? {};
+          const properties = at(event.point)?.properties ?? {};
           if (typeof properties.relay === "number") {
             selectRelay.current(properties.relay);
             return;
@@ -245,40 +240,45 @@ export function ZoneMap({
             selectPair.current(null);
           }
         });
-        for (const layer of [
-          `${ZONES}-fill`,
-          `${ZONES}-label`,
-          ...PAIR_LINK_LAYERS,
-          ...NODE_LAYERS,
-        ]) {
-          pointer(layer);
-        }
         const hover = new maplibregl.Popup({
           closeButton: false,
           closeOnClick: false,
           offset: 10,
           className: "zones-popup zones-node-hover",
         });
+        let labelled: string | null = null;
+        const labelLine = (pair: string | null) => {
+          if (pair === labelled) return;
+          labelled = pair;
+          showLineLabel(created, pair);
+        };
+        // A hovered node marker shows its name, a hovered line between zones
+        // its label, and the pointer shows over anything clickable.
         created.on("mousemove", (event) => {
-          const [hit] = created.queryRenderedFeatures(event.point, {
+          const [node] = created.queryRenderedFeatures(event.point, {
             layers: NODE_LAYERS,
           });
-          const label = hit?.properties?.label;
+          const label = node?.properties?.label;
           if (typeof label === "string") {
             hover.setLngLat(event.lngLat).setText(label).addTo(created);
           } else {
             hover.remove();
           }
+          const hit = at(event.point);
+          const pair = hit?.properties?.pair;
+          labelLine(
+            LINE_LAYERS.includes(hit?.layer.id ?? "") &&
+              typeof pair === "string"
+              ? pair
+              : null,
+          );
+          created.getCanvas().style.cursor =
+            node !== undefined || hit !== undefined ? "pointer" : "";
         });
-        created.on("mouseout", () => hover.remove());
-        for (const layer of LINE_LAYERS) {
-          created.on("mousemove", layer, (event) => {
-            const pair = event.features?.[0]?.properties?.pair;
-            if (typeof pair === "string") showLineLabel(created, pair);
-          });
-          created.on("mouseleave", layer, () => showLineLabel(created, null));
-          pointer(layer);
-        }
+        created.on("mouseout", () => {
+          hover.remove();
+          labelLine(null);
+        });
         window.sigsleuthMap = created; // For e2e tests and the devtools console.
       },
       setup: (created) => () => {

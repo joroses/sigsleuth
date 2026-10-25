@@ -100,6 +100,7 @@ import {
   spiderElement,
 } from "./mapNodeSpider";
 import { ChattyNodes } from "./ChattyNodes";
+import { nearestLine } from "./lineHit";
 import { isNarrowScreen } from "./narrowScreen";
 import {
   estimateText,
@@ -140,7 +141,7 @@ import {
 } from "./remember";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
-import { CopyValue, Icon, IconButton, StatusPanel, Timestamp } from "./ui";
+import { CopyValue, Icon, IconButton, StatusPanel, ShortTime } from "./ui";
 
 const NO_NODES: MapNode[] = [];
 const NO_LINKS: MapLink[] = [];
@@ -938,6 +939,15 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     let hoveredId: string | number | null = null;
     let hoveredCellId: string | number | null = null;
     const nodeLayers = () => clickableNodeLayers(coverageShown.current);
+    // Whether a click at the point would take a marker or a link line;
+    // lines are taken from a few pixels away (nearestLine).
+    const onNodeAt = (point: maplibregl.PointLike) =>
+      instance.queryRenderedFeatures(point, {
+        layers: [...nodeLayers(), "node-clusters"],
+      }).length > 0;
+    const linkNear = (point: maplibregl.Point) =>
+      nearestLine(instance, point, LINK_LAYERS);
+    let linkHovered = false;
     // Cells are fetched again when the map stops outside the area fetched.
     // A newer request replaces an unfinished one, so no delay is needed.
     const updateCoverageView = () => {
@@ -984,10 +994,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     const showCellPopup = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
       if (feature === undefined) return;
-      const above = instance.queryRenderedFeatures(event.point, {
-        layers: [...nodeLayers(), "node-clusters", ...LINK_LAYERS],
-      });
-      if (above.length > 0) {
+      if (onNodeAt(event.point) || linkNear(event.point) !== undefined) {
         cellPopup.remove();
         highlightCell(null);
         return;
@@ -1004,7 +1011,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     const hideCellPopup = () => {
       cellPopup.remove();
       highlightCell(null);
-      if (hoveredId === null) instance.getCanvas().style.cursor = "";
+      if (hoveredId === null && !linkHovered)
+        instance.getCanvas().style.cursor = "";
     };
     forgetCellHover.current = () => {
       cellPopup.remove();
@@ -1118,12 +1126,9 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       instance.easeTo({ center: bounds.getCenter(), zoom: SPIDER_MIN_ZOOM });
     };
     // A marker over a line wins; selectNode handles that click.
-    const selectLink = (event: maplibregl.MapLayerMouseEvent) => {
-      const onNode = instance.queryRenderedFeatures(event.point, {
-        layers: [...nodeLayers(), "node-clusters"],
-      });
-      if (onNode.length > 0) return;
-      const key = event.features?.[0]?.properties?.linkKey;
+    const selectLink = (event: maplibregl.MapMouseEvent) => {
+      if (onNodeAt(event.point)) return;
+      const key = linkNear(event.point)?.properties?.linkKey;
       if (typeof key !== "string") return;
       const selected = linksByKey.current.get(key);
       if (selected === undefined) return;
@@ -1134,21 +1139,20 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       const b = nodesById.current.get(selected.link.node_b);
       if (a !== undefined && b !== undefined) focusLink(instance, a, b);
     };
-    const onLinkEnter = () => {
-      instance.getCanvas().style.cursor = "pointer";
-    };
-    const onLinkLeave = () => {
-      if (hoveredId === null) instance.getCanvas().style.cursor = "";
+    // The pointer shows wherever a click would take a line.
+    const showLinkHover = (event: maplibregl.MapMouseEvent) => {
+      const near = linkNear(event.point) !== undefined;
+      if (near === linkHovered) return;
+      linkHovered = near;
+      if (near) instance.getCanvas().style.cursor = "pointer";
+      else if (hoveredId === null) instance.getCanvas().style.cursor = "";
     };
     // MapLibre sends no click after a drag, so only a still click on empty map
     // clears the selection. With a link shown, it clears only the link, going
     // back to the node selected before.
     // A click on a coverage cell, and nothing above it, chooses the cell.
     const clearSelectionOnEmptyClick = (event: maplibregl.MapMouseEvent) => {
-      const hits = instance.queryRenderedFeatures(event.point, {
-        layers: [...nodeLayers(), "node-clusters", ...LINK_LAYERS],
-      });
-      if (hits.length > 0) return;
+      if (onNodeAt(event.point) || linkNear(event.point) !== undefined) return;
       const cell = instance.queryRenderedFeatures(event.point, {
         layers: [COVERAGE_FILL_LAYER],
       })[0]?.properties;
@@ -1199,8 +1203,9 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       highlightNode(id);
     };
     const onHoverLeave = (event: maplibregl.MapLayerMouseEvent) => {
+      const cursor = linkHovered ? "pointer" : "";
       if (hoveredId === null) {
-        instance.getCanvas().style.cursor = "";
+        instance.getCanvas().style.cursor = cursor;
         return;
       }
       const stillHovered = instance
@@ -1212,7 +1217,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
           return id === hoveredId;
         });
       if (stillHovered) return;
-      instance.getCanvas().style.cursor = "";
+      instance.getCanvas().style.cursor = cursor;
       highlightNode(null);
     };
     // Runs for the first style and again after each basemap switch, which
@@ -1283,11 +1288,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       instance.on("click", "node-clusters", expandCluster);
       instance.on("mouseenter", "node-clusters", onHoverEnter);
       instance.on("mouseleave", "node-clusters", onHoverLeave);
-      for (const layer of LINK_LAYERS) {
-        instance.on("click", layer, selectLink);
-        instance.on("mouseenter", layer, onLinkEnter);
-        instance.on("mouseleave", layer, onLinkLeave);
-      }
+      instance.on("click", selectLink);
+      instance.on("mousemove", showLinkHover);
       instance.on("mousemove", COVERAGE_FILL_LAYER, showCellPopup);
       instance.on("mouseleave", COVERAGE_FILL_LAYER, hideCellPopup);
       instance.on("moveend", updateCoverageView);
@@ -1341,11 +1343,8 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       instance.off("click", "node-clusters", expandCluster);
       instance.off("mouseenter", "node-clusters", onHoverEnter);
       instance.off("mouseleave", "node-clusters", onHoverLeave);
-      for (const layer of LINK_LAYERS) {
-        instance.off("click", layer, selectLink);
-        instance.off("mouseenter", layer, onLinkEnter);
-        instance.off("mouseleave", layer, onLinkLeave);
-      }
+      instance.off("click", selectLink);
+      instance.off("mousemove", showLinkHover);
       instance.off("mousemove", COVERAGE_FILL_LAYER, showCellPopup);
       instance.off("mouseleave", COVERAGE_FILL_LAYER, hideCellPopup);
       instance.off("moveend", updateCoverageView);
@@ -1794,7 +1793,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                   <div>
                     <dt>Last seen</dt>
                     <dd>
-                      <Timestamp value={selectedNode.last_seen_at} />
+                      <ShortTime value={selectedNode.last_seen_at} />
                     </dd>
                   </div>
                   <div>
@@ -1803,7 +1802,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
                       <dd className="muted">No own packet observed</dd>
                     ) : (
                       <dd>
-                        <Timestamp value={selectedNode.last_sent_at} />
+                        <ShortTime value={selectedNode.last_sent_at} />
                         {selectedNode.last_sent_packet_row_id ===
                         null ? null : (
                           <a

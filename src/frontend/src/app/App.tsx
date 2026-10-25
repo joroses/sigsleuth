@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 
+import type { LinkKind } from "./api";
 import type { LinksTab } from "./LinksView";
 import { startMapRequests } from "./mapTimeFilter";
 import type { DirectedHop } from "./minimapMarkers";
@@ -46,6 +47,8 @@ type Route =
       pair: [number, number] | null;
       node: number | null;
       at: number | null;
+      /** On the links tab, the kind a link to one link's row names. */
+      kind: LinkKind | null;
     }
   | {
       page: "diagnostics";
@@ -134,6 +137,7 @@ export function App() {
               pair={route.pair}
               node={route.node}
               at={route.at}
+              kind={route.kind}
             />
           ) : route.page === "packet" ? (
             <LazyPacketDetail
@@ -182,18 +186,17 @@ function routeFromHash(hash: string): Route {
   if (hash === "#nodes") {
     return { page: "nodes" };
   }
-  // The links or the explorer, optionally around one node; the explorer,
-  // optionally only runs with a hop between two nodes; or the line of sight,
-  // optionally between two nodes, where they were at a time in ms.
+  // The links or the explorer, optionally around one node; the explorer or
+  // the links, optionally one link's two nodes; or the line of sight,
+  // optionally between two nodes, where they were at a time in ms. On the
+  // links, ?kind= names the kind of the link whose row opens.
   const linksTab = hash.match(
-    /^#links(?:\/(traceroutes|line-of-sight))?(?:\/([1-9]\d*)(?:-([1-9]\d*))?)?(?:@(\d+))?$/,
+    /^#links(?:\/(traceroutes|line-of-sight))?(?:\/([1-9]\d*)(?:-([1-9]\d*))?)?(?:@(\d+))?(?:\?kind=(traceroute|direct|neighbor))?$/,
   );
   if (linksTab !== null) {
-    const [, tab = "links", first, second, time] = linksTab;
+    const [, tab = "links", first, second, time, kind] = linksTab;
     const pair: [number, number] | null =
-      second === undefined || tab === "links"
-        ? null
-        : [Number(first), Number(second)];
+      second === undefined ? null : [Number(first), Number(second)];
     const node =
       first === undefined || second !== undefined || tab === "line-of-sight"
         ? null
@@ -202,7 +205,14 @@ function routeFromHash(hash: string): Route {
       time === undefined || pair === null || tab !== "line-of-sight"
         ? null
         : Number(time);
-    return { page: "links", tab: tab as LinksTab, pair, node, at };
+    return {
+      page: "links",
+      tab: tab as LinksTab,
+      pair,
+      node,
+      at,
+      kind: kind === undefined ? null : (kind as LinkKind),
+    };
   }
   // Diagnostics, optionally listing the packets one node sent, optionally
   // only those a second heard directly.

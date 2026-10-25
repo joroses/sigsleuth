@@ -231,7 +231,7 @@ const BACK_TO_BACK_OFFSET = 5;
 interface ZeroCostArrowProperties {
   linkKey: string;
   rotation: number;
-  offset: [number, number];
+  both: boolean;
 }
 
 export type ZeroCostArrows = FeatureCollection<Point, ZeroCostArrowProperties>;
@@ -244,7 +244,7 @@ export type ZeroCostArrows = FeatureCollection<Point, ZeroCostArrowProperties>;
 export function zeroCostArrows(
   links: MapLink[],
   hops: ZeroCostHop[],
-  nodesById: ReadonlyMap<number, MapNode>,
+  nodesById: ReadonlyMap<number, Pick<MapNode, "latitude" | "longitude">>,
 ): ZeroCostArrows {
   const free = new Set(
     hops.map((hop) => `${hop.from_node_id}-${hop.to_node_id}:${hop.channel}`),
@@ -263,8 +263,8 @@ export function zeroCostArrows(
       [b.longitude, b.latitude],
     );
     for (const [from, to] of ways) {
-      const start = from === a.node_id ? a : b;
-      const end = to === a.node_id ? a : b;
+      const start = from === link.node_a ? a : b;
+      const end = to === link.node_a ? a : b;
       features.push({
         type: "Feature",
         geometry: { type: "Point", coordinates: at },
@@ -274,7 +274,7 @@ export function zeroCostArrows(
             [start.longitude, start.latitude],
             [end.longitude, end.latitude],
           ),
-          offset: [ways.length === 2 ? BACK_TO_BACK_OFFSET : 0, 0],
+          both: ways.length === 2,
         },
       });
     }
@@ -283,13 +283,13 @@ export function zeroCostArrows(
 }
 
 /**
- * The 0-cost arrowheads over the traceroute links, under beforeId, from
- * LINK_MIN_ZOOM like the links. Not clickable: the line under each is.
+ * The 0-cost arrowheads over traceroute links. Not clickable: the line under each is.
  */
 export function addZeroCostLayer(
   map: Map,
   data: ZeroCostArrows,
   beforeId: string | undefined,
+  minZoom = LINK_MIN_ZOOM,
 ): void {
   addArrowImage(map);
   map.addSource(ZERO_COST_LAYER, { type: "geojson", data });
@@ -298,12 +298,17 @@ export function addZeroCostLayer(
       id: ZERO_COST_LAYER,
       type: "symbol",
       source: ZERO_COST_LAYER,
-      minzoom: LINK_MIN_ZOOM,
+      minzoom: minZoom,
       layout: {
         "icon-image": ARROW_IMAGE,
         "icon-rotate": ["get", "rotation"],
         "icon-rotation-alignment": "map",
-        "icon-offset": ["get", "offset"],
+        "icon-offset": [
+          "case",
+          ["get", "both"],
+          ["literal", [BACK_TO_BACK_OFFSET, 0]],
+          ["literal", [0, 0]],
+        ],
         // Larger than a route minimap's: map lines are thinner and many.
         "icon-size": 1.25,
         "icon-allow-overlap": true,

@@ -7,7 +7,7 @@ import {
   type HopObservations,
   tracerouteHopsUrl,
 } from "./api";
-import { HopCostLine, HopObservationList } from "./HopObservations";
+import { HopCostTag, HopObservationList } from "./HopObservations";
 import {
   LINK_TIERS,
   type LinkTier,
@@ -20,12 +20,14 @@ import type { LinkTierChoice } from "./mapLinkLayers";
 import {
   formatKm,
   lineOfSightHref,
+  linkDetailsHref,
   nodeHref,
   nodeLabel,
+  shortLabel,
   tracerouteHopHref,
 } from "./nodeDisplay";
-import { DataItem, Icon, IconButton, LinkArrow, Timestamp } from "./ui";
-import { type ApiState, useApi } from "./useApi";
+import { Icon, IconButton, ShortTime } from "./ui";
+import { useApi } from "./useApi";
 
 /** The names MapLinkDetails shows for a node. */
 export interface LinkEnd {
@@ -35,13 +37,10 @@ export interface LinkEnd {
 }
 
 /**
- * A selected link, in the map sidebar or beside the Zones map: both
- * directions, both nodes and how far apart they are now (km, null when either
- * has no reported position). A traceroute link also lists the packets on its
- * channel that reported each direction in the page's window (since). The
- * directions name the nodes, so there is no heading; the close button sits by
- * the first one. Beside the Zones map the Link section shows only the
- * distance (linkSection false): the link's table row already shows the rest.
+ * A selected link in the map sidebar or beside the Zones map: both nodes,
+ * a card with each direction's signal at a glance, a traceroute link's
+ * latest packets, and links to its other pages, each named where it applies.
+ * Zones omits what its table row already shows (linkSection false).
  */
 export function MapLinkDetails({
   linkKind,
@@ -67,194 +66,205 @@ export function MapLinkDetails({
       ? tracerouteHopsUrl(nodeA.node_id, nodeB.node_id, since, link.channel)
       : null,
   );
+  const name = (nodeId: number) =>
+    nodeLabel(nodeId === nodeA.node_id ? nodeA : nodeB);
+  const way = (
+    from: LinkEnd,
+    to: LinkEnd,
+    direction: LinkDirection,
+    hopDirection: "a_to_b" | "b_to_a",
+  ) => (
+    <CardWay
+      linkKind={linkKind}
+      from={from}
+      to={to}
+      direction={direction}
+      spreadingFactor={link.spreading_factor}
+      hopCost={
+        linkKind === "traceroute" ? (
+          <HopCostTag hops={hops} direction={hopDirection} name={name} />
+        ) : null
+      }
+    />
+  );
+  // Above the card: the channel (Zones shows one channel, so not there),
+  // and what a link that is no traceroute hop comes from.
+  const kicker = [
+    ...(linkSection ? [link.channel] : []),
+    ...(linkKind === "direct" ? ["Heard directly"] : []),
+    ...(linkKind === "neighbor" ? ["Neighbour info"] : []),
+  ];
   return (
     <>
-      <Direction
-        action={
-          <IconButton
-            icon="close"
-            label="Clear selected link"
-            onClick={onClose}
-          />
-        }
-        linkKind={linkKind}
-        from={nodeA}
-        to={nodeB}
-        direction={link.a_to_b}
-        spreadingFactor={link.spreading_factor}
-        hops={hops}
-        hopDirection="a_to_b"
-      />
-      <Direction
-        linkKind={linkKind}
-        from={nodeB}
-        to={nodeA}
-        direction={link.b_to_a}
-        spreadingFactor={link.spreading_factor}
-        hops={hops}
-        hopDirection="b_to_a"
-      />
-      <p className="section-label">Link</p>
-      <dl className="node-summary">
-        <DataItem
-          label="Distance"
-          value={
-            km === null ? (
-              <span className="muted">
-                Unknown: a node has no reported position
-              </span>
-            ) : (
-              `${formatKm(km)} km`
-            )
-          }
+      <div className="link-direction-heading">
+        {/* One line each, cut short; the full name on hover. */}
+        <div className="link-ends">
+          {[nodeA, nodeB].map((end) => (
+            <a
+              key={end.node_id}
+              className="link-end"
+              href={nodeHref(end.node_id)}
+              title={nodeLabel(end)}
+            >
+              {nodeLabel(end)}
+            </a>
+          ))}
+        </div>
+        <IconButton
+          icon="close"
+          label="Clear selected link"
+          onClick={onClose}
         />
-        {linkSection ? (
-          <>
-            <DataItem
-              label="Last seen"
-              value={<Timestamp value={link.last_seen_at} />}
-            />
-            <DataItem label="Channel" value={link.channel} />
-            <DataItem
-              label="Nodes"
-              value={
-                <>
-                  <a className="text-button" href={nodeHref(nodeA.node_id)}>
-                    {nodeLabel(nodeA)}
-                  </a>
-                  <a className="text-button" href={nodeHref(nodeB.node_id)}>
-                    {nodeLabel(nodeB)}
-                  </a>
-                </>
-              }
-            />
-            <DataItem
-              label="Terrain"
-              value={
-                <a
-                  className="text-button"
-                  href={lineOfSightHref(nodeA.node_id, nodeB.node_id)}
-                >
-                  Line of sight <Icon name="profile" />
-                </a>
-              }
-            />
-            {linkKind === "traceroute" ? (
-              <DataItem
-                label="Traceroutes"
-                value={
-                  <a
-                    className="text-button"
-                    href={tracerouteHopHref(nodeA.node_id, nodeB.node_id)}
-                  >
-                    Routes
-                  </a>
-                }
-              />
-            ) : null}
-          </>
+      </div>
+      <section className="link-card" aria-label="Link summary">
+        {kicker.length > 0 ? (
+          <p className="link-card-channel">{kicker.join(" · ")}</p>
         ) : null}
-      </dl>
+        <div className="link-card-ways">
+          {way(nodeA, nodeB, link.a_to_b, "a_to_b")}
+          {way(nodeB, nodeA, link.b_to_a, "b_to_a")}
+        </div>
+        {linkSection ? (
+          <p className="link-card-row">
+            <span className="muted">Last seen</span>
+            <ShortTime value={link.last_seen_at} />
+          </p>
+        ) : null}
+        <p className="link-card-row">
+          {km === null ? (
+            <span className="muted" title="A node has no reported position">
+              Distance unknown
+            </span>
+          ) : (
+            <>
+              <span>
+                <strong>{formatKm(km)} km</strong> apart
+              </span>
+              <a
+                className="text-button"
+                href={lineOfSightHref(nodeA.node_id, nodeB.node_id)}
+              >
+                Line of sight <Icon name="profile" />
+              </a>
+            </>
+          )}
+        </p>
+      </section>
+      {linkKind === "traceroute" ? (
+        <details className="link-traceroutes">
+          <summary>Latest traceroutes</summary>
+          {(
+            [
+              [nodeA, nodeB, "a_to_b"],
+              [nodeB, nodeA, "b_to_a"],
+            ] as const
+          ).map(([from, to, direction]) => (
+            <div key={direction}>
+              <p className="link-traceroutes-way">
+                {nodeLabel(from)} → {nodeLabel(to)}
+              </p>
+              <HopObservationList
+                hops={hops}
+                direction={direction}
+                fromNodeId={from.node_id}
+                toNodeId={to.node_id}
+                spreadingFactor={link.spreading_factor}
+                compact
+                collapsible={false}
+              />
+            </div>
+          ))}
+        </details>
+      ) : null}
+      <p className="link-pages">
+        <a
+          className="text-button"
+          href={linkDetailsHref(linkKind, nodeA.node_id, nodeB.node_id)}
+        >
+          On the Links page <Icon name="links" />
+        </a>
+        {linkKind === "traceroute" ? (
+          <a
+            className="text-button"
+            href={tracerouteHopHref(nodeA.node_id, nodeB.node_id)}
+          >
+            All traceroutes <Icon name="route" />
+          </a>
+        ) : null}
+      </p>
     </>
   );
 }
 
-function Direction({
-  action,
+/**
+ * One direction in the link card, in large type: the average SNR in its tier
+ * colour with the tier named under it (so colour is not the only clue),
+ * times heard and, on a traceroute link, whether it spends a hop.
+ */
+function CardWay({
   linkKind,
   from,
   to,
   direction,
   spreadingFactor,
-  hops,
-  hopDirection,
+  hopCost,
 }: {
-  action?: ReactNode;
   linkKind: LinkKind;
   from: LinkEnd;
   to: LinkEnd;
   direction: LinkDirection;
   spreadingFactor: number;
-  hops: ApiState<HopObservations>;
-  hopDirection: "a_to_b" | "b_to_a";
+  hopCost: ReactNode;
 }) {
   const snr = direction.average_snr;
-  const margin = fadeMargin(snr, spreadingFactor);
   const tier = linkTier(snr, spreadingFactor);
+  const margin = fadeMargin(snr, spreadingFactor);
+  const heard = direction.observations;
   return (
-    <>
-      <div className="link-direction-heading">
-        <p className="section-label">
-          {nodeLabel(from)} <LinkArrow /> {nodeLabel(to)}
-          {linkKind === "direct" ? " directly" : null}
-          {linkKind === "neighbor" ? " (neighbour info)" : null}
-        </p>
-        {action}
-      </div>
-      <dl className="node-summary">
-        {/* The tier says when there is no SNR, so only a recorded average
-            is shown. */}
-        <DataItem
-          label="Quality"
-          value={
-            <>
-              <span className="link-tier">
-                <LinkSwatch tier={tier} linkKind={linkKind} />
-                {linkTierLabel(tier)}
-              </span>
-              {snr === null ? null : (
-                <span title="Average SNR">{snr.toFixed(1)} dB</span>
-              )}
-              <span className="muted">
-                {margin === null
-                  ? `SF${spreadingFactor}`
-                  : `${margin.toFixed(1)} dB margin at SF${spreadingFactor}`}
-              </span>
-            </>
-          }
-        />
-        {linkKind === "traceroute" && hops.data !== null ? (
-          <DataItem
-            label="Hop cost"
-            value={
-              <HopCostLine
-                hops={hops}
-                direction={hopDirection}
-                name={(nodeId) =>
-                  nodeLabel(nodeId === from.node_id ? from : to)
-                }
-              />
-            }
-          />
-        ) : null}
-        {linkKind === "traceroute" ? (
-          <DataItem
-            label="Traceroutes"
-            value={
-              <HopObservationList
-                hops={hops}
-                direction={hopDirection}
-                fromNodeId={from.node_id}
-                toNodeId={to.node_id}
-                spreadingFactor={spreadingFactor}
-                compact
-              />
-            }
-          />
-        ) : null}
-        <DataItem
-          label={
-            linkKind === "direct"
-              ? "Gateway reports"
-              : linkKind === "neighbor"
-                ? "Reports"
-                : "Observations"
-          }
-          value={`${direction.observations.toLocaleString()} (${direction.snr_samples.toLocaleString()} with SNR)`}
-        />
-      </dl>
-    </>
+    <div className="link-card-way">
+      <p
+        className="link-card-label"
+        title={`${nodeLabel(to)} hearing ${nodeLabel(from)}`}
+      >
+        {shortLabel(from.node_id, from.short_name)} →{" "}
+        {shortLabel(to.node_id, to.short_name)}
+      </p>
+      <p
+        className="link-card-snr"
+        style={snr === null ? undefined : { color: linkTierColor(tier) }}
+        title={
+          margin === null
+            ? undefined
+            : `Average SNR; ${margin.toFixed(1)} dB above the floor at SF${spreadingFactor}`
+        }
+      >
+        {snr === null ? (
+          <span className="muted">—</span>
+        ) : (
+          <>
+            {snr.toFixed(1)}
+            <span className="link-card-unit"> dB</span>
+          </>
+        )}
+      </p>
+      <p className="link-card-tier">
+        {heard === 0
+          ? "Not heard"
+          : snr === null
+            ? "No SNR"
+            : linkTierLabel(tier)}
+      </p>
+      <p className="link-card-seen">
+        <strong>{heard.toLocaleString()}</strong> {heardWord(linkKind, heard)}
+      </p>
+      {hopCost}
+    </div>
   );
+}
+
+function heardWord(linkKind: LinkKind, count: number): string {
+  const word = linkKind === "traceroute" ? "observation" : "report";
+  return count === 1 ? word : `${word}s`;
 }
 
 // The swatch copies the line's pattern, so colour is not the only clue: dashed

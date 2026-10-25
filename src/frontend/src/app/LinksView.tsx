@@ -19,7 +19,6 @@ import { openedAt, useApi } from "./useApi";
 import {
   ErrorPanel,
   Icon,
-  IconButton,
   NodeName,
   OpenedAt,
   StatusPanel,
@@ -71,6 +70,7 @@ export function LinksView({
   pair = null,
   node = null,
   at = null,
+  kind = null,
 }: {
   tab: LinksTab;
   /** On the explorer, the two node searches, for runs with a hop between them; on line of sight, the two ends. */
@@ -79,6 +79,8 @@ export function LinksView({
   node?: number | null;
   /** On line of sight, the time in ms to place the two ends at. */
   at?: number | null;
+  /** On the links tab, the kind of the link a link to its row names. */
+  kind?: LinkKind | null;
 }) {
   return (
     <section className="links-page" aria-label="Links">
@@ -104,6 +106,7 @@ export function LinksView({
           tab={tab}
           pair={pair}
           node={node}
+          kind={kind}
         />
       )}
     </section>
@@ -114,10 +117,12 @@ function WindowTabs({
   tab,
   pair,
   node,
+  kind,
 }: {
   tab: "links" | "traceroutes";
   pair: [number, number] | null;
   node: number | null;
+  kind: LinkKind | null;
 }) {
   // The window starts when it is chosen, so its URL stays the same while
   // shown, or when it was last chosen if that was minutes ago (openedAt).
@@ -127,25 +132,31 @@ function WindowTabs({
     (value) => SEEN_WINDOWS.some((item) => item.id === value),
   );
   // A link to a hop's or node's runs opens on all history, which their
-  // searches keep quick, so a shorter kept window hides none of them; a link
-  // to a node's links opens on 7 days, as all of them is not timed. Neither
-  // window is kept. The window stays in this history entry, so Back shows
-  // what was loaded for it.
+  // searches keep quick, so a shorter kept window hides none of them; a
+  // link to a node's links or to one link's row opens on 7 days, as all of
+  // them is not timed. Neither window is kept. The window stays in this
+  // history entry, so Back shows what was loaded for it.
   const [{ windowId, since, chosenAt }, setWindow] = useViewState(
     "links.window",
     () =>
       windowStart(
         tab === "traceroutes" && (pair !== null || node !== null)
           ? "all"
-          : node !== null
+          : node !== null || pair !== null
             ? "7d"
             : savedWindow,
       ),
   );
-  const [linkKind, setLinkKind] = useSetting<LinkKind>(
+  const [keptKind, keepKind] = useSetting<LinkKind>(
     "links.kind",
     "traceroute",
     (value) => ["traceroute", "direct", "neighbor"].includes(value as string),
+  );
+  // A link to one link's row names its kind, which shows for this entry
+  // alone; a choice made here is kept.
+  const [linkKind, setLinkKind] = useViewState<LinkKind>(
+    "links.kind",
+    pair !== null && kind !== null ? kind : keptKind,
   );
 
   const windowPicker = (
@@ -195,10 +206,14 @@ function WindowTabs({
           Link kind
           <select
             value={linkKind}
-            onChange={(event) => setLinkKind(event.target.value as LinkKind)}
+            onChange={(event) => {
+              const next = event.target.value as LinkKind;
+              setLinkKind(next);
+              keepKind(next);
+            }}
           >
-            {Object.entries(LINK_KIND_LABELS).map(([kind, label]) => (
-              <option key={kind} value={kind}>
+            {Object.entries(LINK_KIND_LABELS).map(([id, label]) => (
+              <option key={id} value={id}>
                 {label}
               </option>
             ))}
@@ -210,6 +225,7 @@ function WindowTabs({
         since={since}
         chosenAt={chosenAt}
         node={node}
+        pair={pair}
       />
     </>
   );
@@ -241,11 +257,13 @@ function LinkTabs({
   since,
   chosenAt,
   node,
+  pair,
 }: {
   linkKind: LinkKind;
   since: string | undefined;
   chosenAt: number;
   node: number | null;
+  pair: [number, number] | null;
 }) {
   const { data, error } = useApi<LinkTable>(
     linkTableUrl(linkKind, since),
@@ -276,6 +294,7 @@ function LinkTabs({
         linkKind={linkKind}
         since={since}
         node={node}
+        pair={pair}
       />
     </>
   );
@@ -312,6 +331,7 @@ function LinkRanking({
   linkKind,
   since,
   node,
+  pair,
 }: {
   links: LinkRow[];
   nodes: NodeMap;
@@ -322,12 +342,15 @@ function LinkRanking({
   since: string | undefined;
   /** A node in the URL fills the search. */
   node: number | null;
+  /** A pair in the URL fills the search with its first node and opens its row. */
+  pair: [number, number] | null;
 }) {
+  const focus = node ?? pair?.[0] ?? null;
   const [search, setSearch] = useViewState(
     "links.search",
-    node === null ? "" : formatNodeId(node),
+    focus === null ? "" : formatNodeId(focus),
   );
-  const linked = node !== null;
+  const linked = focus !== null;
   const [minObservations, setMinObservations] = useLinkFilter(
     "links.minObservations",
     5,
@@ -359,8 +382,11 @@ function LinkRanking({
     setSort(next);
   };
   const [shown, setShown] = useViewState("links.shown", ROWS_STEP);
-  // The traceroute link whose packets are listed under its row.
-  const [open, setOpen] = useViewState<string | null>("links.open", null);
+  // The traceroute link whose packets are listed under its row; a pair in
+  // the URL opens its most recently seen row.
+  const [open, setOpen] = useViewState<string | null>("links.open", () =>
+    pair === null ? null : pairOpenKey(links, pair),
+  );
 
   const channels = useMemo(
     () => countBy(links, (link) => link.channel),
@@ -472,6 +498,9 @@ function LinkRanking({
             <table className="packet-table node-table links-table">
               <thead>
                 <tr>
+                  <th scope="col">
+                    <span className="visually-hidden">Details</span>
+                  </th>
                   <th scope="col" className="link-node">
                     Node A
                   </th>
@@ -486,7 +515,6 @@ function LinkRanking({
                     ways="A ⇄ B"
                     waysTitle="A heard by B ⇄ B heard by A"
                   />
-                  <th scope="col">Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -506,6 +534,22 @@ function LinkRanking({
                           toggle();
                         }}
                       >
+                        <td>
+                          <button
+                            type="button"
+                            className="text-button row-details-button"
+                            aria-label={
+                              expanded
+                                ? "Hide this link's details"
+                                : "Show this link's details"
+                            }
+                            aria-expanded={expanded}
+                            onClick={toggle}
+                          >
+                            <Icon name="chevron" />
+                            Details
+                          </button>
+                        </td>
                         <td className="link-node">
                           <NodeName nodeId={link.node_a} nodes={nodes} />
                         </td>
@@ -518,18 +562,6 @@ function LinkRanking({
                           nodes={nodes}
                           doubtful={doubtful}
                         />
-                        <td className="expand-cell">
-                          <IconButton
-                            icon="chevron"
-                            label={
-                              expanded
-                                ? "Hide this link's details"
-                                : "Show this link's details"
-                            }
-                            aria-expanded={expanded}
-                            onClick={toggle}
-                          />
-                        </td>
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">
@@ -562,6 +594,26 @@ function LinkRanking({
 
 function totalObservations(link: LinkRow): number {
   return link.a_to_b.observations + link.b_to_a.observations;
+}
+
+/** The openKey of a pair's most recently seen row, null when the window holds none. */
+function pairOpenKey(links: LinkRow[], pair: [number, number]): string | null {
+  let newest: LinkRow | null = null;
+  for (const link of links) {
+    const ends =
+      (link.node_a === pair[0] && link.node_b === pair[1]) ||
+      (link.node_a === pair[1] && link.node_b === pair[0]);
+    if (
+      ends &&
+      (newest === null ||
+        Date.parse(link.last_seen_at) > Date.parse(newest.last_seen_at))
+    ) {
+      newest = link;
+    }
+  }
+  return newest === null
+    ? null
+    : `${newest.link_kind}:${newest.node_a}-${newest.node_b}:${newest.channel}`;
 }
 
 function countBy<T>(items: T[], key: (item: T) => string): [string, number][] {

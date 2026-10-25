@@ -37,7 +37,7 @@ import {
   RelayCell,
   ReturnLink,
   StatusPanel,
-  Timestamp,
+  ShortTime,
 } from "./ui";
 
 export function PacketDetailView({
@@ -191,7 +191,7 @@ function PacketDetailContent({
           <DataItem label="Application" value={packet.portnum ?? "Unknown"} />
           <DataItem
             label="Heard"
-            value={<Timestamp value={packet.first_received_at} />}
+            value={<ShortTime value={packet.first_received_at} />}
           />
         </dl>
         <div className="packet-payload">

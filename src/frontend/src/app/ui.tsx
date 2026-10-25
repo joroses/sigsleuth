@@ -718,14 +718,10 @@ export function RelayCell({ reception }: { reception: PacketReception }) {
   );
 }
 
-export function Timestamp({ value }: { value: string }) {
-  return <time dateTime={value}>{new Date(value).toLocaleString()}</time>;
-}
-
 const shortTimeFormat = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
-  hour: "2-digit",
+  hour: "numeric",
   minute: "2-digit",
 });
 

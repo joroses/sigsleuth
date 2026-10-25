@@ -1999,7 +1999,9 @@ describe("Traceroute explorer", () => {
     window.location.hash = "#links/traceroutes";
     render(<App />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Show route on map" }),
+      await screen.findByRole("button", {
+        name: "Show this traceroute's details",
+      }),
     );
 
     const rows = within(document.querySelector(".hop-list tbody")!)
@@ -2065,7 +2067,9 @@ describe("Traceroute explorer", () => {
     window.location.hash = "#links/traceroutes";
     render(<App />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "Show route on map" }),
+      await screen.findByRole("button", {
+        name: "Show this traceroute's details",
+      }),
     );
 
     const rows = within(document.querySelector(".hop-list tbody")!)

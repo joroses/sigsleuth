@@ -37,7 +37,9 @@ import { LINK_TIERS } from "./linkQuality";
 import {
   LINK_KINDS,
   LINK_LAYERS,
+  ZERO_COST_LAYER,
   addLinkLayers,
+  addZeroCostLayer,
   linkSourceId,
 } from "./mapLinkLayers";
 import { LinkSwatch, ZeroCostKey } from "./MapLinkDetails";
@@ -375,7 +377,7 @@ export function NodePositionMinimap({
               contacts={contactsState.data}
               traceroutes={showTraceroutes}
               gateways={showGateways}
-              zeroCost={(contacts?.zeroCost.length ?? 0) > 0}
+              zeroCost={(contacts?.zeroCost.features.length ?? 0) > 0}
             />
           ) : null}
         </div>
@@ -511,6 +513,7 @@ function drawContacts(
   for (const kind of LINK_KINDS) {
     addLinkLayers(map, kind, contacts.lines[kind], TRACK_LAYER, 0);
   }
+  addZeroCostLayer(map, contacts.zeroCost, TRACK_LAYER, 0);
   const popup = new maplibregl.Popup({
     className: "history-popup",
     maxWidth: "none",
@@ -537,34 +540,14 @@ function drawContacts(
     });
     return marker;
   });
-  // After the markers, so a short line's arrowhead stays in sight.
-  const zeroCostMarkers = contacts.zeroCost.map((mark) => {
-    const element = document.createElement("span");
-    element.className = "zero-cost-arrow";
-    element.title = mark.title;
-    if (mark.both) {
-      const back = document.createElement("span");
-      back.className = "zero-cost-arrow-back";
-      element.append(back);
-    }
-    element.append(document.createElement("span"));
-    return new maplibregl.Marker({
-      element,
-      rotation: mark.rotation,
-      rotationAlignment: "map",
-    })
-      .setLngLat([mark.longitude, mark.latitude])
-      .addTo(map);
-  });
   return () => {
     popup.remove();
-    for (const marker of [...zeroCostMarkers, ...markers]) marker.remove();
-    for (const layer of LINK_LAYERS) {
+    for (const marker of markers) marker.remove();
+    for (const layer of [...LINK_LAYERS, ZERO_COST_LAYER]) {
       if (map.getLayer(layer)) map.removeLayer(layer);
     }
-    for (const kind of LINK_KINDS) {
-      if (map.getSource(linkSourceId(kind)))
-        map.removeSource(linkSourceId(kind));
+    for (const source of [...LINK_KINDS.map(linkSourceId), ZERO_COST_LAYER]) {
+      if (map.getSource(source)) map.removeSource(source);
     }
   };
 }
@@ -710,7 +693,14 @@ function popupContent(features: maplibregl.MapGeoJSONFeature[]): HTMLElement {
     const item = document.createElement("li");
     const time = document.createElement("time");
     time.dateTime = packet.at;
-    time.textContent = new Date(packet.at).toLocaleString();
+    const date = new Date(packet.at);
+    time.title = date.toLocaleString();
+    time.textContent = date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
     item.append(time);
     if (packet.id !== null) {
       const link = document.createElement("a");

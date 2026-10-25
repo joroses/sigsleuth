@@ -33,7 +33,7 @@ import { useApi } from "./useApi";
 import {
   DoubtfulBadge,
   ErrorPanel,
-  IconButton,
+  Icon,
   PendingBadge,
   ShortTime,
   SortHeading,
@@ -274,7 +274,6 @@ export function TracerouteExplorer({
               searchNote={searchNote}
               matched={matched}
               doubtful={doubtful}
-              firstNumber={filters.offset + 1}
               nodes={nodes}
               onNode={filterNode}
               sort={filters.sort}
@@ -410,7 +409,6 @@ function RunTable({
   searchNote,
   matched,
   doubtful,
-  firstNumber,
   nodes,
   onNode,
   sort,
@@ -423,8 +421,6 @@ function RunTable({
   matched: ReadonlySet<number>;
   /** Nodes with a doubtful position, whose km get a badge. */
   doubtful: ReadonlySet<number>;
-  /** The number shown on the first run, counting from the first page. */
-  firstNumber: number;
   nodes: NodeMap;
   onNode: (nodeId: number) => void;
   sort: TracerouteSort;
@@ -460,7 +456,7 @@ function RunTable({
         <thead>
           <tr>
             <th scope="col">
-              <span className="visually-hidden">Run</span>
+              <span className="visually-hidden">Details</span>
             </th>
             <SortHeading
               label="Heard"
@@ -493,7 +489,7 @@ function RunTable({
           </tr>
         </thead>
         {/* One tbody per run, so the stripes group a run's rows together. */}
-        {runs.map((run, index) => {
+        {runs.map((run) => {
           const key = run.route.packet_row_id;
           // The route's km adds up only its measured hops, so only their
           // nodes can make it doubtful; an unreached target is not one.
@@ -516,17 +512,20 @@ function RunTable({
                 }}
               >
                 <td className="run-marker">
-                  <span className="run-number">{firstNumber + index}</span>
-                  <IconButton
-                    icon="map"
-                    label={
+                  <button
+                    type="button"
+                    className="text-button row-details-button"
+                    aria-label={
                       open === key
-                        ? "Hide the route's map"
-                        : "Show route on map"
+                        ? "Hide this traceroute's details"
+                        : "Show this traceroute's details"
                     }
-                    aria-pressed={open === key}
+                    aria-expanded={open === key}
                     onClick={toggle}
-                  />
+                  >
+                    <Icon name="chevron" />
+                    Details
+                  </button>
                 </td>
                 <td>
                   <ShortTime value={run.first_received_at} />

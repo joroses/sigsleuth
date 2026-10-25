@@ -3,7 +3,7 @@ import { CSSProperties, MouseEvent } from "react";
 import { PacketPage, PacketPort, PacketRow } from "./api";
 import { portGroup } from "./nodeActivity";
 import { PagedApiState, usePagedApi } from "./useApi";
-import { ErrorPanel, NodeLink, StatusPanel, Timestamp } from "./ui";
+import { ErrorPanel, NodeLink, StatusPanel, ShortTime } from "./ui";
 
 /** Picks one application port to list packets on; "All ports" is null. */
 export function PortSelect({
@@ -151,7 +151,7 @@ function PacketTableRow({ packet }: { packet: PacketRow }) {
   return (
     <tr className="clickable-row" onClick={openRow}>
       <td>
-        <Timestamp value={packet.first_received_at} />
+        <ShortTime value={packet.first_received_at} />
       </td>
       <th scope="row">
         <a className="text-button mono" href={href}>

@@ -6,7 +6,7 @@ import type {
 } from "./api";
 import { heardHowText, isCertain, marginColor } from "./coverageLayer";
 import { formatNodeId, nodeLabel, relayByteText } from "./nodeDisplay";
-import { DataItem, IconButton, LegendLine, ShortTime, Timestamp } from "./ui";
+import { DataItem, IconButton, LegendLine, ShortTime } from "./ui";
 import type { ApiState } from "./useApi";
 
 function snr(value: number | null): string {
@@ -101,8 +101,8 @@ export function CoverageCellDetails({
                 label="Heard"
                 value={
                   <>
-                    <Timestamp value={cell.first_heard_at} /> to{" "}
-                    <Timestamp value={cell.last_heard_at} />
+                    <ShortTime value={cell.first_heard_at} /> to{" "}
+                    <ShortTime value={cell.last_heard_at} />
                   </>
                 }
               />

@@ -19,7 +19,7 @@ import {
 } from "./nodeDisplay";
 import { useSetting, useViewState } from "./remember";
 import { useApi } from "./useApi";
-import { ErrorPanel, Icon, StatusPanel, WideTable } from "./ui";
+import { ErrorPanel, Icon, ShortTime, StatusPanel, WideTable } from "./ui";
 
 const SORTS: NodeSort[] = [
   "traceroute",
@@ -445,23 +445,6 @@ function Utilization({
     >
       {value.toFixed(1)}%
     </span>
-  );
-}
-
-const shortTime = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-/** A time without year or seconds, to keep the table narrow; hover for all of it. */
-function ShortTime({ value }: { value: string }) {
-  const time = new Date(value);
-  return (
-    <time dateTime={value} title={time.toLocaleString()}>
-      {shortTime.format(time)}
-    </time>
   );
 }
 

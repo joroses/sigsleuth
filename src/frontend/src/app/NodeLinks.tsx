@@ -23,7 +23,7 @@ import { useSetting, useViewState } from "./remember";
 import {
   Badge,
   ErrorPanel,
-  IconButton,
+  Icon,
   NodeName,
   StatusPanel,
   WideTable,
@@ -158,6 +158,9 @@ export function NodeLinks({
             <table className="packet-table node-table links-table">
               <thead>
                 <tr>
+                  <th scope="col">
+                    <span className="visually-hidden">Details</span>
+                  </th>
                   <th scope="col" className="link-node">
                     Node
                   </th>
@@ -173,7 +176,6 @@ export function NodeLinks({
                     ways="out ⇄ in"
                     waysTitle="this node heard by the other ⇄ the other heard by this node"
                   />
-                  <th scope="col">Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -195,6 +197,22 @@ export function NodeLinks({
                           toggle();
                         }}
                       >
+                        <td>
+                          <button
+                            type="button"
+                            className="text-button row-details-button"
+                            aria-label={
+                              expanded
+                                ? "Hide this link's details"
+                                : "Show this link's details"
+                            }
+                            aria-expanded={expanded}
+                            onClick={toggle}
+                          >
+                            <Icon name="chevron" />
+                            Details
+                          </button>
+                        </td>
                         <td className="link-node">
                           <NodeName nodeId={link.node_b} nodes={nodes} />
                         </td>
@@ -218,18 +236,6 @@ export function NodeLinks({
                           nodes={nodes}
                           doubtful={doubtful}
                         />
-                        <td className="expand-cell">
-                          <IconButton
-                            icon="chevron"
-                            label={
-                              expanded
-                                ? "Hide this link's details"
-                                : "Show this link's details"
-                            }
-                            aria-expanded={expanded}
-                            onClick={toggle}
-                          />
-                        </td>
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">

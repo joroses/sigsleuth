@@ -43,7 +43,7 @@ import {
 import { NodeSearch } from "./NodeSearch";
 import { loadTerrain } from "./terrain";
 import { useApi } from "./useApi";
-import { IconButton, NodeLink, StatusPanel, Timestamp } from "./ui";
+import { IconButton, NodeLink, StatusPanel, ShortTime } from "./ui";
 
 type Picked = [number | null, number | null];
 const END_LABELS = ["A", "B"] as const;
@@ -169,7 +169,7 @@ export function LineOfSightView({
       {at !== null && heard !== undefined && heard.length > 0 ? (
         <p className="muted">
           Where they were when last heard together,{" "}
-          <Timestamp value={new Date(at).toISOString()} />, by their own
+          <ShortTime value={new Date(at).toISOString()} />, by their own
           positions.
         </p>
       ) : null}

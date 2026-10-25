@@ -1179,8 +1179,8 @@ function endName(end: LongLinkEnd): string {
   return nodeName(end.node) ?? formatNodeId(end.node.node_id);
 }
 
-function formatOptionalTime(value: string | null): string {
-  return value === null ? "None yet" : new Date(value).toLocaleString();
+function formatOptionalTime(value: string | null): ReactNode {
+  return value === null ? "None yet" : <ShortTime value={value} />;
 }
 
 function formatDuration(seconds: number): string {

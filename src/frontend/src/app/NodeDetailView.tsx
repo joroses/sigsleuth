@@ -44,7 +44,11 @@ export function NodeDetailView({ nodeId }: { nodeId: number }) {
   const links = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
 
   return (
-    <section aria-labelledby="node-heading">
+    <section className="node-detail-page" aria-labelledby="node-heading">
+      <a className="return-link" href="#nodes">
+        <Icon name="back" />
+        Back to nodes
+      </a>
       {page === null && error === null ? (
         <StatusPanel>Loading node…</StatusPanel>
       ) : null}

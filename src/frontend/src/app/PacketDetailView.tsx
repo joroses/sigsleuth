@@ -519,7 +519,11 @@ function ReceptionTable({
         <thead>
           <tr>
             <th scope="col">Gateway</th>
-            <th scope="col" className="number">
+            <th
+              scope="col"
+              className="number"
+              title="Distance to the sender (without the last relay part)"
+            >
               Distance<span className="heading-note">km</span>
             </th>
             <th scope="col" className="number">
@@ -604,18 +608,7 @@ function ReportKm({
 }) {
   if (reception.km === null) return "—";
   const rough = sender.estimated || reception.gateway_estimated;
-  return (
-    <span
-      title={
-        reception.direct
-          ? "Heard directly"
-          : "From the sender, though relays carried it"
-      }
-    >
-      {rough ? "~" : ""}
-      {formatKm(reception.km)}
-    </span>
-  );
+  return `${rough ? "~" : ""}${formatKm(reception.km)}`;
 }
 
 // How many hidden reports repeat this route or only its start.
@@ -624,7 +617,7 @@ function AlsoReported({ count }: { count: number }) {
   return (
     <span
       className="muted"
-      title="Gateways that reported the same or only its start"
+      title="Other gateways with this route, or the first part of it"
     >
       {" "}
       +{count} {count === 1 ? "gateway" : "gateways"}

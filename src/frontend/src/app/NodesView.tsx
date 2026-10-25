@@ -189,7 +189,6 @@ function NodeTable({
             {/* Map sorts by altitude, highest first; clicking it again turns it round. */}
             <SortHeading
               label="Map"
-              title="Show on the map. Sorts by altitude."
               active={sort === "altitude" || sort === "altitude_lowest"}
               ascending={sort === "altitude_lowest"}
               onClick={() =>
@@ -218,7 +217,7 @@ function NodeTable({
             </SortHeading>
             <SortHeading
               label="Sent"
-              title="Packets this node sent in the last 24 hours."
+              title="Packets this node sent in the last 24 hours"
               active={sort === "packets"}
               onClick={() => onSort("packets")}
             >
@@ -226,7 +225,7 @@ function NodeTable({
             </SortHeading>
             <SortHeading
               label="Texts"
-              title="Text messages this node sent to everyone in the last 24 hours."
+              title="Texts this node sent to everyone in the last 24 hours"
               active={sort === "texts"}
               onClick={() => onSort("texts")}
             >
@@ -352,7 +351,7 @@ function NodeRow({ node, now }: { node: NodeListItem; now: number }) {
         {node.last_gateway_at !== null ? (
           <span
             className="gateway-badge"
-            title={`Gateway; last reported a packet ${new Date(node.last_gateway_at).toLocaleString()}`}
+            title={`Gateway, last reported a packet ${new Date(node.last_gateway_at).toLocaleString()}`}
             aria-label="Gateway"
           >
             <Icon name="radio" />

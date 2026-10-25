@@ -397,7 +397,7 @@ export function DoubtfulBadge({
     );
   }
   return (
-    <Badge tone="amber" title={`Doubtful distance. ${reasons.join(" ")}`}>
+    <Badge tone="amber" title={`Doubtful distance: ${reasons.join(" ")}`}>
       doubtful
     </Badge>
   );
@@ -416,7 +416,7 @@ export function PendingBadge() {
   return (
     <Badge
       tone="neutral"
-      title="Pending: not confirmed until both ends report their position again."
+      title="Pending until both ends report their position again"
     >
       pending
     </Badge>

@@ -336,7 +336,7 @@ export function NodePositionMinimap({
             <button
               type="button"
               aria-pressed={showCoverage}
-              title="Where survey nodes heard it, its own packets or ones it relayed"
+              title="Where survey nodes heard it"
               onClick={() => setShowCoverage(!showCoverage)}
             >
               <Icon name="coverage" />
@@ -380,7 +380,6 @@ export function NodePositionMinimap({
           ) : null}
           {contactsState.data !== null && (contacts?.marks.length ?? 0) > 0 ? (
             <ContactsKey
-              contacts={contactsState.data}
               traceroutes={showTraceroutes}
               gateways={showGateways}
               zeroCost={(contacts?.zeroCost.features.length ?? 0) > 0}
@@ -433,14 +432,12 @@ function ContactsNote({
 }
 
 // A key to the contacts' lines and numbers, in the map's corner: the Map's
-// link patterns and colours.
+// link patterns.
 function ContactsKey({
-  contacts,
   traceroutes,
   gateways,
   zeroCost,
 }: {
-  contacts: NodeContactList;
   traceroutes: boolean;
   gateways: boolean;
   zeroCost: boolean;
@@ -462,7 +459,7 @@ function ContactsKey({
       {zeroCost ? <ZeroCostKey /> : null}
       {gateways ? (
         <>
-          <li title="A gateway heard it with no relay, or it heard the gateway">
+          <li title="Heard directly by a gateway">
             <LinkSwatch tier={null} linkKind="direct" />
             heard directly
           </li>
@@ -473,9 +470,7 @@ function ContactsKey({
         </>
       ) : null}
       {gateways ? (
-        <li
-          title={`From its ${contacts.packets.toLocaleString()} newest packets${contacts.limited ? "; older ones were not read" : ""}`}
-        >
+        <li title="Fewest hops to a gateway">
           <span className="contacts-legend-hops hop-tone-1">1</span>
           Gateway: hops away
         </li>

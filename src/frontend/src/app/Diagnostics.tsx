@@ -435,20 +435,21 @@ const SHOWN = {
   long: {
     label: "still shown long",
     tone: "red",
+    // eslint-disable-next-line local/hover-text -- names both pages and the distance they use
     title:
       "The map draws it, or the Links page ranks it without a badge, at about its longest distance.",
   },
   shorter: {
     label: "now shorter",
     tone: "green",
+    // eslint-disable-next-line local/hover-text -- says what shortened it
     title:
       "Pages now show a newer, shorter distance: an end moved back or its position was corrected.",
   },
   hidden: {
     label: "hidden",
     tone: "neutral",
-    title:
-      "The map leaves it out and the Links page ranks it apart with a badge.",
+    title: "Hidden from the map, ranked apart on Links",
   },
 } as const;
 
@@ -1158,6 +1159,7 @@ function DoubtBadge({ link }: { link: LongLink }) {
     return (
       <Badge
         tone="amber"
+        // eslint-disable-next-line local/hover-text -- explains why the position is doubted
         title="Its own direct links are far from its reported position (see its ends below), so it is probably not where it says."
       >
         doubtful position: {named}
@@ -1167,6 +1169,7 @@ function DoubtBadge({ link }: { link: LongLink }) {
   return (
     <Badge
       tone="amber"
+      // eslint-disable-next-line local/hover-text -- explains which end is doubted
       title="Too far for radio over this terrain, so one end's position is probably wrong."
     >
       doubtful by terrain

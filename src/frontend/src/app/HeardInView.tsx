@@ -71,7 +71,7 @@ export function HeardInView({
                       ? undefined
                       : loadedIds.has(heard.node_id)
                         ? "Hidden by the map's filters"
-                        : "No recent position; not on the map"
+                        : "No recent position, not on the map"
                   }
                   onClick={() => node !== undefined && onChoose(node)}
                 >

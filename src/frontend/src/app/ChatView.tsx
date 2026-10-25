@@ -774,7 +774,7 @@ function ParentQuote({
       <a
         className="chat-quote"
         href={`#packets/${parent.packet_row_id}`}
-        title="Saved but encrypted with a key SigSleuth does not have"
+        title="Encrypted with an unknown key"
       >
         {arrow}
         {sender}: unreadable message

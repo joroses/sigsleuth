@@ -1486,7 +1486,7 @@ describe("Map text reach", () => {
         expect(loadSetting(key), key).toEqual(value);
       for (const [kind, name] of [
         ["traceroute", "Traceroute links"],
-        ["direct", "Direct gateway reports"],
+        ["direct", "Heard directly"],
         ["neighbor", "Neighbour info"],
       ])
         expect(

@@ -428,7 +428,7 @@ function GatewayBadge({ at, now }: { at: string; now: number }) {
   return (
     <Badge
       tone={ageTone(hours, SEEN_BANDS)}
-      title={`Uploads what it hears to MQTT. Last upload ${formatHours(hours)} ago.`}
+      title={`Uploads to MQTT · last ${formatHours(hours)} ago`}
     >
       Gateway
     </Badge>

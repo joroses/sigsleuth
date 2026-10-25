@@ -21,7 +21,7 @@ function hopCostText(
     case "free":
       return {
         text: `0-hop: free in ${cost.free.toLocaleString()} of ${total} traceroutes`,
-        title: "Passed on without spending a hop, as for a favourite router",
+        title: "Passed on without spending a hop",
       };
     case "costly":
       return {
@@ -30,8 +30,7 @@ function hopCostText(
     case "never_free":
       return {
         text: `Costs a hop: ${name(cost.role_node_id!)} is ${formatRole(cost.role)}`,
-        title:
-          "Only a router passes another router's copies on without spending a hop",
+        title: "Only routers relay routers' copies without spending a hop",
       };
     case "unknown":
       return {

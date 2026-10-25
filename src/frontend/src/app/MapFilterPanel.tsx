@@ -161,7 +161,7 @@ export function MapFilterPanel({
               </span>
             </label>
           ))}
-          <label title="Nodes with no position, placed near the nodes that hear them.">
+          <label title="No position: placed near the nodes that hear it">
             <input
               type="checkbox"
               checked={nodeFilter.estimated}
@@ -189,16 +189,16 @@ export function MapFilterPanel({
             <LinkSwatch tier={null} linkKind="traceroute" />
             <span className="map-filter-name">Traceroute links</span>
           </label>
-          <label title="A gateway heard the node with no relay">
+          <label title="Heard directly by a gateway">
             <input
               type="checkbox"
               checked={linkChoice.direct}
               onChange={(event) => onLinkLayer("direct", event.target.checked)}
             />
             <LinkSwatch tier={null} linkKind="direct" />
-            <span className="map-filter-name">Direct gateway reports</span>
+            <span className="map-filter-name">Heard directly</span>
           </label>
-          <label title="Nodes a node says it heard directly. Updates every few hours.">
+          <label title="From neighbour reports">
             <input
               type="checkbox"
               checked={linkChoice.neighbor}
@@ -209,7 +209,7 @@ export function MapFilterPanel({
             <LinkSwatch tier={null} linkKind="neighbor" />
             <span className="map-filter-name">Neighbour info</span>
           </label>
-          <label title="Share of the selected node's texts on its channel each gateway reported. Grey: only 1 or 2 texts, too few for a share.">
+          <label title="Share of its texts each gateway heard">
             <input
               type="checkbox"
               checked={showTextReach}
@@ -232,7 +232,7 @@ export function MapFilterPanel({
             />
             times
           </label>
-          <label className="min-km" title="Hide links shorter than this.">
+          <label className="min-km">
             At least
             <input
               type="range"

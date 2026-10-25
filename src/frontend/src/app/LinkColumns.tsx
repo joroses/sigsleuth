@@ -56,7 +56,7 @@ export function LinkHeadings({
       <SortHeading
         label="Margin"
         note="lowest"
-        title="Lowest of both directions: dB above the weakest signal the channel can still decode"
+        title="Weaker direction's signal margin"
         sort="weaker_margin"
         {...heading}
       />

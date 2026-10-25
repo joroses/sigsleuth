@@ -235,7 +235,7 @@ function CardWay({
         title={
           margin === null
             ? undefined
-            : `Average SNR; ${margin.toFixed(1)} dB above the floor at SF${spreadingFactor}`
+            : `Average SNR, ${margin.toFixed(1)} dB above the floor at SF${spreadingFactor}`
         }
       >
         {snr === null ? (
@@ -342,7 +342,7 @@ export function LinkQualityLegend({
 /** A key's entry for the 0-hop arrowhead drawn on hop lines. */
 export function ZeroCostKey() {
   return (
-    <li title="Passed on without spending a hop, as for a favourite router">
+    <li title="Passed on without spending a hop">
       <span className="zero-cost-arrow zero-cost-key" aria-hidden="true">
         <span />
       </span>

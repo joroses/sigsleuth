@@ -822,10 +822,7 @@ function MapLegend({
         ))}
         .
       </p>
-      <ul
-        className="zones-legend-items"
-        title="Solid links between the zones. One relay: all through one node."
-      >
+      <ul className="zones-legend-items" title="Solid links between zones">
         <li>{legendLine(6, undefined)} 2 or more solid links</li>
         <li>{legendLine(2, undefined)} one solid link or one relay</li>
         <li>{legendLine(2, "5 3")} no solid link</li>
@@ -1050,37 +1047,22 @@ function ZoneTable({
     <table className="zones-table zones-side-table">
       <thead>
         <tr>
-          <th
-            scope="col"
-            title="Groups of nodes that mostly hear each other, named after the nearest big town. Select one for details."
-          >
+          <th scope="col" title="Nodes that mostly hear each other">
             Zone
           </th>
-          <th
-            scope="col"
-            className="number"
-            title="Members; hover a number for those with a position"
-          >
+          <th scope="col" className="number">
             Nodes
           </th>
-          <th
-            scope="col"
-            className="number"
-            title="Heard links between the zone's members"
-          >
+          <th scope="col" className="number" title="Links inside the zone">
             Links
           </th>
-          <th
-            scope="col"
-            className="number"
-            title="Zones it has heard links with directly, drawn as lines on the map"
-          >
+          <th scope="col" className="number" title="Zones it links to directly">
             Connections
           </th>
           <th
             scope="col"
             className="number"
-            title={`The zone's key relays not heard for ${LATE_HOURS} hours or on a low battery`}
+            title="Key relays gone quiet or low on battery"
           >
             Warnings
           </th>
@@ -1637,7 +1619,7 @@ function PairSide({
             </th>
             <SortHeading
               label="Margin"
-              title="Lowest of both directions: dB above the weakest signal the channel can still decode"
+              title="Weaker direction's signal margin"
               sort="margin"
               active={sort}
               onSort={onSort}
@@ -2162,9 +2144,7 @@ function BetweenZones({
                       <td
                         className="number"
                         title={
-                          direct
-                            ? undefined
-                            : "No link directly between these zones: they are joined only through other zones"
+                          direct ? undefined : "Joined only through other zones"
                         }
                       >
                         {direct ? (
@@ -2328,7 +2308,7 @@ function PairLinks({
           <SortHeading
             label="Margin"
             note="lowest"
-            title="Lowest of both directions: dB above the weakest signal the channel can still decode"
+            title="Weaker direction's signal margin"
             sort="margin"
             active={sort}
             onSort={onSort}

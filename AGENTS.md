@@ -36,6 +36,10 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 
 - Avoid unnecessary secondary labels and descriptions.
 - Don't restate the implementation in user-facing text.
+- Hover text (`title`) is one short phrase, under 60 characters, with no full stop. It says what the user sees, not how it is worked out: "Gateways that hear it", not "Gateways that heard it and nodes heard with it directly or as neighbours, with no map rule hiding any".
+- Leave out what the label, heading note or unit already says (time windows, "km"). A hover that adds nothing is removed.
+- Use the page's own words: "traceroute hop", "Heard directly", "relay".
+- Lint (`local/hover-text`) checks length and full stops. An exception gets `// eslint-disable-next-line local/hover-text -- <why>` above it.
 
 ## Comments and docs
 

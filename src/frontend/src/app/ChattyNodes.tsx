@@ -67,7 +67,7 @@ export function ChattyNodes({
                   type="button"
                   aria-pressed={sender.node_id === selectedNodeId}
                   title={
-                    placed ? undefined : "No recent position; not on the map"
+                    placed ? undefined : "No recent position, not on the map"
                   }
                   onClick={() => onChoose(sender)}
                 >

@@ -7,6 +7,7 @@ import type {
 } from "./api";
 import { fromNode } from "./linkRows";
 import { type LinkFeatureCollection, linkHalves } from "./mapLinkLayers";
+import { arrowRotation } from "./minimapMarkers";
 import { formatKm } from "./nodeDisplay";
 
 /** The node page's contacts cover this many days. */
@@ -40,8 +41,18 @@ export interface ContactLayers {
    * channel), in halves coloured by signal as on the Map.
    */
   lines: Record<LinkKind, LinkFeatureCollection>;
-  /** The middle of each traceroute line with a 0-cost hop, and its title. */
-  zeroCost: { longitude: number; latitude: number; title: string }[];
+  /**
+   * An arrowhead at the middle of each traceroute line with a 0-cost hop,
+   * turned the free way (arrowRotation), two back to back when free both
+   * ways, with its title.
+   */
+  zeroCost: {
+    longitude: number;
+    latitude: number;
+    rotation: number;
+    both: boolean;
+    title: string;
+  }[];
   /** Contacts with no position, not drawn. */
   unplaced: number;
 }
@@ -78,7 +89,16 @@ export function zeroCostKey(partner: number, channel: string): string {
   return `${partner}:${channel}`;
 }
 
-/** What a 0-cost tag says, a sentence a way. */
+/** Which way the node's hop with the partner is free. */
+export function zeroCostLabel({ out, into }: ZeroCostWays): string {
+  return out !== null && into !== null
+    ? "0-hop both ways"
+    : out !== null
+      ? "0-hop out"
+      : "0-hop in";
+}
+
+/** What a 0-hop tag says, a sentence a way. */
 export function zeroCostTitle({ out, into }: ZeroCostWays): string {
   const times = (hop: ZeroCostHop) =>
     `${hop.free.toLocaleString()} of ${(hop.free + hop.costly).toLocaleString()} traceroutes`;
@@ -102,7 +122,7 @@ export function zeroCostTitle({ out, into }: ZeroCostWays): string {
  * traceroute partner alone is muted. Lines are the node's `links` (its Links
  * table's rows) of the shown groups, from `origin`, the node's current
  * position, to placed contacts; none without an origin. Traceroute lines
- * with one of the node's `zeroCost` hops get a mark.
+ * with one of the node's `zeroCost` hops get an arrowhead.
  */
 export function contactLayers(
   nodeId: number,
@@ -172,7 +192,18 @@ export function contactLayers(
       const free = ways.get(zeroCostKey(link.node_b, link.channel));
       if (link.link_kind === "traceroute" && free !== undefined) {
         const [longitude, latitude] = halves[0].geometry.coordinates[1];
-        zeroCostMarks.push({ longitude, latitude, title: zeroCostTitle(free) });
+        const node: [number, number] = [origin.longitude, origin.latitude];
+        const partner: [number, number] = [place.longitude, place.latitude];
+        zeroCostMarks.push({
+          longitude,
+          latitude,
+          rotation:
+            free.out !== null
+              ? arrowRotation(node, partner)
+              : arrowRotation(partner, node),
+          both: free.out !== null && free.into !== null,
+          title: zeroCostTitle(free),
+        });
       }
     }
   }

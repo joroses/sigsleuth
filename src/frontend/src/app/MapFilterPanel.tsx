@@ -245,7 +245,11 @@ export function MapFilterPanel({
             />
             <output>{minKm} km</output>
           </label>
-          <LinkQualityLegend choice={linkTiers} onChoice={onLinkTiers} />
+          <LinkQualityLegend
+            choice={linkTiers}
+            onChoice={onLinkTiers}
+            zeroCost={linkChoice.traceroute}
+          />
         </fieldset>
         <fieldset className="map-filter-checks">
           <legend className="section-label">Signal surveys</legend>

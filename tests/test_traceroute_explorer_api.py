@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
-from derived_rows import link_hour
+from derived_rows import insert_row, link_hour
 from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
@@ -16,6 +16,8 @@ from sigsleuth.positions import refresh_estimates
 
 NOW = datetime(2026, 9, 27, 9, 30, tzinfo=UTC)
 A, B, R1, R2, OTHER = 0x0A0A0A0A, 0x0B0B0B0B, 0x01010101, 0x02020202, 0x0C0C0C0C
+R3 = 0x03030303
+HOUR_MS = 3_600_000
 BROADCAST = 0xFFFFFFFF
 
 
@@ -48,6 +50,9 @@ def traceroute(
     snr_back: list[int] | None = None,
     request_id: int = 0,
     channel: str = "LongFast",
+    hop_start: int = 0,
+    hop_limit: int = 0,
+    relay_node: int = 0,
 ) -> None:
     discovery = mesh_pb2.RouteDiscovery(
         route=route, snr_towards=snr, route_back=route_back or [], snr_back=snr_back or []
@@ -63,6 +68,9 @@ def traceroute(
             request_id=request_id,
             channel_id=channel,
             gateway_id=gateway,
+            hop_start=hop_start,
+            hop_limit=hop_limit,
+            relay_node=relay_node,
         ),
         received_at=received_at,
         topic=f"msh/EU_868/2/e/{channel}/{gateway}",
@@ -732,3 +740,190 @@ def test_a_search_shows_the_runs_route_through_the_searched_nodes(path: Path) ->
     assert (with_relay["route"]["hops"], with_relay["route"]["reached"]) == (1, False)
     assert get(path, "/api/v1/traceroutes", node=str(R1), successful=True)["items"] == []
     assert get(path, "/api/v1/traceroutes", node=str(R1), min_hops=2)["items"] == []
+
+
+def hop_cost(
+    path: Path, from_node: int, to_node: int, free: int, costly: int, **row: object
+) -> None:
+    """free and costly traceroute copies of a hop in NOW's hour, on LongFast
+    unless row says otherwise."""
+    hour_start = to_epoch_ms(NOW) - to_epoch_ms(NOW) % HOUR_MS
+    with closing(open_current_database(path)) as connection, connection:
+        insert_row(
+            connection,
+            "hop_cost_hour",
+            **{
+                "hour_start": hour_start,
+                "from_node_id": from_node,
+                "to_node_id": to_node,
+                "channel": "LongFast",
+                "free": free,
+                "costly": costly,
+                **row,
+            },
+        )
+
+
+def give_roles(path: Path, roles: dict[int, str | None]) -> None:
+    with closing(open_current_database(path)) as connection, connection:
+        for node_id, role in roles.items():
+            insert_row(connection, "node_current", node_id=node_id, last_seen_at=1, role=role)
+
+
+def costs(path: Path, a: int, b: int, **params: object) -> tuple[Any, Any]:
+    hops = get(path, "/api/v1/traceroutes/hops", node_a=a, node_b=b, channel="LongFast", **params)
+    return hops["a_to_b_cost"], hops["b_to_a_cost"]
+
+
+def test_a_hops_cost_is_measured_else_costly_by_either_ends_role(path: Path) -> None:
+    give_roles(path, {A: "ROUTER", R1: "CLIENT_MUTE", R2: "ROUTER_LATE", R3: None, B: "UNKNOWN_99"})
+    hop_cost(path, A, R1, 2, 1)  # free although R1 is no router
+    hop_cost(path, A, R2, 0, 3)
+    hop_cost(path, R2, A, 4, 0, channel="MediumFast")
+    hop_cost(path, R2, A, 4, 0, hour_start=to_epoch_ms(NOW) - 30 * HOUR_MS)
+
+    to_r1, from_r1 = costs(path, A, R1)
+    to_r2, from_r2 = costs(path, A, R2, since=(NOW - timedelta(hours=1)).isoformat())
+    via_r1, _ = costs(path, R2, R1)
+
+    assert (to_r1["verdict"], to_r1["free"], to_r1["costly"]) == ("free", 2, 1)
+    assert to_r2["verdict"] == "costly"
+    # A previous relay that is no router passes on no copy for free...
+    assert (from_r1["verdict"], from_r1["role_node_id"], from_r1["role"]) == (
+        "never_free",
+        R1,
+        "CLIENT_MUTE",
+    )
+    # ...nor does a receiver that is none.
+    assert (via_r1["verdict"], via_r1["role_node_id"]) == ("never_free", R1)
+    # Two router roles, or a role not reported or not known, say nothing; nor
+    # do another channel's hops or those before the window.
+    assert from_r2["verdict"] == "unknown"
+    assert [cost["verdict"] for cost in costs(path, A, R3)] == ["unknown", "unknown"]
+    assert [cost["verdict"] for cost in costs(path, A, B)] == ["unknown", "unknown"]
+
+
+def test_a_hops_cost_reads_an_opted_out_end_as_a_node_never_heard(path: Path) -> None:
+    give_roles(path, {A: "CLIENT", R1: "CLIENT_MUTE"})
+    hop_cost(path, A, R1, 2, 0)
+    with closing(open_current_database(path)) as connection, connection:
+        insert_row(connection, "node_opt_out", node_id=R1)
+
+    to_r1, from_r1 = costs(path, A, R1)
+
+    assert to_r1 == {
+        "free": 0,
+        "costly": 0,
+        "verdict": "never_free",
+        "role_node_id": A,
+        "role": "CLIENT",
+    }
+    assert from_r1["role_node_id"] == A
+    # Costs are per channel, so without one there is none.
+    hops = get(path, "/api/v1/traceroutes/hops", node_a=A, node_b=R2)
+    assert (hops["a_to_b_cost"], hops["b_to_a_cost"]) == (None, None)
+
+
+def free_request(path: Path) -> None:
+    """A traces B; a gateway heard it after one hop used over relays R1, R2
+    and R3, so R2 and R3 passed it on for free."""
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1, R2, R3],
+        snr=[20, 16, 12],
+        hop_start=3,
+        hop_limit=2,
+        relay_node=0x99,
+    )
+
+
+def test_a_packet_that_showed_a_hops_cost_tags_it(path: Path) -> None:
+    free_request(path)
+
+    hops = get(path, "/api/v1/traceroutes/hops", node_a=R1, node_b=R2, channel="LongFast")
+    first = get(path, "/api/v1/traceroutes/hops", node_a=A, node_b=R1, channel="LongFast")
+
+    [item] = hops["a_to_b"]
+    assert item["free"] is True
+    assert (hops["a_to_b_cost"]["verdict"], hops["a_to_b_cost"]["free"]) == ("free", 1)
+    # The first hop always costs, so no copy pins it.
+    assert first["a_to_b"][0]["free"] is None
+
+
+def spent(costs: list[dict[str, Any]]) -> dict[tuple[int, int], tuple[Any, Any]]:
+    return {
+        (cost["from_node_id"], cost["to_node_id"]): (
+            cost["spent"],
+            None if cost["learned"] is None else cost["learned"]["verdict"],
+        )
+        for cost in costs
+    }
+
+
+def test_a_routes_hops_spent_come_from_its_run_then_others_then_roles(path: Path) -> None:
+    free_request(path)
+    give_roles(path, {OTHER: "CLIENT_MUTE"})
+    # A later run over the same relays whose hop count pins nothing, and a
+    # hop into a client.
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(minutes=1),
+        sender=A,
+        recipient=B,
+        packet_id=9,
+        route=[R1, R2, OTHER, R3],
+        snr=[20, 16, 12, 8],
+        hop_start=4,
+        hop_limit=2,
+        relay_node=0x99,
+    )
+
+    later, first = get(path, "/api/v1/traceroutes")["items"]
+
+    assert spent(first["route"]["hop_costs"]) == {
+        (A, R1): (1, None),
+        (R1, R2): (0, None),
+        (R2, R3): (0, None),
+    }
+    assert spent(later["route"]["hop_costs"]) == {
+        (A, R1): (1, None),
+        (R1, R2): (0, "free"),
+        (R2, OTHER): (1, "never_free"),
+        (OTHER, R3): (1, "never_free"),
+    }
+
+
+def test_a_packets_hops_spent_count_its_requests_copies_and_return_first_hop(
+    path: Path,
+) -> None:
+    free_request(path)
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(seconds=5),
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[R1, R2, R3],
+        snr=[20, 16, 12, 8],
+        route_back=[R2],
+        snr_back=[12, 16],
+    )
+    [run] = get(path, "/api/v1/traceroutes")["items"]
+
+    request = get(path, f"/api/v1/packets/{run['request_packet_row_id']}")
+    reply = get(path, f"/api/v1/packets/{run['reply_packet_row_id']}")
+
+    assert spent(request["hop_costs"])[R1, R2] == (0, None)
+    # The reply's route copies its request's hops; its return route starts
+    # at the target, whose first hop costs.
+    assert spent(reply["hop_costs"])[R2, R3] == (0, None)
+    assert spent(reply["hop_costs"])[B, R2] == (1, None)
+    assert spent(reply["hop_costs"])[R2, A] == (None, "unknown")

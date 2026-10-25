@@ -40,10 +40,10 @@ import {
   addLinkLayers,
   linkSourceId,
 } from "./mapLinkLayers";
-import { LinkSwatch } from "./MapLinkDetails";
+import { LinkSwatch, ZeroCostKey } from "./MapLinkDetails";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { useSetting } from "./remember";
-import { Badge, Icon } from "./ui";
+import { Icon } from "./ui";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -443,12 +443,7 @@ function ContactsKey({
           traceroute
         </li>
       ) : null}
-      {zeroCost ? (
-        <li title="Where one node relays the other's copies without spending a hop, as for a favourite router">
-          <Badge tone="blue">0-cost</Badge>
-          no hop spent
-        </li>
-      ) : null}
+      {zeroCost ? <ZeroCostKey /> : null}
       {gateways ? (
         <>
           <li title="A gateway heard it with no relay, or it heard the gateway">
@@ -520,15 +515,6 @@ function drawContacts(
     className: "history-popup",
     maxWidth: "none",
   });
-  const zeroCostMarkers = contacts.zeroCost.map((mark) => {
-    const element = document.createElement("span");
-    element.className = "badge badge-blue minimap-zero-cost";
-    element.title = mark.title;
-    element.textContent = "0-cost";
-    return new maplibregl.Marker({ element })
-      .setLngLat([mark.longitude, mark.latitude])
-      .addTo(map);
-  });
   const markers = contacts.marks.map((mark) => {
     const element = document.createElement("button");
     element.type = "button";
@@ -550,6 +536,25 @@ function drawContacts(
         .addTo(map);
     });
     return marker;
+  });
+  // After the markers, so a short line's arrowhead stays in sight.
+  const zeroCostMarkers = contacts.zeroCost.map((mark) => {
+    const element = document.createElement("span");
+    element.className = "zero-cost-arrow";
+    element.title = mark.title;
+    if (mark.both) {
+      const back = document.createElement("span");
+      back.className = "zero-cost-arrow-back";
+      element.append(back);
+    }
+    element.append(document.createElement("span"));
+    return new maplibregl.Marker({
+      element,
+      rotation: mark.rotation,
+      rotationAlignment: "map",
+    })
+      .setLngLat([mark.longitude, mark.latitude])
+      .addTo(map);
   });
   return () => {
     popup.remove();

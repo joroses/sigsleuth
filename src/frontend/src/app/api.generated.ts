@@ -347,6 +347,8 @@ export interface paths {
      *     on a pair the terrain check finds unlikely, drawn 250 km apart or more
      *     with no distance when last heard, over 150 km to an estimated node, or
      *     more than 25 km nearer or farther apart than when last heard.
+     *     Traceroute links list their directions free at least as often as
+     *     costly in the window (zero_cost_hops).
      */
     get: operations["map_link_page_api_v1_map_links_get"];
     put?: never;
@@ -1241,10 +1243,31 @@ export interface components {
       snr_db: number | null;
     };
     /**
+     * HopCost
+     * @description Whether to_node passes on from_node's copies on a channel without
+     *     spending a hop, over a window: free and costly count the traceroute
+     *     copies that showed it (hop_cost_hour), and verdict is free when free > 0
+     *     and free >= costly, else costly. Unmeasured, it is never_free when
+     *     role_node_id, the receiver or else the previous relay, has a known role
+     *     outside ZERO_COST_ROLES (role), and unknown otherwise. On live, 7 days to
+     *     2026-10-23, such a role was wrong for 0.1% (receiver) and 0.6% (previous
+     *     relay) of measured directions.
+     */
+    HopCost: {
+      free: number;
+      costly: number;
+      /** @enum {string} */
+      verdict: "free" | "costly" | "never_free" | "unknown";
+      role_node_id: number | null;
+      role: string | null;
+    };
+    /**
      * HopObservation
      * @description One traceroute packet that reported a hop: the hop's SNR is from the
      *     packet's first report of it, None when unknown. requester and target name
-     *     the run the packet belongs to, the right way round on a reply too.
+     *     the run the packet belongs to, the right way round on a reply too. free
+     *     is whether the packet's copies showed the hop free or spending a hop
+     *     (traceroute_hop.free), None when they did not.
      */
     HopObservation: {
       packet_row_id: number;
@@ -1254,16 +1277,21 @@ export interface components {
       requester_node_id: number;
       target_node_id: number;
       is_reply: boolean;
+      free: boolean | null;
     };
     /**
      * HopObservations
      * @description The newest packets that reported each direction of a link; a_to_b is
-     *     node a transmitting and node b hearing it, as in MapLink.
+     *     node a transmitting and node b hearing it, as in MapLink. Each
+     *     direction's cost is its links.HopCost in the window on the channel, None
+     *     without a channel.
      */
     HopObservations: {
       a_to_b: components["schemas"]["HopObservation"][];
       b_to_a: components["schemas"]["HopObservation"][];
       nodes: components["schemas"]["NodeSummary"][];
+      a_to_b_cost: components["schemas"]["HopCost"] | null;
+      b_to_a_cost: components["schemas"]["HopCost"] | null;
     };
     /** HourCount */
     HourCount: {
@@ -1512,10 +1540,16 @@ export interface components {
       a_to_b: components["schemas"]["LinkDirection"];
       b_to_a: components["schemas"]["LinkDirection"];
     };
-    /** MapLinkList */
+    /**
+     * MapLinkList
+     * @description zero_cost_hops are the traceroute links' directions free at least as
+     *     often as costly in the window (free_hops).
+     */
     MapLinkList: {
       items: components["schemas"]["MapLink"][];
       truncated: boolean;
+      /** @default [] */
+      zero_cost_hops: components["schemas"]["ZeroCostHop"][];
     };
     /** MapNode */
     MapNode: {
@@ -1825,7 +1859,10 @@ export interface components {
      *     for other packets.
      *     spreading_factor is the one the channel suggests, as for map links.
      *     reply_route is set on a traceroute request whose reply was saved; None
-     *     otherwise.
+     *     otherwise. hop_costs are what the hops and reply_route's hops spent
+     *     (links.RouteHopCost), learned links.LINK_WINDOW_MS either side of the
+     *     packet; on a reply, its request's pinned hops count for the hops it
+     *     copied.
      */
     PacketDetail: {
       packet: components["schemas"]["PacketRow"];
@@ -1842,6 +1879,7 @@ export interface components {
       spreading_factor: number;
       traceroute: components["schemas"]["TracerouteEnds"] | null;
       reply_route: components["schemas"]["ReplyRoute"] | null;
+      hop_costs: components["schemas"]["RouteHopCost"][];
     };
     /**
      * PacketPage
@@ -1992,6 +2030,20 @@ export interface components {
       return_path: components["schemas"]["RoutePath"] | null;
     };
     /**
+     * RouteHopCost
+     * @description How many hops to_node_id spent passing on from_node_id's copy of one
+     *     traceroute run: 0 or 1, None when unknown. learned is None when the run
+     *     itself shows it: its request's copies (traceroute_hop.free), or a route's
+     *     first hop, which always spends one (firmware). Otherwise spent comes from
+     *     the direction's HopCost on the run's channel.
+     */
+    RouteHopCost: {
+      from_node_id: number;
+      to_node_id: number;
+      spent: number | null;
+      learned: components["schemas"]["HopCost"] | null;
+    };
+    /**
      * RoutePath
      * @description A route's path, from origin to destination.
      *
@@ -2101,6 +2153,8 @@ export interface components {
      *     between the two searched nodes, in the way it went, when two were searched.
      *     unlikely says a measured hop is between a pair the terrain check finds
      *     unlikely (links.unlikely_links), whatever its km then, which is approximate.
+     *     hop_costs are what path_hops spent (links.RouteHopCost), learned over the
+     *     page's window.
      */
     TracerouteRoute: {
       packet_row_id: number;
@@ -2113,6 +2167,8 @@ export interface components {
       hop: components["schemas"]["Hop"] | null;
       /** @default false */
       unlikely: boolean;
+      /** @default [] */
+      hop_costs: components["schemas"]["RouteHopCost"][];
     };
     /**
      * TracerouteRun

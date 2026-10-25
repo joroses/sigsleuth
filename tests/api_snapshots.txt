@@ -329,6 +329,230 @@ relay_nodes: 3 items
 spreading_factor: 7
 traceroute: null
 reply_route: null
+hop_costs: []
+
+## GET /api/v1/packets/26709
+
+packet:
+  packet_row_id: 26709
+  first_received_at: "2026-10-11T06:09:12.404000Z"
+  last_received_at: "2026-10-11T06:09:13.769000Z"
+  reception_count: 4
+  channel: "ShortFast"
+  sender_node_id: 3556855606
+  recipient_node_id: 1317786337
+  packet_id: 2087645971
+  portnum: "TRACEROUTE_APP"
+  sender_name: "Node 4f36"
+  recipient_name: "Node d2e1"
+receptions: 4 items
+  - reception_id: 90660
+    received_at: "2026-10-11T06:09:12.404000Z"
+    gateway_node_id: 2658512488
+    gateway_name: "Node ae68"
+    gateway_short_name: "ae68"
+    gateway_latitude: 51.7669
+    gateway_longitude: 19.5232
+    gateway_estimated: false
+    rx_snr: 2.75
+    rx_rssi: -106
+    hop_start: 7
+    hop_limit: 2
+    relay_byte: 176
+    paths:
+      forward:
+        nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 2224775088, 1317786337]
+        snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
+      return_path: null
+    hops: 6 items
+      - from_node_id: 3556855606
+        to_node_id: 522999951
+        snr_db: 11
+      - from_node_id: 522999951
+        to_node_id: 2749076957
+        snr_db: -7.25
+      - from_node_id: 2749076957
+        to_node_id: 1128130340
+        snr_db: -6.25
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 2224775088
+      name: "Node 5fb0"
+      candidates: 11
+      how: "heard_directly"
+    relay_maybe: []
+    km: null
+  - reception_id: 90664
+    received_at: "2026-10-11T06:09:13.465000Z"
+    gateway_node_id: 1770149960
+    gateway_name: "Node 5848"
+    gateway_short_name: "5848"
+    gateway_latitude: 51.7734
+    gateway_longitude: 19.4773
+    gateway_estimated: false
+    rx_snr: -1.5
+    rx_rssi: -95
+    hop_start: 7
+    hop_limit: 1
+    relay_byte: 155
+    paths:
+      forward:
+        nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 1770149960, 1317786337]
+        snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, -1.5]
+      return_path: null
+    hops: 8 items
+      - from_node_id: 3556855606
+        to_node_id: 522999951
+        snr_db: 11
+      - from_node_id: 522999951
+        to_node_id: 2749076957
+        snr_db: -7.25
+      - from_node_id: 2749076957
+        to_node_id: 1128130340
+        snr_db: -6.25
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 3655149723
+      name: "Node 289b"
+      candidates: 1
+      how: "heard_directly"
+    relay_maybe: []
+    km: null
+  - reception_id: 90666
+    received_at: "2026-10-11T06:09:13.729000Z"
+    gateway_node_id: 1128130436
+    gateway_name: "Node e784"
+    gateway_short_name: "e784"
+    gateway_latitude: 51.7669
+    gateway_longitude: 19.4183
+    gateway_estimated: false
+    rx_snr: -8.5
+    rx_rssi: -117
+    hop_start: 7
+    hop_limit: 1
+    relay_byte: 172
+    paths:
+      forward:
+        nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 2224775088, 1770269756, 861938604, 1317786337]
+        snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5, 5.75, 3.75]
+      return_path: null
+    hops: 8 items
+      - from_node_id: 3556855606
+        to_node_id: 522999951
+        snr_db: 11
+      - from_node_id: 522999951
+        to_node_id: 2749076957
+        snr_db: -7.25
+      - from_node_id: 2749076957
+        to_node_id: 1128130340
+        snr_db: -6.25
+    reached: false
+    direct: false
+    own_upload: false
+    relay_node:
+      node_id: 861938604
+      name: "Node 23ac"
+      candidates: 8
+      how: "heard_directly"
+    relay_maybe: []
+    km: null
+payload: "{\"route\": [522999951, 2749076957, 1128130340, 2933499666, 702832197, 2224775088], \"snr_towards\": [44, -29, -25, 12, -10, -22]}"
+sender_latitude: null
+sender_longitude: null
+sender_estimated: false
+unreadable_reason: null
+unreadable_reason_description: null
+hops: 12 items
+  - from_node_id: 522999951
+    to_node_id: 2749076957
+    snr_db: -7.25
+  - from_node_id: 702832197
+    to_node_id: 1851440850
+    snr_db: -5.25
+  - from_node_id: 702832197
+    to_node_id: 2224775088
+    snr_db: -5.5
+route_nodes: 14 items
+  - node_id: 522999951
+    long_name: "Node 588f"
+    short_name: "588f"
+    role: "ROUTER_LATE"
+    latitude: 50.7584
+    longitude: 18.8785
+    estimated: true
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+  - node_id: 861938604
+    long_name: "Node 23ac"
+    short_name: "23ac"
+    role: "CLIENT"
+    latitude: 51.7931
+    longitude: 19.4839
+    estimated: false
+relay_nodes: 3 items
+  - node_id: 861938604
+    long_name: "Node 23ac"
+    short_name: "23ac"
+    role: "CLIENT"
+    latitude: 51.7931
+    longitude: 19.4839
+    estimated: false
+  - node_id: 2224775088
+    long_name: "Node 5fb0"
+    short_name: "5fb0"
+    role: "ROUTER"
+    latitude: 51.662
+    longitude: 19.379
+    estimated: false
+  - node_id: 3655149723
+    long_name: "Node 289b"
+    short_name: "289b"
+    role: "ROUTER"
+    latitude: 51.78
+    longitude: 19.5101
+    estimated: false
+spreading_factor: 7
+traceroute:
+  requester_node_id: 3556855606
+  target_node_id: 1317786337
+reply_route: null
+hop_costs: 12 items
+  - from_node_id: 522999951
+    to_node_id: 2749076957
+    spent: 1
+    learned:
+      free: 0
+      costly: 1
+      verdict: "costly"
+      role_node_id: null
+      role: null
+  - from_node_id: 702832197
+    to_node_id: 1851440850
+    spent: 1
+    learned:
+      free: 0
+      costly: 0
+      verdict: "never_free"
+      role_node_id: 1851440850
+      role: "CLIENT"
+  - from_node_id: 702832197
+    to_node_id: 2224775088
+    spent: 1
+    learned:
+      free: 0
+      costly: 1
+      verdict: "costly"
+      role_node_id: null
+      role: null
 
 ## GET /api/v1/packets/11936/flood-routes
 
@@ -1612,6 +1836,22 @@ items: 932 items
       snr_samples: 1048
       average_snr: 12.25
 truncated: false
+zero_cost_hops: 5 items
+  - from_node_id: 96879053
+    to_node_id: 2933499666
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 2224775088
+    to_node_id: 1770269756
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 2224775088
+    to_node_id: 3655149723
+    channel: "ShortFast"
+    free: 1
+    costly: 0
 
 ## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
 
@@ -1679,6 +1919,22 @@ items: 499 items
       snr_samples: 425
       average_snr: 12.16
 truncated: false
+zero_cost_hops: 3 items
+  - from_node_id: 96879053
+    to_node_id: 2933499666
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 2933499666
+    to_node_id: 702832197
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 3655149723
+    to_node_id: 1770269756
+    channel: "ShortFast"
+    free: 4
+    costly: 0
 
 ## GET /api/v1/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
 
@@ -1877,6 +2133,7 @@ items: 24 items
       snr_samples: 0
       average_snr: null
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
 
@@ -2075,6 +2332,7 @@ items: 242 items
       snr_samples: 3
       average_snr: -4.83
 truncated: false
+zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=neighbor&since=2026-10-10T16:25:30.812000Z
 
@@ -2273,6 +2531,22 @@ items: 932 items
       snr_samples: 1048
       average_snr: 12.25
 truncated: false
+zero_cost_hops: 5 items
+  - from_node_id: 96879053
+    to_node_id: 2933499666
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 2224775088
+    to_node_id: 1770269756
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+  - from_node_id: 2224775088
+    to_node_id: 3655149723
+    channel: "ShortFast"
+    free: 1
+    costly: 0
 
 ## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
 
@@ -2641,6 +2915,11 @@ items: 50 items
           snr_db: 3
       hop: null
       unlikely: false
+      hop_costs: 1 items
+        - from_node_id: 2666580684
+          to_node_id: 2933499666
+          spent: 1
+          learned: null
     positions: 2 items
       - node_id: 2666580684
         latitude: 51.0853
@@ -2682,6 +2961,29 @@ items: 50 items
           snr_db: -3.5
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 181026324
+          spent: 1
+          learned: null
+        - from_node_id: 181026324
+          to_node_id: 1266979693
+          spent: 1
+          learned:
+            free: 0
+            costly: 1
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 1266979693
+          to_node_id: 2882539815
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 8 items
       - node_id: 702832197
         latitude: 51.5572
@@ -2727,6 +3029,19 @@ items: 50 items
           snr_db: 9.5
       hop: null
       unlikely: false
+      hop_costs: 6 items
+        - from_node_id: 4269814177
+          to_node_id: 2483997066
+          spent: 1
+          learned: null
+        - from_node_id: 2483997066
+          to_node_id: 3472072206
+          spent: 1
+          learned: null
+        - from_node_id: 3472072206
+          to_node_id: 1128130340
+          spent: 1
+          learned: null
     positions: 6 items
       - node_id: 1128130340
         latitude: 50.7576
@@ -2801,6 +3116,29 @@ items: 50 items
           snr_db: 0.75
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 603288811
+          spent: 1
+          learned: null
+        - from_node_id: 603288811
+          to_node_id: 848645925
+          spent: 1
+          learned:
+            free: 0
+            costly: 1
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 848645925
+          to_node_id: 2718938342
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 8 items
       - node_id: 96879053
         latitude: 50.561
@@ -2846,6 +3184,29 @@ items: 50 items
           snr_db: -6.25
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 3238048054
+          to_node_id: 603288811
+          spent: 1
+          learned: null
+        - from_node_id: 603288811
+          to_node_id: 3596185440
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
+        - from_node_id: 3596185440
+          to_node_id: 4110175258
+          spent: 1
+          learned:
+            free: 0
+            costly: 18
+            verdict: "costly"
+            role_node_id: null
+            role: null
     positions: 10 items
       - node_id: 603288811
         latitude: 49.5387
@@ -2891,6 +3252,29 @@ items: 50 items
           snr_db: -5.75
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 3679571780
+          spent: 1
+          learned: null
+        - from_node_id: 3679571780
+          to_node_id: 1516587721
+          spent: 1
+          learned:
+            free: 0
+            costly: 0
+            verdict: "never_free"
+            role_node_id: 1516587721
+            role: "CLIENT"
+        - from_node_id: 1516587721
+          to_node_id: 2483997066
+          spent: 1
+          learned:
+            free: 0
+            costly: 0
+            verdict: "never_free"
+            role_node_id: 1516587721
+            role: "CLIENT"
     positions: 8 items
       - node_id: 702832197
         latitude: 51.5572
@@ -2965,6 +3349,29 @@ items: 50 items
           snr_db: -1.75
       hop: null
       unlikely: false
+      hop_costs: 5 items
+        - from_node_id: 3417804839
+          to_node_id: 829910553
+          spent: 1
+          learned: null
+        - from_node_id: 829910553
+          to_node_id: 2749076957
+          spent: 1
+          learned:
+            free: 0
+            costly: 2
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 2749076957
+          to_node_id: 96879053
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 6 items
       - node_id: 96879053
         latitude: 50.561
@@ -3010,6 +3417,29 @@ items: 50 items
           snr_db: 7.75
       hop: null
       unlikely: false
+      hop_costs: 5 items
+        - from_node_id: 3417804839
+          to_node_id: 829910553
+          spent: 1
+          learned: null
+        - from_node_id: 829910553
+          to_node_id: 2997305080
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
+        - from_node_id: 2997305080
+          to_node_id: 2285796188
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 6 items
       - node_id: 96879053
         latitude: 50.561
@@ -3055,6 +3485,29 @@ items: 50 items
           snr_db: -7.5
       hop: null
       unlikely: false
+      hop_costs: 3 items
+        - from_node_id: 3417804839
+          to_node_id: 2483997066
+          spent: 1
+          learned: null
+        - from_node_id: 2483997066
+          to_node_id: 3472072206
+          spent: 1
+          learned:
+            free: 0
+            costly: 10
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 3472072206
+          to_node_id: 2749076957
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 4 items
       - node_id: 2483997066
         latitude: 49.5649
@@ -3137,6 +3590,29 @@ items: 50 items
           snr_db: 0.75
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 603288811
+          spent: 1
+          learned: null
+        - from_node_id: 603288811
+          to_node_id: 848645925
+          spent: 1
+          learned:
+            free: 0
+            costly: 1
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 848645925
+          to_node_id: 2718938342
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 8 items
       - node_id: 96879053
         latitude: 50.561
@@ -3182,6 +3658,29 @@ items: 50 items
           snr_db: -0.75
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 2715019224
+          to_node_id: 3019100365
+          spent: 1
+          learned: null
+        - from_node_id: 3019100365
+          to_node_id: 848645925
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
+        - from_node_id: 848645925
+          to_node_id: 2483997066
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 9 items
       - node_id: 848645925
         latitude: 50.4693
@@ -3227,6 +3726,29 @@ items: 50 items
           snr_db: -2.75
       hop: null
       unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 4269814177
+          to_node_id: 2151687975
+          spent: 1
+          learned: null
+        - from_node_id: 2151687975
+          to_node_id: 554127139
+          spent: 1
+          learned:
+            free: 0
+            costly: 0
+            verdict: "never_free"
+            role_node_id: 2151687975
+            role: "CLIENT"
+        - from_node_id: 554127139
+          to_node_id: 2718938342
+          spent: null
+          learned:
+            free: 0
+            costly: 0
+            verdict: "unknown"
+            role_node_id: null
+            role: null
     positions: 8 items
       - node_id: 554127139
         latitude: 50.194
@@ -3266,7 +3788,7 @@ matched_node_ids: [3655149723]
 doubtful_node_ids: []
 has_more: true
 
-## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z
+## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z&channel=ShortFast
 
 a_to_b: 10 items
   - packet_row_id: 31074
@@ -3275,18 +3797,21 @@ a_to_b: 10 items
     requester_node_id: 2666580684
     target_node_id: 2933499666
     is_reply: true
+    free: null
   - packet_row_id: 30914
     first_received_at: "2026-10-11T15:55:55.822000Z"
     snr_db: 12.25
     requester_node_id: 4269814177
     target_node_id: 3665045164
     is_reply: false
+    free: null
   - packet_row_id: 30910
     first_received_at: "2026-10-11T15:55:23.414000Z"
     snr_db: 13
     requester_node_id: 4269814177
     target_node_id: 1568501544
     is_reply: false
+    free: null
 b_to_a: []
 nodes: 12 items
   - node_id: 218747206
@@ -3310,6 +3835,18 @@ nodes: 12 items
     latitude: 50.1023
     longitude: 20.1785
     estimated: false
+a_to_b_cost:
+  free: 0
+  costly: 0
+  verdict: "never_free"
+  role_node_id: 2658555076
+  role: "CLIENT"
+b_to_a_cost:
+  free: 0
+  costly: 0
+  verdict: "never_free"
+  role_node_id: 2658555076
+  role: "CLIENT"
 
 ## GET /api/v1/links/positions?node_a=3655149723&node_b=2658555076&at=2026-10-11T16:25:30.812000Z
 

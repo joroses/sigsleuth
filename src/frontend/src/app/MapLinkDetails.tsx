@@ -7,7 +7,7 @@ import {
   type HopObservations,
   tracerouteHopsUrl,
 } from "./api";
-import { HopObservationList } from "./HopObservations";
+import { HopCostLine, HopObservationList } from "./HopObservations";
 import {
   LINK_TIERS,
   type LinkTier,
@@ -213,6 +213,20 @@ function Direction({
             </>
           }
         />
+        {linkKind === "traceroute" && hops.data !== null ? (
+          <DataItem
+            label="Hop cost"
+            value={
+              <HopCostLine
+                hops={hops}
+                direction={hopDirection}
+                name={(nodeId) =>
+                  nodeLabel(nodeId === from.node_id ? from : to)
+                }
+              />
+            }
+          />
+        ) : null}
         {linkKind === "traceroute" ? (
           <DataItem
             label="Traceroutes"
@@ -272,14 +286,17 @@ export function LinkSwatch({
 
 /**
  * What the link colours mean; the link checkboxes show the patterns. Given a
- * choice, each coloured tier gets a checkbox that shows or hides it.
+ * choice, each coloured tier gets a checkbox that shows or hides it. With
+ * zeroCost, the 0-hop arrowhead too.
  */
 export function LinkQualityLegend({
   choice,
   onChoice,
+  zeroCost = false,
 }: {
   choice?: LinkTierChoice;
   onChoice?: (choice: LinkTierChoice) => void;
+  zeroCost?: boolean;
 } = {}) {
   return (
     <ul className="link-quality-legend" aria-label="Link quality">
@@ -307,6 +324,19 @@ export function LinkQualityLegend({
           )}
         </li>
       ))}
+      {zeroCost ? <ZeroCostKey /> : null}
     </ul>
+  );
+}
+
+/** A key's entry for the 0-hop arrowhead drawn on hop lines. */
+export function ZeroCostKey() {
+  return (
+    <li title="Passed on without spending a hop, as for a favourite router">
+      <span className="zero-cost-arrow zero-cost-key" aria-hidden="true">
+        <span />
+      </span>
+      0-hop in that direction
+    </li>
   );
 }

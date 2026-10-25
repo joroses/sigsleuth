@@ -13,6 +13,7 @@ import { LinkDetails } from "./LinkDetails";
 import {
   CONTACT_DAYS,
   zeroCostKey,
+  zeroCostLabel,
   zeroCostTitle,
   zeroCostWays,
 } from "./nodeContacts";
@@ -206,7 +207,7 @@ export function NodeLinks({
                             <>
                               {" "}
                               <Badge tone="blue" title={zeroCostTitle(free)}>
-                                0-cost
+                                {zeroCostLabel(free)}
                               </Badge>
                             </>
                           )}

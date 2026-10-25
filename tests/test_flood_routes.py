@@ -14,7 +14,6 @@ from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import NodeSummary, migrate_database, open_current_database
 from sigsleuth.flood_routes import (
-    LINK_WINDOW_MS,
     FloodRouteHop,
     OneHopLinks,
     RouteLinks,
@@ -22,6 +21,7 @@ from sigsleuth.flood_routes import (
     route_hops,
 )
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
+from sigsleuth.links import LINK_WINDOW_MS
 from sigsleuth.packets import PacketReception, RelayNode
 
 SENDER = 0x0A0A0A01

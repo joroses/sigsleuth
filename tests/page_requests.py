@@ -33,7 +33,7 @@ FLOOD_PACKETS = 20_000
 class Subjects:
     """What the requests ask about: a node with a traceroute, a node next to it
     on a route, part of the first node's name, a channel, a busy text sender,
-    a packet and one relayed the most."""
+    a packet, one relayed the most and a traceroute request."""
 
     node: int
     neighbour: int
@@ -42,15 +42,17 @@ class Subjects:
     text_sender: int
     packet: int = 1
     flood_packet: int = 1
+    traceroute_packet: int = 1
 
 
 def pick_subjects(database_path: Path) -> Subjects:
     """The named node in the most traceroute hops among those that sent packets,
     its most frequent hop partner, its short name, the busiest channel,
     the busiest broadcast-text sender in the requests' 24-hour window, the
-    oldest packet retention kept and, of the newest FLOOD_PACKETS, the one
-    other than a traceroute with the most relayed receptions: chosen by rule,
-    so a new sample needs no edits."""
+    oldest packet retention kept, of the newest FLOOD_PACKETS, the one
+    other than a traceroute with the most relayed receptions, and the
+    traceroute request with the most hops: chosen by rule, so a new sample
+    needs no edits."""
     with closing(open_current_database(database_path)) as connection:
         node, short_name = connection.execute(
             """
@@ -108,7 +110,19 @@ def pick_subjects(database_path: Path) -> Subjects:
             """,
             (FLOOD_PACKETS, portnums_pb2.PortNum.TRACEROUTE_APP),
         ).fetchone()
-    return Subjects(node, neighbour, short_name, channel, text_sender, packet, flood_packet)
+        (traceroute_packet,) = connection.execute(
+            """
+            SELECT h.packet_row_id FROM traceroute_hop AS h
+            JOIN traceroute_packet AS tr USING (packet_row_id)
+            WHERE NOT tr.is_reply
+            GROUP BY h.packet_row_id
+            ORDER BY count(*) DESC, h.packet_row_id
+            LIMIT 1
+            """
+        ).fetchone()
+    return Subjects(
+        node, neighbour, short_name, channel, text_sender, packet, flood_packet, traceroute_packet
+    )
 
 
 def page_requests(now: datetime, subjects: Subjects) -> Iterator[str]:
@@ -139,6 +153,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/packets?limit=50&sender={node}&heard_directly_by={neighbour}"
     yield "/api/v1/packets/ports"
     yield f"/api/v1/packets/{subjects.packet}"
+    yield f"/api/v1/packets/{subjects.traceroute_packet}"
     # Live copy 2026-10-23: 220-245 ms for broadcasts heard by 61-64
     # gateways. Asked for only when a replay starts.
     yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 400
@@ -197,7 +212,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     )
     # A busy relay over all history ranks every run it is on.
     yield f"/api/v1/traceroutes?sort=route&limit=50&offset=0&node=!{node:08x}", 500
-    yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}"
+    yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}&channel={channel}"
     # Line of sight from a Links row, where the pair was when last heard.
     at = now.isoformat().replace("+00:00", "Z")
     yield f"/api/v1/links/positions?node_a={node}&node_b={neighbour}&at={at}"

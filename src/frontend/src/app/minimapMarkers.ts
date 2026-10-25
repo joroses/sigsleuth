@@ -4,6 +4,7 @@ import type {
   NodeSummary,
   TracerouteHop,
   ReportPaths,
+  RouteHopCost,
   RoutePath,
   TracerouteRun,
   PacketDetail,
@@ -42,6 +43,17 @@ export interface HopLineProperties {
   color: string;
   /** The reverse hop is drawn too, so this line is offset to its right. */
   twoWay: boolean;
+  /** It spent no hop (zeroCostHops), so its arrow is the 0-cost blue. */
+  zeroCost: boolean;
+}
+
+/** The `${from}-${to}` keys of the hops that spent none. */
+export function zeroCostHops(costs: RouteHopCost[]): Set<string> {
+  return new Set(
+    costs
+      .filter((cost) => cost.spent === 0)
+      .map((cost) => `${cost.from_node_id}-${cost.to_node_id}`),
+  );
 }
 
 /**
@@ -134,17 +146,16 @@ export function minimapMarkers(
       [marker.longitude, marker.latitude],
     ]),
   );
+  const free = zeroCostHops(detail.hop_costs);
+  const hopLines = (hops: TracerouteHop[]) =>
+    drawHops(detail.spreading_factor, hops, positions, free);
   const receptionHops = new Map<number, HopLines>();
   const receptionNumbers = new Map<number, Map<number, string>>();
   for (const reception of detail.receptions) {
     if (reception.paths === null) continue;
     receptionHops.set(
       reception.reception_id,
-      hopLines(
-        detail.spreading_factor,
-        withZeroDbSteps(reception.hops, reception.paths),
-        positions,
-      ),
+      hopLines(withZeroDbSteps(reception.hops, reception.paths)),
     );
     if (detail.traceroute !== null) {
       const { requester_node_id, target_node_id } = detail.traceroute;
@@ -164,9 +175,7 @@ export function minimapMarkers(
     receptionHops.set(
       reply.reception_id,
       hopLines(
-        detail.spreading_factor,
         withZeroDbSteps(reply.hops, { forward: reply.path, return_path: null }),
-        positions,
       ),
     );
     receptionNumbers.set(
@@ -184,7 +193,7 @@ export function minimapMarkers(
   }
   const drawn = ({ receptionIds, hops, nodeIds }: FoundReports) => ({
     receptionIds,
-    hops: hopLines(detail.spreading_factor, hops, positions),
+    hops: hopLines(hops),
     nodeIds,
   });
   const relayReports = new Map<number, RelayReports>();
@@ -198,15 +207,11 @@ export function minimapMarkers(
   return {
     markers,
     unplacedGateways,
-    allHops: hopLines(
-      detail.spreading_factor,
-      [
-        ...detail.hops,
-        ...(reply?.hops ?? []),
-        ...listedReports(detail).flatMap((report) => report.zeroDbSteps),
-      ],
-      positions,
-    ),
+    allHops: hopLines([
+      ...detail.hops,
+      ...(reply?.hops ?? []),
+      ...listedReports(detail).flatMap((report) => report.zeroDbSteps),
+    ]),
     receptionHops,
     receptionNumbers,
     relayReports,
@@ -297,13 +302,14 @@ export function routeMinimap(
   return {
     markers,
     unplacedGateways: 0,
-    allHops: hopLines(
+    allHops: drawHops(
       run.spreading_factor,
       withZeroDbSteps(run.route.path_hops, {
         forward: run.route.path,
         return_path: null,
       }),
       positions,
+      zeroCostHops(run.route.hop_costs),
     ),
     receptionHops: new Map(),
     receptionNumbers: new Map(),
@@ -551,11 +557,13 @@ export function routeNumbers(
 }
 
 // One line per hop from the node that sent to the node that heard, each hop
-// once, plus a point at its middle for the arrow and the SNR label.
-function hopLines(
+// once, plus a point at its middle for the arrow and the SNR label. A 0 dB
+// step is no measured hop, so it never counts as 0-cost.
+function drawHops(
   spreadingFactor: number,
   hops: TracerouteHop[],
   positions: ReadonlyMap<number, [number, number]>,
+  zeroCost: ReadonlySet<string>,
 ): HopLines {
   const drawn = new Map<string, TracerouteHop>();
   let undrawnHops = 0;
@@ -584,6 +592,9 @@ function hopLines(
       tier,
       color: linkTierColor(tier),
       twoWay: drawn.has(`${hop.to_node_id}-${hop.from_node_id}`),
+      zeroCost:
+        hop.snr_db !== 0 &&
+        zeroCost.has(`${hop.from_node_id}-${hop.to_node_id}`),
     };
     features.push({
       type: "Feature",
@@ -616,6 +627,19 @@ const LABEL_ANCHORS = [
   "bottom-left",
 ];
 
+/**
+ * How far to turn an east-pointing arrow so it points from start to end on
+ * screen, clockwise in degrees, on a minimap never rotated or tilted.
+ */
+export function arrowRotation(
+  start: [number, number],
+  end: [number, number],
+): number {
+  const east = ((end[0] - start[0]) * Math.PI) / 180;
+  const south = mercatorY(start[1]) - mercatorY(end[1]);
+  return (Math.atan2(south, east) * 180) / Math.PI;
+}
+
 // Screen directions assume the minimap is never rotated or tilted.
 function hopMark(
   start: [number, number],
@@ -631,7 +655,7 @@ function hopMark(
   const octant = (Math.round(rightAngle / (Math.PI / 4)) + 8) % 8;
   const labelDistance = line.twoWay ? 0.9 : 0.6;
   return {
-    rotation: (Math.atan2(south, east) * 180) / Math.PI,
+    rotation: arrowRotation(start, end),
     arrowOffset: [0, line.twoWay ? TWO_WAY_OFFSET : 0],
     label: line.snr === null ? null : `${line.snr} dB`,
     labelAnchor: LABEL_ANCHORS[octant],
@@ -643,8 +667,8 @@ function mercatorY(latitude: number): number {
   return Math.log(Math.tan(Math.PI / 4 + (latitude * Math.PI) / 360));
 }
 
-// The middle of the line as the map draws it, so the arrow sits on the line.
-function mercatorMidpoint(
+/** The middle of a line as the map draws it, so an arrow sits on the line. */
+export function mercatorMidpoint(
   start: [number, number],
   end: [number, number],
 ): [number, number] {

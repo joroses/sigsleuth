@@ -7,6 +7,7 @@ import {
   linkTierShown,
   linkKey,
   withinHops,
+  zeroCostArrows,
 } from "./mapLinkLayers";
 import { linkWidth } from "./linkQuality";
 
@@ -47,6 +48,38 @@ const link: MapLink = {
   a_to_b: { observations: 9, snr_samples: 9, average_snr: -2 },
   b_to_a: { observations: 1, snr_samples: 0, average_snr: null },
 };
+
+describe("zeroCostArrows", () => {
+  // Node 2 due north of node 1: east is 0°, clockwise on screen.
+  const nodes = new Map([
+    [1, mapNode(1, 50, 20)],
+    [2, mapNode(2, 51, 20)],
+  ]);
+  const free = (from: number, to: number, channel = "LongFast") => ({
+    from_node_id: from,
+    to_node_id: to,
+    channel,
+    free: 2,
+    costly: 0,
+  });
+  const arrows = (hops: ReturnType<typeof free>[]) =>
+    zeroCostArrows([link], hops, nodes).features.map(
+      ({ properties: { rotation, offset } }) => ({ rotation, offset }),
+    );
+
+  it("points the free way, only on the hop's channel", () => {
+    expect(arrows([free(1, 2)])).toEqual([{ rotation: -90, offset: [0, 0] }]);
+    expect(arrows([free(2, 1)])).toEqual([{ rotation: 90, offset: [0, 0] }]);
+    expect(arrows([free(1, 2, "MediumFast")])).toEqual([]);
+  });
+
+  it("puts two back to back when free both ways", () => {
+    expect(arrows([free(1, 2), free(2, 1)])).toEqual([
+      { rotation: -90, offset: [5, 0] },
+      { rotation: 90, offset: [5, 0] },
+    ]);
+  });
+});
 
 describe("buildLinkFeatureCollection", () => {
   it("draws two halves, each showing what the node at its end hears", () => {

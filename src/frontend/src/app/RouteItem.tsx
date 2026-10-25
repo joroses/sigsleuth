@@ -1,13 +1,19 @@
 import { type ReactNode } from "react";
 
-import { type RoutePath, type TracerouteRoute } from "./api";
+import {
+  type HopCost,
+  type RouteHopCost,
+  type RoutePath,
+  type TracerouteRoute,
+} from "./api";
 import { distanceMeters, type LatLon } from "./lineOfSight";
 import { type DirectedHop } from "./minimapMarkers";
-import { formatKm } from "./nodeDisplay";
+import { formatKm, formatNodeId, formatRole } from "./nodeDisplay";
 import { DoubtfulBadge, HopSnr, NodeLink } from "./ui";
 
 // A traceroute path as this gateway reported it: each arrow carries the SNR at
-// the node it points to, after a dot in its minimap line's tier colour; "?" is a relay that did not record itself, and a
+// the node it points to, after a dot in its minimap line's tier colour, and a
+// 0 after it when the hop spent none; "?" is a relay that did not record itself, and a
 // dotted arrow is a hop the packet had not made yet. Nodes show their long
 // name when known, else their ID, after a chip with their minimap marker's
 // label; the requester and target are set apart, as on the minimap. Hovering
@@ -28,6 +34,7 @@ export function RouteItem({
   endExtra,
   highlightedNode = null,
   onNodeHover,
+  zeroCostHops,
 }: {
   label: string;
   path: RoutePath;
@@ -61,6 +68,9 @@ export function RouteItem({
                   path={path}
                   index={index - 1}
                   spreadingFactor={spreadingFactor}
+                  zeroCost={zeroCostHops.has(
+                    `${path.nodes[index - 1]}-${path.nodes[index]}`,
+                  )}
                 />
               ) : null}
               {nodeId === null ? (
@@ -138,6 +148,8 @@ export interface RouteMarkers {
   placed: ReadonlySet<number>;
   /** The packet's spreading factor, which sets each hop's tier. */
   spreadingFactor: number;
+  /** The hops that spent none, as `${from}-${to}` (zeroCostHops). */
+  zeroCostHops: ReadonlySet<string>;
 }
 
 /** A traceroute node highlighted in the route text and on the minimap. */
@@ -150,10 +162,12 @@ function RouteHop({
   path,
   index,
   spreadingFactor,
+  zeroCost,
 }: {
   path: RoutePath;
   index: number;
   spreadingFactor: number;
+  zeroCost: boolean;
 }) {
   if (index >= path.snr_db.length) {
     return (
@@ -162,19 +176,26 @@ function RouteHop({
       </span>
     );
   }
+  const snr = path.snr_db[index];
   return (
-    <HopSnr
-      className="route-hop"
-      snr={path.snr_db[index]}
-      spreadingFactor={spreadingFactor}
-      after=" →"
-    />
+    <span className="route-hop">
+      <HopSnr snr={snr} spreadingFactor={spreadingFactor} after=" →" />
+      {/* A 0 dB step is no measured hop. */}
+      {zeroCost && snr !== 0 ? (
+        <span className="route-zero-cost" title="0-hop: no hop spent">
+          0
+        </span>
+      ) : null}
+    </span>
   );
 }
 
-/** A route's reported steps, with distances only for its measured radio hops. */
+/**
+ * A route's reported steps, with distances and hops spent only for its
+ * measured radio hops.
+ */
 export function RouteHopList({
-  route: { path, path_hops: measuredHops },
+  route: { path, path_hops: measuredHops, hop_costs: hopCosts },
   nodeNames,
   ends,
   placed,
@@ -189,8 +210,13 @@ export function RouteHopList({
   at: ReadonlyMap<number, LatLon>;
   /** The names of the hop's doubtful nodes, empty when none is. */
   doubted: (nodeIds: number[]) => string[];
-} & RouteMarkers &
+} & Omit<RouteMarkers, "zeroCostHops"> &
   NodeHighlight) {
+  const costs = new Map(
+    hopCosts.map((cost) => [`${cost.from_node_id}-${cost.to_node_id}`, cost]),
+  );
+  const nodeName = (nodeId: number) =>
+    nodeNames.get(nodeId) ?? formatNodeId(nodeId);
   const hops = path.snr_db.map((snr, index) => {
     const from = path.nodes[index];
     const to = path.nodes[index + 1];
@@ -206,7 +232,15 @@ export function RouteHopList({
       !measured || a === undefined || b === undefined
         ? null
         : distanceMeters(a, b) / 1000;
-    return { index, from, to, snr, km };
+    return {
+      index,
+      from,
+      to,
+      snr,
+      km,
+      measured,
+      cost: costs.get(`${from}-${to}`),
+    };
   });
   const longest = Math.max(...hops.map((hop) => hop.km ?? -1));
   const node = (nodeId: number | null, index: number) => (
@@ -234,10 +268,13 @@ export function RouteHopList({
           <th scope="col" className="number">
             km
           </th>
+          <th scope="col" className="number">
+            Hops spent
+          </th>
         </tr>
       </thead>
       <tbody>
-        {hops.map(({ index, from, to, snr, km }) => (
+        {hops.map(({ index, from, to, snr, km, measured, cost }) => (
           <tr
             key={index}
             className={
@@ -267,11 +304,64 @@ export function RouteHopList({
                 }
               />
             </td>
+            <td className="number">
+              {measured ? (
+                <HopsSpent
+                  cost={cost}
+                  firstHop={from === ends.requester || from === ends.target}
+                  nodeName={nodeName}
+                />
+              ) : null}
+            </td>
           </tr>
         ))}
       </tbody>
     </table>
   );
+}
+
+// What a measured hop spent: this run's own, else ≈ when learned from other
+// traceroutes or by role; ? when unknown.
+function HopsSpent({
+  cost,
+  firstHop,
+  nodeName,
+}: {
+  cost: RouteHopCost | undefined;
+  firstHop: boolean;
+  nodeName: (nodeId: number) => string;
+}) {
+  const [text, title] =
+    cost === undefined || cost.spent === null
+      ? ["?", "No traceroute showed whether it spends a hop"]
+      : cost.learned === null
+        ? [
+            String(cost.spent),
+            firstHop
+              ? "A route's first hop always spends one"
+              : "Shown by this traceroute's copies",
+          ]
+        : [`≈${cost.spent}`, learnedTitle(cost.learned, nodeName)];
+  return (
+    <span
+      className={cost?.spent === 0 ? "route-zero-cost" : undefined}
+      title={title}
+    >
+      {text}
+    </span>
+  );
+}
+
+function learnedTitle(
+  { free, costly, verdict, role_node_id, role }: HopCost,
+  nodeName: (nodeId: number) => string,
+): string {
+  const total = (free + costly).toLocaleString();
+  return verdict === "free"
+    ? `Free in ${free.toLocaleString()} of ${total} other traceroutes`
+    : verdict === "costly"
+      ? `Spent a hop in ${costly.toLocaleString()} of ${total} other traceroutes`
+      : `By role: ${nodeName(role_node_id!)} is ${formatRole(role)}`;
 }
 
 function HopNode({

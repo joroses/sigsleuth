@@ -13,7 +13,7 @@ import {
   tracerouteHopsUrl,
 } from "./api";
 import { now as clockNow } from "./clock";
-import { HopObservationList } from "./HopObservations";
+import { HopCostLine, HopObservationList } from "./HopObservations";
 import { type LatLon } from "./lineOfSight";
 import { linkTier, linkTierColor } from "./linkQuality";
 import { formatNodeId, nodeName, tracerouteHopHref } from "./nodeDisplay";
@@ -116,6 +116,16 @@ export function LinkDetails({
                 spreadingFactor={link.spreading_factor}
               />
             )}
+            {traceroutes && hops.data !== null ? (
+              <p className="hop-cost">
+                <HopCostLine
+                  hops={hops}
+                  direction={direction}
+                  name={name}
+                  unknown="Hop cost unknown"
+                />
+              </p>
+            ) : null}
             {traceroutes ? (
               <HopObservationList
                 hops={hops}

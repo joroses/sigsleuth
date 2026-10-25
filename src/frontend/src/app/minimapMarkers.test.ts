@@ -72,6 +72,7 @@ function detail(
     spreading_factor: 11,
     traceroute,
     reply_route: null,
+    hop_costs: [],
   };
 }
 
@@ -403,6 +404,21 @@ describe("minimapMarkers", () => {
             ],
             hop: null,
             unlikely: false,
+            // The relay passed the copy on to the requester for free.
+            hop_costs: [
+              {
+                from_node_id: relay,
+                to_node_id: requester,
+                spent: 0,
+                learned: null,
+              },
+              {
+                from_node_id: target,
+                to_node_id: otherRelay,
+                spent: 1,
+                learned: null,
+              },
+            ],
           },
         },
         new Map(
@@ -428,7 +444,11 @@ describe("minimapMarkers", () => {
       ]);
       expect(
         lines(contents.allHops).map((line) => line.properties),
-      ).toMatchObject([{ snr: 4 }, { snr: null }, { snr: 6 }]);
+      ).toMatchObject([
+        { snr: 4, zeroCost: false },
+        { snr: null, zeroCost: false },
+        { snr: 6, zeroCost: true },
+      ]);
       expect(contents.labelAllHops).toBe(true);
     });
   });

@@ -26,6 +26,7 @@ import {
   type TextReach,
   type TextSender,
   type TextSenderList,
+  type ZeroCostHop,
   fetchMapNode,
   textReachUrl,
 } from "./api";
@@ -75,8 +76,12 @@ import {
   ALL_LINK_TIERS,
   MAX_LINK_KM,
   withinHops,
+  ZERO_COST_LAYER,
+  addZeroCostLayer,
+  zeroCostArrows,
   type LinkFeatureCollection,
   type LinkTierChoice,
+  type ZeroCostArrows,
 } from "./mapLinkLayers";
 import {
   NODE_LAYERS,
@@ -371,8 +376,15 @@ function useLinkLayer(
     () => buildLinkFeatureCollection(linkKind, links, nodeMap),
     [linkKind, links, nodeMap],
   );
-  return { page, error, links, data };
+  const zeroCost = page?.zero_cost_hops ?? NO_ZERO_COST;
+  const arrows = useMemo(
+    () => zeroCostArrows(links, zeroCost, nodeMap),
+    [links, zeroCost, nodeMap],
+  );
+  return { page, error, links, data, arrows };
 }
+
+const NO_ZERO_COST: ZeroCostHop[] = [];
 
 // "idle" follows the source update and rendered layers; scripts/perf-map.sh reads it.
 function measureNodeLayersIdle(instance: maplibregl.Map) {
@@ -393,6 +405,9 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     direct: buildLinkFeatureCollection("direct", [], new Map()),
     neighbor: buildLinkFeatureCollection("neighbor", [], new Map()),
   });
+  const pendingArrows = useRef<ZeroCostArrows>(
+    zeroCostArrows([], [], new Map()),
+  );
   const linksByKey = useRef(new Map<string, SelectedLink>());
   const selectedLinkKey = useRef<string | null>(null);
   // The only nodes named, for the next style load; null names them all.
@@ -1222,6 +1237,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
         pendingLinkData.current.traceroute,
         "node-clusters",
       );
+      addZeroCostLayer(instance, pendingArrows.current, "node-clusters");
       addLinkLayers(
         instance,
         "neighbor",
@@ -1291,6 +1307,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       const ourSource =
         event.sourceId === "nodes" ||
         COVERAGE_SOURCES.includes(event.sourceId ?? "") ||
+        event.sourceId === ZERO_COST_LAYER ||
         LINK_KINDS.some(
           (linkKind) => event.sourceId === linkSourceId(linkKind),
         );
@@ -1374,6 +1391,11 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       tracerouteData,
     );
   }, [tracerouteData]);
+  const zeroCostData = linkLayers.traceroute.arrows;
+  useEffect(() => {
+    pendingArrows.current = zeroCostData;
+    setSourceData(map.current, ZERO_COST_LAYER, zeroCostData);
+  }, [zeroCostData]);
   useEffect(() => {
     showLinkData(map.current, pendingLinkData.current, "direct", directData);
   }, [directData]);

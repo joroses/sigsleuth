@@ -16,7 +16,11 @@ import {
   nodeName,
 } from "./nodeDisplay";
 import { type MinimapFocus, PacketMinimap } from "./PacketMinimap";
-import { type DirectedHop, minimapMarkers } from "./minimapMarkers";
+import {
+  type DirectedHop,
+  minimapMarkers,
+  zeroCostHops,
+} from "./minimapMarkers";
 import { type NodeHighlight, RouteItem, type RouteMarkers } from "./RouteItem";
 import {
   type TracerouteGroup,
@@ -148,6 +152,7 @@ function PacketDetailContent({
       },
       placed: new Set(minimap.markers.map((marker) => marker.nodeId)),
       spreadingFactor: detail.spreading_factor,
+      zeroCostHops: zeroCostHops(detail.hop_costs),
     }),
     [detail, minimap],
   );

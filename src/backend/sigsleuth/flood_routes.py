@@ -25,12 +25,11 @@ from typing import Literal
 
 from sigsleuth.db import NodeSummary, to_epoch_ms
 from sigsleuth.derive import HOUR_MS
+from sigsleuth.links import LINK_WINDOW_MS, ZERO_COST_ROLES
 from sigsleuth.opt_out import opted_out
 from sigsleuth.packets import PacketDetail, PacketReception, nodes_when_heard
 from sigsleuth.radio import great_circle_km, relay_byte_of
 
-# Links count this long either side of the packet.
-LINK_WINDOW_MS = 7 * 24 * HOUR_MS
 # Fit on a copy of live loranet.pl msh/#, 2026-10-09 to 10-16, with traceroute
 # request routes as truth; on 10-16 to 10-23 the best candidate was this sure
 # for 49% of hops and then right 91.9% of the time (68.5% over all hops).
@@ -43,10 +42,6 @@ HEARD_IN_TRACEROUTES = 2.309
 PER_LN_TRACEROUTE_HOPS = 1.053
 PER_PROGRESS = -0.957
 WRONG_LEVEL = -4.262
-
-# Firmware 2.7.11 and newer: only these relay a favourite router's copy
-# without spending a hop.
-ZERO_COST_ROLES = frozenset({"ROUTER", "ROUTER_LATE", "CLIENT_BASE"})
 
 # How a hop's sender was found: the receiver's own report, sure when it heard
 # the sender directly or its relay was heard_directly, else a guess; the

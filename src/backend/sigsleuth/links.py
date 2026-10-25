@@ -28,15 +28,16 @@ doubt (docs/coverage.md).
 No page shows a link with an end that turned OK to MQTT off (opt_out.py).
 """
 
+import json
 import sqlite3
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
 from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
-from sigsleuth.opt_out import is_opted_out, shown_sql
+from sigsleuth.opt_out import is_opted_out, opted_out, shown_sql
 from sigsleuth.radio import distance_km, spreading_factor
 
 MAX_LINK_ROWS = 20_000
@@ -141,9 +142,26 @@ class MapLink:
 
 
 @dataclass(frozen=True)
+class ZeroCostHop:
+    """to_node_id passed on from_node_id's copies on channel without
+    spending a hop in free of the traceroute copies that showed, and spent
+    one in costly (hop_cost_hour)."""
+
+    from_node_id: int
+    to_node_id: int
+    channel: str
+    free: int
+    costly: int
+
+
+@dataclass(frozen=True)
 class MapLinkList:
+    """zero_cost_hops are the traceroute links' directions free at least as
+    often as costly in the window (free_hops)."""
+
     items: tuple[MapLink, ...]
     truncated: bool
+    zero_cost_hops: tuple[ZeroCostHop, ...] = ()
 
 
 def map_links(
@@ -156,13 +174,15 @@ def map_links(
     channel: str | None = None,
     trusted: bool = False,
     max_km: float | None = None,
+    with_free_hops: bool = False,
 ) -> MapLinkList:
     """Links from one link kind's hourly totals since the start of
     since's hour, one per node pair and channel; only channel's when given,
     so the limit applies to that channel alone. With trusted, the map's view
     of where nodes are now: only the hours that still match (TRUSTED_HOUR),
     and only the links that fit where it draws their nodes (_fits_now), at
-    most max_km apart when given."""
+    most max_km apart when given. with_free_hops adds the links' 0-cost
+    directions (free_hops)."""
     rows = _hourly_links(connection, link_kind, since, limit, channel, trusted)
     kept = rows[:limit]
     if trusted:
@@ -170,7 +190,42 @@ def map_links(
         unlikely = unlikely_links(connection)
         kept = [row for row in kept if _fits_now(row, nodes, unlikely, max_km)]
     items = tuple(_map_link(row, default_preset) for row in kept)
-    return MapLinkList(items, len(rows) > limit)
+    return MapLinkList(
+        items,
+        len(rows) > limit,
+        free_hops(connection, items, since, channel) if with_free_hops else (),
+    )
+
+
+def free_hops(
+    connection: sqlite3.Connection,
+    links: Sequence[MapLink],
+    since: datetime | None,
+    channel: str | None,
+) -> tuple[ZeroCostHop, ...]:
+    """The links' directions, on their channel, that traceroutes found free
+    at least as often as costly from since's hour."""
+    shown = {(link.node_a, link.node_b, link.channel) for link in links}
+    since_ms = 0 if since is None else to_epoch_ms(since)
+    # Groups every row of the window, as no index finds the free ones: 10, 31
+    # and 70 ms for 3, 7 and 14 days on live (2026-10-24). The + keeps the
+    # window's primary key range; grouping in hop_cost_hour_from's order
+    # scanned all of it.
+    rows = connection.execute(
+        """
+        SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+        FROM hop_cost_hour
+        WHERE hour_start >= :since AND (:channel IS NULL OR channel = :channel)
+        GROUP BY +from_node_id, to_node_id, channel
+        HAVING sum(free) > 0 AND sum(free) >= sum(costly)
+        """,
+        {"since": since_ms - since_ms % HOUR_MS, "channel": channel},
+    )
+    return tuple(
+        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), int(row[3]), int(row[4]))
+        for row in rows
+        if (min(row[0], row[1]), max(row[0], row[1]), row[2]) in shown
+    )
 
 
 def _fits_now(
@@ -434,19 +489,6 @@ class LinkRow(MapLink):
 
 
 @dataclass(frozen=True)
-class ZeroCostHop:
-    """to_node_id passed on from_node_id's copies on channel without
-    spending a hop in free of the traceroute copies that showed, and spent
-    one in costly (hop_cost_hour)."""
-
-    from_node_id: int
-    to_node_id: int
-    channel: str
-    free: int
-    costly: int
-
-
-@dataclass(frozen=True)
 class LinkTable:
     """doubtful_node_ids are the table's nodes with a doubtful position
     (doubtful_nodes), the suspects of a link doubted for one. A node's table
@@ -530,3 +572,147 @@ def zero_cost_hops(
             {"node": node, "since": since_ms - since_ms % HOUR_MS},
         )
     )
+
+
+# Firmware 2.7.11 and newer: only these relay a favourite router's copy
+# without spending a hop.
+ZERO_COST_ROLES = frozenset({"ROUTER", "ROUTER_LATE", "CLIENT_BASE"})
+
+# Packet pages read links and hop costs this long either side of the packet.
+LINK_WINDOW_MS = 7 * 24 * HOUR_MS
+
+HopVerdict = Literal["free", "costly", "never_free", "unknown"]
+
+
+@dataclass(frozen=True)
+class HopCost:
+    """Whether to_node passes on from_node's copies on a channel without
+    spending a hop, over a window: free and costly count the traceroute
+    copies that showed it (hop_cost_hour), and verdict is free when free > 0
+    and free >= costly, else costly. Unmeasured, it is never_free when
+    role_node_id, the receiver or else the previous relay, has a known role
+    outside ZERO_COST_ROLES (role), and unknown otherwise. On live, 7 days to
+    2026-10-23, such a role was wrong for 0.1% (receiver) and 0.6% (previous
+    relay) of measured directions."""
+
+    free: int
+    costly: int
+    verdict: HopVerdict
+    role_node_id: int | None = None
+    role: str | None = None
+
+
+def hop_costs(
+    connection: sqlite3.Connection,
+    directions: Collection[tuple[int, int, str]],
+    start_ms: int,
+    end_ms: int | None = None,
+) -> dict[tuple[int, int, str], HopCost]:
+    """The HopCost of each direction (from, to, channel) over the hours from
+    start_ms's to end_ms. An opted-out end reads as a node never heard: no
+    measurement and no role."""
+    hidden = opted_out(connection)
+    wanted = {d for d in directions if d[0] not in hidden and d[1] not in hidden}
+    # Each sender's rows once, then the wanted pairs: looking each pair up
+    # read a busy sender's rows again for every partner, 2.6 times slower for
+    # an explorer page of 147 directions from 61 senders (live, 2026-10-24).
+    counts = {
+        found: (int(row[3]), int(row[4]))
+        for row in connection.execute(
+            """
+            SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+            FROM hop_cost_hour INDEXED BY hop_cost_hour_from
+            WHERE from_node_id IN (SELECT value FROM json_each(:senders))
+              AND hour_start >= :start AND (:end IS NULL OR hour_start <= :end)
+            GROUP BY 1, 2, 3
+            """,
+            {
+                "senders": json.dumps(sorted({d[0] for d in wanted})),
+                "start": start_ms - start_ms % HOUR_MS,
+                "end": end_ms,
+            },
+        )
+        if (found := (int(row[0]), int(row[1]), str(row[2]))) in wanted
+    }
+    unmeasured = {node for d in directions if d not in counts for node in d[:2]} - hidden
+    roles = {
+        int(row[0]): str(row[1])
+        for row in connection.execute(
+            """
+            SELECT node_id, role FROM node_current
+            WHERE node_id IN (SELECT value FROM json_each(?)) AND role IS NOT NULL
+            """,
+            (json.dumps(sorted(unmeasured)),),
+        )
+    }
+    return {d: _hop_cost(d[0], d[1], counts.get(d, (0, 0)), roles) for d in sorted(directions)}
+
+
+def _hop_cost(
+    from_node: int, to_node: int, counts: tuple[int, int], roles: Mapping[int, str]
+) -> HopCost:
+    free, costly = counts
+    if free or costly:
+        return HopCost(free, costly, "free" if free and free >= costly else "costly")
+    for node in (to_node, from_node):
+        role = roles.get(node)
+        # UNKNOWN_n is a role newer than this code knows.
+        if role is not None and role not in ZERO_COST_ROLES and not role.startswith("UNKNOWN_"):
+            return HopCost(0, 0, "never_free", node, role)
+    return HopCost(0, 0, "unknown")
+
+
+@dataclass(frozen=True)
+class RouteHopCost:
+    """How many hops to_node_id spent passing on from_node_id's copy of one
+    traceroute run: 0 or 1, None when unknown. learned is None when the run
+    itself shows it: its request's copies (traceroute_hop.free), or a route's
+    first hop, which always spends one (firmware). Otherwise spent comes from
+    the direction's HopCost on the run's channel."""
+
+    from_node_id: int
+    to_node_id: int
+    spent: int | None
+    learned: HopCost | None
+
+
+_SPENT: dict[HopVerdict, int | None] = {"free": 0, "costly": 1, "never_free": 1, "unknown": None}
+
+
+def route_hop_costs(
+    hops: Iterable[tuple[int, int]],
+    origins: Collection[int],
+    own: Mapping[tuple[int, int], bool],
+    learned: Mapping[tuple[int, int, str], HopCost],
+    channel: str,
+) -> tuple[RouteHopCost, ...]:
+    """The cost of each hop (from, to) of a run's routes on channel, whose
+    first nodes are among origins, from the request's own pinned hops (own:
+    free or not), else what hop_costs learned; a hop with neither is left
+    out."""
+    costs = []
+    for hop in dict.fromkeys(hops):
+        if hop[0] in origins:
+            costs.append(RouteHopCost(*hop, 1, None))
+        elif hop in own:
+            costs.append(RouteHopCost(*hop, 0 if own[hop] else 1, None))
+        elif (cost := learned.get((*hop, channel))) is not None:
+            costs.append(RouteHopCost(*hop, _SPENT[cost.verdict], cost))
+    return tuple(costs)
+
+
+def pinned_hops(
+    connection: sqlite3.Connection, packet_row_ids: Collection[int]
+) -> dict[int, dict[tuple[int, int], bool]]:
+    """Each request packet's hops whose cost its copies pinned, free or not
+    (traceroute_hop.free)."""
+    pinned: dict[int, dict[tuple[int, int], bool]] = {}
+    for row in connection.execute(
+        """
+        SELECT packet_row_id, from_node_id, to_node_id, free FROM traceroute_hop
+        WHERE packet_row_id IN (SELECT value FROM json_each(?)) AND free IS NOT NULL
+        """,
+        (json.dumps(sorted(packet_row_ids)),),
+    ):
+        pinned.setdefault(int(row[0]), {})[int(row[1]), int(row[2])] = bool(row[3])
+    return pinned

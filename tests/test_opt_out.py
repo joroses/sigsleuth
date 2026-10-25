@@ -362,7 +362,7 @@ def test_an_opted_out_node_reads_as_one_never_heard(
             f"/api/v1/packets?limit=50&sender={n}",
             f"/api/v1/nodes?q=!{n:08x}",
             f"/api/v1/traceroutes?node=!{n:08x}",
-            f"/api/v1/traceroutes/hops?node_a={n}&node_b={other}",
+            f"/api/v1/traceroutes/hops?node_a={n}&node_b={other}&channel={channel}",
             f"/api/v1/links/hours?node_a={n}&node_b={other}&channel={channel}",
             f"/api/v1/links/positions?node_a={n}&node_b={other}&at={week}",
             f"/api/v1/diagnostics/longest-links?node={n}",

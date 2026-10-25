@@ -126,6 +126,7 @@ describe("Packet detail", () => {
           target_node_id: target,
         },
         reply_route: null,
+        hop_costs: [],
         receptions: [routed(21, relay), routed(22, otherRelay)],
       }),
     );
@@ -186,6 +187,7 @@ describe("Packet detail", () => {
             target_node_id: 0x22222222,
           },
           reply_route: null,
+          hop_costs: [],
           receptions: [
             {
               ...reception,
@@ -243,6 +245,7 @@ describe("Packet detail", () => {
           spreading_factor: 11,
           traceroute: null,
           reply_route: null,
+          hop_costs: [],
           receptions: [
             reception,
             {
@@ -431,7 +434,7 @@ describe("Node detail", () => {
     expect(screen.getByRole("link", { name: "Mill Gate" })).not.toBeNull();
   });
 
-  it("tags a node's traceroute link 0-cost only on the hop's partner and channel", async () => {
+  it("tags a node's traceroute link 0-cost its free way, only on the hop's partner and channel", async () => {
     const direction = { observations: 3, snr_samples: 0, average_snr: null };
     const row = (other: number, kind: string, channel: string) => ({
       node_a: 0x11111111,
@@ -455,8 +458,16 @@ describe("Node detail", () => {
       nodes: [],
       doubtful_node_ids: [],
       truncated: false,
-      // The node relays 0x22222222's copies for free on LongFast.
+      // The node relays 0x22222222's copies for free on LongFast, and
+      // 0x33333333 relays the node's.
       zero_cost_hops: [
+        {
+          from_node_id: 0x11111111,
+          to_node_id: 0x33333333,
+          channel: "LongFast",
+          free: 1,
+          costly: 0,
+        },
         {
           from_node_id: 0x22222222,
           to_node_id: 0x11111111,
@@ -484,12 +495,16 @@ describe("Node detail", () => {
     window.location.hash = "#nodes/286331153";
     render(<App />);
 
-    const [tag] = await screen.findAllByText("0-cost");
-    expect(screen.getAllByText("0-cost")).toHaveLength(1);
+    const [tag] = await screen.findAllByText("0-hop in");
+    expect(screen.getAllByText("0-hop in")).toHaveLength(1);
     const cells = tag.closest("tr")!.querySelectorAll("td");
     expect(cells[1].textContent).toBe("!22222222");
     expect(tag.closest("tr")!.textContent).toContain("LongFast");
     expect(tag.getAttribute("title")).toMatch(/^This node relays its copies/);
+    const [out] = screen.getAllByText("0-hop out");
+    expect(out.closest("tr")!.querySelectorAll("td")[1].textContent).toBe(
+      "!33333333",
+    );
   });
 
   it("still lists packets for a node with nothing current known", async () => {
@@ -1675,6 +1690,7 @@ const FARM_TO_MILL = {
       { from_node_id: 1, to_node_id: 6, snr_db: 5 },
     ],
     hop: { from_node_id: 2, to_node_id: 1, snr_db: 4 },
+    hop_costs: [],
   },
 };
 
@@ -1992,6 +2008,76 @@ describe("Traceroute explorer", () => {
         [...row.querySelectorAll("td")].map((cell) => cell.textContent),
       );
     expect(rows.map((cells) => cells[2])).toEqual(["111", "56", "—"]);
+  });
+
+  it("lists what each of the open run's hops spent, and marks a 0-cost one in its route", async () => {
+    const learned = (verdict: string, free: number, costly: number) => ({
+      free,
+      costly,
+      verdict,
+      role_node_id: verdict === "never_free" ? 6 : null,
+      role: verdict === "never_free" ? "CLIENT_MUTE" : null,
+    });
+    // Farm's first hop always costs; Hilltop was learned to pass Ridge's
+    // copies on free; Mill is a client.
+    const run = {
+      ...FARM_TO_MILL,
+      positions: [],
+      route: {
+        ...FARM_TO_MILL.route,
+        hop: null,
+        hop_costs: [
+          { from_node_id: 5, to_node_id: 2, spent: 1, learned: null },
+          {
+            from_node_id: 2,
+            to_node_id: 1,
+            spent: 0,
+            learned: learned("free", 3, 1),
+          },
+          {
+            from_node_id: 1,
+            to_node_id: 6,
+            spent: 1,
+            learned: learned("never_free", 0, 0),
+          },
+        ],
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith("/api/v1/traceroutes/busiest")
+              ? {
+                  requesters: [],
+                  targets: [],
+                  relays: [],
+                  channels: [],
+                  nodes: [],
+                }
+              : { items: [run], nodes: [], has_more: false },
+          ),
+        ),
+      ),
+    );
+
+    window.location.hash = "#links/traceroutes";
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show route on map" }),
+    );
+
+    const rows = within(document.querySelector(".hop-list tbody")!)
+      .getAllByRole("row")
+      .map((row) =>
+        [...row.querySelectorAll("td")].map((cell) => cell.textContent),
+      );
+    expect(rows.map((cells) => cells[3])).toEqual(["1", "≈0", "≈1"]);
+    // In the route text, only Ridge to Hilltop is 0-cost.
+    const zeros = document.querySelectorAll(".run-route .route-zero-cost");
+    expect(zeros).toHaveLength(1);
+    expect(zeros[0].closest("li")!.textContent).toContain("!00000001");
   });
 
   it("searches for a busiest-list node and clears it on a second click", async () => {

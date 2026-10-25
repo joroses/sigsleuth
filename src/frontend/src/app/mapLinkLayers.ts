@@ -1,7 +1,7 @@
-import type { FeatureCollection, LineString, Position } from "geojson";
+import type { FeatureCollection, LineString, Point, Position } from "geojson";
 import type { ExpressionSpecification, Map } from "maplibre-gl";
 
-import type { LinkKind, MapLink, MapNode } from "./api";
+import type { LinkKind, MapLink, MapNode, ZeroCostHop } from "./api";
 import { type LatLon, distanceMeters } from "./lineOfSight";
 import {
   type LinkTier,
@@ -9,6 +9,7 @@ import {
   linkTierColor,
   linkWidth,
 } from "./linkQuality";
+import { arrowRotation } from "./minimapMarkers";
 
 interface LinkHalfProperties {
   linkKey: string;
@@ -215,6 +216,151 @@ export function addLinkLayers(
   showLinkFocus(map, linkKind, null, null);
 }
 
+/** The 0-cost badge's blue (--blue), for what MapLibre draws. */
+export function zeroCostColor(): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue("--blue")
+    .trim();
+}
+
+export const ZERO_COST_LAYER = "links-zero-cost";
+export const ARROW_IMAGE = "hop-arrow";
+// Pixels each of two arrowheads moves forward, so they sit back to back.
+const BACK_TO_BACK_OFFSET = 5;
+
+interface ZeroCostArrowProperties {
+  linkKey: string;
+  rotation: number;
+  offset: [number, number];
+}
+
+export type ZeroCostArrows = FeatureCollection<Point, ZeroCostArrowProperties>;
+
+/**
+ * An arrowhead at the middle of each drawn traceroute link for each of its
+ * 0-cost directions (zero_cost_hops), pointing the way the copies went;
+ * free both ways, two back to back.
+ */
+export function zeroCostArrows(
+  links: MapLink[],
+  hops: ZeroCostHop[],
+  nodesById: ReadonlyMap<number, MapNode>,
+): ZeroCostArrows {
+  const free = new Set(
+    hops.map((hop) => `${hop.from_node_id}-${hop.to_node_id}:${hop.channel}`),
+  );
+  const features: ZeroCostArrows["features"] = [];
+  for (const link of links) {
+    const ways = [
+      [link.node_a, link.node_b],
+      [link.node_b, link.node_a],
+    ].filter(([from, to]) => free.has(`${from}-${to}:${link.channel}`));
+    const a = nodesById.get(link.node_a);
+    const b = nodesById.get(link.node_b);
+    if (ways.length === 0 || a === undefined || b === undefined) continue;
+    const at = mercatorMidpoint(
+      [a.longitude, a.latitude],
+      [b.longitude, b.latitude],
+    );
+    for (const [from, to] of ways) {
+      const start = from === a.node_id ? a : b;
+      const end = to === a.node_id ? a : b;
+      features.push({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: at },
+        properties: {
+          linkKey: linkKey("traceroute", link),
+          rotation: arrowRotation(
+            [start.longitude, start.latitude],
+            [end.longitude, end.latitude],
+          ),
+          offset: [ways.length === 2 ? BACK_TO_BACK_OFFSET : 0, 0],
+        },
+      });
+    }
+  }
+  return { type: "FeatureCollection", features };
+}
+
+/**
+ * The 0-cost arrowheads over the traceroute links, under beforeId, from
+ * LINK_MIN_ZOOM like the links. Not clickable: the line under each is.
+ */
+export function addZeroCostLayer(
+  map: Map,
+  data: ZeroCostArrows,
+  beforeId: string | undefined,
+): void {
+  addArrowImage(map);
+  map.addSource(ZERO_COST_LAYER, { type: "geojson", data });
+  map.addLayer(
+    {
+      id: ZERO_COST_LAYER,
+      type: "symbol",
+      source: ZERO_COST_LAYER,
+      minzoom: LINK_MIN_ZOOM,
+      layout: {
+        "icon-image": ARROW_IMAGE,
+        "icon-rotate": ["get", "rotation"],
+        "icon-rotation-alignment": "map",
+        "icon-offset": ["get", "offset"],
+        // Larger than a route minimap's: map lines are thinner and many.
+        "icon-size": 1.25,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+      },
+      paint: {
+        "icon-color": zeroCostColor(),
+        "icon-halo-color": ARROW_HALO,
+        "icon-halo-width": 1,
+      },
+    },
+    beforeId,
+  );
+}
+
+// A dark edge keeps the light blue visible on light basemaps.
+export const ARROW_HALO = "#0f172a";
+
+export function addArrowImage(map: Map): void {
+  if (!map.hasImage(ARROW_IMAGE))
+    map.addImage(ARROW_IMAGE, arrowImage(), { sdf: true, pixelRatio: 2 });
+}
+
+// A triangle pointing east as a signed distance field, so MapLibre can tint it
+// with each line's colour: alpha 191 is the edge, rising 32 a pixel inwards.
+const ARROW_SIZE = 28;
+const ARROW_CORNERS: [number, number][] = [
+  [5, 5],
+  [24, 14],
+  [5, 23],
+];
+
+function arrowImage(): {
+  width: number;
+  height: number;
+  data: Uint8Array;
+} {
+  const data = new Uint8Array(ARROW_SIZE * ARROW_SIZE * 4);
+  for (let y = 0; y < ARROW_SIZE; y += 1) {
+    for (let x = 0; x < ARROW_SIZE; x += 1) {
+      // Distance inside the triangle: the least distance to an edge, negative outside.
+      let inside = Infinity;
+      for (let index = 0; index < 3; index += 1) {
+        const [ax, ay] = ARROW_CORNERS[index];
+        const [bx, by] = ARROW_CORNERS[(index + 1) % 3];
+        const length = Math.hypot(bx - ax, by - ay);
+        const distance =
+          ((bx - ax) * (y + 0.5 - ay) - (by - ay) * (x + 0.5 - ax)) / length;
+        inside = Math.min(inside, distance);
+      }
+      const alpha = Math.max(0, Math.min(255, 191 + inside * 32));
+      data[(y * ARROW_SIZE + x) * 4 + 3] = alpha;
+    }
+  }
+  return { width: ARROW_SIZE, height: ARROW_SIZE, data };
+}
+
 export const MAX_HOP_DEPTH = 7;
 
 /**
@@ -303,6 +449,8 @@ export function showLinkFocus(
   ]);
   map.setPaintProperty(layer, "line-opacity", opacity(LINK_OPACITY));
   map.setPaintProperty(noSnrLayer, "line-opacity", opacity(NO_SNR_OPACITY));
+  if (linkKind === "traceroute" && map.getLayer(ZERO_COST_LAYER))
+    map.setFilter(ZERO_COST_LAYER, ofNode[0] ?? null);
 }
 
 export type LinkLayerChoice = Record<LinkKind, boolean>;

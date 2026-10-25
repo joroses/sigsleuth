@@ -248,6 +248,38 @@ def test_a_nodes_links_list_its_0_cost_hops_either_way_but_no_hidden_partner(
     assert links(path, "/api/v1/links")["zero_cost_hops"] == []
 
 
+def test_map_links_list_their_0_cost_directions_on_their_channel_in_the_window(
+    path: Path,
+) -> None:
+    add_link_hour(path, 0, A, B, observations=2, snr=[-4.0, -6.0])
+    add_link_hour(path, 0, B, C, observations=2, snr=[-4.0, -6.0])
+    with closing(open_current_database(path)) as connection, connection:
+        for hours_ago, a, b, channel, free, costly in (
+            (0, B, A, "LongFast", 2, 1),
+            (0, A, B, "MediumFast", 3, 0),  # no link on that channel
+            (30, B, C, "LongFast", 5, 0),  # before since
+            (0, C, B, "LongFast", 1, 2),  # mostly costly
+            (0, A, C, "LongFast", 4, 0),  # no link between them
+        ):
+            insert_row(
+                connection,
+                "hop_cost_hour",
+                hour_start=to_epoch_ms(HOUR) - hours_ago * HOUR_MS,
+                from_node_id=a,
+                to_node_id=b,
+                channel=channel,
+                free=free,
+                costly=costly,
+            )
+
+    page = links(path, since="2026-09-27T00:00:00Z")
+
+    assert page["zero_cost_hops"] == [
+        {"from_node_id": B, "to_node_id": A, "channel": "LongFast", "free": 2, "costly": 1}
+    ]
+    assert links(path, link_kind="direct")["zero_cost_hops"] == []
+
+
 def report_again(path: Path, node_id: int, hours_later: int, *, moved: bool = False) -> None:
     """node_id reports its position again hours_later than place's HOUR, as a
     move when moved."""

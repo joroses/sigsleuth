@@ -19,7 +19,7 @@ import {
   traceroutesUrl,
   busiestTraceroutesUrl,
 } from "./api";
-import { type DirectedHop, routeMinimap } from "./minimapMarkers";
+import { type DirectedHop, routeMinimap, zeroCostHops } from "./minimapMarkers";
 import {
   doubtedNames,
   formatKm,
@@ -546,6 +546,7 @@ function RunTable({
                       placed={placed}
                       spreadingFactor={run.spreading_factor}
                       hop={directedHop(run.route.hop)}
+                      zeroCostHops={zeroCostHops(run.route.hop_costs)}
                       endExtra={endFilter}
                       {...(open === key ? highlight : {})}
                     />

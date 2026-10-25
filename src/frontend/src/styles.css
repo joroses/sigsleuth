@@ -2071,11 +2071,33 @@ dd {
   width: 0.375rem;
 }
 
-/* A 0-cost hop's tag at the middle of its contact line. */
-.minimap-zero-cost {
-  padding: 0 var(--space-1);
-  font-size: 0.625rem;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+/* A 0-cost hop's arrowhead, pointing east: in a key, or at the middle of a
+   node minimap's contact line, turned by its marker. Two back to back when
+   free both ways. */
+.zero-cost-arrow {
+  display: flex;
+  filter: drop-shadow(0 0 1px #0f172a) drop-shadow(0 0 1px #0f172a);
+}
+
+.zero-cost-arrow span {
+  width: 0.75rem;
+  height: 0.875rem;
+  background: var(--blue);
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.zero-cost-arrow .zero-cost-arrow-back {
+  transform: scaleX(-1);
+}
+
+/* In a key, as wide as its line swatches. */
+.zero-cost-key {
+  justify-content: center;
+  width: 1rem;
+}
+
+.minimap-key .zero-cost-key {
+  width: 1.25rem;
 }
 
 .contacts-legend-hops {
@@ -2310,6 +2332,17 @@ dd {
   color: var(--muted);
   font-size: var(--text-sm);
   white-space: nowrap;
+}
+
+/* After a hop's arrow: it spent no hop. */
+.route-zero-cost {
+  margin: 0 0.5rem 0 0.125rem;
+  color: var(--blue);
+  font-weight: 700;
+}
+
+.hop-list .route-zero-cost {
+  margin: 0;
 }
 
 /* A ring around a node the traceroute explorer's search matched, and around
@@ -3746,6 +3779,12 @@ button.chat-quote:hover {
 
 .hour-strip {
   margin: 0 0 var(--space-2);
+}
+
+/* A link direction's hop cost, between its hours and its packets. */
+.hop-cost {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
 }
 
 .hour-strip svg {

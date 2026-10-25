@@ -30,9 +30,14 @@ from sigsleuth.links import (
     LONG_LINK_KM,
     PENDING_KM,
     Doubt,
+    HopCost,
+    RouteHopCost,
     confirmed_sql,
     doubtful_nodes,
+    hop_costs,
     link_doubts,
+    pinned_hops,
+    route_hop_costs,
     unlikely_links,
 )
 from sigsleuth.opt_out import opted_out, opted_out_sql, shown_sql
@@ -59,7 +64,9 @@ MAX_HOP_OBSERVATIONS = 10
 class HopObservation:
     """One traceroute packet that reported a hop: the hop's SNR is from the
     packet's first report of it, None when unknown. requester and target name
-    the run the packet belongs to, the right way round on a reply too."""
+    the run the packet belongs to, the right way round on a reply too. free
+    is whether the packet's copies showed the hop free or spending a hop
+    (traceroute_hop.free), None when they did not."""
 
     packet_row_id: int
     first_received_at: datetime
@@ -67,16 +74,21 @@ class HopObservation:
     requester_node_id: int
     target_node_id: int
     is_reply: bool
+    free: bool | None
 
 
 @dataclass(frozen=True)
 class HopObservations:
     """The newest packets that reported each direction of a link; a_to_b is
-    node a transmitting and node b hearing it, as in MapLink."""
+    node a transmitting and node b hearing it, as in MapLink. Each
+    direction's cost is its links.HopCost in the window on the channel, None
+    without a channel."""
 
     a_to_b: tuple[HopObservation, ...]
     b_to_a: tuple[HopObservation, ...]
     nodes: tuple[NodeSummary, ...]
+    a_to_b_cost: HopCost | None
+    b_to_a_cost: HopCost | None
 
 
 def hop_observations(
@@ -100,7 +112,7 @@ def hop_observations(
             return ()
         rows = connection.execute(
             f"""
-            SELECT h.packet_row_id, t.first_received_at, h.snr_db,
+            SELECT h.packet_row_id, t.first_received_at, h.snr_db, h.free,
                    tr.requester_node_id, tr.target_node_id, tr.is_reply
             FROM traceroute_hop AS h
             JOIN packet AS t ON t.id = h.packet_row_id
@@ -135,6 +147,7 @@ def hop_observations(
                 requester_node_id=int(row["requester_node_id"]),
                 target_node_id=int(row["target_node_id"]),
                 is_reply=bool(row["is_reply"]),
+                free=None if row["free"] is None else bool(row["free"]),
             )
             for row in rows
         )
@@ -144,7 +157,18 @@ def hop_observations(
     for item in (*a_to_b, *b_to_a):
         node_ids.update((item.requester_node_id, item.target_node_id))
     nodes = nodes_by_id(connection, node_ids - hidden)
-    return HopObservations(a_to_b, b_to_a, tuple(nodes.values()))
+    costs = (
+        {}
+        if channel is None
+        else hop_costs(connection, {(a, b, channel), (b, a, channel)}, since_ms)
+    )
+    return HopObservations(
+        a_to_b,
+        b_to_a,
+        tuple(nodes.values()),
+        costs.get((a, b, str(channel))),
+        costs.get((b, a, str(channel))),
+    )
 
 
 @dataclass(frozen=True)
@@ -158,7 +182,9 @@ class TracerouteRoute:
     path_hops are the path's measured hops. hop is the route's hop
     between the two searched nodes, in the way it went, when two were searched.
     unlikely says a measured hop is between a pair the terrain check finds
-    unlikely (links.unlikely_links), whatever its km then, which is approximate."""
+    unlikely (links.unlikely_links), whatever its km then, which is approximate.
+    hop_costs are what path_hops spent (links.RouteHopCost), learned over the
+    page's window."""
 
     packet_row_id: int
     is_return: bool
@@ -169,6 +195,7 @@ class TracerouteRoute:
     path_hops: tuple[Hop, ...]
     hop: Hop | None = None
     unlikely: bool = False
+    hop_costs: tuple[RouteHopCost, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -317,6 +344,7 @@ def traceroute_runs(
             for hop in route.path_hops
         )
         routes.append((packets, replace(route, unlikely=over)))
+    routes = _with_hop_costs(connection, routes, since)
     node_ids = {node_id for packets, route in routes for node_id in _run_nodes(packets, route)}
     nodes = nodes_by_id(connection, node_ids)
     # Each route's packet is one of its run's.
@@ -502,6 +530,43 @@ def _page_sql(sort: TracerouteSort, searches: int) -> str:
     )
     ORDER BY {_ORDER[sort]} LIMIT :limit + 1 OFFSET :offset
     """
+
+
+def _with_hop_costs(
+    connection: sqlite3.Connection,
+    routes: list[tuple[list[sqlite3.Row], TracerouteRoute]],
+    since: datetime | None,
+) -> list[tuple[list[sqlite3.Row], TracerouteRoute]]:
+    """The routes with their hop_costs: a forward route's hops are its
+    request's, so the request's pinned hops count for it."""
+    requests = [_request_row_id(packets) for packets, _ in routes]
+    pinned = pinned_hops(connection, {r for r in requests if r is not None})
+    since_ms = 0 if since is None else to_epoch_ms(since)
+    learned = hop_costs(
+        connection,
+        {
+            (hop.from_node_id, hop.to_node_id, str(packets[0]["channel"]))
+            for packets, route in routes
+            for hop in route.path_hops
+        },
+        since_ms,
+    )
+    costed = []
+    for (packets, route), request in zip(routes, requests, strict=True):
+        own = {} if route.is_return or request is None else pinned.get(request, {})
+        costs = route_hop_costs(
+            ((hop.from_node_id, hop.to_node_id) for hop in route.path_hops),
+            _ends(packets),
+            own,
+            learned,
+            str(packets[0]["channel"]),
+        )
+        costed.append((packets, replace(route, hop_costs=costs)))
+    return costed
+
+
+def _request_row_id(packets: list[sqlite3.Row]) -> int | None:
+    return next((int(p["packet_row_id"]) for p in packets if not p["is_reply"]), None)
 
 
 def _run_nodes(packets: list[sqlite3.Row], route: TracerouteRoute) -> set[int]:

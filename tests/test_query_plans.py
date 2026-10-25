@@ -131,6 +131,9 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
         (relayed_text,) = connection.execute(
             "SELECT id FROM packet WHERE packet_id = ?", (RELAYED_TEXT,)
         ).fetchone()
+        (request,) = connection.execute(
+            "SELECT min(packet_row_id) FROM traceroute_packet WHERE NOT is_reply"
+        ).fetchone()
 
     settings = Settings(path, default_preset="LongFast", upload_password="survey")
     client = TestClient(create_app(settings), headers={"Authorization": "Basic cGhvbmU6c3VydmV5"})
@@ -144,6 +147,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
         channel="LongFast",
         text_sender=REQUESTER,
         flood_packet=relayed_text,
+        traceroute_packet=request,
     )
     pages = page_requests(now, subjects)
     for url in chain(pages, coverage_requests(client, now)):

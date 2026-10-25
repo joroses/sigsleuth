@@ -1,7 +1,70 @@
-import { type NodeSummary, type HopObservations } from "./api";
-import { formatNodeId, nodeName, packetHopHref } from "./nodeDisplay";
+import { type HopCost, type NodeSummary, type HopObservations } from "./api";
+import {
+  formatNodeId,
+  formatRole,
+  nodeName,
+  packetHopHref,
+} from "./nodeDisplay";
 import { type ApiState } from "./useApi";
-import { HopSnr, ShortTime } from "./ui";
+import { Badge, HopSnr, ShortTime } from "./ui";
+
+/**
+ * What a link direction's hop cost says, with a hover title for some;
+ * name names the node whose role decides a never_free direction.
+ */
+function hopCostText(
+  cost: HopCost,
+  name: (nodeId: number) => string,
+): { text: string; title?: string } {
+  const total = (cost.free + cost.costly).toLocaleString();
+  switch (cost.verdict) {
+    case "free":
+      return {
+        text: `0-hop: free in ${cost.free.toLocaleString()} of ${total} traceroutes`,
+        title: "Passed on without spending a hop, as for a favourite router",
+      };
+    case "costly":
+      return {
+        text: `Costs a hop: ${cost.costly.toLocaleString()} of ${total} traceroutes`,
+      };
+    case "never_free":
+      return {
+        text: `Costs a hop: ${name(cost.role_node_id!)} is ${formatRole(cost.role)}`,
+        title:
+          "Only a router passes another router's copies on without spending a hop",
+      };
+    case "unknown":
+      return {
+        text: "Unknown",
+        title: "No traceroute showed whether it spends a hop",
+      };
+  }
+}
+
+/**
+ * One direction's hop cost, from the same request as its packets; nothing
+ * until it loads. unknown replaces "Unknown" where no label says what is.
+ */
+export function HopCostLine({
+  hops,
+  direction,
+  name,
+  unknown,
+}: {
+  hops: ApiState<HopObservations>;
+  direction: "a_to_b" | "b_to_a";
+  name: (nodeId: number) => string;
+  unknown?: string;
+}) {
+  const cost = hops.data?.[`${direction}_cost`] ?? null;
+  if (cost === null) return null;
+  const { text, title } = hopCostText(cost, name);
+  return (
+    <span title={title}>
+      {cost.verdict === "unknown" && unknown !== undefined ? unknown : text}
+    </span>
+  );
+}
 
 /**
  * The newest traceroute packets that reported one direction of a link, from
@@ -50,6 +113,15 @@ export function HopObservationList({
             spreadingFactor={spreadingFactor}
             digits={1}
           />
+          {item.free === true ? (
+            <Badge tone="blue" title="This traceroute showed it free">
+              0-hop
+            </Badge>
+          ) : item.free === false ? (
+            <span className="muted" title="This traceroute spent a hop on it">
+              1 hop
+            </span>
+          ) : null}
           {compact ? null : (
             <>
               <span className="hop-observation-run">

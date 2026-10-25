@@ -17,6 +17,13 @@ from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, optional_text,
 from sigsleuth.decode import describe_payload, portnum_name
 from sigsleuth.derive import direct_reception_sql, is_direct_reception
 from sigsleuth.diagnostics import describe_reason
+from sigsleuth.links import (
+    LINK_WINDOW_MS,
+    RouteHopCost,
+    hop_costs,
+    pinned_hops,
+    route_hop_costs,
+)
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
 from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
 from sigsleuth.relays import (
@@ -205,7 +212,10 @@ class PacketDetail:
     for other packets.
     spreading_factor is the one the channel suggests, as for map links.
     reply_route is set on a traceroute request whose reply was saved; None
-    otherwise.
+    otherwise. hop_costs are what the hops and reply_route's hops spent
+    (links.RouteHopCost), learned links.LINK_WINDOW_MS either side of the
+    packet; on a reply, its request's pinned hops count for the hops it
+    copied.
     """
 
     packet: PacketRow
@@ -222,6 +232,7 @@ class PacketDetail:
     spreading_factor: int
     traceroute: TracerouteEnds | None
     reply_route: ReplyRoute | None
+    hop_costs: tuple[RouteHopCost, ...]
 
 
 def packet_detail(
@@ -338,6 +349,45 @@ def packet_detail(
         spreading_factor=spreading_factor(str(row["channel"]), default_preset),
         traceroute=traceroute,
         reply_route=reply_route,
+        hop_costs=()
+        if traceroute is None
+        else _hop_costs(
+            connection, row, traceroute, (*hops, *(reply_route.hops if reply_route else ()))
+        ),
+    )
+
+
+def _hop_costs(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    traceroute: TracerouteEnds,
+    hops: tuple[TracerouteHop, ...],
+) -> tuple[RouteHopCost, ...]:
+    """PacketDetail.hop_costs of a traceroute packet row."""
+    request: int | None
+    if row["request_id"] is None:
+        request = int(row["id"])
+    else:
+        found = connection.execute(
+            """
+            SELECT packet_row_id FROM traceroute_packet
+            WHERE requester_node_id = ? AND request_packet_id = ? AND NOT is_reply
+            LIMIT 1
+            """,
+            (traceroute.requester_node_id, row["request_id"]),
+        ).fetchone()
+        request = None if found is None else int(found[0])
+    at, channel = int(row["first_received_at"]), str(row["channel"])
+    pairs = [(hop.from_node_id, hop.to_node_id) for hop in hops]
+    learned = hop_costs(
+        connection, {(*pair, channel) for pair in pairs}, at - LINK_WINDOW_MS, at + LINK_WINDOW_MS
+    )
+    return route_hop_costs(
+        pairs,
+        (traceroute.requester_node_id, traceroute.target_node_id),
+        {} if request is None else pinned_hops(connection, {request}).get(request, {}),
+        learned,
+        channel,
     )
 
 

@@ -46,7 +46,7 @@ const link = {
 };
 
 describe("A selected traceroute link", () => {
-  it("lists the packets under each direction, collapsed, linking to the hop", async () => {
+  it("lists each direction's hop cost and packets under it, linking to the hop", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(
         new Response(
@@ -59,9 +59,25 @@ describe("A selected traceroute link", () => {
                 requester_node_id: 3,
                 target_node_id: 2,
                 is_reply: true,
+                free: null,
               },
             ],
             b_to_a: [],
+            // Valencia is a client, so it spends a hop on Madrid's copies.
+            a_to_b_cost: {
+              free: 0,
+              costly: 0,
+              verdict: "never_free",
+              role_node_id: 2,
+              role: "CLIENT_MUTE",
+            },
+            b_to_a_cost: {
+              free: 5,
+              costly: 1,
+              verdict: "free",
+              role_node_id: null,
+              role: null,
+            },
             nodes: [
               {
                 node_id: 3,
@@ -106,6 +122,10 @@ describe("A selected traceroute link", () => {
     const none = screen.getByText("None in this window");
     expect(before(hears, entry) && before(entry, heard)).toBe(true);
     expect(before(heard, none)).toBe(true);
+    const spends = screen.getByText("Costs a hop: Valencia is Client mute");
+    const free = screen.getByText("0-hop: free in 5 of 6 traceroutes");
+    expect(before(hears, spends) && before(spends, heard)).toBe(true);
+    expect(before(heard, free)).toBe(true);
     expect(within(entry).getByRole("link").getAttribute("href")).toBe(
       "#packets/9/hop/1-2",
     );

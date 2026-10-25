@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { ContactLink, LinkRow, NodeContact } from "./api";
-import { contactLayers, zeroCostTitle, zeroCostWays } from "./nodeContacts";
+import {
+  contactLayers,
+  zeroCostLabel,
+  zeroCostTitle,
+  zeroCostWays,
+} from "./nodeContacts";
 
 const origin = { latitude: 50.0, longitude: 21.0 };
 const NODE = 100;
@@ -147,6 +152,33 @@ describe("0-cost hops", () => {
     expect(zeroCost[0].title).toMatch(/^This node relays its copies/);
   });
 
+  it("points the arrowhead the free way, two back to back both ways", () => {
+    // Partners due north of the node: east is 0°, clockwise on screen.
+    const north = (nodeId: number): NodeContact => {
+      const found = contact(nodeId, ["traceroute"], null);
+      return {
+        ...found,
+        node: { ...found.node!, latitude: 51, longitude: 21 },
+      };
+    };
+    const arrows = (hops: ReturnType<typeof free>[]) =>
+      contactLayers(
+        NODE,
+        [north(1)],
+        [row(1, "traceroute")],
+        hops,
+        origin,
+        both,
+      ).zeroCost.map(({ rotation, both }) => ({ rotation, both }));
+
+    // Out: the partner passes the node's copies on for free.
+    expect(arrows([free(NODE, 1)])).toEqual([{ rotation: -90, both: false }]);
+    expect(arrows([free(1, NODE)])).toEqual([{ rotation: 90, both: false }]);
+    expect(arrows([free(1, NODE), free(NODE, 1)])).toEqual([
+      { rotation: -90, both: true },
+    ]);
+  });
+
   it("keeps which of the two relays the other's copies for free", () => {
     const ways = zeroCostWays(NODE, [
       free(NODE, 1),
@@ -162,5 +194,7 @@ describe("0-cost hops", () => {
     expect(zeroCostTitle(ways.get("2:LongFast")!)).toMatch(
       /^It relays this node's copies/,
     );
+    expect(zeroCostLabel(ways.get("1:LongFast")!)).toBe("0-hop both ways");
+    expect(zeroCostLabel(ways.get("2:LongFast")!)).toBe("0-hop out");
   });
 });

@@ -147,8 +147,10 @@ import {
   Icon,
   IconButton,
   ShareButton,
-  StatusPanel,
   ShortTime,
+  SidebarNav,
+  SidebarTabs,
+  StatusPanel,
 } from "./ui";
 
 const NO_NODES: MapNode[] = [];
@@ -1727,28 +1729,6 @@ export function MapView({
     );
     if (sender !== undefined) chooseTextSender(sender);
   }
-  // The arrow keys step too, unless something else takes them: a field, or
-  // the map, which pans with them.
-  const stepWithKey = useEffectEvent((event: KeyboardEvent) => {
-    if (stepIndex < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
-    const step =
-      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
-    const target = event.target;
-    const free =
-      target === document.body ||
-      (target instanceof Element &&
-        target.closest(".map-sidebar") !== null &&
-        target.closest("input, select, textarea") === null);
-    const next = stepIndex + step;
-    if (step === 0 || !free || next < 0 || next >= stepIds.length) return;
-    event.preventDefault();
-    stepTo(next);
-  });
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => stepWithKey(event);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
 
   // Back in the lists, the row of the node shown last is scrolled into view.
   const [lastViewedId, setLastViewedId] = useState<number | null>(null);
@@ -1910,33 +1890,27 @@ export function MapView({
         >
           <NodeSearch nodes={items} onSelect={select} keepResults />
           <div ref={lists} className="sidebar-lists" hidden={shown !== null}>
-            <div className="sidebar-tabs" role="tablist" aria-label="Lists">
-              {(["chatty", "heard"] as const).map((tab) => {
-                const count =
-                  tab === "heard"
-                    ? heardShown === null
+            <SidebarTabs
+              tabs={[
+                {
+                  tab: "chatty",
+                  label: "Chatty nodes",
+                  count:
+                    shownTextSenders?.items.length.toLocaleString() ?? null,
+                },
+                {
+                  tab: "heard",
+                  label: "Coverage",
+                  count:
+                    heardShown === null
                       ? null
-                      : `${heardShown.nodes.length.toLocaleString()}${heardShown.truncated ? "+" : ""}`
-                    : shownTextSenders === null
-                      ? null
-                      : shownTextSenders.items.length.toLocaleString();
-                return (
-                  <button
-                    key={tab}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === activeTab}
-                    aria-controls={`map-list-${tab}`}
-                    onClick={() => setListTab(tab)}
-                  >
-                    {tab === "heard" ? "Coverage" : "Chatty nodes"}
-                    {count === null ? null : (
-                      <span className="sidebar-tab-count">{count}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                      : `${heardShown.nodes.length.toLocaleString()}${heardShown.truncated ? "+" : ""}`,
+                },
+              ]}
+              active={activeTab}
+              onChange={setListTab}
+              idPrefix="map-list"
+            />
             {activeTab === "heard" ? (
               <HeardInView
                 id="map-list-heard"
@@ -1960,37 +1934,20 @@ export function MapView({
           </div>
           {shown === null ? null : (
             <div className="sidebar-details">
-              <div className="sidebar-details-nav">
-                <button
-                  type="button"
-                  className="text-button sidebar-back"
-                  aria-label={`Back to ${backTo}`}
-                  onClick={goBack}
-                >
-                  <Icon name="back" />
-                  <span>{backTo}</span>
-                </button>
-                {stepIndex < 0 ? null : (
-                  <div className="sidebar-step">
-                    <IconButton
-                      icon="previous"
-                      label="Previous node"
-                      disabled={stepIndex === 0}
-                      onClick={() => stepTo(stepIndex - 1)}
-                    />
-                    <span>
-                      {(stepIndex + 1).toLocaleString()} /{" "}
-                      {stepIds.length.toLocaleString()}
-                    </span>
-                    <IconButton
-                      icon="chevron"
-                      label="Next node"
-                      disabled={stepIndex === stepIds.length - 1}
-                      onClick={() => stepTo(stepIndex + 1)}
-                    />
-                  </div>
-                )}
-              </div>
+              <SidebarNav
+                backTo={backTo}
+                onBack={goBack}
+                step={
+                  stepIndex < 0
+                    ? undefined
+                    : {
+                        index: stepIndex,
+                        total: stepIds.length,
+                        noun: "node",
+                        onStep: stepTo,
+                      }
+                }
+              />
               {shown === "link" && selectedLinkNodes !== null ? (
                 <section className="selected-node" aria-live="polite">
                   <MapLinkDetails

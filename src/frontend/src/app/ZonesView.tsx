@@ -1,7 +1,6 @@
 import {
   Fragment,
   type MouseEvent,
-  type RefObject,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -73,9 +72,9 @@ import {
   tracerouteHopHref,
 } from "./nodeDisplay";
 import {
-  BackButton,
   Badge,
   BothWays,
+  CopyValue,
   DataItem,
   DirectionSnr,
   ErrorPanel,
@@ -83,6 +82,8 @@ import {
   IconButton,
   MarginValue,
   NodeLink,
+  SidebarNav,
+  SidebarTabs,
   SortHeading,
   StatusPanel,
   TierDot,
@@ -115,6 +116,16 @@ const SOLID_WARNINGS: PairWarning[] = [
 ];
 
 type NodeIndex = Map<number, NodeSummary>;
+
+// The side panel's lists, and a selected zone's.
+type ListTab = "zones" | "relays";
+type ZoneTab = "connections" | "relays";
+const STEP_NOUNS = {
+  zone: "zone",
+  pair: "connection",
+  link: "link",
+  relay: "key relay",
+} as const;
 
 // Opens and closes the build steps and the legend together.
 const PANEL_OPEN_KEY = "zonesLegendOpen";
@@ -161,8 +172,6 @@ export function ZonesView() {
     "zones.link",
     null,
   );
-  // The key relay clicked on the map or beside it, whose details open beside
-  // the map in place of an open link.
   const [selectedRelay, setSelectedRelay] = useViewState<number | null>(
     "zones.relay",
     null,
@@ -175,6 +184,16 @@ export function ZonesView() {
     "solid",
     (value) =>
       ["solid", "observations", "margin", "km"].includes(value as string),
+  );
+  const [listTab, setListTab] = useSetting<ListTab>(
+    "zones.listTab",
+    "zones",
+    (value) => value === "zones" || value === "relays",
+  );
+  const [zoneTab, setZoneTab] = useSetting<ZoneTab>(
+    "zones.zoneTab",
+    "connections",
+    (value) => value === "connections" || value === "relays",
   );
   const [focus, setFocus] = useState<MapFocus | null>(null);
   // A visit minutes after the last shows what was loaded then (openedAt).
@@ -211,15 +230,19 @@ export function ZonesView() {
     setSelectedRelay(null);
   }
 
+  // The side panel shows the latest choice, so a zone or pair replaces an
+  // open link or key relay.
   function selectZone(zoneId: number | null) {
     setSelectedZone(zoneId);
     setSelectedPair(null);
     setOpenLink(null);
+    setSelectedRelay(null);
   }
 
   function selectPair(key: string | null) {
     setSelectedPair(key);
     setOpenLink(null);
+    setSelectedRelay(null);
   }
 
   // A zone row beside the map selects the zone and fits the map to its
@@ -264,7 +287,17 @@ export function ZonesView() {
     () => textReachLookup(shown ?? { zones: [], text_reach: [] }),
     [shown],
   );
-  const relays = shown?.key_relays ?? [];
+  // Those with a warning first, as they are the ones to go and look at; the
+  // stable sort keeps the impact order within each.
+  const generatedAt = Date.parse(shown?.generated_at ?? "");
+  const relays = [...(shown?.key_relays ?? [])].sort(
+    (a, b) =>
+      Number(relayConcern(b, generatedAt) !== null) -
+      Number(relayConcern(a, generatedAt) !== null),
+  );
+  const warningRelays = relays.filter(
+    (relay) => relayConcern(relay, generatedAt) !== null,
+  );
   // A selected zone's connections, most links first, and its key relays.
   const joins = (shown?.zone_pairs ?? [])
     .filter(
@@ -273,35 +306,100 @@ export function ZonesView() {
         (item.zone_a === zone?.zone_id || item.zone_b === zone?.zone_id),
     )
     .sort((a, b) => b.links.length - a.links.length);
-  // Those with a warning first, as they are the ones to go and look at; the
-  // stable sort keeps the impact order within each.
-  const generatedAt = Date.parse(shown?.generated_at ?? "");
-  const zoneRelays = relays
-    .filter((relay) => relay.zone_id === zone?.zone_id)
-    .sort(
-      (a, b) =>
-        Number(relayConcern(b, generatedAt) !== null) -
-        Number(relayConcern(a, generatedAt) !== null),
-    );
-  // The side panel's lists: a pair's links, a zone's connections and key relays,
-  // or the zones.
-  const side = useRef<HTMLElement>(null);
-  const { rows: sideRows, grow: sideGrows } = useRowsThatFit(
-    side,
-    pair !== undefined
-      ? pair.links.length
-      : zone !== undefined
-        ? joins.length + zoneRelays.length
-        : (shown?.zones.length ?? 0),
-    [
-      shown?.generated_at,
-      selectedZone,
-      selectedPair,
-      openLink,
-      selectedRelay,
-      linkSort,
-    ].join(),
+  const zoneRelays = relays.filter((relay) => relay.zone_id === zone?.zone_id);
+
+  // The side panel shows its lists, or else the latest choice in their
+  // place: a key relay or link over the pair, the pair over the zone.
+  const choice =
+    relay !== undefined
+      ? "relay"
+      : openedLink !== undefined
+        ? "link"
+        : pair !== undefined
+          ? "pair"
+          : zone !== undefined
+            ? "zone"
+            : null;
+  const listName = listTab === "relays" ? "Warnings" : "Zones";
+  const zoneLabel =
+    zone === undefined
+      ? null
+      : `${zone.zone_id}. ${names.get(zone.zone_id) ?? zone.name}`;
+  const pairLabel =
+    pair === undefined
+      ? null
+      : `${names.get(pair.zone_a)} ↔ ${names.get(pair.zone_b)}`;
+  // Back goes one step, to what the choice was made from.
+  const backTo =
+    choice === "relay" || choice === "link"
+      ? (pairLabel ?? zoneLabel ?? listName)
+      : choice === "pair"
+        ? (zoneLabel ?? listName)
+        : listName;
+  function goBack() {
+    if (choice === "relay") selectRelay(null);
+    else if (choice === "link") setOpenLink(null);
+    else if (choice === "pair") selectPair(null);
+    else selectZone(null);
+  }
+
+  // ‹ › step through the list the choice came from: a pair's links the map
+  // draws, a zone's connections or key relays, or the side lists.
+  const drawnPairLinks = new Set(
+    drawnLinks(pair?.links ?? [], nodes).map(({ link }) => linkKey(link)),
   );
+  const stepKeys =
+    choice === "relay"
+      ? (zone !== undefined
+          ? zoneRelays
+          : listTab === "relays"
+            ? warningRelays
+            : []
+        ).map((item) => String(item.node_id))
+      : choice === "link"
+        ? sortLinks(pair?.links ?? [], linkSort)
+            .map(linkKey)
+            .filter((key) => drawnPairLinks.has(key))
+        : choice === "pair"
+          ? joins.map(pairKey)
+          : (shown?.zones ?? []).map((item) => String(item.zone_id));
+  const chosenKey =
+    choice === "relay"
+      ? String(selectedRelay)
+      : choice === "link"
+        ? openLink
+        : choice === "pair"
+          ? selectedPair
+          : String(selectedZone);
+  const stepIndex = choice === null ? -1 : stepKeys.indexOf(chosenKey ?? "");
+  function stepTo(index: number) {
+    const key = stepKeys[index];
+    if (choice === "relay") showRelay(Number(key));
+    else if (choice === "link") openPairLink(key);
+    else if (choice === "pair") selectPair(key);
+    else selectAndShowZone(Number(key));
+  }
+
+  // Back in a list, the row shown last of each kind is scrolled into view.
+  const side = useRef<HTMLElement>(null);
+  const lastRows = useRef(new Map<string, string>());
+  const shownRows = [
+    zone === undefined ? null : `zone-${zone.zone_id}`,
+    pair === undefined ? null : `pair-${selectedPair}`,
+    openedLink === undefined ? null : `link-${openLink}`,
+    relay === undefined ? null : `relay-${relay.node_id}`,
+  ]
+    .filter((row) => row !== null)
+    .join(" ");
+  useEffect(() => {
+    for (const row of shownRows.split(" ").filter(Boolean)) {
+      lastRows.current.set(row.split("-")[0], row);
+    }
+    for (const row of lastRows.current.values()) {
+      const element = side.current?.querySelector(`[data-row="${row}"]`);
+      if (element) scrollIntoList(element);
+    }
+  }, [shownRows, listTab, zoneTab]);
 
   return (
     <section className="zones-page" aria-label="Zones">
@@ -394,71 +492,87 @@ export function ZonesView() {
               onOpenLink={openPairLink}
               selectedRelay={relay !== undefined ? selectedRelay : null}
               onSelectRelay={selectRelay}
+              onBack={goBack}
               focus={focus}
             />
           )}
         </div>
         {shown !== null ? (
           <div className="zones-column zones-side-column">
-            {/* Details too tall to fit beside the map with none of their
-                list's rows grow the panel rather than being cut. */}
             <aside
               ref={side}
-              className={`zones-panel zones-side${sideGrows ? " is-whole" : ""}`}
+              className="zones-panel zones-side"
               aria-label="Zones"
             >
-              {relay !== undefined ? (
-                <RelayCard
-                  relay={relay}
+              {choice === null ? (
+                <SideLists
                   network={shown}
                   nodes={nodes}
                   colors={colors}
                   names={names}
-                  onSelectZone={selectZone}
-                  onClose={() => selectRelay(null)}
+                  warnings={warningRelays}
+                  tab={listTab}
+                  onTab={setListTab}
+                  onSelectZone={selectAndShowZone}
+                  onShowRelay={showRelay}
                 />
-              ) : null}
-              {openedLink !== undefined ? (
-                <section
-                  className="selected-node zones-open-link"
-                  aria-live="polite"
-                >
-                  <MapLinkDetails
-                    linkKind="traceroute"
-                    link={{ ...openedLink, channel: shown.channel ?? "" }}
-                    nodeA={linkEnd(openedLink.node_a, nodes)}
-                    nodeB={linkEnd(openedLink.node_b, nodes)}
-                    km={openedLink.km}
-                    since={new Date(
-                      Date.parse(shown.generated_at) -
-                        shown.window_hours * HOUR_MS,
-                    ).toISOString()}
-                    onClose={() => setOpenLink(null)}
-                    linkSection={false}
+              ) : (
+                <SidebarNav
+                  backTo={backTo}
+                  onBack={goBack}
+                  step={
+                    stepIndex < 0
+                      ? undefined
+                      : {
+                          index: stepIndex,
+                          total: stepKeys.length,
+                          noun: STEP_NOUNS[choice],
+                          onStep: stepTo,
+                        }
+                  }
+                />
+              )}
+              {relay !== undefined ? (
+                <div className="zones-side-scroll">
+                  <RelayCard
+                    relay={relay}
+                    network={shown}
+                    nodes={nodes}
+                    colors={colors}
+                    names={names}
+                    onSelectZone={selectZone}
                   />
-                </section>
-              ) : null}
-              {/* A pair goes before the zone it was chosen from; its × goes
-                  back to that zone. */}
-              {pair !== undefined ? (
+                </div>
+              ) : openedLink !== undefined ? (
+                <div className="zones-side-scroll">
+                  <section className="selected-node" aria-live="polite">
+                    <MapLinkDetails
+                      linkKind="traceroute"
+                      link={{ ...openedLink, channel: shown.channel ?? "" }}
+                      nodeA={linkEnd(openedLink.node_a, nodes)}
+                      nodeB={linkEnd(openedLink.node_b, nodes)}
+                      km={openedLink.km}
+                      since={new Date(
+                        Date.parse(shown.generated_at) -
+                          shown.window_hours * HOUR_MS,
+                      ).toISOString()}
+                      linkSection={false}
+                    />
+                  </section>
+                </div>
+              ) : pair !== undefined ? (
                 <PairSide
                   pair={pair}
+                  network={shown}
                   nodes={nodes}
                   colors={colors}
                   names={names}
                   reach={reach}
                   sort={linkSort}
                   onSort={setLinkSort}
-                  rows={sideRows}
-                  openLink={openedLink !== undefined ? openLink : null}
+                  drawn={drawnPairLinks}
                   onOpenLink={openPairLink}
                   onSelectZone={selectZone}
-                  backTo={
-                    zone !== undefined
-                      ? `${zone.zone_id}. ${names.get(zone.zone_id) ?? zone.name}`
-                      : undefined
-                  }
-                  onBack={() => selectPair(null)}
                 />
               ) : zone !== undefined ? (
                 <ZoneDetails
@@ -469,23 +583,12 @@ export function ZonesView() {
                   nodes={nodes}
                   colors={colors}
                   names={names}
-                  rows={sideRows}
+                  tab={zoneTab}
+                  onTab={setZoneTab}
                   onSelectPair={selectPair}
-                  selectedRelay={selectedRelay}
-                  onShowNode={showRelay}
-                  onBack={() => selectZone(null)}
+                  onShowRelay={showRelay}
                 />
-              ) : (
-                <SideLists
-                  network={shown}
-                  nodes={nodes}
-                  colors={colors}
-                  names={names}
-                  relays={relays}
-                  rows={sideRows}
-                  onSelectZone={selectAndShowZone}
-                />
-              )}
+              ) : null}
             </aside>
           </div>
         ) : null}
@@ -859,133 +962,43 @@ function MapLegend({
 
 // ------------------------------------------------------------ Beside the map
 
-// The fewest rows of a list beside the map that the panel keeps, growing past
-// the map's bottom when even these do not fit.
-const MIN_FIT_ROWS = 3;
-
 /**
- * How many of the side panel list's `total` rows fit without the panel
- * scrolling. Beside the map the panel is as tall as the map's column
- * (styles.css), and the rows marked data-fit-row are dropped from the end
- * while it overflows, down to MIN_FIT_ROWS; stacked on a narrow screen it
- * grows and shows them all. `grow` says the panel overflows even then, such
- * as with a link's or relay's details open, and should grow rather than be
- * cut. A change of `content`, the row count or the panel's size starts again
- * from every row.
+ * Scrolls the side list holding the row just enough to show it; unlike
+ * scrollIntoView, it leaves the page where it is.
  */
-function useRowsThatFit(
-  panel: RefObject<HTMLElement | null>,
-  total: number,
-  content: string,
-): { rows: number; grow: boolean } {
-  const [size, setSize] = useState("");
-  const key = `${content}|${total}|${size}`;
-  const [fit, setFit] = useState({ key, rows: total, grow: false });
-  if (fit.key !== key) setFit({ key, rows: total, grow: false });
-  const current = fit.key === key ? fit : { rows: total, grow: false };
-  const rows = current.rows;
-
-  useEffect(() => {
-    const element = panel.current;
-    if (element === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() =>
-      setSize(`${element.clientWidth}x${element.clientHeight}`),
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-    // The panel appears once the zones load, which changes `content`.
-  }, [panel, content]);
-
-  useLayoutEffect(() => {
-    const element = panel.current;
-    if (element === null) return;
-    if (getComputedStyle(element).position !== "absolute") return;
-    const over = element.scrollHeight - element.clientHeight;
-    if (over <= 0) return;
-    // Measuring before paint and cutting is what this effect is for; each
-    // cut re-renders once, and it stops when the panel fits or grows (which
-    // takes it out of absolute position).
-    const fewest = Math.min(total, MIN_FIT_ROWS);
-    if (rows <= fewest) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFit({ key, rows, grow: true });
-      return;
-    }
-    const marked = element.querySelectorAll<HTMLElement>("[data-fit-row]");
-    let freed = 0;
-    let cut = 0;
-    while (cut < marked.length && freed < over) {
-      freed += marked[marked.length - 1 - cut].offsetHeight;
-      cut += 1;
-    }
-    setFit({
-      key,
-      rows: Math.max(fewest, rows - Math.max(cut, 1)),
-      grow: false,
-    });
-  }, [panel, rows, total, key]);
-  return current;
+function scrollIntoList(row: Element) {
+  const list = row.closest(".zones-side-scroll");
+  if (list === null) return;
+  const box = list.getBoundingClientRect();
+  // A sticky table heading covers the list's top.
+  const top = box.top + (list.querySelector("thead")?.offsetHeight ?? 0);
+  const rowBox = row.getBoundingClientRect();
+  if (rowBox.top < top) list.scrollTop -= top - rowBox.top;
+  else if (rowBox.bottom > box.bottom)
+    list.scrollTop += rowBox.bottom - box.bottom;
 }
 
-/**
- * At the right of a side list's heading: how many of its rows fit, when not
- * all do, and with `target` (an element id) a button that scrolls to the
- * full table under the map.
- */
-function MoreInTable({
-  shown,
-  total,
-  target,
-  title,
-}: {
-  shown: number;
-  total: number;
-  target?: string;
-  title?: string;
-}) {
-  const cut = shown < total;
-  if (!cut && target === undefined) return null;
-  return (
-    <span className="zones-more" title={title}>
-      {cut ? `${shown} of ${total.toLocaleString()}` : null}
-      {cut && target !== undefined ? " · " : null}
-      {target !== undefined ? (
-        <button
-          type="button"
-          className="text-button"
-          onClick={() =>
-            document
-              .getElementById(target)
-              ?.scrollIntoView({ behavior: "smooth", block: "center" })
-          }
-        >
-          In the table ↓
-        </button>
-      ) : null}
-    </span>
-  );
-}
-
-/**
- * Beside the map while nothing is selected: the network in one line, then
- * the zones.
- */
+/** Beside the map while nothing is chosen: zones or relay warnings. */
 function SideLists({
   network,
   nodes,
   colors,
   names,
-  relays,
-  rows,
+  warnings,
+  tab,
+  onTab,
   onSelectZone,
+  onShowRelay,
 }: {
   network: NetworkZones;
   nodes: NodeIndex;
   colors: Map<number, string>;
   names: Map<number, string>;
-  relays: KeyRelay[];
-  rows: number;
+  warnings: KeyRelay[];
+  tab: ListTab;
+  onTab: (tab: ListTab) => void;
   onSelectZone: (zoneId: number) => void;
+  onShowRelay: (nodeId: number) => void;
 }) {
   if (network.zones.length === 0) {
     return (
@@ -994,146 +1007,166 @@ function SideLists({
       </p>
     );
   }
-  const members = network.zones.reduce(
-    (sum, zone) => sum + zone.members.length,
-    0,
-  );
-  const total = network.zones.length;
   return (
     <>
-      <p className="zones-summary">
-        {plural(network.zones.length, "zone")} · {plural(members, "node")}
-      </p>
-      <div className="zones-side-heading">
-        <MoreInTable
-          shown={Math.min(rows, total)}
-          total={total}
-          title="Select the others on the map"
-        />
-      </div>
-      <ZoneTable
-        network={network}
-        relays={relays}
-        nodes={nodes}
-        colors={colors}
-        names={names}
-        rows={rows}
-        onSelectZone={onSelectZone}
+      <SidebarTabs
+        tabs={[
+          {
+            tab: "zones",
+            label: "Zones",
+            count: network.zones.length.toLocaleString(),
+          },
+          {
+            tab: "relays",
+            label: "Warnings",
+            count: warnings.length.toLocaleString(),
+          },
+        ]}
+        active={tab}
+        onChange={onTab}
+        idPrefix="zones-list"
       />
+      {tab === "relays" ? (
+        <RelayList
+          id="zones-list-relays"
+          relays={warnings}
+          network={network}
+          nodes={nodes}
+          colors={colors}
+          names={names}
+          showZone
+          showWarning
+          onShowRelay={onShowRelay}
+        />
+      ) : (
+        <ul
+          id="zones-list-zones"
+          className="zones-side-scroll zones-rows zones-zone-rows"
+          aria-label="Zones"
+        >
+          {network.zones.map((zone) => {
+            const warningCount = warnings.filter(
+              (relay) => relay.zone_id === zone.zone_id,
+            ).length;
+            return (
+              <li key={zone.zone_id}>
+                <button
+                  type="button"
+                  data-row={`zone-${zone.zone_id}`}
+                  onClick={() => onSelectZone(zone.zone_id)}
+                >
+                  <span className="zones-row-name">
+                    <ZoneSwatch color={colors.get(zone.zone_id)} />
+                    <span>
+                      {zone.zone_id}. {names.get(zone.zone_id) ?? zone.name}
+                    </span>
+                  </span>
+                  <span
+                    className="zones-late"
+                    title={
+                      warningCount > 0
+                        ? "Key relays gone quiet or low on battery"
+                        : undefined
+                    }
+                  >
+                    {warningCount > 0 ? (
+                      <>
+                        <WarningMark />
+                        {warningCount}
+                      </>
+                    ) : null}
+                  </span>
+                  <span className="zones-row-count" title="Nodes">
+                    {zone.members.length.toLocaleString()}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </>
   );
 }
 
-/** The zones, a line each; a row selects its zone. */
-function ZoneTable({
-  network,
+/** Relays with their warning or reason for being key. */
+function RelayList({
+  id,
   relays,
+  network,
   nodes,
   colors,
   names,
-  rows,
-  onSelectZone,
+  showZone = false,
+  showWarning = false,
+  onShowRelay,
 }: {
-  network: NetworkZones;
+  id: string;
   relays: KeyRelay[];
+  network: NetworkZones;
   nodes: NodeIndex;
   colors: Map<number, string>;
   names: Map<number, string>;
-  rows: number;
-  onSelectZone: (zoneId: number) => void;
+  /** Each relay's zone number before its name. */
+  showZone?: boolean;
+  showWarning?: boolean;
+  onShowRelay: (nodeId: number) => void;
 }) {
+  if (relays.length === 0) {
+    return (
+      <p id={id} className="empty-inline">
+        None.
+      </p>
+    );
+  }
   const now = Date.parse(network.generated_at);
   return (
-    <table className="zones-table zones-side-table">
-      <thead>
-        <tr>
-          <th scope="col" title="Nodes that mostly hear each other">
-            Zone
-          </th>
-          <th scope="col" className="number">
-            Nodes
-          </th>
-          <th scope="col" className="number" title="Links inside the zone">
-            Links
-          </th>
-          <th scope="col" className="number" title="Zones it links to directly">
-            Connections
-          </th>
-          <th
-            scope="col"
-            className="number"
-            title="Key relays gone quiet or low on battery"
-          >
-            Warnings
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {network.zones.slice(0, rows).map((zone) => {
-          const touches = (pair: ZonePair) =>
-            pair.zone_a === zone.zone_id || pair.zone_b === zone.zone_id;
-          const pairs = network.zone_pairs.filter(
-            (pair) => isDirect(pair) && touches(pair),
-          );
-          const concerns = relays.filter(
-            (relay) =>
-              relay.zone_id === zone.zone_id &&
-              relayConcern(relay, now) !== null,
-          ).length;
-          const placed = zone.members.filter(
-            (id) => nodes.get(id)?.latitude != null,
-          ).length;
-          return (
-            <tr
-              key={zone.zone_id}
-              data-fit-row
-              className="zones-pair-row"
-              onClick={(event) => {
-                if ((event.target as Element).closest("button")) return;
-                onSelectZone(zone.zone_id);
-              }}
+    <ul
+      id={id}
+      className="zones-side-scroll zones-rows"
+      aria-label={showWarning ? "Warnings" : "Key relays"}
+    >
+      {relays.map((relay) => {
+        const concern = relayConcern(relay, now);
+        const onMap = placed(nodes.get(relay.node_id)) !== null;
+        return (
+          <li key={relay.node_id}>
+            <button
+              type="button"
+              data-row={`relay-${relay.node_id}`}
+              className={onMap ? undefined : "unplaced"}
+              title={onMap ? undefined : "Not on the map: no position"}
+              onClick={() => onShowRelay(relay.node_id)}
             >
-              <td>
-                <ZoneChip
-                  zoneId={zone.zone_id}
-                  colors={colors}
-                  names={names}
-                  title={[
-                    zone.region === null
-                      ? null
-                      : `${names.get(zone.zone_id)}, ${zone.region}`,
-                    `Hub: ${zone.name}`,
-                  ]
-                    .filter((line) => line !== null)
-                    .join("\n")}
-                  onSelect={onSelectZone}
-                />
-              </td>
-              <td className="number" title={`${placed} with a position`}>
-                {zone.members.length}
-              </td>
-              <td className="number">{zone.internal_links}</td>
-              <td className="number">{pairs.length}</td>
-              <td className="number">
-                {concerns > 0 ? (
-                  <>
-                    <WarningMark />
-                    {concerns}
-                  </>
+              <span className="zones-row-name">
+                {showZone && relay.zone_id !== null ? (
+                  <ZoneNumber zoneId={relay.zone_id} colors={colors} />
                 ) : null}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                <span>
+                  {nodeName(nodes.get(relay.node_id)) ??
+                    formatNodeId(relay.node_id)}
+                </span>
+              </span>
+              <span
+                className={`zones-value${concern === null ? "" : " zones-late"}`}
+                title={showWarning ? undefined : (concern ?? undefined)}
+              >
+                {concern === null ? null : "⚠ "}
+                {showWarning
+                  ? concern
+                  : relayReason(relay, names, network.rules)}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
 /**
- * A key relay clicked on the map or in a list beside it: what it matters for,
- * the nodes that depend on it, and how it is doing, with its page, the Map
- * page and its row in the table.
+ * A chosen key relay: what it matters for, the nodes that depend on it, and
+ * how it is doing, with the Map page and its row in the table.
  */
 function RelayCard({
   relay,
@@ -1142,7 +1175,6 @@ function RelayCard({
   colors,
   names,
   onSelectZone,
-  onClose,
 }: {
   relay: KeyRelay;
   network: NetworkZones;
@@ -1150,7 +1182,6 @@ function RelayCard({
   colors: Map<number, string>;
   names: Map<number, string>;
   onSelectZone: (zoneId: number) => void;
-  onClose: () => void;
 }) {
   const nodeId = relay.node_id;
   const node = nodes.get(nodeId);
@@ -1159,9 +1190,11 @@ function RelayCard({
   const hours = hoursSince(relay.last_seen_at, now);
   const nodeCount = (count: number) => plural(count, "node");
   return (
-    <section className="selected-node zones-open-link" aria-live="polite">
-      <p className="section-label">Selected key relay</p>
+    <section className="selected-node" aria-live="polite">
       <div className="selected-node-heading">
+        <span className="node-avatar avatar-green" title="Short name">
+          {shortLabel(nodeId, node?.short_name ?? null)}
+        </span>
         <div>
           <h3>
             {holdsOnlySolidLink(relay) ? (
@@ -1169,26 +1202,27 @@ function RelayCard({
             ) : isOutlined(relay, network.rules) ? (
               <RelayMark filled={false} />
             ) : null}{" "}
-            <a className="text-button" href={nodeHref(nodeId)}>
-              {nodeName(node) ?? formatNodeId(nodeId)}
-            </a>
+            {nodeName(node) ?? formatNodeId(nodeId)}
           </h3>
-          <span className="mono muted">
-            {formatNodeId(nodeId)} · {formatRole(node?.role ?? null)}
+          <span className="muted">
+            <CopyValue value={formatNodeId(nodeId)} label="node ID" />
           </span>
         </div>
-        <IconButton
-          icon="close"
-          label="Clear selected relay"
-          onClick={onClose}
-        />
+        <a
+          className="icon-button"
+          href={nodeHref(nodeId)}
+          aria-label="View node details"
+          title="View node details"
+        >
+          <Icon name="open" />
+        </a>
       </div>
-      <p>
+      <p className="zones-relay-key">
         {concern !== null ? <span className="zones-late">⚠ </span> : null}
         Key for: {relayReason(relay, names, network.rules)}
         {concern !== null ? `. ${concern}.` : null}
       </p>
-      <dl className="node-summary">
+      <dl className="node-summary node-card-facts">
         <DataItem
           label="Zone"
           value={
@@ -1204,6 +1238,7 @@ function RelayCard({
             )
           }
         />
+        <DataItem label="Role" value={formatRole(node?.role ?? null)} />
         <DataItem label="Cuts off" value={nodeCount(relay.cuts_off)} />
         <DataItem
           label="No solid backup"
@@ -1220,13 +1255,8 @@ function RelayCard({
           label="Firmware"
           value={relay.firmware ? `≥ ${relay.firmware.minimum}` : "—"}
         />
-        {network.nodes.some(
-          (node) => node.node_id === nodeId && node.estimated,
-        ) ? (
-          <DataItem
-            label="Position"
-            value="Estimated from its neighbours: it reports none"
-          />
+        {node?.estimated ? (
+          <DataItem label="Position" value="Estimated from its neighbours" />
         ) : null}
         <DataItem
           label="Show"
@@ -1251,66 +1281,6 @@ function RelayCard({
         />
       </dl>
     </section>
-  );
-}
-
-/**
- * A selected zone's key relay beside the map: what it matters for, and ⚠ when
- * it was not heard lately or its battery is low. Clicking the row elsewhere
- * than its name selects the relay and centres the map on it; the name opens
- * the node's page.
- */
-function RelayItem({
-  relay,
-  network,
-  nodes,
-  names,
-  selected,
-  onShowNode,
-}: {
-  relay: KeyRelay;
-  network: NetworkZones;
-  nodes: NodeIndex;
-  names: Map<number, string>;
-  selected: boolean;
-  onShowNode: (nodeId: number) => void;
-}) {
-  const concern = relayConcern(relay, Date.parse(network.generated_at));
-  const onMap = placed(nodes.get(relay.node_id)) !== null;
-  return (
-    <li
-      data-fit-row
-      className={
-        [onMap ? "zones-relay-row" : "", selected ? "is-selected" : ""]
-          .join(" ")
-          .trim() || undefined
-      }
-      title={onMap ? undefined : "Not on the map: no position"}
-      onClick={
-        onMap
-          ? (event) => {
-              if ((event.target as Element).closest("a, button")) return;
-              onShowNode(relay.node_id);
-            }
-          : undefined
-      }
-    >
-      <span className="zones-pick-name">
-        <ZoneNodeLink
-          nodeId={relay.node_id}
-          nodes={nodes}
-          maxLength={RELAY_NAME_LENGTH}
-        />
-      </span>
-      <span className="zones-value">
-        {concern !== null ? (
-          <span className="zones-late" title={concern}>
-            ⚠{" "}
-          </span>
-        ) : null}
-        {relayReason(relay, names, network.rules)}
-      </span>
-    </li>
   );
 }
 
@@ -1386,14 +1356,17 @@ function LinkSnr({ link, nodes }: { link: ZonePairLink; nodes: NodeIndex }) {
 /**
  * A pair link's figures as the side panel and the pair's links table show
  * them: times seen and SNR each way, the weaker margin, and the distance
- * (between reported positions only, with line of sight).
+ * (between reported positions only, with line of sight). The side panel,
+ * too narrow for it, leaves out SNR; an open link shows it.
  */
 function LinkMeasurementCells({
   link,
   nodes,
+  snr = true,
 }: {
   link: ZonePairLink;
   nodes: NodeIndex;
+  snr?: boolean;
 }) {
   return (
     <>
@@ -1403,9 +1376,11 @@ function LinkMeasurementCells({
           right={link.b_to_a.observations.toLocaleString()}
         />
       </td>
-      <td className="number">
-        <LinkSnr link={link} nodes={nodes} />
-      </td>
+      {snr ? (
+        <td className="number">
+          <LinkSnr link={link} nodes={nodes} />
+        </td>
+      ) : null}
       <td>
         <MarginValue value={link.weaker_margin_db} />
       </td>
@@ -1427,58 +1402,111 @@ function LinkMeasurementCells({
 }
 
 /**
- * The pair selected on the map, in the table or among a zone's connections: its
- * figures in a line, then its links compact for the narrow column (zone
- * number dots and short names), in the order the pair's links table under
- * its row uses too.
+ * A zone as a row like a selected link's node: its number on its colour, its
+ * name, and its size and region under it. With onSelect, the row selects the
+ * zone.
+ */
+function ZoneEnd({
+  zone,
+  colors,
+  names,
+  onSelect,
+}: {
+  zone: Zone;
+  colors: Map<number, string>;
+  names: Map<number, string>;
+  onSelect?: (zoneId: number) => void;
+}) {
+  const name = names.get(zone.zone_id) ?? zone.name;
+  const content = (
+    <>
+      <span
+        className="node-avatar zones-zone-badge"
+        style={{ background: colors.get(zone.zone_id) }}
+        aria-hidden="true"
+      >
+        {zone.zone_id}
+      </span>
+      <span className="link-end-names">
+        <span className="link-end-name">{name}</span>
+        <span className="link-end-id">
+          {[
+            plural(zone.members.length, "node"),
+            zone.place !== null ? zone.region : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
+      </span>
+    </>
+  );
+  if (onSelect === undefined) {
+    return <div className="zones-zone-end">{content}</div>;
+  }
+  return (
+    <button
+      type="button"
+      className="link-end zones-zone-end"
+      aria-label={`${zone.zone_id}. ${name}`}
+      title={name}
+      onClick={() => onSelect(zone.zone_id)}
+    >
+      {content}
+      <Icon name="chevron" />
+    </button>
+  );
+}
+
+/**
+ * The chosen pair: its two zones joined by a line with how far apart they
+ * are, its figures, then its links compact for the narrow column (zone
+ * number headings and short names), in the order the pair's links table
+ * under its row uses too.
  */
 function PairSide({
   pair,
+  network,
   nodes,
   colors,
   names,
   reach,
   sort,
   onSort,
-  rows,
-  openLink,
+  drawn,
   onOpenLink,
   onSelectZone,
-  backTo,
-  onBack,
 }: {
   pair: ZonePair;
+  network: NetworkZones;
   nodes: NodeIndex;
   colors: Map<number, string>;
   names: Map<number, string>;
   reach: ReachLookup;
   sort: LinkSort;
   onSort: (sort: LinkSort) => void;
-  rows: number;
-  openLink: string | null;
-  onOpenLink: (link: string | null) => void;
+  /** The pair's links the map draws, which open there. */
+  drawn: ReadonlySet<string>;
+  onOpenLink: (link: string) => void;
   onSelectZone: (zoneId: number) => void;
-  // The zone selected when the pair was, which × goes back to.
-  // What its × goes back to, if not all zones.
-  backTo: string | undefined;
-  onBack: () => void;
 }) {
-  const drawn = new Set(
-    drawnLinks(pair.links, nodes).map(({ link }) => linkKey(link)),
-  );
   const unplaced = pair.links.length - drawn.size;
   const solid = pair.links.filter((link) => link.solid).length;
   const texts = [
     reach(pair.zone_a, pair.zone_b),
     reach(pair.zone_b, pair.zone_a),
   ] as const;
-  const sorted = sortLinks(pair.links, sort);
-  const links = sorted.slice(0, rows);
-  // The link open on the map stays in the list, in place of the last row.
-  const opened = sorted.find((link) => linkKey(link) === openLink);
-  if (opened !== undefined && !links.includes(opened)) {
-    links.splice(Math.max(links.length - 1, 0), 1, opened);
-  }
+  const links = sortLinks(pair.links, sort);
+  const end = (zoneId: number) => {
+    const zone = network.zones.find((item) => item.zone_id === zoneId);
+    return zone === undefined ? null : (
+      <ZoneEnd
+        zone={zone}
+        colors={colors}
+        names={names}
+        onSelect={onSelectZone}
+      />
+    );
+  };
   const node = (id: number) => (
     <a
       href={nodeHref(id)}
@@ -1494,26 +1522,26 @@ function PairSide({
   );
   return (
     <>
-      <BackButton
-        label={backTo === undefined ? "All zones" : `Back to ${backTo}`}
-        onClick={onBack}
-      />
-      <div className="zones-zone-title">
-        <h3>
-          <ZoneTag
-            zoneId={pair.zone_a}
-            colors={colors}
-            names={names}
-            onSelect={onSelectZone}
-          />{" "}
-          ↔{" "}
-          <ZoneTag
-            zoneId={pair.zone_b}
-            colors={colors}
-            names={names}
-            onSelect={onSelectZone}
-          />
-        </h3>
+      <div className="link-ends zones-pair-ends">
+        {end(pair.zone_a)}
+        <div className="link-ends-join">
+          <span className="link-ends-line" aria-hidden="true" />
+          <span className="link-ends-km">
+            {pair.km !== null ? (
+              <strong title="Between the zone centres">
+                {formatKm(pair.km)} km
+              </strong>
+            ) : (
+              <span className="muted">Distance unknown</span>
+            )}
+            <span title="The fewest hops between the two zone hubs">
+              {pair.hub_hops !== null
+                ? `${plural(pair.hub_hops, "hop")} between hubs`
+                : "No path between hubs"}
+            </span>
+          </span>
+        </div>
+        {end(pair.zone_b)}
       </div>
       {/* Every figure keeps its row, with "—" when it is missing, so each is
           always in the same place; warnings come last. */}
@@ -1529,22 +1557,6 @@ function PairSide({
                   · {unplaced} off the map
                 </span>
               ) : null}
-            </>
-          }
-        />
-        <DataItem
-          label="Apart"
-          value={
-            <>
-              <span title="Between the zone centres">
-                {pair.km !== null ? `${formatKm(pair.km)} km` : "—"}
-              </span>
-              {" · "}
-              <span title="The fewest hops between the two zone hubs">
-                {pair.hub_hops !== null
-                  ? `${plural(pair.hub_hops, "hop")} between hubs`
-                  : "no path between hubs"}
-              </span>
             </>
           }
         />
@@ -1595,95 +1607,84 @@ function PairSide({
           />
         ) : null}
       </dl>
-      <div className="zones-pair-more">
-        <MoreInTable
-          shown={links.length}
-          total={pair.links.length}
-          target={pairRowId(pair)}
-        />
+      <div className="zones-side-scroll zones-pair-scroll">
+        <table className="zones-table zones-pair-links zones-pair-side">
+          <thead>
+            <tr>
+              {heading(pair.zone_a)}
+              {heading(pair.zone_b)}
+              <SortHeading
+                label="Seen"
+                title="Times heard each way"
+                sort="observations"
+                active={sort}
+                onSort={onSort}
+              />
+              <SortHeading
+                label="Margin"
+                title="Weaker direction's signal margin"
+                sort="margin"
+                active={sort}
+                onSort={onSort}
+              />
+              <SortHeading label="km" sort="km" active={sort} onSort={onSort} />
+              <SortHeading
+                label="Solid"
+                title="Solid links first"
+                sort="solid"
+                active={sort}
+                onSort={onSort}
+              />
+            </tr>
+          </thead>
+          <tbody>
+            {links.map((link) => {
+              const key = linkKey(link);
+              // A link the map cannot draw has nothing to open there.
+              const placed = drawn.has(key);
+              return (
+                <tr
+                  key={key}
+                  data-row={`link-${key}`}
+                  className={placed ? "zones-pair-row" : "zones-unplaced-row"}
+                  title={
+                    placed
+                      ? undefined
+                      : "Not on the map: a node has no position"
+                  }
+                  onClick={
+                    placed
+                      ? (event) => {
+                          // Node and line of sight links keep their own behaviour.
+                          if ((event.target as Element).closest("a")) return;
+                          onOpenLink(key);
+                        }
+                      : undefined
+                  }
+                >
+                  <td>{node(link.node_a)}</td>
+                  <td>{node(link.node_b)}</td>
+                  <LinkMeasurementCells link={link} nodes={nodes} snr={false} />
+                  <td>
+                    {link.solid ? (
+                      <span className="zones-solid-mark" title="Solid link">
+                        ✓
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
-      <table className="zones-table zones-pair-links zones-pair-side">
-        <thead>
-          <tr>
-            {heading(pair.zone_a)}
-            {heading(pair.zone_b)}
-            <SortHeading
-              label="Seen"
-              title="Times heard each way"
-              sort="observations"
-              active={sort}
-              onSort={onSort}
-            />
-            <th scope="col" title="Average SNR each way">
-              SNR
-            </th>
-            <SortHeading
-              label="Margin"
-              title="Weaker direction's signal margin"
-              sort="margin"
-              active={sort}
-              onSort={onSort}
-            />
-            <SortHeading label="km" sort="km" active={sort} onSort={onSort} />
-            <SortHeading
-              label="Solid"
-              title="Solid links first"
-              sort="solid"
-              active={sort}
-              onSort={onSort}
-            />
-          </tr>
-        </thead>
-        <tbody>
-          {links.map((link) => {
-            const key = linkKey(link);
-            // A link the map cannot draw has nothing to open there.
-            const placed = drawn.has(key);
-            return (
-              <tr
-                key={key}
-                data-fit-row
-                className={
-                  placed
-                    ? `zones-pair-row${key === openLink ? " is-selected" : ""}`
-                    : "zones-unplaced-row"
-                }
-                title={
-                  placed ? undefined : "Not on the map: a node has no position"
-                }
-                onClick={
-                  placed
-                    ? (event) => {
-                        // Node and line of sight links keep their own behaviour.
-                        if ((event.target as Element).closest("a")) return;
-                        onOpenLink(key === openLink ? null : key);
-                      }
-                    : undefined
-                }
-              >
-                <td>{node(link.node_a)}</td>
-                <td>{node(link.node_b)}</td>
-                <LinkMeasurementCells link={link} nodes={nodes} />
-                <td>
-                  {link.solid ? (
-                    <span className="zones-solid-mark" title="Solid link">
-                      ✓
-                    </span>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </>
   );
 }
 
 /**
- * A selected zone: its facts, the zones it joins (most links first; a row
- * selects the pair) and its key relays. When they do not all fit, the key
- * relays are cut first.
+ * A chosen zone: its facts, then the zones it joins (most links first; a row
+ * shows the pair) or its key relays.
  */
 function ZoneDetails({
   zone,
@@ -1693,11 +1694,10 @@ function ZoneDetails({
   nodes,
   colors,
   names,
-  rows,
+  tab,
+  onTab,
   onSelectPair,
-  selectedRelay,
-  onShowNode,
-  onBack,
+  onShowRelay,
 }: {
   zone: Zone;
   joins: ZonePair[];
@@ -1706,17 +1706,14 @@ function ZoneDetails({
   nodes: NodeIndex;
   colors: Map<number, string>;
   names: Map<number, string>;
-  rows: number;
+  tab: ZoneTab;
+  onTab: (tab: ZoneTab) => void;
   onSelectPair: (pair: string) => void;
-  selectedRelay: number | null;
-  onShowNode: (nodeId: number) => void;
-  onBack: () => void;
+  onShowRelay: (nodeId: number) => void;
 }) {
   const placed = zone.members.filter(
     (id) => nodes.get(id)?.latitude != null,
   ).length;
-  const shownJoins = joins.slice(0, rows);
-  const shownRelays = relays.slice(0, Math.max(0, rows - joins.length));
   // The zones it can reach (its pairs), and those its solid paths on the map
   // reach.
   const onPaths = new Set(zone.solid_paths.flat());
@@ -1735,18 +1732,7 @@ function ZoneDetails({
   ).length;
   return (
     <>
-      <BackButton label="All zones" onClick={onBack} />
-      <div className="zones-zone-title">
-        <h3>
-          <ZoneSwatch color={colors.get(zone.zone_id)} />
-          <span>
-            {zone.zone_id}. {names.get(zone.zone_id) ?? zone.name}
-            {zone.place !== null && zone.region ? (
-              <span className="muted">, {zone.region}</span>
-            ) : null}
-          </span>
-        </h3>
-      </div>
+      <ZoneEnd zone={zone} colors={colors} names={names} />
       <dl className="zones-facts">
         <DataItem
           label="Members"
@@ -1768,19 +1754,44 @@ function ZoneDetails({
           />
         ) : null}
       </dl>
-      <div className="zones-side-heading">
-        <h4>Connections ({joins.length})</h4>
-        <MoreInTable
-          shown={shownJoins.length}
-          total={joins.length}
-          target={joins.length > 0 ? "between-zones-heading" : undefined}
+      <SidebarTabs
+        tabs={[
+          {
+            tab: "connections",
+            label: "Connections",
+            count: joins.length.toLocaleString(),
+          },
+          {
+            tab: "relays",
+            label: "Key relays",
+            count: relays.length.toLocaleString(),
+          },
+        ]}
+        active={tab}
+        onChange={onTab}
+        idPrefix="zone-list"
+      />
+      {tab === "relays" ? (
+        <RelayList
+          id="zone-list-relays"
+          relays={relays}
+          network={network}
+          nodes={nodes}
+          colors={colors}
+          names={names}
+          onShowRelay={onShowRelay}
         />
-      </div>
-      {joins.length === 0 ? (
-        <p className="empty-inline">None.</p>
+      ) : joins.length === 0 ? (
+        <p id="zone-list-connections" className="empty-inline">
+          None.
+        </p>
       ) : (
-        <ul className="zones-pick-list">
-          {shownJoins.map((pair) => {
+        <ul
+          id="zone-list-connections"
+          className="zones-side-scroll zones-rows"
+          aria-label="Connections"
+        >
+          {joins.map((pair) => {
             const other =
               pair.zone_a === zone.zone_id ? pair.zone_b : pair.zone_a;
             const solid = pair.links.filter((link) => link.solid).length;
@@ -1788,20 +1799,21 @@ function ZoneDetails({
               SOLID_WARNINGS.includes(item),
             );
             return (
-              <li key={pairKey(pair)} data-fit-row>
+              <li key={pairKey(pair)}>
                 <button
                   type="button"
+                  data-row={`pair-${pairKey(pair)}`}
                   title={`Best link's signal margin${warning === undefined ? "" : `. ${warningTitle(warning, pair, nodes) ?? warning}`}`}
                   onClick={() => onSelectPair(pairKey(pair))}
                 >
-                  <span className="zones-pick-name">
+                  <span className="zones-row-name">
                     <TierDot
                       color={linkTierColor(
                         marginTier(pair.strongest_margin_db),
                       )}
                     />
                     <ZoneNumber zoneId={other} colors={colors} />
-                    <span className="zones-pick-text">{names.get(other)}</span>
+                    <span>{names.get(other)}</span>
                   </span>
                   <span className="zones-value">
                     {plural(pair.links.length, "link")} ·{" "}
@@ -1815,31 +1827,6 @@ function ZoneDetails({
               </li>
             );
           })}
-        </ul>
-      )}
-      <div className="zones-side-heading">
-        <h4>Key relays ({relays.length})</h4>
-        <MoreInTable
-          shown={shownRelays.length}
-          total={relays.length}
-          target={relays.length > 0 ? "key-relays-heading" : undefined}
-        />
-      </div>
-      {relays.length === 0 ? (
-        <p className="empty-inline">None.</p>
-      ) : (
-        <ul className="zones-list">
-          {shownRelays.map((relay) => (
-            <RelayItem
-              key={relay.node_id}
-              relay={relay}
-              network={network}
-              nodes={nodes}
-              names={names}
-              selected={relay.node_id === selectedRelay}
-              onShowNode={onShowNode}
-            />
-          ))}
         </ul>
       )}
     </>

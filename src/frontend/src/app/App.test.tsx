@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import type { KeyRelay } from "./api";
 import { ApplicationBar, DIAGNOSTICS_LINKED } from "./ui";
 import { loadSetting } from "./remember";
 import { forgetKept } from "./useApi";
@@ -2789,146 +2790,7 @@ describe("Routing", () => {
   });
 
   it("zones orders text reach, asks hops over its window and keeps its tab", async () => {
-    const now = "2026-09-25T09:00:00Z";
-    const node = (node_id: number, name: string) => ({
-      node_id,
-      long_name: name,
-      short_name: name.slice(0, 4),
-      role: "ROUTER",
-      latitude: 40,
-      longitude: -3 + node_id / 10,
-      estimated: false,
-    });
-    const zone = (
-      zone_id: number,
-      name: string,
-      members: number[],
-      text_gateways = 2,
-    ) => ({
-      zone_id,
-      name,
-      place: null,
-      region: null,
-      hub_node_id: members[0],
-      members,
-      internal_links: 3,
-      text_gateways,
-      text_senders: 1,
-      text_count: 1,
-      latitude: 40,
-      longitude: -3,
-      solid_paths: [],
-    });
-    const pair = (zone_a: number, zone_b: number, fields: object) => ({
-      zone_a,
-      zone_b,
-      observations: 12,
-      strongest_margin_db: 8,
-      hub_hops: 2,
-      km: 10,
-      through_nodes_a: 1,
-      through_nodes_b: 1,
-      solid_links: 0,
-      way_round_links: null,
-      way_round_zones: [],
-      single_link: false,
-      hanging_zones: [],
-      warnings: [],
-      sole_relay: null,
-      ...fields,
-    });
-    const keyRelay = (node_id: number, zone_id: number, fields: object) => ({
-      node_id,
-      zone_id,
-      impact: 0,
-      cuts_off: 0,
-      no_solid_backup: 0,
-      carries: 0,
-      only_solid_link_to: [],
-      neighbours: 3,
-      last_seen_at: now,
-      battery_level: null,
-      battery_observed_at: null,
-      firmware: null,
-      ...fields,
-    });
-    const zonesBody = networkZones({
-      zones: [
-        zone(1, "Hilltop", [1, 2, 3]),
-        zone(2, "Valley", [4, 5, 6]),
-        zone(3, "Coast", [7, 8, 9], 0),
-      ],
-      text_reach: [
-        {
-          from_zone: 1,
-          to_zone: 2,
-          senders: 3,
-          texts: 40,
-          share: 0.94,
-        },
-      ],
-      zone_pairs: [
-        // Listed first, so it stays first among equal distances. Its only solid
-        // alternative path is through Hilltop's zone.
-        pair(2, 3, {
-          warnings: ["no solid link"],
-          way_round_links: 2,
-          way_round_zones: [1],
-          links: [
-            {
-              node_a: 5,
-              node_b: 7,
-              observations: 12,
-              weaker_margin_db: 8,
-              km: 20,
-              solid: false,
-              last_seen_at: "2026-09-25T08:00:00Z",
-              spreading_factor: 9,
-              a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
-              b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
-            },
-          ],
-        }),
-        pair(1, 2, {
-          solid_links: 1,
-          warnings: ["one solid link"],
-          links: [
-            {
-              node_a: 2,
-              node_b: 6,
-              observations: 12,
-              weaker_margin_db: 8,
-              km: 388,
-              solid: true,
-              last_seen_at: "2026-09-25T08:00:00Z",
-              spreading_factor: 9,
-              a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
-              b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
-            },
-            {
-              node_a: 1,
-              node_b: 5,
-              observations: 40,
-              weaker_margin_db: 2,
-              km: 15,
-              solid: false,
-              last_seen_at: "2026-09-25T08:00:00Z",
-              spreading_factor: 9,
-              a_to_b: { observations: 20, snr_samples: 20, average_snr: -4 },
-              b_to_a: { observations: 20, snr_samples: 20, average_snr: -5 },
-            },
-          ],
-        }),
-      ],
-      key_relays: [keyRelay(6, 2, { impact: 3, cuts_off: 3 })],
-      nodes: [
-        node(1, "Hilltop"),
-        node(2, "Ridge"),
-        node(5, "Mill"),
-        { ...node(6, "Relay"), estimated: true },
-        node(7, "Coast"),
-      ],
-    });
+    const zonesBody = sampleZones();
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
         jsonResponse(
@@ -3000,6 +2862,113 @@ describe("Routing", () => {
     }
     localStorage.clear();
   });
+
+  it("zones side panel shows one choice at a time, steps and goes back", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(jsonResponse(sampleZones()))),
+    );
+    window.location.hash = "#zones";
+    render(<App />);
+    const side = await screen.findByRole("complementary", { name: "Zones" });
+    const step = () => side.querySelector(".sidebar-step")?.textContent;
+    const back = () =>
+      within(side)
+        .getByRole("button", { name: /^Back to / })
+        .getAttribute("aria-label");
+
+    // A zone takes the list's place; ‹ › and the arrow keys walk the zones.
+    fireEvent.click(within(side).getByRole("button", { name: /^1\. Hilltop/ }));
+    expect(back()).toBe("Back to Zones");
+    expect(step()).toBe("1 / 3");
+    fireEvent.click(within(side).getByRole("button", { name: "Next zone" }));
+    expect(step()).toBe("2 / 3");
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(step()).toBe("1 / 3");
+
+    // Its connection, then a link of it, each one step deeper.
+    fireEvent.click(within(side).getByRole("button", { name: /Valley/ }));
+    expect(back()).toBe("Back to 1. Hilltop");
+    const firstLink = side.querySelector("tbody tr")!;
+    expect(firstLink.textContent).toMatch(/^Ridg/);
+    fireEvent.click(firstLink);
+    expect(back()).toBe("Back to Hilltop ↔ Valley");
+    expect(step()).toBe("1 / 2");
+    fireEvent.click(within(side).getByRole("button", { name: "Next link" }));
+    expect(step()).toBe("2 / 2");
+
+    fireEvent.click(within(side).getByRole("button", { name: /^Back to / }));
+    expect(back()).toBe("Back to 1. Hilltop");
+    fireEvent.click(within(side).getByRole("button", { name: /^Back to / }));
+    expect(back()).toBe("Back to Zones");
+
+    // A key relay replaces the zone it was chosen from, and goes back to it.
+    fireEvent.click(within(side).getByRole("button", { name: "Next zone" }));
+    fireEvent.click(within(side).getByRole("tab", { name: /Key relays/ }));
+    fireEvent.click(within(side).getByRole("button", { name: /^Relay/ }));
+    expect(back()).toBe("Back to 2. Valley");
+    expect(within(side).getByRole("heading").textContent).toContain("Relay");
+    fireEvent.click(within(side).getByRole("button", { name: /^Back to / }));
+    fireEvent.click(within(side).getByRole("button", { name: /^Back to / }));
+    expect(within(side).queryByRole("button", { name: /^Back to / })).toBe(
+      null,
+    );
+
+    // The list's tab is remembered.
+    fireEvent.click(within(side).getByRole("tab", { name: /Warnings/ }));
+    expect(within(side).queryByRole("button", { name: /^Relay/ })).toBeNull();
+    cleanup();
+    forgetKept();
+    render(<App />);
+    const again = await screen.findByRole("complementary", { name: "Zones" });
+    expect(
+      within(again)
+        .getByRole("tab", { name: /Warnings/ })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+  });
+
+  it("zones warnings filters healthy relays and steps through the warnings", async () => {
+    const body = sampleZones();
+    const healthy = body.key_relays[0];
+    body.key_relays = [
+      healthy,
+      { ...healthy, node_id: 2, battery_level: 10 },
+      {
+        ...healthy,
+        node_id: 5,
+        last_seen_at: "2026-09-25T05:00:00Z",
+      },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(jsonResponse(body))),
+    );
+    window.location.hash = "#zones";
+    render(<App />);
+    const side = await screen.findByRole("complementary", { name: "Zones" });
+    fireEvent.click(within(side).getByRole("tab", { name: /Warnings/ }));
+    const list = within(side).getByRole("list", { name: "Warnings" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain("Ridge");
+    expect(rows[0].textContent).toContain("Battery at 10%");
+    expect(rows[1].textContent).toContain("Mill");
+    expect(rows[1].textContent).toContain("Last heard 4.0 h ago");
+
+    fireEvent.click(rows[0]);
+    expect(side.querySelector(".sidebar-step")?.textContent).toBe("1 / 2");
+    expect(within(side).getByRole("heading").textContent).toContain("Ridge");
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Next key relay" }),
+    );
+    expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 2");
+    expect(within(side).getByRole("heading").textContent).toContain("Mill");
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Back to Warnings" }),
+    );
+    expect(within(side).getByRole("list", { name: "Warnings" })).not.toBeNull();
+  });
 });
 
 function chatMessage(fields: Record<string, unknown>) {
@@ -3020,6 +2989,153 @@ function chatMessage(fields: Record<string, unknown>) {
     farthest_km: null,
     ...fields,
   };
+}
+
+/**
+ * Three zones: Hilltop and Valley joined by a solid link, Valley and Coast by
+ * none, and one key relay in Valley.
+ */
+function sampleZones() {
+  const now = "2026-09-25T09:00:00Z";
+  const node = (node_id: number, name: string) => ({
+    node_id,
+    long_name: name,
+    short_name: name.slice(0, 4),
+    role: "ROUTER",
+    latitude: 40,
+    longitude: -3 + node_id / 10,
+    estimated: false,
+  });
+  const zone = (
+    zone_id: number,
+    name: string,
+    members: number[],
+    text_gateways = 2,
+  ) => ({
+    zone_id,
+    name,
+    place: null,
+    region: null,
+    hub_node_id: members[0],
+    members,
+    internal_links: 3,
+    text_gateways,
+    text_senders: 1,
+    text_count: 1,
+    latitude: 40,
+    longitude: -3,
+    solid_paths: [],
+  });
+  const pair = (zone_a: number, zone_b: number, fields: object) => ({
+    zone_a,
+    zone_b,
+    observations: 12,
+    strongest_margin_db: 8,
+    hub_hops: 2,
+    km: 10,
+    through_nodes_a: 1,
+    through_nodes_b: 1,
+    solid_links: 0,
+    way_round_links: null,
+    way_round_zones: [],
+    single_link: false,
+    hanging_zones: [],
+    warnings: [],
+    sole_relay: null,
+    ...fields,
+  });
+  const keyRelay = (node_id: number, zone_id: number, fields: object) => ({
+    node_id,
+    zone_id,
+    impact: 0,
+    cuts_off: 0,
+    no_solid_backup: 0,
+    carries: 0,
+    only_solid_link_to: [],
+    neighbours: 3,
+    last_seen_at: now,
+    battery_level: null,
+    battery_observed_at: null,
+    firmware: null,
+    ...fields,
+  });
+  return networkZones({
+    zones: [
+      zone(1, "Hilltop", [1, 2, 3]),
+      zone(2, "Valley", [4, 5, 6]),
+      zone(3, "Coast", [7, 8, 9], 0),
+    ],
+    text_reach: [
+      {
+        from_zone: 1,
+        to_zone: 2,
+        senders: 3,
+        texts: 40,
+        share: 0.94,
+      },
+    ],
+    zone_pairs: [
+      // Listed first, so it stays first among equal distances. Its only solid
+      // alternative path is through Hilltop's zone.
+      pair(2, 3, {
+        warnings: ["no solid link"],
+        way_round_links: 2,
+        way_round_zones: [1],
+        links: [
+          {
+            node_a: 5,
+            node_b: 7,
+            observations: 12,
+            weaker_margin_db: 8,
+            km: 20,
+            solid: false,
+            last_seen_at: "2026-09-25T08:00:00Z",
+            spreading_factor: 9,
+            a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
+            b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
+          },
+        ],
+      }),
+      pair(1, 2, {
+        solid_links: 1,
+        warnings: ["one solid link"],
+        links: [
+          {
+            node_a: 2,
+            node_b: 6,
+            observations: 12,
+            weaker_margin_db: 8,
+            km: 388,
+            solid: true,
+            last_seen_at: "2026-09-25T08:00:00Z",
+            spreading_factor: 9,
+            a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
+            b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
+          },
+          {
+            node_a: 1,
+            node_b: 5,
+            observations: 40,
+            weaker_margin_db: 2,
+            km: 15,
+            solid: false,
+            last_seen_at: "2026-09-25T08:00:00Z",
+            spreading_factor: 9,
+            a_to_b: { observations: 20, snr_samples: 20, average_snr: -4 },
+            b_to_a: { observations: 20, snr_samples: 20, average_snr: -5 },
+          },
+        ],
+      }),
+    ],
+    key_relays: [keyRelay(6, 2, { impact: 3, cuts_off: 3 })],
+    nodes: [
+      node(1, "Hilltop"),
+      node(2, "Ridge"),
+      node(5, "Mill"),
+      { ...node(6, "Relay"), estimated: true },
+      node(7, "Coast"),
+    ],
+  });
 }
 
 function networkZones(fields: Record<string, unknown> = {}) {
@@ -3047,7 +3163,7 @@ function networkZones(fields: Record<string, unknown> = {}) {
     text_reach: [],
     path_links: [],
     text_reach_truncated: false,
-    key_relays: [],
+    key_relays: [] as KeyRelay[],
     text_hours: [],
     active_channels: [],
     nodes: [],

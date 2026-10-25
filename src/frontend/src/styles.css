@@ -4493,11 +4493,6 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   margin: 0;
 }
 
-.zones-panel h4 {
-  margin: var(--space-4) 0 0;
-  font-size: var(--text-base);
-}
-
 .zones-controls {
   display: flex;
   flex-wrap: wrap;
@@ -4784,14 +4779,6 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   font-size: var(--text-sm);
 }
 
-/* A clicked pair link's details sit above the pair's links, ruled off below. */
-.zones-open-link {
-  padding: 0 0 var(--space-4);
-  margin-bottom: var(--space-4);
-  border-top: 0;
-  border-bottom: 1px solid var(--border);
-}
-
 .zones-map-message {
   position: absolute;
   top: var(--space-4);
@@ -4805,10 +4792,10 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   font-size: var(--text-sm);
 }
 
-/* Beside the map: the zone list or one zone's details. The column is as tall
-   as the map, never taller: its panel fills it, and the panel's list shows
-   only the rows that fit (useRowsThatFit in ZonesView.tsx) rather than
-   scrolling, so the wheel always scrolls the page. */
+/* Beside the map: the zone lists, or the latest choice in their place. The
+   panel is as tall as the map, never taller: a list fills the height left
+   and scrolls on its own, so nothing above it moves. The whole panel scrolls
+   only when a list is at its smallest. */
 .zones-side-column {
   position: relative;
 }
@@ -4816,51 +4803,91 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 .zones-side-column > .zones-side {
   position: absolute;
   inset: 0;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
 
-/* Details too tall to fit with any of their list's rows: the panel grows to
-   show them all and makes the page longer instead. */
-.zones-side-column > .zones-side.is-whole {
-  position: static;
-  flex: 1;
+.zones-side > * {
+  flex: none;
 }
 
-.zones-list {
-  margin: var(--space-1) 0 0;
+.zones-side > .zones-side-scroll {
+  flex: 1 1 0;
+  min-height: 7rem;
+  overflow-y: auto;
+}
+
+.zones-side-scroll > .selected-node {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Side rows of buttons, as on the Map page's sidebar: a name cut short on
+   the left, figures on the right. */
+.zones-rows {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.zones-list li {
+.zones-rows button {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: baseline;
   gap: var(--space-3);
-  padding: var(--space-1) 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.zones-list li:last-child {
-  border-bottom: 0;
-}
-
-/* A key relay beside the map: the row centres the map on it. */
-.zones-list li.zones-relay-row {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  text-align: left;
   cursor: pointer;
 }
 
-.zones-list li.is-selected,
-.zones-relays tbody tr.is-selected,
-.zones-list li.zones-relay-row:hover {
-  background: var(--surface-subtle);
+.zones-rows button:hover {
+  background: var(--accent-soft);
+}
+
+.zones-rows button.unplaced {
+  opacity: 0.6;
+}
+
+.zones-row-name {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.zones-row-name > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Zones: name, warnings, nodes. */
+.zones-zone-rows button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(1.5rem, auto);
+}
+
+.zones-row-count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .zones-value {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4869,139 +4896,67 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   color: var(--amber);
 }
 
-/* Beside the map with nothing selected: the network in one line, then tabs. */
-.zones-summary {
-  margin: 0;
-  font-size: var(--text-sm);
+.zones-side .sidebar-tabs {
+  margin-top: var(--space-3);
 }
 
-/* A side list's heading, with how many of its rows fit and the link to its
-   table at the right. */
-.zones-side-heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-3);
-  margin-top: var(--space-4);
+.zones-side > .sidebar-tabs:first-child {
+  margin-top: 0;
 }
 
-.zones-panel .zones-side-heading h4 {
-  margin: 0;
-}
-
-.zones-more {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: var(--text-sm);
-  white-space: nowrap;
-}
-
-/* The zones, a line each: the name takes the room left over and is cut
-   short when there is too little. */
-.zones-side-table {
-  width: 100%;
-  margin-top: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.zones-side-table th,
-.zones-side-table td {
+.zones-side > .empty-inline {
   padding: var(--space-1) var(--space-2);
 }
 
-.zones-side-table thead th {
-  font-size: var(--text-sm);
-}
-
-.zones-side-table th:first-child,
-.zones-side-table td:first-child {
-  padding-left: 0;
-}
-
-.zones-side-table td:first-child {
-  width: 100%;
-  max-width: 0;
-}
-
-.zones-side-table .zones-zone-chip {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.zones-side-table tbody tr.zones-pair-row:hover {
-  background: var(--surface-subtle);
-}
-
-/* Side rows that select a zone pair: the whole row is the button. */
-.zones-pick-list {
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.zones-pick-list li {
-  border-bottom: 1px solid var(--border);
-}
-
-.zones-pick-list li:last-child {
-  border-bottom: 0;
-}
-
-.zones-pick-list button {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-1);
-  color: var(--text);
-  background: transparent;
+/* A zone's number on its colour, as big as a node's badge. */
+.zones-zone-badge {
   border: 0;
+  color: #fff;
+  font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 2px rgb(0 0 0 / 60%);
+}
+
+/* A zone as a row like a selected link's node: as a button, it looks the
+   same; as the chosen zone's heading, it has no hover. */
+button.zones-zone-end {
+  width: 100%;
+  border: 0;
+  background: none;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.zones-pick-list button:hover {
-  background: var(--surface-subtle);
-}
-
-/* A side row's dots and name; the name is cut short rather than wrapped. */
-.zones-pick-name {
-  display: inline-flex;
+div.zones-zone-end {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
   align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
 }
 
-.zones-pick-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+div.zones-zone-end .link-end-name {
+  font-size: var(--text-lg);
 }
 
-/* The table link under a pair's figures beside the map, at the right. */
-.zones-pair-more {
-  display: flex;
-  margin: var(--space-1) 0 var(--space-2);
+.zones-pair-ends {
+  margin-top: calc(-1 * var(--space-2));
 }
 
-/* A selected zone's or pair's heading. */
-.zones-panel .zones-zone-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.zones-relay-key {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
 }
 
-.zones-panel .zones-zone-title h3 {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
+/* The pair's links keep their headings in view while they scroll. */
+.zones-pair-scroll {
+  margin-top: var(--space-3);
+}
+
+.zones-pair-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .zones-swatch {
@@ -5064,7 +5019,7 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 
 /* The key relay's mast on the map, beside its name, and a zone's warning triangle. */
 .zones-relays .zones-relay-mark,
-.zones-side-table .zones-relay-mark {
+.zones-zone-rows .zones-relay-mark {
   margin-right: var(--space-1);
   vertical-align: middle;
 }
@@ -5154,10 +5109,13 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   cursor: pointer;
 }
 
+.zones-relays tbody tr.is-selected {
+  background: var(--surface-subtle);
+}
+
 .table-wrap tbody tr.zones-pair-row:hover,
 .table-wrap tbody tr.zones-pair-row.is-selected,
-.zones-pair-side tbody tr.zones-pair-row:hover,
-.zones-pair-side tbody tr.zones-pair-row.is-selected {
+.zones-pair-side tbody tr.zones-pair-row:hover {
   background: var(--surface-subtle);
 }
 
@@ -5294,8 +5252,16 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
     grid-area: auto;
   }
 
+  /* Stacked under the map, the panel grows to show every row. */
   .zones-side-column > .zones-side {
     position: static;
+    overflow-y: visible;
+  }
+
+  .zones-side > .zones-side-scroll {
+    flex: none;
+    min-height: 0;
+    overflow-y: visible;
   }
 
   .zones-zone-map {

@@ -2,6 +2,7 @@ import {
   ButtonHTMLAttributes,
   ReactNode,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
 } from "react";
@@ -336,19 +337,115 @@ export function ReturnLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-/** A button back to the view this one was opened from, with its name. */
-export function BackButton({
-  label,
-  onClick,
+/**
+ * Over a sidebar choice: back, one step, on the left, and with `step`,
+ * ‹ n / N › through the list it was chosen from on the right.
+ */
+export function SidebarNav({
+  backTo,
+  onBack,
+  step,
 }: {
-  label: string;
-  onClick: () => void;
+  backTo: string;
+  onBack: () => void;
+  step?: {
+    index: number;
+    total: number;
+    /** What the list holds, such as "node". */
+    noun: string;
+    onStep: (index: number) => void;
+  };
+}) {
+  const nav = useRef<HTMLDivElement | null>(null);
+  // The arrow keys step too, unless something else takes them: a field, or
+  // a map, which pans with them.
+  const stepWithKey = useEffectEvent((event: KeyboardEvent) => {
+    if (step === undefined || event.altKey || event.ctrlKey || event.metaKey)
+      return;
+    const move =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    const target = event.target;
+    const sidebar = nav.current?.closest("aside");
+    const free =
+      target === document.body ||
+      (target instanceof Element &&
+        sidebar?.contains(target) === true &&
+        target.closest("input, select, textarea") === null);
+    const next = step.index + move;
+    if (move === 0 || !free || next < 0 || next >= step.total) return;
+    event.preventDefault();
+    step.onStep(next);
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => stepWithKey(event);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+  return (
+    <div ref={nav} className="sidebar-details-nav">
+      <button
+        type="button"
+        className="text-button sidebar-back"
+        aria-label={`Back to ${backTo}`}
+        onClick={onBack}
+      >
+        <Icon name="back" />
+        <span>{backTo}</span>
+      </button>
+      {step === undefined ? null : (
+        <div className="sidebar-step">
+          <IconButton
+            icon="previous"
+            label={`Previous ${step.noun}`}
+            disabled={step.index === 0}
+            onClick={() => step.onStep(step.index - 1)}
+          />
+          <span>
+            {(step.index + 1).toLocaleString()} / {step.total.toLocaleString()}
+          </span>
+          <IconButton
+            icon="chevron"
+            label={`Next ${step.noun}`}
+            disabled={step.index === step.total - 1}
+            onClick={() => step.onStep(step.index + 1)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A sidebar's lists as tabs, each with its count once known. */
+export function SidebarTabs<Tab extends string>({
+  tabs,
+  active,
+  onChange,
+  idPrefix,
+}: {
+  tabs: { tab: Tab; label: string; count: string | null }[];
+  active: Tab;
+  onChange: (tab: Tab) => void;
+  /** Each tab controls the element `${idPrefix}-${tab}`. */
+  idPrefix: string;
 }) {
   return (
-    <button type="button" className="return-link" onClick={onClick}>
-      <Icon name="back" />
-      {label}
-    </button>
+    <div className="sidebar-tabs" role="tablist" aria-label="Lists">
+      {tabs.map(({ tab, label, count }) => (
+        <button
+          key={tab}
+          type="button"
+          role="tab"
+          aria-selected={tab === active}
+          aria-controls={`${idPrefix}-${tab}`}
+          onClick={() => onChange(tab)}
+        >
+          {label}
+          {count === null ? null : (
+            <span className="sidebar-tab-count">{count}</span>
+          )}
+        </button>
+      ))}
+    </div>
   );
 }
 

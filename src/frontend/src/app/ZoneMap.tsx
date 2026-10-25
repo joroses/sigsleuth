@@ -72,8 +72,6 @@ const PLACES_ATTRIBUTION =
 // with how often the selected zone's texts reached it, and draws its shortest
 // solid paths to the other zones link by link, as a pair's links are drawn,
 // in place of the lines between zones.
-// Over the map, the wheel scrolls the page: Ctrl + scroll zooms the map, and
-// on a touch screen two fingers move it.
 
 const ZONES = "zones-zones";
 const ZONE_LINES = "zones-zone-lines";
@@ -144,6 +142,7 @@ export function ZoneMap({
   onOpenLink,
   selectedRelay,
   onSelectRelay,
+  onBack,
   focus,
 }: {
   network: NetworkZones;
@@ -151,14 +150,16 @@ export function ZoneMap({
   colors: Map<number, string>;
   names: Map<number, string>;
   selectedZone: number | null;
-  onSelectZone: (zoneId: number | null) => void;
+  onSelectZone: (zoneId: number) => void;
   selectedPair: string | null;
-  onSelectPair: (pair: string | null) => void;
+  onSelectPair: (pair: string) => void;
   /** The selected pair's open link, as `${nodeA}-${nodeB}`. */
   openLink: string | null;
-  onOpenLink: (link: string | null) => void;
+  onOpenLink: (link: string) => void;
   selectedRelay: number | null;
   onSelectRelay: (nodeId: number) => void;
+  /** A click on empty map goes back one step, like the side panel's back. */
+  onBack: () => void;
   focus: MapFocus | null;
 }) {
   // Kept in refs so new handlers do not rebuild the map.
@@ -166,12 +167,14 @@ export function ZoneMap({
   const selectPair = useRef(onSelectPair);
   const openPairLink = useRef(onOpenLink);
   const selectRelay = useRef(onSelectRelay);
+  const back = useRef(onBack);
   useEffect(() => {
     selectZone.current = onSelectZone;
     selectPair.current = onSelectPair;
     openPairLink.current = onOpenLink;
     selectRelay.current = onSelectRelay;
-  }, [onSelectZone, onSelectPair, onOpenLink, onSelectRelay]);
+    back.current = onBack;
+  }, [onSelectZone, onSelectPair, onOpenLink, onSelectRelay, onBack]);
 
   const data = useMemo(
     () => mapFeatures(network, nodes, colors, names),
@@ -202,7 +205,7 @@ export function ZoneMap({
     {
       flat: true,
       attribution: PLACES_ATTRIBUTION,
-      view: () => ({ center: [0, 20], zoom: 1, cooperativeGestures: true }),
+      view: () => ({ center: [0, 20], zoom: 1 }),
       onStyleLoad: (created) => {
         addLayers(created);
         // What a click at the point takes: key relays first, then a selected
@@ -230,14 +233,12 @@ export function ZoneMap({
             openPairLink.current(`${properties.nodeA}-${properties.nodeB}`);
             return;
           }
-          openPairLink.current(null);
           if (typeof properties.zone_id === "number") {
             selectZone.current(properties.zone_id);
           } else if (typeof properties.pair === "string") {
             selectPair.current(properties.pair);
           } else {
-            selectZone.current(null);
-            selectPair.current(null);
+            back.current();
           }
         });
         const hover = new maplibregl.Popup({

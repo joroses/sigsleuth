@@ -25,13 +25,15 @@ from sigsleuth.db import first_packet_row_id_since, now_ms, open_current_databas
 BUDGET_MS = 150
 # Live 2026-10-12: traceroute 287 ms, direct 210 ms, neighbour 143 ms.
 WEEK_LINKS_BUDGET_MS = {"traceroute": 400, "direct": 300, "neighbor": 200}
+# About seven hours of live loranet.pl, most of the recorded sample.
+FLOOD_PACKETS = 20_000
 
 
 @dataclass(frozen=True)
 class Subjects:
     """What the requests ask about: a node with a traceroute, a node next to it
-    on a route, part of the first node's name, a channel, a busy text sender
-    and a packet."""
+    on a route, part of the first node's name, a channel, a busy text sender,
+    a packet and one relayed the most."""
 
     node: int
     neighbour: int
@@ -39,14 +41,16 @@ class Subjects:
     channel: str
     text_sender: int
     packet: int = 1
+    flood_packet: int = 1
 
 
 def pick_subjects(database_path: Path) -> Subjects:
     """The named node in the most traceroute hops among those that sent packets,
     its most frequent hop partner, its short name, the busiest channel,
-    the busiest broadcast-text sender in the requests' 24-hour window and the
-    oldest packet retention kept: chosen by rule, so a new sample needs no
-    edits."""
+    the busiest broadcast-text sender in the requests' 24-hour window, the
+    oldest packet retention kept and, of the newest FLOOD_PACKETS, the one
+    other than a traceroute with the most relayed receptions: chosen by rule,
+    so a new sample needs no edits."""
     with closing(open_current_database(database_path)) as connection:
         node, short_name = connection.execute(
             """
@@ -93,7 +97,18 @@ def pick_subjects(database_path: Path) -> Subjects:
             (since_id,),
         ).fetchone()
         (packet,) = connection.execute("SELECT min(id) FROM packet").fetchone()
-    return Subjects(node, neighbour, short_name, channel, text_sender, packet)
+        (flood_packet,) = connection.execute(
+            """
+            SELECT r.packet_row_id FROM packet AS t JOIN reception AS r ON r.packet_row_id = t.id
+            WHERE t.id > (SELECT max(id) FROM packet) - ? AND t.portnum != ?
+              AND r.hop_start > r.hop_limit
+            GROUP BY r.packet_row_id
+            ORDER BY count(*) DESC, r.packet_row_id
+            LIMIT 1
+            """,
+            (FLOOD_PACKETS, portnums_pb2.PortNum.TRACEROUTE_APP),
+        ).fetchone()
+    return Subjects(node, neighbour, short_name, channel, text_sender, packet, flood_packet)
 
 
 def page_requests(now: datetime, subjects: Subjects) -> Iterator[str]:
@@ -124,6 +139,9 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/packets?limit=50&sender={node}&heard_directly_by={neighbour}"
     yield "/api/v1/packets/ports"
     yield f"/api/v1/packets/{subjects.packet}"
+    # Live copy 2026-10-23: 220-245 ms for broadcasts heard by 61-64
+    # gateways. Asked for only when a replay starts.
+    yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 400
     for sort in ("last_sent", "traceroute", "packets", "texts"):
         yield f"/api/v1/nodes?sort={sort}&limit=20&offset=0"
     for sort in (

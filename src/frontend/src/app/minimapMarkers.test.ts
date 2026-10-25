@@ -68,6 +68,7 @@ function detail(
     unreadable_reason_description: null,
     hops,
     route_nodes: routeNodes,
+    relay_nodes: [],
     spreading_factor: 11,
     traceroute,
     reply_route: null,

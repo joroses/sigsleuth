@@ -78,6 +78,7 @@ from sigsleuth.diagnostics import (
     doubtful_node_list,
     longest_links,
 )
+from sigsleuth.flood_routes import FloodRoutes, flood_routes
 from sigsleuth.links import LinkKind, MapLinkList, map_links
 from sigsleuth.maintenance import Maintenance
 from sigsleuth.map_nodes import (
@@ -302,6 +303,18 @@ def create_app(
         if page is None:
             raise ApiError(404, "packet_not_found", "Packet not found.")
         return page
+
+    @app.get("/api/v1/packets/{packet_row_id}/flood-routes")
+    def packet_flood_routes(
+        connection: Connection,
+        packet_row_id: Annotated[int, ApiPath(gt=0)],
+    ) -> FloodRoutes:
+        """The guessed hops between the relays of a packet's replay, for the
+        packet page's replay when it starts: too slow for every packet page."""
+        page = packet_detail(connection, packet_row_id, default_preset=settings.default_preset)
+        if page is None:
+            raise ApiError(404, "packet_not_found", "Packet not found.")
+        return flood_routes(connection, page)
 
     @app.get("/api/v1/nodes")
     def node_list_page(

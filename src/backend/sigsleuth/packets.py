@@ -199,6 +199,8 @@ class PacketDetail:
     them, in the listed receptions' routes or at the traceroute's ends, so a
     hop or route may name a node missing from route_nodes. They too are
     placed where they were when the packet was heard, else where they are now.
+    relay_nodes are the known nodes the receptions' relay_node or relay_maybe
+    name, placed the same way.
     traceroute says which node ran the traceroute and which it traced; None
     for other packets.
     spreading_factor is the one the channel suggests, as for map links.
@@ -216,6 +218,7 @@ class PacketDetail:
     unreadable_reason_description: str | None
     hops: tuple[TracerouteHop, ...]
     route_nodes: tuple[NodeSummary, ...]
+    relay_nodes: tuple[NodeSummary, ...]
     spreading_factor: int
     traceroute: TracerouteEnds | None
     reply_route: ReplyRoute | None
@@ -256,7 +259,7 @@ def packet_detail(
         (packet_row_id, MAX_PACKET_RECEPTIONS),
     ).fetchall()
     sender = int(row["sender_node_id"])
-    places = _when_heard(
+    places = nodes_when_heard(
         connection,
         int(row["first_received_at"]),
         {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
@@ -322,6 +325,11 @@ def packet_detail(
         route_nodes=_route_nodes(
             connection, int(row["first_received_at"]), hops, receptions, traceroute, reply_route
         ),
+        relay_nodes=tuple(
+            nodes_when_heard(
+                connection, int(row["first_received_at"]), _relay_ids(receptions)
+            ).values()
+        ),
         spreading_factor=spreading_factor(str(row["channel"]), default_preset),
         traceroute=traceroute,
         reply_route=reply_route,
@@ -361,7 +369,7 @@ def _reply_route(
     return ReplyRoute(int(reply["id"]), int(row["id"]), path, _hops(path_hops(path)))
 
 
-def _when_heard(
+def nodes_when_heard(
     connection: sqlite3.Connection, heard_at: int, node_ids: set[int]
 ) -> dict[int, NodeSummary]:
     """The nodes as nodes_by_id finds them, each placed where it was at
@@ -394,7 +402,16 @@ def _route_nodes(
         for path in (reception.paths.forward, reception.paths.return_path):
             if path is not None:
                 node_ids.update(node for node in path.nodes if node is not None)
-    return tuple(_when_heard(connection, heard_at, node_ids).values())
+    return tuple(nodes_when_heard(connection, heard_at, node_ids).values())
+
+
+def _relay_ids(receptions: list[PacketReception]) -> set[int]:
+    ids = set()
+    for reception in receptions:
+        if reception.relay_node is not None:
+            ids.add(reception.relay_node.node_id)
+        ids.update(maybe.node_id for maybe in reception.relay_maybe)
+    return ids
 
 
 def _with_relays(

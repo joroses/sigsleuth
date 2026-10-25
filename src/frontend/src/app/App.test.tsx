@@ -119,6 +119,7 @@ describe("Packet detail", () => {
           placed(otherRelay, "Valley"),
           placed(target, "Coast"),
         ],
+        relay_nodes: [],
         spreading_factor: 11,
         traceroute: {
           requester_node_id: requester,
@@ -178,6 +179,7 @@ describe("Packet detail", () => {
           },
           hops: [],
           route_nodes: [],
+          relay_nodes: [],
           spreading_factor: 11,
           traceroute: {
             requester_node_id: 0x11111111,
@@ -237,6 +239,7 @@ describe("Packet detail", () => {
           },
           hops: [],
           route_nodes: [],
+          relay_nodes: [],
           spreading_factor: 11,
           traceroute: null,
           reply_route: null,

@@ -87,6 +87,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/packets/{packet_row_id}/flood-routes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Packet Flood Routes
+     * @description The guessed hops between the relays of a packet's replay, for the
+     *     packet page's replay when it starts: too slow for every packet page.
+     */
+    get: operations["packet_flood_routes_api_v1_packets__packet_row_id__flood_routes_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/nodes": {
     parameters: {
       query?: never;
@@ -1157,6 +1178,30 @@ export interface components {
       minimum: string;
       reason: string;
     };
+    /**
+     * FloodRouteHop
+     * @description to_node_id heard the packet from from_node_id, whose copy had used
+     *     step hops: the replay step it shows at. probability is the score's, for a
+     *     probable hop only.
+     */
+    FloodRouteHop: {
+      from_node_id: number;
+      to_node_id: number;
+      step: number;
+      /** @enum {string} */
+      how: "heard_directly" | "reported" | "one_hop" | "probable";
+      probability: number | null;
+    };
+    /**
+     * FloodRoutes
+     * @description The guessed hops between a packet's relays. nodes are the known nodes on
+     *     them that are not its sender, gateways or relay_nodes, placed as those are.
+     *     Empty for a traceroute, whose reports carry their routes.
+     */
+    FloodRoutes: {
+      hops: components["schemas"]["FloodRouteHop"][];
+      nodes: components["schemas"]["NodeSummary"][];
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       detail: components["schemas"]["ValidationError"][];
@@ -1772,6 +1817,8 @@ export interface components {
      *     them, in the listed receptions' routes or at the traceroute's ends, so a
      *     hop or route may name a node missing from route_nodes. They too are
      *     placed where they were when the packet was heard, else where they are now.
+     *     relay_nodes are the known nodes the receptions' relay_node or relay_maybe
+     *     name, placed the same way.
      *     traceroute says which node ran the traceroute and which it traced; None
      *     for other packets.
      *     spreading_factor is the one the channel suggests, as for map links.
@@ -1789,6 +1836,7 @@ export interface components {
       unreadable_reason_description: string | null;
       hops: components["schemas"]["TracerouteHop"][];
       route_nodes: components["schemas"]["NodeSummary"][];
+      relay_nodes: components["schemas"]["NodeSummary"][];
       spreading_factor: number;
       traceroute: components["schemas"]["TracerouteEnds"] | null;
       reply_route: components["schemas"]["ReplyRoute"] | null;
@@ -2407,6 +2455,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PacketDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  packet_flood_routes_api_v1_packets__packet_row_id__flood_routes_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        packet_row_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FloodRoutes"];
         };
       };
       /** @description Validation Error */

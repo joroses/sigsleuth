@@ -72,6 +72,8 @@ ALLOWED_SCANS = {
     "chat.chat_channels": "text messages only",
 }
 REQUESTER, RELAY, TARGET = 0x0A0A0A0A, 0x0B0B0B0B, 0x0C0C0C0C
+# A text the gateways heard through RELAY, for the replay's routes.
+RELAYED_TEXT = 90
 GATEWAYS = ("!aaaaaaaa", "!bbbbbbbb")
 
 
@@ -124,15 +126,25 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
     statements.section = "capture"
     with closing(statements.watch(open_current_database(path))) as connection:
         capture_some_history(connection, now - timedelta(minutes=30))
+    with closing(open_database(path)) as connection:
+        (relayed_text,) = connection.execute(
+            "SELECT id FROM packet WHERE packet_id = ?", (RELAYED_TEXT,)
+        ).fetchone()
 
     settings = Settings(path, default_preset="LongFast", upload_password="survey")
     client = TestClient(create_app(settings), headers={"Authorization": "Basic cGhvbmU6c3VydmV5"})
     statements.section = "POST /api/v1/coverage/uploads"
     response = client.post("/api/v1/coverage/uploads", json=survey_upload(now))
     assert response.status_code == 200, response.text
-    pages = page_requests(
-        now, Subjects(REQUESTER, RELAY, name="hill", channel="LongFast", text_sender=REQUESTER)
+    subjects = Subjects(
+        REQUESTER,
+        RELAY,
+        name="hill",
+        channel="LongFast",
+        text_sender=REQUESTER,
+        flood_packet=relayed_text,
     )
+    pages = page_requests(now, subjects)
     for url in chain(pages, coverage_requests(client, now)):
         # The windows' start times change with every run; the plans do not.
         statements.section = "GET " + re.sub(r"\d{4}-\d\d-\d\dT[\d:.]+Z", "<time>", url)
@@ -161,8 +173,8 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
 
 def capture_some_history(connection: sqlite3.Connection, start: datetime) -> None:
     """A little of everything the pages read: names, positions, telemetry, texts
-    with a reply, neighbour info and a traceroute with its reply, each heard
-    by two gateways."""
+    with a reply, neighbour info, a traceroute with its reply and a text
+    relayed by a node the gateways heard directly, each heard by two gateways."""
     deliveries: list[tuple[int, bytes, dict[str, float]]] = []
 
     def send(portnum: int, payload: bytes, **fields: float) -> None:
@@ -214,6 +226,25 @@ def capture_some_history(connection: sqlite3.Connection, start: datetime) -> Non
     # The requester then moves a little, so pages read where it was before.
     moved = mesh_pb2.Position(latitude_i=int(52.01e7), longitude_i=int(4.9e7))
     send(portnums_pb2.PortNum.POSITION_APP, moved.SerializeToString(), sender=REQUESTER)
+    send(
+        portnums_pb2.PortNum.TELEMETRY_APP,
+        metrics.SerializeToString(),
+        sender=RELAY,
+        hop_start=3,
+        hop_limit=3,
+        relay_node=RELAY & 0xFF,
+        rx_snr=4.0,
+    )
+    send(
+        portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+        b"relayed",
+        sender=TARGET,
+        packet_id=RELAYED_TEXT,
+        hop_start=3,
+        hop_limit=1,
+        relay_node=RELAY & 0xFF,
+        rx_snr=-2.0,
+    )
 
     for number, (portnum, payload, fields) in enumerate(deliveries, start=1):
         # OK to MQTT on: refreshes whether the sender opted out, hiding none.

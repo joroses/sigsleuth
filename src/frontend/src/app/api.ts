@@ -6,6 +6,7 @@ type Schemas = components["schemas"];
 
 export type PacketDetail = Schemas["PacketDetail"];
 export type PacketReception = Schemas["PacketReception"];
+export type FloodRoutes = Schemas["FloodRoutes"];
 export type RoutePath = Schemas["RoutePath"];
 export type ReportPaths = Schemas["ReportPaths"];
 export type ReplyRoute = Schemas["ReplyRoute"];
@@ -155,6 +156,10 @@ export const packetPortsUrl = "/api/v1/packets/ports";
 
 export function packetUrl(packetRowId: number): string {
   return `/api/v1/packets/${packetRowId}`;
+}
+
+export function floodRoutesUrl(packetRowId: number): string {
+  return `/api/v1/packets/${packetRowId}/flood-routes`;
 }
 
 export function nodeUrl(nodeId: number): string {

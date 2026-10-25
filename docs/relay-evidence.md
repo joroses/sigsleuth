@@ -207,6 +207,31 @@ Every relayed name stays a guess unless it is solid.
 | Only candidate left | dashed | Guess: the only node ending in 1a that could have relayed it |
 | None | none | Unknown relay ending in 1a; Maybe X (3.2 km), Y (12 km) |
 
+## Routes between relays in the flood replay (2026-10-23)
+
+The packet page's replay draws each named relay to the gateway it reached. Between relays it draws whom each relay heard the packet from (`flood_routes.py`), walking back from every relay a gateway heard after k hops:
+
+1. The relay's own report, when it is a gateway that heard the packet after k − 1 hops, or k (a 0-cost hop: a favourite router relays without spending a hop). Right 94.4% after 2+ hops, 99.5% after one.
+2. Else after one hop, the sender: right 87%; the rest are 0-cost hops.
+3. Else a score over the relay's candidates: its radio partners within 7 days either side (direct, neighbour or traceroute links either way), the nodes this packet's reports put a hop earlier or at the same hop, and the node its own report names. The true node was among them 99.3% of the time. A softmax over them gives each a probability; the best is drawn only when at least 0.8.
+
+The walk goes on from each node found until the sender, and stops at its first unsure hop, leaving a gap. When the best candidate opted out, it stops rather than take the next one.
+
+| Candidate X for relay T | Weight |
+|---|---|
+| T's own report names X | +4.166 |
+| X was a named relay one hop earlier | +3.311 |
+| T heard X in a traceroute | +2.309 |
+| ln(1 + traceroute hops X → T) | +1.053 |
+| Progress: (km X–sender − km T–sender) / km T–sender, within ±2 | −0.957 |
+| This packet's reports put X at another hop | −4.262 |
+
+Measured on a copy of live loranet.pl `msh/#`, 2026-10-09 to 10-23, with traceroute request routes as truth; weights fit on the first week, figures from the second (26,047 relays heard after 2+ hops; traceroutes the sender ran or was traced in left out). The best candidate is right 68.5% of the time. It is at least 0.8 sure for 49% of hops and then right 91.9% (at 0.9: 38%, 94.8%). Without traceroute links it is right 49.6%, sure for a fifth. Simple rules (most traceroute hops into the relay; the relay named one hop earlier) reach at most 55%. Whole routes with every hop sure cover 18% of receptions after 2+ hops, 95% of them within 5 km of the true route. Checked on 300 second-week requests heard by 8+ gateways, with only each request's own run left out: 90.4% of 1,025 sure hops right.
+
+Unlike the relay ladder's checkable steps, this is a score: where it is wrong, the true node is mostly its second choice, another router the relay hears, and which copy came first is near chance from what MQTT keeps. So only the sure hops are drawn, as thin grey lines, dashed unless the relay's own report heard the node directly. They cost 140–160 ms beyond the packet page for broadcasts heard by 60+ gateways, so the replay asks for them when it starts.
+
+Revisit the weights and the 0.8 on another network, or when firmware changes how floods are relayed.
+
 ## Not measured yet
 
 - **Survey links** (30 km, 60 days, any survey node): the stand-in reads one fixed gateway's 7 days. Settled by surveys that hear traceroutes: the phone uploading a traceroute's route would give survey measurements route truth.

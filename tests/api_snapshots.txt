@@ -304,9 +304,46 @@ unreadable_reason: null
 unreadable_reason_description: null
 hops: []
 route_nodes: []
+relay_nodes: 3 items
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+  - node_id: 1770269756
+    long_name: "Node 2c3c"
+    short_name: "2c3c"
+    role: "ROUTER"
+    latitude: 51.7407
+    longitude: 19.4445
+    estimated: false
+  - node_id: 3655149723
+    long_name: "Node 289b"
+    short_name: "289b"
+    role: "ROUTER"
+    latitude: 51.78
+    longitude: 19.5101
+    estimated: false
 spreading_factor: 7
 traceroute: null
 reply_route: null
+
+## GET /api/v1/packets/11936/flood-routes
+
+hops: 2 items
+  - from_node_id: 3655149723
+    to_node_id: 861938604
+    step: 6
+    how: "probable"
+    probability: 0.876
+  - from_node_id: 3655149723
+    to_node_id: 1550505660
+    step: 6
+    how: "probable"
+    probability: 0.988
+nodes: []
 
 ## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0
 

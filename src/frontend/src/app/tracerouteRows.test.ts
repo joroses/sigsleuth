@@ -73,6 +73,7 @@ function request(
     unreadable_reason_description: null,
     hops: [],
     route_nodes: [],
+    relay_nodes: [],
     spreading_factor: 11,
     traceroute: { requester_node_id: A, target_node_id: T },
     reply_route: reply,

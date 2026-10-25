@@ -193,6 +193,56 @@ db.nodes_by_id
 packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
 
+## GET /api/v1/packets/13/flood-routes
+
+packets.packet_detail
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+packets.packet_detail
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.direct_receptions
+  SEARCH link_hour USING INDEX link_hour_pair
+packets.packet_detail
+  SEARCH traceroute_hop USING PRIMARY KEY
+flood_routes.route_links
+  SEARCH link_hour USING PRIMARY KEY
+
 ## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0
 
 nodes.node_list

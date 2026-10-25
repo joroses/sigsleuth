@@ -896,6 +896,19 @@ thead th {
   box-shadow: var(--shadow-overlay);
 }
 
+/* Under the layers button, and under its menu when open. */
+.map-share {
+  position: absolute;
+  top: calc(var(--space-4) + var(--control-height) + var(--space-2));
+  right: var(--space-4);
+  z-index: 1;
+}
+
+.map-share > button {
+  background: var(--surface);
+  box-shadow: var(--shadow-overlay);
+}
+
 .basemap-menu {
   display: grid;
   gap: var(--space-1);
@@ -4151,7 +4164,9 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   padding: var(--space-3) 0;
 }
 
-.traceroute-map .minimap-canvas {
+.traceroute-map
+  .packet-minimap:not(.node-position-expanded)
+  .node-position-map {
   height: 26rem;
 }
 

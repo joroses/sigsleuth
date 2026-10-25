@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /*
  * Two ways a page remembers what the viewer chose, both per browser and best
@@ -10,6 +10,8 @@ import { useEffect, useRef, useState } from "react";
  *   typed, the page of a table, the selected or expanded thing, the map's
  *   camera and the scroll position. Back and Forward bring it back; following
  *   a link opens a fresh entry, so a new visit starts with nothing selected.
+ *
+ * A shared link may set a setting for the entry it opens (useLinkedSetting).
  */
 
 const SETTING_PREFIX = "sigsleuth.";
@@ -31,6 +33,38 @@ export function useSetting<T>(
   );
   useEffect(() => saveSetting(key, value), [key, value]);
   return [value, setValue] as const;
+}
+
+/**
+ * A setting a link may set for the history entry it opens (`linked`, when
+ * given): shown there, and again on Back, but not kept. A choice made after
+ * replaces it and is kept as useSetting keeps one; nothing is kept before.
+ */
+export function useLinkedSetting<T>(
+  key: string,
+  initial: T,
+  linked: T | undefined,
+  valid?: (value: unknown) => boolean,
+) {
+  const [saved] = useState<T>(() => savedSetting(key, initial, valid));
+  const [fromLink, setFromLink] = useViewState<{ value: T } | null>(
+    `linked.${key}`,
+    linked === undefined ? null : { value: linked },
+  );
+  const [chosen, setChosen] = useState<{ value: T } | null>(null);
+  useEffect(() => {
+    if (chosen !== null) saveSetting(key, chosen.value);
+  }, [key, chosen]);
+  const choose = useCallback(
+    (next: T) => {
+      setFromLink(null);
+      setChosen({ value: next });
+    },
+    [setFromLink],
+  );
+  const value =
+    chosen !== null ? chosen.value : fromLink !== null ? fromLink.value : saved;
+  return [value, choose] as const;
 }
 
 /** What useSetting starts with: the kept value, else `initial`. */

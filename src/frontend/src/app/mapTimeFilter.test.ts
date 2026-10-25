@@ -8,12 +8,13 @@ import {
   startMapRequests,
 } from "./mapTimeFilter";
 import { readView } from "./remember";
-import { useApi } from "./useApi";
+import { forgetKept, useApi } from "./useApi";
 
 afterEach(() => {
   localStorage.clear();
   window.history.replaceState(null, "");
   vi.unstubAllGlobals();
+  forgetKept();
 });
 
 function stubFetch() {
@@ -58,5 +59,30 @@ describe("startMapRequests", () => {
     startMapRequests();
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(mapUrls("7d", 1_000_000).nodes);
+  });
+
+  it("prefetches a shared view's window and layers instead of saved choices", () => {
+    localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("1h"));
+    localStorage.setItem(
+      "sigsleuth.linkLayers",
+      JSON.stringify({ traceroute: true, direct: false, neighbor: false }),
+    );
+    const fetchMock = stubFetch();
+
+    startMapRequests({
+      show: ["direct", "neighbor"],
+      window: "all",
+      channel: null,
+    });
+
+    const shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow;
+    expect(shown.window).toBe("all");
+    const urls = mapUrls(shown.window, shown.chosenAt);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      urls.nodes,
+      urls.textSenders,
+      urls.direct,
+      urls.neighbor,
+    ]);
   });
 });

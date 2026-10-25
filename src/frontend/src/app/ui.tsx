@@ -8,6 +8,7 @@ import {
 
 import type { LinkDirection, NodeSummary, PacketReception } from "./api";
 import { fadeMargin, linkTier, linkTierColor, marginTier } from "./linkQuality";
+import { isNarrowScreen } from "./narrowScreen";
 import { loadSetting } from "./remember";
 import {
   BROADCAST_NODE_ID,
@@ -61,7 +62,8 @@ type IconName =
   | "pin"
   | "profile"
   | "radio"
-  | "route";
+  | "route"
+  | "share";
 
 const iconPaths: Record<IconName, ReactNode> = {
   map: (
@@ -150,6 +152,14 @@ const iconPaths: Record<IconName, ReactNode> = {
   // box-and-arrow would suggest a new tab or another site.)
   open: <path d="M5 12h13M13 6l6 6-6 6" />,
   filter: <path d="M3 5h18l-7 8v6l-4 2v-8Z" />,
+  share: (
+    <>
+      <circle cx="18" cy="5" r="2.5" />
+      <circle cx="6" cy="12" r="2.5" />
+      <circle cx="18" cy="19" r="2.5" />
+      <path d="m8.2 10.8 7.6-4.6M8.2 13.2l7.6 4.6" />
+    </>
+  ),
   layers: (
     <>
       <path d="m12 3 9 5-9 5-9-5Z" />
@@ -451,6 +461,94 @@ export function IconButton({
   );
 }
 
+/** Whether `text` reached the clipboard. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // The clipboard API needs HTTPS; plain HTTP uses a temporary selection.
+    const field = document.createElement("textarea");
+    const focused = document.activeElement;
+    field.value = text;
+    field.readOnly = true;
+    field.style.position = "fixed";
+    field.style.top = "0";
+    field.style.opacity = "0";
+    document.body.append(field);
+    field.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      field.remove();
+      if (focused instanceof HTMLElement)
+        focused.focus({ preventScroll: true });
+    }
+  }
+}
+
+/**
+ * Copies a full link to `hash`, a view of this page; on a phone it opens the
+ * share sheet instead. `withText` shows "Share" beside the icon.
+ */
+export function ShareButton({
+  hash,
+  title,
+  withText = false,
+}: {
+  hash: string;
+  /** For the share sheet. */
+  title: string;
+  withText?: boolean;
+}) {
+  const [copied, setCopied] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (copied === null) return;
+    const timer = window.setTimeout(() => setCopied(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+  const feedback =
+    copied === null ? "" : copied ? "Copied link" : "Could not copy the link";
+
+  async function share() {
+    const url = new URL(hash, window.location.href).href;
+    if (isNarrowScreen() && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ title, url });
+      } catch {
+        // Closed without sharing.
+      }
+      return;
+    }
+    setCopied(await copyText(url));
+  }
+
+  const icon = copied ? "check" : "share";
+  const label = feedback || "Share a link to this view";
+  return (
+    <>
+      {withText ? (
+        <button
+          type="button"
+          aria-label={label}
+          title={label}
+          onClick={() => void share()}
+        >
+          <Icon name={icon} />
+          {copied ? "Copied" : "Share"}
+        </button>
+      ) : (
+        <IconButton icon={icon} label={label} onClick={() => void share()} />
+      )}
+      <span className="visually-hidden" role="status">
+        {feedback}
+      </span>
+    </>
+  );
+}
+
 export function CopyValue({ value, label }: { value: string; label: string }) {
   const [result, setResult] = useState<{
     value: string;
@@ -470,32 +568,7 @@ export function CopyValue({ value, label }: { value: string; label: string }) {
   }, [result]);
 
   async function copy() {
-    let copied: boolean;
-    try {
-      await navigator.clipboard.writeText(value);
-      copied = true;
-    } catch {
-      // The clipboard API needs HTTPS; plain HTTP uses a temporary selection.
-      const field = document.createElement("textarea");
-      const focused = document.activeElement;
-      field.value = value;
-      field.readOnly = true;
-      field.style.position = "fixed";
-      field.style.top = "0";
-      field.style.opacity = "0";
-      document.body.append(field);
-      field.select();
-      try {
-        copied = document.execCommand("copy");
-      } catch {
-        copied = false;
-      } finally {
-        field.remove();
-        if (focused instanceof HTMLElement)
-          focused.focus({ preventScroll: true });
-      }
-    }
-    setResult({ value, copied });
+    setResult({ value, copied: await copyText(value) });
   }
 
   return (

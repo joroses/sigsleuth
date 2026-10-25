@@ -50,7 +50,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
   forgetKept();
+  Reflect.deleteProperty(navigator, "clipboard");
 });
+
+function stubClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
+  return writeText;
+}
+
+/** How long before now an ISO time in `url`'s `name` parameter is, in hours. */
+function hoursBefore(url: string, name: string): number {
+  const at = new URL(url, "http://localhost").searchParams.get(name);
+  return (Date.now() - Date.parse(at ?? "")) / 3_600_000;
+}
 
 describe("Packet detail", () => {
   it("reports an API error", async () => {
@@ -499,6 +515,65 @@ describe("Node detail", () => {
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/v1/nodes/286331153/packets?port=1",
       expect.anything(),
+    );
+  });
+
+  it("opens a shared node page's minimap without keeping its switches, and shares it back", async () => {
+    const node = {
+      node_id: 0x11111111,
+      long_name: "Hilltop",
+      short_name: "HILL",
+      role: null,
+      hardware_model: null,
+      last_sent_at: null,
+      last_sent_packet_row_id: null,
+      last_seen_at: "2026-09-19T09:00:00Z",
+      channel: "LongFast",
+      last_gateway_at: null,
+      node_info_observed_at: null,
+      node_info_packet_row_id: null,
+      position: null,
+      location_source: null,
+      estimate: null,
+      firmware: null,
+      map_report: null,
+      contact_url: null,
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/nodes/286331153"
+            ? { node, ports: [] }
+            : url.startsWith("/api/v1/nodes/286331153/charts")
+              ? { node_id: node.node_id, hours: [], utilization: [] }
+              : { items: [], packets: [], next_before_id: null },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = stubClipboard();
+    localStorage.setItem("sigsleuth.node.contacts.gateways", "true");
+    const shared = "#nodes/!11111111?map=expanded&show=coverage";
+    window.location.hash = shared;
+    render(<App />);
+
+    const close = await screen.findByRole("button", { name: /Close/ });
+    expect(close.getAttribute("aria-pressed")).toBe("true");
+    const requested = () => fetchMock.mock.calls.map(([url]) => url);
+    await vi.waitFor(() =>
+      expect(requested()).toContain("/api/v1/coverage/extent?node=286331153"),
+    );
+    expect(requested().some((url) => url.includes("/contacts"))).toBe(false);
+    expect(loadSetting("node.contacts.gateways")).toBe(true);
+    expect(loadSetting("node.coverage")).toBeUndefined();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    await vi.waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        new URL(shared, window.location.href).href,
+      ),
     );
   });
 
@@ -1299,6 +1374,92 @@ describe("Map text reach", () => {
       await screen.findByRole("heading", { name: "Madrid" }),
     ).not.toBeNull();
   });
+
+  it.each(["traceroute", "direct", "neighbor", null] as const)(
+    "opens a shared node's view without keeping its settings, and shares it back (%s)",
+    async (layer) => {
+      const fetchMock = mockMap({
+        2: {
+          node_id: 2,
+          messages: 3,
+          channel: "LongFast",
+          gateways: [{ node_id: 1, receptions: 3 }],
+        },
+      });
+      const writeText = stubClipboard();
+      const saved = {
+        seenWindow: "7d",
+        textReach: false,
+        coverage: false,
+        linkLayers: {
+          traceroute: layer !== "traceroute",
+          direct: layer !== "direct",
+          neighbor: layer !== "neighbor",
+        },
+        nodeFilter: { role: "ROUTER", channel: "MediumFast" },
+      };
+      for (const [key, value] of Object.entries(saved))
+        localStorage.setItem(`sigsleuth.${key}`, JSON.stringify(value));
+      const shared = `#map/!00000002?show=${layer === null ? "" : `${layer},`}reach,coverage&window=24h&channel=LongFast`;
+      window.location.hash = shared;
+      render(<App />);
+
+      expect(
+        await screen.findByRole("heading", { name: "Valencia" }),
+      ).not.toBeNull();
+      const requested = () => fetchMock.mock.calls.map(([url]) => url);
+      await vi.waitFor(() =>
+        expect(requested()).toContain(
+          "/api/v1/coverage/extent?node=2&channel=LongFast",
+        ),
+      );
+      const reach = requested().find((url) =>
+        url.startsWith("/api/v1/map/text-reach/2?"),
+      );
+      const nodes = requested().find((url) =>
+        url.startsWith("/api/v1/map/nodes?"),
+      );
+      for (const url of [reach, nodes])
+        expect(
+          hoursBefore(url ?? "", url === reach ? "since" : "seen_since"),
+        ).toBeCloseTo(24, 1);
+      // The saved role filter would hide Madrid.
+      expect(screen.getByRole("button", { name: /MAD/ })).not.toBeNull();
+      for (const [key, value] of Object.entries(saved))
+        expect(loadSetting(key), key).toEqual(value);
+      for (const [kind, name] of [
+        ["traceroute", "Traceroute links"],
+        ["direct", "Direct gateway reports"],
+        ["neighbor", "Neighbour info"],
+      ])
+        expect(
+          (
+            screen.getByRole("checkbox", {
+              name: new RegExp(name),
+            }) as HTMLInputElement
+          ).checked,
+        ).toBe(kind === layer);
+      expect([
+        ...new Set(
+          requested()
+            .filter((url) => url.startsWith("/api/v1/map/links?"))
+            .map((url) =>
+              new URL(url, window.location.href).searchParams.get("link_kind"),
+            ),
+        ),
+      ]).toEqual(layer === null ? [] : [layer]);
+
+      const share = screen.getByRole("button", {
+        name: "Share a link to this view",
+      });
+      await vi.waitFor(() => {
+        fireEvent.click(share);
+        expect(writeText).toHaveBeenLastCalledWith(
+          new URL(shared, window.location.href).href,
+        );
+      });
+    },
+  );
 
   it("selects a chatty node with no position and fetches its text reach", async () => {
     const fetchMock = mockMap({

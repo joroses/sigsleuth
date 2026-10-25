@@ -27,12 +27,20 @@ import { NodeActivityCharts } from "./NodeActivityCharts";
 import { CONTACT_DAYS } from "./nodeContacts";
 import { NodeLinks } from "./NodeLinks";
 import { NodePositionMinimap } from "./NodePositionMinimap";
+import type { NodeLinkView } from "./routes";
 import { PagedPacketTable, PortSelect } from "./PacketTable";
 import { useApi } from "./useApi";
 import { Badge, CopyValue, DataItem, Icon, StatusPanel } from "./ui";
 import { formatHours } from "./zones";
 
-export function NodeDetailView({ nodeId }: { nodeId: number }) {
+/** `linkView`, from a shared link's query, sets up its position minimap. */
+export function NodeDetailView({
+  nodeId,
+  linkView = null,
+}: {
+  nodeId: number;
+  linkView?: NodeLinkView | null;
+}) {
   const [port, setPort] = useState<number | null>(null);
   // Ages are measured from when the page opened.
   const [now] = useState(clockNow);
@@ -105,7 +113,12 @@ export function NodeDetailView({ nodeId }: { nodeId: number }) {
             </StatusPanel>
           ) : (
             <>
-              <NodeSummary node={page.node} links={links.data} now={now} />
+              <NodeSummary
+                node={page.node}
+                links={links.data}
+                now={now}
+                linkView={linkView}
+              />
               <NodeActivityCharts nodeId={nodeId} />
             </>
           )}
@@ -132,10 +145,12 @@ function NodeSummary({
   node,
   links,
   now,
+  linkView,
 }: {
   node: NodeDetail;
   links: LinkTable | null;
   now: number;
+  linkView: NodeLinkView | null;
 }) {
   return (
     <div className="node-facts">
@@ -270,7 +285,7 @@ function NodeSummary({
           }
         />
       </dl>
-      <NodePositionMinimap node={node} links={links} />
+      <NodePositionMinimap node={node} links={links} linkView={linkView} />
     </div>
   );
 }

@@ -135,13 +135,22 @@ import {
   loadSetting,
   readView,
   saveSetting,
+  useLinkedSetting,
   useSetting,
   useViewState,
   writeView,
 } from "./remember";
+import { type MapLinkView, mapViewHref } from "./routes";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
-import { CopyValue, Icon, IconButton, StatusPanel, ShortTime } from "./ui";
+import {
+  CopyValue,
+  Icon,
+  IconButton,
+  ShareButton,
+  StatusPanel,
+  ShortTime,
+} from "./ui";
 
 const NO_NODES: MapNode[] = [];
 const NO_LINKS: MapLink[] = [];
@@ -164,9 +173,36 @@ function sheetOffset(instance: maplibregl.Map): [number, number] {
   return [0, -instance.getContainer().clientHeight * 0.275];
 }
 
-// Center the node and zoom in far enough to show about 300 km around it, keeping a
-// closer zoom if the map already has one.
-function focusNode(instance: maplibregl.Map, node: MapNode) {
+// Room around places fitted in view: a margin, and on a phone the sheet's
+// height, split above and below since sheetOffset then lifts them above it.
+function fitPadding(instance: maplibregl.Map): maplibregl.PaddingOptions {
+  const half = -sheetOffset(instance)[1];
+  return { top: 60 + half, bottom: 60 + half, left: 60, right: 60 };
+}
+
+// Fit the drawn links, or centre an unconnected node with about 300 km around it.
+function focusNode(
+  instance: maplibregl.Map,
+  node: MapNode,
+  linkedNodes: MapNode[] = NO_NODES,
+) {
+  if (linkedNodes.length > 0) {
+    const bounds = new maplibregl.LngLatBounds(
+      [node.longitude, node.latitude],
+      [node.longitude, node.latitude],
+    );
+    for (const end of linkedNodes) bounds.extend([end.longitude, end.latitude]);
+    const camera = instance.cameraForBounds(bounds, {
+      padding: fitPadding(instance),
+    });
+    if (camera === undefined) return;
+    instance.flyTo({
+      center: camera.center,
+      zoom: Math.min(Math.max(camera.zoom ?? 0, LINK_MIN_ZOOM), 14),
+      offset: sheetOffset(instance),
+    });
+    return;
+  }
   const { latitude, longitude } = node;
   const latitudeDelta = FOCUS_HALF_SIDE_KM / KM_PER_DEGREE_LATITUDE;
   // Clamped so the box stays finite near the poles.
@@ -194,7 +230,7 @@ function focusLink(instance: maplibregl.Map, a: MapNode, b: MapNode) {
   if (ends.every((end) => bounds.contains(end))) return;
   const camera = instance.cameraForBounds(
     new maplibregl.LngLatBounds(ends[0], ends[0]).extend(ends[1]),
-    { padding: 60 },
+    { padding: fitPadding(instance) },
   );
   if (camera === undefined) return;
   instance.flyTo({
@@ -224,7 +260,9 @@ function focusTextReach(
   const bounds = new maplibregl.LngLatBounds();
   for (const node of sender === null ? gateways : [sender, ...gateways])
     bounds.extend([node.longitude, node.latitude]);
-  const camera = instance.cameraForBounds(bounds, { padding: 60 });
+  const camera = instance.cameraForBounds(bounds, {
+    padding: fitPadding(instance),
+  });
   if (camera === undefined) return;
   instance.flyTo({
     center: camera.center,
@@ -233,18 +271,25 @@ function focusTextReach(
   });
 }
 
-// Show a node and its coverage cells: only when some are out of view, and
-// without zooming in, unless zoomIn fits them whatever the view.
+// Show a node, its coverage and other nodes: only when some are out of
+// view, and without zooming in, unless zoomIn fits them whatever the view.
 function focusCoverage(
   instance: maplibregl.Map,
   node: MapNode,
-  extent: CoverageExtent,
+  extent: CoverageExtent | null,
   zoomIn: boolean,
+  otherNodes: MapNode[] = NO_NODES,
 ) {
+  if (extent === null) {
+    focusTextReach(instance, node, otherNodes);
+    return;
+  }
   const bounds = new maplibregl.LngLatBounds(
     [extent.west, extent.south],
     [extent.east, extent.north],
   ).extend([node.longitude, node.latitude]);
+  for (const other of otherNodes)
+    bounds.extend([other.longitude, other.latitude]);
   const view = instance.getBounds();
   if (
     !zoomIn &&
@@ -252,11 +297,16 @@ function focusCoverage(
     view.contains(bounds.getNorthEast())
   )
     return;
-  const camera = instance.cameraForBounds(bounds, { padding: 60 });
+  const camera = instance.cameraForBounds(bounds, {
+    padding: fitPadding(instance),
+  });
   if (camera === undefined) return;
   instance.flyTo({
     center: camera.center,
-    zoom: Math.min(camera.zoom ?? 0, zoomIn ? 14 : instance.getZoom()),
+    zoom: Math.min(
+      Math.max(camera.zoom ?? 0, otherNodes.length > 0 ? LINK_MIN_ZOOM : 0),
+      zoomIn ? 14 : instance.getZoom(),
+    ),
     offset: sheetOffset(instance),
   });
 }
@@ -272,13 +322,6 @@ interface SelectedLink {
   link: MapLink;
 }
 
-/**
- * The chosen node and how the camera follows the choice: "node" centres it at
- * once, "reach" fits it and its gateways once its text reach loads,
- * "coverage" fits its coverage cells once their extent loads. Every
- * choice is a new object, so choosing the same node again fits again, and any
- * other choice drops a fit still waiting.
- */
 const CAMERA_KEY = "map.camera";
 const SELECTED_VIEW_KEY = "map.selected";
 
@@ -302,12 +345,14 @@ function savedCamera(): Camera | null {
   return null;
 }
 
+/** A new selection fits again and drops any pending fit. */
 interface Selection {
   nodeId: number;
-  fit: "node" | "reach" | "coverage";
+  /** "view" fits all enabled layers together. */
+  fit: "node" | "reach" | "coverage" | "view";
   /** Set for a chatty node with no recent position, which is not drawn. */
   unplaced?: TextSender;
-  /** Fit "coverage" zooms in too: the Fit map to coverage button. */
+  /** Fit coverage even when it is already in view, allowing a closer zoom. */
   zoomIn?: boolean;
 }
 
@@ -341,7 +386,7 @@ function useLinkLayer(
   tiers: LinkTierChoice,
   minKm: number,
 ) {
-  const { data: page, error } = useApi<MapLinkList>(url, chosenAt);
+  const { data: page, error, loading } = useApi<MapLinkList>(url, chosenAt);
   const loaded = page?.items ?? NO_LINKS;
   const allTiers = Object.values(tiers).every(Boolean);
   const links = useMemo(
@@ -382,7 +427,7 @@ function useLinkLayer(
     () => zeroCostArrows(links, zeroCost, nodeMap),
     [links, zeroCost, nodeMap],
   );
-  return { page, error, links, data, arrows };
+  return { page, error, loading, links, data, arrows };
 }
 
 const NO_ZERO_COST: ZeroCostHop[] = [];
@@ -392,8 +437,17 @@ function measureNodeLayersIdle(instance: maplibregl.Map) {
   instance.once("idle", () => performance.measure("map: node layers idle"));
 }
 
-/** nodeId, from #map/<node number>, is selected once nodes load. */
-export function MapView({ nodeId = null }: { nodeId?: number | null }) {
+/**
+ * nodeId, from #map/<node number>, is selected once nodes load; `linkView`,
+ * from a shared link's query, says what the map shows of it (see MapLinkView).
+ */
+export function MapView({
+  nodeId = null,
+  linkView = null,
+}: {
+  nodeId?: number | null;
+  linkView?: MapLinkView | null;
+}) {
   const map = useRef<maplibregl.Map | null>(null);
   const nodesById = useRef(new Map<number, MapNode>());
   // The node layers' latest data, for the next style load.
@@ -428,7 +482,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   // startMapRequests may have kept it already.
   const [shownWindow, setShownWindow] = useViewState<ShownWindow>(
     SHOWN_WINDOW_VIEW,
-    () => mapWindowStart(seenWindow),
+    () => mapWindowStart(linkView?.window ?? seenWindow),
   );
   const { chosenAt } = shownWindow;
   const urls = useMemo(
@@ -456,13 +510,22 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   // linkableNodes); the nodes drawn follow the links shown (see shownNodes).
   // Read before the filter is first kept, which would hide a first visit.
   const [firstVisit] = useState(() => loadSetting("nodeFilter") === undefined);
-  const [nodeFilter, setNodeFilter] = useSetting("nodeFilter", DEFAULT_FILTER);
-  // A first visit starts on the busiest channel once the nodes load.
-  const [channelPending, setChannelPending] = useState(firstVisit);
+  const [nodeFilter, setNodeFilter] = useLinkedSetting(
+    "nodeFilter",
+    DEFAULT_FILTER,
+    linkView === null
+      ? undefined
+      : { ...DEFAULT_FILTER, channel: linkView.channel ?? ANY },
+  );
+  // A first visit starts on the busiest channel once the nodes load, unless
+  // a shared link chose the channel.
+  const [channelPending, setChannelPending] = useState(
+    firstVisit && linkView === null,
+  );
   if (channelPending && page !== null) {
     setChannelPending(false);
     const channel = busiestChannel(page.items);
-    if (channel !== null) setNodeFilter((filter) => ({ ...filter, channel }));
+    if (channel !== null) setNodeFilter({ ...nodeFilter, channel });
   }
   const [requestedId, setRequestedId] = useState(nodeId);
   const linkable = useMemo(
@@ -485,13 +548,28 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     () => filterCounts(loadedNodes, nodeFilter),
     [loadedNodes, nodeFilter],
   );
-  const [linkChoice, setLinkChoice] = useSetting(
+  const [linkChoice, setLinkChoice] = useLinkedSetting(
     "linkLayers",
     DEFAULT_LAYER_CHOICE,
+    linkView === null
+      ? undefined
+      : {
+          traceroute: linkView.show.includes("traceroute"),
+          direct: linkView.show.includes("direct"),
+          neighbor: linkView.show.includes("neighbor"),
+        },
   );
   const [linkTiers, setLinkTiers] = useSetting("linkTiers", ALL_LINK_TIERS);
-  const [showTextReach, setShowTextReach] = useSetting("textReach", true);
-  const [showCoverage, setShowCoverage] = useSetting("coverage", false);
+  const [showTextReach, setShowTextReach] = useLinkedSetting(
+    "textReach",
+    true,
+    linkView?.show.includes("reach"),
+  );
+  const [showCoverage, setShowCoverage] = useLinkedSetting(
+    "coverage",
+    false,
+    linkView?.show.includes("coverage"),
+  );
   const [coverageMode, setCoverageMode] = useState<CoverageNodeMode>("heard");
   // The map's view and the area cells are fetched for, set when the map stops.
   const [coverageArea, setCoverageArea] = useState<CoverageArea | null>(null);
@@ -580,9 +658,12 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     () => new Map(items.map((node) => [node.node_id, node])),
     [items],
   );
+  // A shared link frames its node with what it shows of it.
+  const linkedFit: Selection["fit"] = linkView === null ? "node" : "view";
   const [selection, setSelection] = useState<Selection | null>(() =>
-    nodeId === null ? null : { nodeId, fit: "node" },
+    nodeId === null ? null : { nodeId, fit: linkedFit, zoomIn: true },
   );
+  const pendingNodeFit = useRef(selection);
   // The chosen link's key; it shows only while the filters keep the link.
   const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
   // A selected node the filters hide shows as nothing selected, and comes
@@ -591,9 +672,12 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     selection === null ? null : (nodeMap.get(selection.nodeId) ?? null);
   const unplacedSender = selection?.unplaced ?? null;
   const [hopDepth, setHopDepth] = useViewState("map.hopDepth", 0);
-  // On a phone the sidebar is a sheet over the map: closed at first, and
-  // opened by choosing something on the map.
-  const [collapsed, setCollapsed] = useState(isNarrowScreen);
+  // On a phone the sidebar is a sheet over the map: closed at first, unless
+  // a link chose a node, and opened by choosing something on the map. The
+  // camera leaves room for it either way (sheetOffset).
+  const [collapsed, setCollapsed] = useState(
+    () => isNarrowScreen() && nodeId === null,
+  );
   const [mapMessage, setMapMessage] = useState<string | null>(null);
   const [basemap, setBasemap] = useSetting("basemap", BASEMAPS[0].id, (value) =>
     BASEMAPS.some((option) => option.id === value),
@@ -601,12 +685,16 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
   const shownBasemap = useRef(basemap);
 
   // The only ways the node selection changes.
-  const select = useCallback((node: MapNode, fit: Selection["fit"]) => {
-    setSelection({ nodeId: node.node_id, fit });
-    setChosenLinkKey(null);
-    setCoverageMode("heard");
-    if (fit === "node" && map.current !== null) focusNode(map.current, node);
-  }, []);
+  const select = useCallback(
+    (node: MapNode, fit: Selection["fit"], zoomIn = false) => {
+      const next = { nodeId: node.node_id, fit, zoomIn };
+      pendingNodeFit.current = next;
+      setSelection(next);
+      setChosenLinkKey(null);
+      setCoverageMode("heard");
+    },
+    [],
+  );
   const clearSelection = useCallback(() => {
     setSelection(null);
     setChosenLinkKey(null);
@@ -881,7 +969,7 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     const loaded = page.items.find((node) => node.node_id === wanted);
     if (loaded !== undefined) {
       pendingNodeId.current = null;
-      select(loaded, "node");
+      select(loaded, linkedFit, true);
       return;
     }
     const controller = new AbortController();
@@ -891,14 +979,14 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
         pendingNodeId.current = null;
         if (linked === null) return;
         setLinkedNode(linked);
-        select(linked, "node");
+        select(linked, linkedFit, true);
       })
       .catch(() => {
         // The map still works without the linked node.
         if (!controller.signal.aborted) pendingNodeId.current = null;
       });
     return () => controller.abort();
-  }, [page, select]);
+  }, [page, select, linkedFit]);
 
   // Once another node is chosen or the selection is cleared, the hash no
   // longer names the linked node and the filters apply to it again.
@@ -914,7 +1002,11 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     }
   }, [nodeId, selection]);
 
-  const { container: mapContainer, failure } = useBasemapMap(
+  const {
+    container: mapContainer,
+    map: readyMap,
+    failure,
+  } = useBasemapMap(
     {
       view: () => savedCamera() ?? { center: [0, 20], zoom: 1 },
       basemap,
@@ -929,9 +1021,6 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
     map.current = instance;
     window.sigsleuthMap = instance; // For e2e tests and the devtools console.
     instance.addControl(new maplibregl.NavigationControl(), "bottom-left");
-    // Prefetched nodes may be selected before the map exists.
-    if (nodeId !== null && selectedNode?.node_id === nodeId)
-      focusNode(instance, selectedNode);
     let styleLoaded = false;
     // True from the start of a style load, the first or a basemap switch,
     // until it finishes.
@@ -1429,6 +1518,42 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       );
   }, [selectedLink, hopLinkKeys]);
 
+  // Wait for enabled layers, then fit once per choice; filters and Back keep
+  // the camera where the user left it.
+  const linksReady = !(
+    tracerouteLayer.loading ||
+    directLayer.loading ||
+    neighborLayer.loading
+  );
+  function nodesOnFocusedLinks(): MapNode[] {
+    const keys = new Set(hopFocus?.linkKeys);
+    const ends = new Map<number, MapNode>();
+    for (const { linkKind, link } of loadedLinks) {
+      if (!keys.has(linkKey(linkKind, link))) continue;
+      const a = nodeMap.get(link.node_a);
+      const b = nodeMap.get(link.node_b);
+      if (a !== undefined && b !== undefined) {
+        ends.set(a.node_id, a);
+        ends.set(b.node_id, b);
+      }
+    }
+    return [...ends.values()];
+  }
+  const fitNode = useEffectEvent(() => {
+    if (readyMap === null || selectedNode === null || selectedLink !== null)
+      return;
+    pendingNodeFit.current = null;
+    focusNode(readyMap, selectedNode, nodesOnFocusedLinks());
+  });
+  useEffect(() => {
+    if (
+      selection?.fit === "node" &&
+      pendingNodeFit.current === selection &&
+      linksReady
+    )
+      fitNode();
+  }, [selection, linksReady, readyMap, selectedNode, selectedLink]);
+
   // A sender chosen from Chatty nodes is fitted with its drawn gateways once
   // its text reach arrives, or on its own if that fails or the text
   // reach layer is off. A link chosen meanwhile keeps the camera where it is.
@@ -1456,34 +1581,47 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
       fitTextReach();
   }, [selection, reachLoaded, reachFailed, showTextReach]);
 
-  // A node chosen with coverage on is shown with its cells once their extent
-  // arrives, or centred if it has none or that fails. Each choice fits once,
-  // not again when the channel changes.
+  // A shared view waits for every enabled layer, fitting whatever loaded.
+  // Each choice fits once, not again when the channel changes.
   const extentUrl =
-    selection?.fit === "coverage" && showCoverage
+    (selection?.fit === "coverage" || selection?.fit === "view") && showCoverage
       ? coverageExtentUrl(selection.nodeId, coverageChannel)
       : null;
   const extent = useApi<CoverageExtent | null>(extentUrl);
-  const extentDone = extentUrl !== null && !extent.loading;
+  const coverageReady =
+    (extentUrl !== null && !extent.loading) ||
+    (selection?.fit === "view" && !showCoverage);
+  const fitReady =
+    coverageReady &&
+    (selection?.fit !== "view" || (!reach.loading && linksReady));
   const coverageFitted = useRef<Selection | null>(null);
   const fitCoverage = useEffectEvent(() => {
-    const instance = map.current;
+    const instance = readyMap;
     if (instance === null || selectedNode === null || selectedLink !== null)
       return;
-    if (extent.data === null) focusNode(instance, selectedNode);
-    else
-      focusCoverage(
-        instance,
-        selectedNode,
-        extent.data,
-        selection?.zoomIn ?? false,
-      );
+    const otherNodes =
+      selection?.fit === "view"
+        ? [
+            ...nodesOnFocusedLinks(),
+            ...(textReach?.gateways ?? []).flatMap((gateway) => {
+              const node = nodeMap.get(gateway.node_id);
+              return node === undefined ? [] : [node];
+            }),
+          ]
+        : NO_NODES;
+    coverageFitted.current = selection;
+    focusCoverage(
+      instance,
+      selectedNode,
+      extent.data,
+      selection?.zoomIn ?? false,
+      otherNodes,
+    );
   });
   useEffect(() => {
-    if (!extentDone || coverageFitted.current === selection) return;
-    coverageFitted.current = selection;
+    if (!fitReady || coverageFitted.current === selection) return;
     fitCoverage();
-  }, [selection, extentDone]);
+  }, [selection, fitReady, readyMap, selectedNode, selectedLink]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
@@ -1645,6 +1783,22 @@ export function MapView({ nodeId = null }: { nodeId?: number | null }) {
           onMinKm={setMinKm}
         />
         <BasemapSwitcher value={basemap} onChange={setBasemap} />
+        {selectedNode !== null && selectedLinkNodes === null ? (
+          <div className="map-share">
+            <ShareButton
+              hash={mapViewHref(selectedNode.node_id, {
+                show: [
+                  ...LINK_KINDS.filter((kind) => linkChoice[kind]),
+                  ...(showTextReach ? (["reach"] as const) : []),
+                  ...(showCoverage ? (["coverage"] as const) : []),
+                ],
+                window: shownWindow.window,
+                channel: nodeFilter.channel === ANY ? null : nodeFilter.channel,
+              })}
+              title={nodeLabel(selectedNode)}
+            />
+          </div>
+        ) : null}
       </div>
       <aside className="map-sidebar" aria-label="Map sidebar">
         <div className="sidebar-handle">

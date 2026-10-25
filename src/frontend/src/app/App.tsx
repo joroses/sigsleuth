@@ -1,10 +1,8 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 
-import type { LinkKind } from "./api";
-import type { LinksTab } from "./LinksView";
 import { startMapRequests } from "./mapTimeFilter";
-import type { DirectedHop } from "./minimapMarkers";
 import { readView, useRememberedScroll, writeView } from "./remember";
+import { routeFromHash } from "./routes";
 import { ApplicationBar, StatusPanel, mainPages } from "./ui";
 
 const LazyMapView = lazy(() =>
@@ -36,33 +34,11 @@ const LazyNodeDetail = lazy(() =>
   })),
 );
 
-type Route =
-  | { page: "map"; nodeId: number | null }
-  | { page: "zones" }
-  | { page: "chat" }
-  | { page: "nodes" }
-  | {
-      page: "links";
-      tab: LinksTab;
-      pair: [number, number] | null;
-      node: number | null;
-      at: number | null;
-      /** On the links tab, the kind a link to one link's row names. */
-      kind: LinkKind | null;
-    }
-  | {
-      page: "diagnostics";
-      sender: number | null;
-      heardDirectlyBy: number | null;
-    }
-  | { page: "packet"; id: number; hop: DirectedHop | null; relays: boolean }
-  | { page: "node"; id: number };
-
 export function App() {
   const [route, setRoute] = useState(() => {
     const opened = routeFromHash(window.location.hash);
     // Before React even shows "Loading…" for the map's code.
-    if (opened.page === "map") startMapRequests();
+    if (opened.page === "map") startMapRequests(opened.view);
     return opened;
   });
   // Counts the history entries shown, so each one gets its scroll back.
@@ -92,7 +68,7 @@ export function App() {
         next.page === "map" &&
         routeFromHash(new URL(event.oldURL).hash).page !== "map"
       ) {
-        startMapRequests();
+        startMapRequests(next.view);
       }
       setRoute(next);
       setEntry((count) => count + 1);
@@ -124,7 +100,11 @@ export function App() {
           fallback={<StatusPanel>Loading…</StatusPanel>}
         >
           {route.page === "map" ? (
-            <LazyMapView key={route.nodeId} nodeId={route.nodeId} />
+            <LazyMapView
+              key={JSON.stringify([route.nodeId, route.view])}
+              nodeId={route.nodeId}
+              linkView={route.view}
+            />
           ) : route.page === "zones" ? (
             <LazyZones />
           ) : route.page === "chat" ? (
@@ -148,7 +128,11 @@ export function App() {
               openedFrom={openedFrom === null ? null : pageLabel(openedFrom)}
             />
           ) : route.page === "node" ? (
-            <LazyNodeDetail key={route.id} nodeId={route.id} />
+            <LazyNodeDetail
+              key={JSON.stringify([route.id, route.view])}
+              nodeId={route.id}
+              linkView={route.view}
+            />
           ) : (
             <LazyDiagnostics
               sender={route.sender}
@@ -174,90 +158,4 @@ function pageLabel(hash: string): { href: string; label: string } {
         : (mainPages.find((main) => main.page === page)?.label ??
           "previous page");
   return { href: hash || "#map", label };
-}
-
-function routeFromHash(hash: string): Route {
-  // #health is the page's old name.
-  if (hash === "#zones" || hash === "#health") {
-    return { page: "zones" };
-  }
-  if (hash === "#chat") {
-    return { page: "chat" };
-  }
-  if (hash === "#nodes") {
-    return { page: "nodes" };
-  }
-  // The links or the explorer, optionally around one node; the explorer or
-  // the links, optionally one link's two nodes; or the line of sight,
-  // optionally between two nodes, where they were at a time in ms. On the
-  // links, ?kind= names the kind of the link whose row opens.
-  const linksTab = hash.match(
-    /^#links(?:\/(traceroutes|line-of-sight))?(?:\/([1-9]\d*)(?:-([1-9]\d*))?)?(?:@(\d+))?(?:\?kind=(traceroute|direct|neighbor))?$/,
-  );
-  if (linksTab !== null) {
-    const [, tab = "links", first, second, time, kind] = linksTab;
-    const pair: [number, number] | null =
-      second === undefined ? null : [Number(first), Number(second)];
-    const node =
-      first === undefined || second !== undefined || tab === "line-of-sight"
-        ? null
-        : Number(first);
-    const at =
-      time === undefined || pair === null || tab !== "line-of-sight"
-        ? null
-        : Number(time);
-    return {
-      page: "links",
-      tab: tab as LinksTab,
-      pair,
-      node,
-      at,
-      kind: kind === undefined ? null : (kind as LinkKind),
-    };
-  }
-  // Diagnostics, optionally listing the packets one node sent, optionally
-  // only those a second heard directly.
-  const diagnostics = hash.match(
-    /^#diagnostics(?:\/packets\/([1-9]\d*)(?:-([1-9]\d*))?)?$/,
-  );
-  if (diagnostics !== null) {
-    const [, first, second] = diagnostics;
-    const ids = [first, second].map((id) =>
-      id === undefined || Number(id) > 0xffffffff ? null : Number(id),
-    );
-    return {
-      page: "diagnostics",
-      sender: ids[0],
-      heardDirectlyBy: ids[0] !== null ? ids[1] : null,
-    };
-  }
-  // A packet, optionally showing only the reports where the first node
-  // was heard by the second, or showing its relays.
-  const packet = hash.match(
-    /^#packets\/([1-9]\d*)(?:\/hop\/([1-9]\d*)-([1-9]\d*)|\/(relays))?$/,
-  );
-  if (packet !== null && Number.isSafeInteger(Number(packet[1]))) {
-    const hop =
-      packet[2] === undefined
-        ? null
-        : {
-            fromNodeId: Number(packet[2]),
-            toNodeId: Number(packet[3]),
-          };
-    return {
-      page: "packet",
-      id: Number(packet[1]),
-      hop,
-      relays: packet[4] !== undefined,
-    };
-  }
-  const node = hash.match(/^#nodes\/([1-9]\d*)$/);
-  if (node !== null && Number(node[1]) <= 0xffffffff) {
-    return { page: "node", id: Number(node[1]) };
-  }
-  const mapNode = hash.match(/^#map\/([1-9]\d*)$/);
-  if (mapNode !== null && Number(mapNode[1]) <= 0xffffffff) {
-    return { page: "map", nodeId: Number(mapNode[1]) };
-  }
-  return { page: "map", nodeId: null };
 }

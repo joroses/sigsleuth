@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { MapLink, MapNode } from "../src/app/api";
 
 // The API serves the recorded sample (tests/serve_sample.py) with its clock
 // stopped. These tests check page loading, map timings and node links;
@@ -133,6 +134,281 @@ for (const inWindow of [true, false]) {
     await expect(
       page.getByRole("button", { name: "Clear selected node" }),
     ).toHaveCount(0);
+  });
+}
+
+for (const { width, linked } of [
+  { width: 1280, linked: false },
+  { width: 390, linked: false },
+  { width: 390, linked: true },
+]) {
+  test(`a ${linked ? "node link waits for and" : "node click"} fits its visible traceroute links (${width}px)`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const { items }: { items: MapNode[] } = await (
+      await request.get("/api/v1/map/nodes")
+    ).json();
+    const { items: links }: { items: MapLink[] } = await (
+      await request.get("/api/v1/map/links?link_kind=traceroute")
+    ).json();
+    const placed = new Map(items.map((node) => [node.node_id, node]));
+    const link = links.find(
+      (link) =>
+        placed.has(link.node_a) &&
+        placed.has(link.node_b) &&
+        link.a_to_b.observations + link.b_to_a.observations >= 10,
+    )!;
+    // Spread a sample link beyond the old fixed view; the sample is local.
+    const node = { ...placed.get(link.node_a)!, longitude: 0, latitude: 40 };
+    const other = {
+      ...placed.get(link.node_b)!,
+      longitude: width === 390 ? 3 : 8,
+      latitude: 40,
+    };
+    const hidden = {
+      ...items.find(
+        (item) => ![link.node_a, link.node_b].includes(item.node_id),
+      )!,
+      longitude: -50,
+      latitude: 40,
+    };
+    await page.route("**/api/v1/map/nodes?*", (route) =>
+      route.fulfill({
+        json: { items: [node, other, hidden], truncated: false },
+      }),
+    );
+    let release = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/api/v1/map/links?*", async (route) => {
+      if (linked) await waiting;
+      await route.fulfill({
+        json: {
+          items: [
+            link,
+            {
+              ...link,
+              node_b: hidden.node_id,
+              a_to_b: { ...link.a_to_b, observations: 0 },
+              b_to_a: { ...link.b_to_a, observations: 0 },
+            },
+          ],
+          truncated: false,
+        },
+      });
+    });
+    await page.addInitScript(() => {
+      localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
+      localStorage.setItem("sigsleuth.textReach", "false");
+      localStorage.setItem(
+        "sigsleuth.nodeFilter",
+        JSON.stringify({ channel: "*" }),
+      );
+      localStorage.setItem("sigsleuth.filterPanelOpen", "false");
+      localStorage.setItem(
+        "sigsleuth.map.camera",
+        JSON.stringify({ center: [0, 40], zoom: 10 }),
+      );
+    });
+    await page.goto(
+      linked ? `/#map/${node.node_id}?show=traceroute&window=all` : "/#map",
+    );
+    if (!linked) {
+      await expect
+        .poll(() =>
+          page.evaluate((nodeId) => {
+            const map = window.sigsleuthMap;
+            return (
+              map?.getLayer("nodes") !== undefined &&
+              map
+                .queryRenderedFeatures({ layers: ["nodes"] })
+                .some((feature) => feature.properties.nodeId === nodeId)
+            );
+          }, node.node_id),
+        )
+        .toBe(true);
+      const point = await page.evaluate(() => {
+        const map = window.sigsleuthMap!;
+        const { x, y } = map.project([0, 40]);
+        const box = map.getContainer().getBoundingClientRect();
+        return { x: box.left + x, y: box.top + y };
+      });
+      await page.mouse.click(point.x, point.y);
+    }
+    await expect(
+      page.getByRole("button", { name: "Clear selected node" }),
+    ).toBeVisible();
+    release();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (points) => {
+            const map = window.sigsleuthMap;
+            if (map === undefined || map.isMoving()) return false;
+            const box = map.getContainer().getBoundingClientRect();
+            const sheet = document
+              .querySelector(".map-sidebar")!
+              .getBoundingClientRect();
+            const bottom =
+              window.innerWidth <= 700 ? sheet.top - box.top : box.height;
+            return (
+              map.getZoom() >= 5 &&
+              points.every(([lng, lat]) => {
+                const { x, y } = map.project([lng, lat]);
+                return (
+                  x >= 40 && x <= box.width - 40 && y >= 40 && y <= bottom - 40
+                );
+              })
+            );
+          },
+          [
+            [node.longitude, node.latitude],
+            [other.longitude, other.latitude],
+          ],
+        ),
+      )
+      .toBe(true);
+  });
+}
+
+for (const { width, late, failed, kind } of [
+  { width: 1280, late: "reach", failed: null, kind: "traceroute" },
+  { width: 390, late: "links", failed: null, kind: "direct" },
+  { width: 390, late: "coverage", failed: "coverage", kind: "neighbor" },
+  { width: 1280, late: "reach", failed: "reach", kind: "direct" },
+  { width: 390, late: "links", failed: "links", kind: "traceroute" },
+]) {
+  test(`a shared link fits its layers (${width}px, ${kind}, ${late} last, ${failed ?? "none"} fails)`, async ({
+    page,
+    request,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const { items }: { items: MapNode[] } = await (
+      await request.get("/api/v1/map/nodes")
+    ).json();
+    const { items: links }: { items: MapLink[] } = await (
+      await request.get(`/api/v1/map/links?link_kind=${kind}`)
+    ).json();
+    // The sample has no survey spanning a node's text gateways and links.
+    const node = { ...items[0], longitude: 0, latitude: 40 };
+    const gateway = { ...items[1], longitude: 1, latitude: 40.5 };
+    const peer = { ...items[2], longitude: -1.2, latitude: 40.2 };
+    const extent = { west: -0.2, south: 39.9, east: 0.1, north: 40.1 };
+    await page.route("**/api/v1/map/nodes?*", (route) =>
+      route.fulfill({
+        json: { items: [node, gateway, peer], truncated: false },
+      }),
+    );
+    await page.addInitScript((kind) => {
+      localStorage.setItem(
+        "sigsleuth.linkLayers",
+        JSON.stringify({
+          traceroute: kind !== "traceroute",
+          direct: kind !== "direct",
+          neighbor: kind !== "neighbor",
+        }),
+      );
+    }, kind);
+    let release = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const answers = {
+      reach: {
+        node_id: node.node_id,
+        messages: 3,
+        channel: node.channel,
+        gateways: [{ node_id: gateway.node_id, receptions: 3 }],
+      },
+      coverage: extent,
+      links: {
+        items: [
+          {
+            ...links.find(
+              (link) =>
+                link.a_to_b.observations + link.b_to_a.observations >= 10,
+            )!,
+            node_a: node.node_id,
+            node_b: peer.node_id,
+          },
+        ],
+        truncated: false,
+      },
+    };
+    for (const layer of ["reach", "coverage", "links"] as const) {
+      const url =
+        layer === "reach"
+          ? `**/api/v1/map/text-reach/${node.node_id}*`
+          : layer === "coverage"
+            ? "**/api/v1/coverage/extent?*"
+            : "**/api/v1/map/links?*";
+      await page.route(url, async (route) => {
+        if (layer === late) await waiting;
+        await route.fulfill({
+          status: layer === failed ? 503 : 200,
+          json:
+            layer === failed
+              ? { error: { code: "unavailable", message: "Unavailable" } }
+              : answers[layer],
+        });
+      });
+    }
+    const early =
+      late === "links"
+        ? ["reach", "coverage"]
+        : ["links", late === "reach" ? "coverage" : "reach"];
+    const first = Promise.all(
+      early.map((layer) =>
+        page.waitForResponse((response) =>
+          response
+            .url()
+            .includes(
+              layer === "reach"
+                ? "/map/text-reach/"
+                : layer === "coverage"
+                  ? "/coverage/extent?"
+                  : "/map/links?",
+            ),
+        ),
+      ),
+    );
+    await page.goto(
+      `/#map/${node.node_id}?show=${kind},reach,coverage&window=all`,
+    );
+    await expect(
+      page.getByRole("button", { name: "Clear selected node" }),
+    ).toBeVisible();
+    await first;
+    release();
+
+    const points = [[node.longitude, node.latitude]];
+    if (failed !== "links") points.push([peer.longitude, peer.latitude]);
+    if (failed !== "reach") points.push([gateway.longitude, gateway.latitude]);
+    if (failed !== "coverage")
+      points.push([extent.west, extent.south], [extent.east, extent.north]);
+    await expect
+      .poll(() =>
+        page.evaluate((points) => {
+          const map = window.sigsleuthMap;
+          if (map === undefined || map.isMoving()) return false;
+          const canvas = map.getContainer().getBoundingClientRect();
+          const sheet = document
+            .querySelector(".map-sidebar")!
+            .getBoundingClientRect();
+          const bottom =
+            window.innerWidth <= 700 ? sheet.top - canvas.top : canvas.height;
+          return points.every(([lng, lat]) => {
+            const { x, y } = map.project([lng, lat]);
+            return (
+              x >= 40 && x <= canvas.width - 40 && y >= 40 && y <= bottom - 40
+            );
+          });
+        }, points),
+      )
+      .toBe(true);
   });
 }
 

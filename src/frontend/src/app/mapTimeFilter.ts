@@ -1,6 +1,7 @@
 import { type LinkKind, mapLinksUrl, mapNodesUrl, textSendersUrl } from "./api";
 import { DEFAULT_LAYER_CHOICE } from "./mapLinkLayers";
 import { readView, savedSetting, writeView } from "./remember";
+import type { MapLinkView } from "./routes";
 import { openedAt, startEarly } from "./useApi";
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -72,15 +73,20 @@ export function mapUrls(window: SeenWindow, now: number): MapUrls {
 /**
  * Starts the map's requests when the app opens on it, while the map's code
  * and MapLibre still load: the window shown, kept in this history entry (and
- * kept there now for a new one), and the link layers chosen, as MapView will
- * read them, so it finds its requests already on their way (useApi's
- * startEarly).
+ * kept there now for a new one, the `linked` window of a shared link if
+ * given), and the link layers chosen, as MapView will read them, so it finds
+ * its requests already on their way (useApi's startEarly).
  */
-export function startMapRequests(): void {
+export function startMapRequests(linked?: MapLinkView | null): void {
   let shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow | undefined;
   if (shown === undefined) {
     shown = mapWindowStart(
-      savedSetting<SeenWindow>("seenWindow", DEFAULT_SEEN_WINDOW, isSeenWindow),
+      linked?.window ??
+        savedSetting<SeenWindow>(
+          "seenWindow",
+          DEFAULT_SEEN_WINDOW,
+          isSeenWindow,
+        ),
     );
     writeView(SHOWN_WINDOW_VIEW, shown);
   }
@@ -89,6 +95,7 @@ export function startMapRequests(): void {
   startEarly(urls.textSenders, shown.chosenAt);
   const layers = savedSetting("linkLayers", DEFAULT_LAYER_CHOICE);
   for (const kind of ["traceroute", "direct", "neighbor"] as const) {
-    if (layers[kind]) startEarly(urls[kind], shown.chosenAt);
+    if (linked ? linked.show.includes(kind) : layers[kind])
+      startEarly(urls[kind], shown.chosenAt);
   }
 }

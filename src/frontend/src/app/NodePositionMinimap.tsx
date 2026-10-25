@@ -44,8 +44,9 @@ import {
 } from "./mapLinkLayers";
 import { LinkSwatch, ZeroCostKey } from "./MapLinkDetails";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
-import { useSetting } from "./remember";
-import { Icon } from "./ui";
+import { useLinkedSetting } from "./remember";
+import { type NodeLinkView, nodeViewHref } from "./routes";
+import { Icon, ShareButton } from "./ui";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -73,24 +74,29 @@ type Current = { latitude: number; longitude: number; estimated: boolean };
 // its own packets or ones it relayed, as on the Map's "Heard from it"; not
 // what its own survey uploaded. Cells are fetched for the area in view.
 //
-// The view fits all that is shown, with every contact and every cell.
+// The view fits all that is shown, with every contact and every cell. A
+// shared link (`linkView`) may open it expanded and choose its switches.
 export function NodePositionMinimap({
   node,
   links,
+  linkView = null,
 }: {
   node: NodeDetail;
   links: LinkTable | null;
+  linkView?: NodeLinkView | null;
 }) {
   const { data: history, error } = useApi<NodePositionHistory>(
     nodePositionsUrl(node.node_id),
   );
-  const [showTraceroutes, setShowTraceroutes] = useSetting(
+  const [showTraceroutes, setShowTraceroutes] = useLinkedSetting(
     "node.contacts.traceroutes",
     false,
+    linkView?.show.includes("traceroutes"),
   );
-  const [showGateways, setShowGateways] = useSetting(
+  const [showGateways, setShowGateways] = useLinkedSetting(
     "node.contacts.gateways",
     false,
+    linkView?.show.includes("gateways"),
   );
   const showContacts = showTraceroutes || showGateways;
   const [since] = useState(
@@ -99,8 +105,12 @@ export function NodePositionMinimap({
   const contactsState = useApi<NodeContactList>(
     showContacts ? nodeContactsUrl(node.node_id, since) : null,
   );
-  const [showCoverage, setShowCoverage] = useSetting("node.coverage", false);
-  const [expanded, setExpanded] = useState(false);
+  const [showCoverage, setShowCoverage] = useLinkedSetting(
+    "node.coverage",
+    false,
+    linkView?.show.includes("coverage"),
+  );
+  const [expanded, setExpanded] = useState(linkView?.expanded ?? false);
   useEffect(() => {
     if (!expanded) return;
     const close = (event: KeyboardEvent) => {
@@ -357,6 +367,18 @@ export function NodePositionMinimap({
               <Icon name={expanded ? "collapse" : "expand"} />
               {expanded ? "Close" : "Expand"}
             </button>
+            <ShareButton
+              hash={nodeViewHref(node.node_id, {
+                expanded,
+                show: [
+                  ...(showTraceroutes ? (["traceroutes"] as const) : []),
+                  ...(showGateways ? (["gateways"] as const) : []),
+                  ...(showCoverage ? (["coverage"] as const) : []),
+                ],
+              })}
+              title={nodeLabel(node)}
+              withText
+            />
           </div>
         </div>
         {/* Always there, so the card keeps its shape while loading or with

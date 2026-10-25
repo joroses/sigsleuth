@@ -27,12 +27,12 @@ from sigsleuth.links import (
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
 from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
 from sigsleuth.relays import (
-    COHEARER_RECEPTIONS,
     COHEARER_WINDOW_MS,
     Relayed,
     candidates_left,
     channel_spreading_factor,
     direct_receptions,
+    direct_signals,
     name_relay,
     node_km,
     relay_evidence,
@@ -517,21 +517,21 @@ def _with_relays(
         spreading_factors=set() if spreading_factor is None else {spreading_factor},
         links_around=at,
     )
-    # Each candidate's direct receptions by the gateways that heard its byte:
-    # the gateway itself for heard_directly, its co-hearers for name_relay.
+    pairs = [
+        (node, reception.gateway_node_id)
+        for reception in receptions
+        if reception.relay_byte
+        for node in evidence.by_byte.get(reception.relay_byte, [])
+    ]
     direct = direct_receptions(
         connection,
-        [
-            (node, reception.gateway_node_id)
-            for reception in receptions
-            if reception.relay_byte
-            for node in evidence.by_byte.get(reception.relay_byte, [])
-        ],
+        pairs,
         at - COHEARER_WINDOW_MS,
         at + COHEARER_WINDOW_MS,
     )
+    signals = direct_signals(connection, pairs, at)
     reports = [
-        (reception.gateway_node_id, reception.hop_limit, reception.relay_byte)
+        (reception.gateway_node_id, reception.hop_limit, reception.relay_byte, reception.rx_snr)
         for reception in receptions
     ]
 
@@ -567,13 +567,7 @@ def _with_relays(
             relay = RelayNode(heard[0], name(heard[0]), len(every), "heard_directly")
         else:
             left = candidates_left(evidence, copy)
-            cohearers = copy.cohearers()
-            vouched = {
-                node
-                for node in left
-                if any(direct.get((node, other), 0) >= COHEARER_RECEPTIONS for other in cohearers)
-            }
-            guess = name_relay(evidence, copy, left, vouched)
+            guess = name_relay(evidence, copy, left, signals)
             if guess is not None:
                 relay = RelayNode(guess[0], name(guess[0]), len(left), guess[1])
         if relay is not None and relay.node_id not in hidden:

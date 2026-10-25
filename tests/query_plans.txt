@@ -271,6 +271,8 @@ relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
 relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
+relays.direct_signals
+  SEARCH link_hour USING INDEX link_hour_pair
 packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
 flood_routes.route_links

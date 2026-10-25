@@ -122,17 +122,17 @@ Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; thei
 
 ## Decision (2026-10-18)
 
-No signal matching: lines need a direct reception, a radio link or the rule-outs, which anyone can check. Since 2026-10-22 one signal rule-out applies, "too strong" (below); signals still name no one. Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
+Solid lines need direct evidence; dashed guesses can also use the co-hearers' signal score (below). Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
 1. **Solid**: a survey heard the node directly. The measurement had no relay, or the relay byte matches exactly one node a survey heard directly nearby (a survey link: any survey node, same radio settings, 30 km, closest of 1 hour or 60 days). Checked before the rule-outs, so none can overrule a direct reception, and it wins over upload's name.
 2. **Rule-outs**: every row of the rule-out table except the two signal rows. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
-3. **Dashed**: of the candidates left, the first rule that names exactly one: 2d; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left, also only within its reach (since 2026-10-23, below).
+3. **Dashed**: of the candidates left, the first rule that names one: the co-hearer signal score; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left, also only within its reach (since 2026-10-23, below).
 4. **No line** otherwise. The cell lists up to three candidates that pass the rule-outs needing no packet (role, spreading factor, firmware, reach), nearest first.
 5. A measurement with a line, solid or dashed, paints while that node is alive; one without paints for 14 days.
 
-Packet pages and the chat's gateway reports (`packets._with_relays`) take the same steps with the gateway in the phone's place. Solid is the only candidate the gateway heard directly within 7 days of the packet, before the rule-outs: the study's stand-in for survey links, so the "with survey links" figures below are the page's own. Before, the page named someone in 99.1% of route receptions, 97.0% right, and in 98.9% with the true relay hidden. A reception that names no one lists up to three candidates the rule-outs left, nearest first, and one carrying the gateway's own byte names no one. Links count either side of the packet, where upload has only those before. This is not measured, but retention removes link hours at the same age as packets, so the oldest packets would otherwise have no evidence.
+Packet pages and the chat's gateway reports (`packets._with_relays`) take the same steps with the gateway in the phone's place. Solid is the only candidate the gateway heard directly within 7 days of the packet, before the rule-outs: the study's stand-in for survey links, so the "with survey links" figures below are the page's own. Before, the page named someone in 99.1% of route receptions, 97.0% right, and in 98.9% with the true relay hidden. A reception that names no one lists up to three candidates the rule-outs left, nearest first, and one carrying the gateway's own byte names no one. Direct counts and radio links count either side of the packet, where upload has only those before: retention removes link hours at the same age as packets. The signal score uses only completed hours before the packet on both pages and uploads; without a profile, the other rules still apply.
 
-On route truth, with the receiver's direct links standing in for survey links or without them:
+The next two tables describe the 2026-10-18 decision, before the reach check and signal score. On route truth, with the receiver's direct links standing in for survey links or without them:
 
 | | Before | Decided |
 |---|---|---|
@@ -155,23 +155,17 @@ Each step at its turn, with survey links / without: names someone, right when it
 | `reported`, within reach | dashed | 0.9%, 88.9%; 1.1% | 4.4%, 87.4%; 1.3% |
 | Only candidate left | dashed | 0.8%, 80.6%; 22.2% | 11.8%, 92.5%; 22.9% |
 
-The only candidate left is the one step that leans on what SigSleuth knows: when the true relay is hidden, it names another node in 22% of receptions. On MQTT that is rare: 22 of the 901 relays traceroutes name (2.4%) never sent a packet MQTT saw, 0.1% of route receptions. Nodes that turn OK to MQTT off, or relay where no gateway listens, are the risk, accepted.
+Before the reach check below, the only candidate left named another node in 22% of receptions when the true relay was hidden. On MQTT that is rare: 22 of the 901 relays traceroutes name (2.4%) never sent a packet MQTT saw, 0.1% of route receptions. Nodes that turn OK to MQTT off, or relay where no gateway listens, are the risk, accepted.
 
 Since 2026-10-23 that step also names only within the candidate's own reach (20 km floor), like the steps before it: a far candidate left alone mostly stands in for a relay SigSleuth does not know. On every 10th traceroute of the same data (30,012 receptions with route truth), without survey links: wrong lines with the true relay hidden 31.7% → 15.8%, named node right 95.1% → 95.7%, named 72.1% → 71.3%; with them, wrong lines with the true relay hidden 35.4% → 19.7%. A later live copy (2026-10-09 to 10-23, every 20th traceroute, 23,110) agrees: 30.8% → 15.4%, right 95.6% → 96.0%, named 70.0% → 69.4%. The tables above are from before the change.
 
-### Why no SNR
+### Co-hearer signal score (2026-10-24)
 
-The signal matches (9 and 9b) are not circular: their averages come from the candidates' own packets heard with no hops used, and with only the hours before the packet's they name the same (below). But they mostly follow who is heard directly. The true relay is the only candidate the receiver heard directly in 84.1% of route receptions (the co-hearers: 47.2%), and there any SNR within 6 dB names it. Where two or more candidates have direct readings, the signal decides:
+The score replaces 2d. It compares the same copy's SNR at each co-hearer with that gateway's direct readings of each candidate's own packets. Profiles use the seven completed days before the packet's hour, so the packet cannot enter its own profile. A gateway uploading its own rebroadcast supplies no signal evidence. Missing readings leave only the direct-contact evidence; missing profiles remain possible. The best candidate must beat both the next candidate and an unknown node. Otherwise the link and report rules still run.
 
-| | Receiver's match (3,419) | Co-hearers' match (4,504) |
-|---|---|---|
-| Real SNR: names, right | 49.3%, 98.3% | 39.3%, 98.2% |
-| Another relay's SNR at the same gateway | 38.6%, 36.6% | 19.6%, 60.3% |
-| Direct readings only from hours before the packet's | 49.0%, 98.3% | 40.0%, 97.8% |
-| Chance (one of them) | 49.1% | 46.1% |
-| Most heard directly | 55.9% right | |
+Measured 2026-10-23 on two live loranet.pl snapshots, 2026-09-27 to 10-12 and 10-09 to 10-23: a fixed 2.6 dB spread, 31 dB unknown width and 3-nat margin reduce wrong names beyond the reach check from 919 to 570 and 640 to 294, with nearly unchanged naming coverage. Right when named rises from 95.7% to 97.3% and 96.0% to 98.2%. The receiver's direct links standing in for survey links give 99.4% right on both. These are samples of 30,012 and 23,110 route-truth receptions, including opted-out candidates; multiple receptions can come from one packet.
 
-So it reads the relay's signal, but rarely decides. With it, solid lines would be 90.7% (99.7% right) rather than 85.4%, and 2d (47.8% at 98.7%) would be 9b (49.0% at 98.8%). What it mainly buys is half the wrong names when the relay is hidden (9b 2.7% against 2d 5.6%; with the SNR tiers, solid with survey links 4.2% rather than 6.4%), at the cost of two averages per candidate and two bounds to explain. Matching still names no one; the one-sided "too strong" check below only rules out.
+The gain comes mostly from choosing between candidates before the weaker radio-link fallback does. On the newer snapshot, 365 wrong names become right, but 20 right names become wrong. Wrong names with the true relay hidden barely change. This is still a dashed guess, classified as `gateway_link`; a signal match never overrules direct evidence. The later dates support the gain, but moving phones and another mesh remain untested. Revisit the spread and margin there.
 
 ## Too strong (2026-10-22)
 
@@ -201,7 +195,7 @@ Every relayed name stays a guess unless it is solid.
 | Heard directly | solid | Heard directly |
 | Gateway heard it directly (packet page) | no "≈" | Heard directly: the only node ending in 1a this gateway heard directly within a week of the packet |
 | Survey link | solid | Heard directly nearby: the only node ending in 1a a survey heard |
-| 2d, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
+| Signal score, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
 | `sender_link` | dashed | Guess: linked to the sender |
 | `reported` | dashed | Guess: it relayed the packet (MQTT), maybe not the copy heard here |
 | Only candidate left | dashed | Guess: the only node ending in 1a that could have relayed it |
@@ -239,5 +233,5 @@ Revisit the weights and the 0.8 on another network, or when firmware changes how
 
 - **Survey links** (30 km, 60 days, any survey node): the stand-in reads one fixed gateway's 7 days. Settled by surveys that hear traceroutes: the phone uploading a traceroute's route would give survey measurements route truth.
 - **Relays MQTT never sees**: hidden figures assume the worst case for each reception; on gateways such relays are 2.4% of relays and 0.1% of receptions, likely more where no gateway listens. Settled by counting survey relay bytes that match no node in `node_current`, and survey direct receptions from nodes MQTT does not place. Live has no direct survey measurement.
-- **Phones at ground level**: shorter, more varied paths; a moving phone's SNR from one relay spreads more than a gateway's. The 6 and 10 dB bounds need survey direct receptions repeated in one place.
+- **Phones at ground level**: shorter, more varied paths; a moving phone's SNR from one relay spreads more than a gateway's. The signal score needs survey direct receptions repeated in one place.
 - **Signal at ground level**: the "too strong" rule's 30 dB is measured on gateways (above); how much a phone's signal from one relay varies within 1 km is untested. `link_hour` keeps SNR only, so packet pages can't use it yet.

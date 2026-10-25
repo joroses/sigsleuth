@@ -59,7 +59,7 @@ from sigsleuth.relays import (
     RelayEvidence,
     candidates_left,
     cannot_relay_at,
-    heard_directly_by,
+    direct_signals,
     name_relay,
     node_km,
     node_radios,
@@ -466,7 +466,12 @@ def heard_node(
         reports=[]
         if row["hop_limit"] is None
         else [
-            (int(report["gateway_node_id"]), report["hop_limit"], report["relay_byte"])
+            (
+                int(report["gateway_node_id"]),
+                report["hop_limit"],
+                report["relay_byte"],
+                report["rx_snr"],
+            )
             for report in _mqtt_reports(connection, row)
         ],
     )
@@ -478,8 +483,12 @@ def heard_node(
     ]
     if not left:
         return HeardNode(None, "unknown", 0)
-    vouched = heard_directly_by(connection, left, relayed.cohearers(), relayed.at)
-    named = name_relay(evidence, relayed, left, vouched)
+    signals = direct_signals(
+        connection,
+        ((node, gateway) for node in left for gateway in relayed.cohearers()),
+        relayed.at,
+    )
+    named = name_relay(evidence, relayed, left, signals)
     if named is None:
         return HeardNode(None, "unknown", len(left))
     return HeardNode(named[0], named[1], len(left))
@@ -499,7 +508,7 @@ def _mqtt_reports(connection: sqlite3.Connection, row: Mapping[str, Any]) -> lis
         return []
     return connection.execute(
         """
-        SELECT r.gateway_node_id, r.hop_limit, r.relay_byte
+        SELECT r.gateway_node_id, r.hop_limit, r.relay_byte, r.rx_snr
         FROM packet AS t INDEXED BY packet_identity_time
         JOIN reception AS r ON r.packet_row_id = t.id
         WHERE t.sender_node_id = :sender AND t.packet_id = :packet

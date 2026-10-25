@@ -249,7 +249,12 @@ def link(
 
 
 def mqtt_report(
-    connection: sqlite3.Connection, gateway: int, *, hop_limit: int, relay_byte: int
+    connection: sqlite3.Connection,
+    gateway: int,
+    *,
+    hop_limit: int,
+    relay_byte: int,
+    rx_snr: float | None = 5.0,
 ) -> None:
     """GATEWAY's report of packet 77 from SENDER, saved by MQTT capture."""
     heard = now_ms() - 60_000
@@ -272,9 +277,9 @@ def mqtt_report(
         """
         INSERT INTO reception (packet_row_id, gateway_node_id, received_at, rx_snr,
             hop_start, hop_limit, relay_byte)
-        VALUES (?, ?, ?, 5.0, 4, ?, ?)
+        VALUES (?, ?, ?, ?, 4, ?, ?)
         """,
-        (packet_row_id, gateway, heard, hop_limit, relay_byte),
+        (packet_row_id, gateway, heard, rx_snr, hop_limit, relay_byte),
     )
 
 
@@ -363,8 +368,16 @@ def test_relay_guesses_need_radio_evidence(
         "gateway_link",
         3,
     )
-    # It lists NEAR as a neighbour more often, but heard only LINKED_TO_GATEWAY
-    # directly, which counts first.
+    # Its earlier direct readings match this copy, despite NEAR being
+    # listed as a neighbour more often.
+    link_hour(
+        connection,
+        LINKED_TO_GATEWAY,
+        GATEWAY,
+        now_ms() - 3_600_000,
+        observations=3,
+        snr=[5.0] * 3,
+    )
     link(connection, NEAR, GATEWAY, kind="neighbor", observations=10)
     assert heard(client, connection, hop_start=2, hop_limit=1)[:2] == (
         LINKED_TO_GATEWAY,
@@ -538,6 +551,145 @@ def test_a_gateway_uploading_its_own_rebroadcast_names_no_relay(
     node(connection, other, PHONE[0] + 0.01)
     mqtt_report(connection, own_byte, hop_limit=1, relay_byte=0x1A)
     assert packet_relays(client, connection) == {own_byte: []}
+
+
+def test_cohearer_signal_patterns_name_the_relay_before_link_counts(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    other_gateway = 0x0B0B0B05
+    for candidate in (NEAR, LINKED_TO_GATEWAY):
+        node(connection, candidate)
+    for gateway in (GATEWAY, other_gateway, RECEIVER):
+        node(connection, gateway, PHONE[0])
+        mqtt_report(
+            connection,
+            gateway,
+            hop_limit=1,
+            relay_byte=0x1A,
+            rx_snr=-5.0 if gateway == other_gateway else 5.0,
+        )
+    for candidate, readings in ((NEAR, 3), (LINKED_TO_GATEWAY, 30)):
+        for gateway in (GATEWAY, other_gateway):
+            snr = 5.0 if (candidate == NEAR) == (gateway == GATEWAY) else -5.0
+            link_hour(
+                connection,
+                candidate,
+                gateway,
+                now_ms() - 3_600_000,
+                observations=readings,
+                snr=[snr] * readings,
+            )
+
+    assert heard(client, connection)[:2] == (NEAR, "gateway_link")
+    assert packet_relays(client, connection)[RECEIVER] == (NEAR, "gateway_link")
+
+    connection.execute("UPDATE reception SET rx_snr = -rx_snr")
+    assert heard(client, connection)[:2] == (LINKED_TO_GATEWAY, "gateway_link")
+    assert packet_relays(client, connection)[RECEIVER] == (LINKED_TO_GATEWAY, "gateway_link")
+
+    connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (LINKED_TO_GATEWAY,))
+    assert [node for node, _ in packet_relays(client, connection)[RECEIVER]] == [NEAR]
+    detail = fine_cell_detail(client, *PHONE)
+    assert [row["heard_node_id"] for row in detail["newest"]] == [None, NEAR]
+
+    link(connection, NEAR, RECEIVER, observations=1)
+    assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
+
+
+@pytest.mark.parametrize(
+    ("a_snr", "b_snr", "observed"),
+    [(5.0, 5.0, 5.0), (5.0, 4.0, 5.0), (-20.0, -25.0, 12.0), (None, None, 5.0), (5.0, -5.0, None)],
+    ids=["tie", "close-rival", "unknown-relay", "no-history-snr", "no-copy-snr"],
+)
+def test_an_uncertain_signal_pattern_leaves_the_relay_unnamed(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    a_snr: float | None,
+    b_snr: float | None,
+    observed: float | None,
+) -> None:
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A, rx_snr=observed)
+    for candidate, snr in ((NEAR, a_snr), (LINKED_TO_GATEWAY, b_snr)):
+        node(connection, candidate)
+        link_hour(
+            connection,
+            candidate,
+            GATEWAY,
+            now_ms() - 3_600_000,
+            observations=3,
+            snr=[] if snr is None else [snr] * 3,
+        )
+
+    assert heard(client, connection)[:3] == (None, "unknown", 2)
+    assert packet_relays(client, connection)[RECEIVER] == [
+        (NEAR, None),
+        (LINKED_TO_GATEWAY, None),
+    ]
+
+    # An inconclusive signal score still allows the existing link fallback.
+    connection.execute(
+        "UPDATE node_current SET latitude = ?, longitude = ?, position_observed_at = ?,"
+        " position_packet_row_id = 1 WHERE node_id = ?",
+        (*PHONE, now_ms(), LINKED_TO_GATEWAY),
+    )
+    link(connection, LINKED_TO_GATEWAY, GATEWAY, kind="neighbor", observations=20)
+    assert heard(client, connection)[:2] == (LINKED_TO_GATEWAY, "gateway_link")
+    assert packet_relays(client, connection)[RECEIVER] == (LINKED_TO_GATEWAY, "gateway_link")
+
+
+@pytest.mark.parametrize(
+    ("hours", "expected"), [(-1, NEAR), (-168, NEAR), (-169, None), (0, None), (1, None)]
+)
+def test_signal_profiles_use_only_the_previous_seven_completed_days(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    hours: int,
+    expected: int | None,
+) -> None:
+    heard_at = now_ms() - 60_000
+    hour = heard_at - heard_at % 3_600_000
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A, rx_snr=0.0)
+    for candidate, snr in ((NEAR, 0.0), (LINKED_TO_GATEWAY, -15.0)):
+        node(connection, candidate)
+        link_hour(
+            connection, candidate, GATEWAY, hour + hours * 3_600_000, observations=3, snr=[snr] * 3
+        )
+
+    guess = heard(client, connection, heard_at_ms=heard_at)
+    assert guess[:2] == (expected, "gateway_link" if expected else "unknown")
+    packet = packet_relays(client, connection)[RECEIVER]
+    assert packet == (
+        (expected, "gateway_link") if expected else [(NEAR, None), (LINKED_TO_GATEWAY, None)]
+    )
+
+
+@pytest.mark.parametrize("report", ["other-hop", "other-byte", "own-upload"])
+def test_signal_patterns_need_a_report_of_the_same_rebroadcast(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    report: str,
+) -> None:
+    gateway = 0x0B0B0B1A if report == "own-upload" else GATEWAY
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    mqtt_report(
+        connection,
+        gateway,
+        hop_limit=2 if report == "other-hop" else 1,
+        relay_byte=0x2B if report == "other-byte" else 0x1A,
+    )
+    for candidate, snr in ((NEAR, 5.0), (LINKED_TO_GATEWAY, -15.0)):
+        node(connection, candidate)
+        link_hour(
+            connection, candidate, gateway, now_ms() - 3_600_000, observations=3, snr=[snr] * 3
+        )
+
+    assert heard(client, connection)[:2] == (None, "unknown")
+    assert packet_relays(client, connection)[RECEIVER] == [(NEAR, None), (LINKED_TO_GATEWAY, None)]
 
 
 @pytest.mark.usefixtures("known_nodes")

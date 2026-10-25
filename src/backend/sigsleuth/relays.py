@@ -15,7 +15,7 @@ import math
 import sqlite3
 from bisect import bisect_left
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -42,16 +42,18 @@ RULE_OUT_KM = 50
 NAME_KM = 20
 # A candidate that sent nothing this long either side of the packet is ruled out.
 ACTIVE_MS = DAY_MS
-# Gateways that heard the same rebroadcast vouch for a candidate one of them
-# heard directly this many times over this long before the packet (either
-# side of it on packet pages).
-COHEARER_RECEPTIONS = 3
 COHEARER_WINDOW_MS = 7 * DAY_MS
+# Measured 2026-10-23 on two 14-day loranet.pl snapshots; revisit on another
+# mesh. The best signal score must beat the next candidate and an unknown node.
+SNR_SPREAD_DB = 2.6
+SNR_WIDTH_DB = 31.0
+SCORE_MARGIN = 3.0
+UNHEARD = math.log(0.05)
 
 # How name_relay named a relay.
 RelayHow = Literal["gateway_link", "sender_link", "reported", "only_candidate"]
-# A gateway's report of a packet: the gateway, hops left and relay byte.
-Report = tuple[int, int | None, int | None]
+# A gateway's report: gateway, hops left, relay byte and SNR.
+Report = tuple[int, int | None, int | None, float | None]
 
 
 @dataclass(frozen=True)
@@ -91,7 +93,7 @@ class Relayed:
         hops left."""
         return [
             gateway
-            for gateway, hop_limit, relay_byte in self.other_reports()
+            for gateway, hop_limit, relay_byte, _ in self.other_reports()
             if relay_byte == self.relay_byte and hop_limit == self.hop_limit
         ]
 
@@ -243,7 +245,7 @@ def candidates_left(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
     - one hop was used and the sender is beyond its reach and RULE_OUT_KM.
     """
     own_reports: dict[int, int | None] = {}
-    for gateway, hop_limit, _ in relayed.other_reports():
+    for gateway, hop_limit, _, _ in relayed.other_reports():
         own_reports.setdefault(gateway, hop_limit)
     sender = evidence.placed.get(relayed.sender)
     sender_at = None
@@ -275,14 +277,16 @@ def candidates_left(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
 
 
 def name_relay(
-    evidence: RelayEvidence, relayed: Relayed, left: Sequence[int], vouched: Collection[int]
+    evidence: RelayEvidence,
+    relayed: Relayed,
+    left: Sequence[int],
+    signals: Mapping[tuple[int, int], "DirectSignal"],
 ) -> tuple[int, RelayHow] | None:
     """The relay among the candidates left, by the first of these that names
     exactly one; None when none does:
 
-    - gateway_link: the co-hearers (Relayed.cohearers) heard it directly
-      (vouched: COHEARER_RECEPTIONS over COHEARER_WINDOW_MS, heard_directly_by);
-      else it has the most radio links to them (positions.guess_relay), within
+    - gateway_link: its direct signal at the co-hearers best matches this
+      copy (signal_relay); else it has the most radio links to them within
       its reach;
     - sender_link: one hop used, it has the most radio links to the sender,
       within its reach;
@@ -300,9 +304,8 @@ def name_relay(
         km = node_km(evidence.placed.get(node), relayed.position)
         return km is not None and km <= max(evidence.reach.get(node, 0), NAME_KM)
 
-    named = [node for node in left if node in vouched]
-    if len(named) == 1:
-        return named[0], "gateway_link"
+    if (named := signal_relay(relayed, left, signals)) is not None:
+        return named, "gateway_link"
     cohearers = relayed.cohearers()
     sender = relayed.sender if relayed.one_hop else None
     for gateways, via in ((cohearers, None), ((), sender)):
@@ -315,7 +318,7 @@ def name_relay(
     hop_limit = relayed.hop_limit
     reporters = {
         gateway
-        for gateway, gateway_hop_limit, _ in relayed.other_reports()
+        for gateway, gateway_hop_limit, _, _ in relayed.other_reports()
         if hop_limit is not None
         and relay_byte_of(gateway) == relayed.relay_byte
         and gateway_hop_limit == hop_limit + 1
@@ -402,11 +405,67 @@ def direct_receptions(
     }
 
 
-def heard_directly_by(
-    connection: sqlite3.Connection, nodes: Sequence[int], gateways: Sequence[int], at: int
-) -> list[int]:
-    """The nodes one of the gateways heard directly COHEARER_RECEPTIONS times
-    or more over COHEARER_WINDOW_MS up to at."""
-    pairs = [(node, gateway) for node in nodes for gateway in gateways]
-    found = direct_receptions(connection, pairs, at - COHEARER_WINDOW_MS, at)
-    return sorted({node for (node, _), count in found.items() if count >= COHEARER_RECEPTIONS})
+@dataclass(frozen=True)
+class DirectSignal:
+    snr_count: int
+    snr_mean: float | None
+
+
+def direct_signals(
+    connection: sqlite3.Connection, pairs: Iterable[tuple[int, int]], at: int
+) -> dict[tuple[int, int], DirectSignal]:
+    """Direct signal profiles over seven completed days before at's hour."""
+    wanted = sorted(set(pairs))
+    if not wanted:
+        return {}
+    end = at - at % HOUR_MS
+    return {
+        (int(node), int(gateway)): DirectSignal(int(count), mean)
+        for node, gateway, count, mean in connection.execute(
+            """
+            SELECT l.from_node_id, l.to_node_id, sum(l.snr_count),
+                   total(l.snr_sum) / nullif(sum(l.snr_count), 0)
+            FROM json_each(:pairs) AS p
+            JOIN link_hour AS l INDEXED BY link_hour_pair
+              ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
+            WHERE l.link_kind = 'direct' AND l.hour_start >= :start AND l.hour_start < :end
+            GROUP BY 1, 2
+            """,
+            {"pairs": json.dumps(wanted), "start": end - COHEARER_WINDOW_MS, "end": end},
+        )
+    }
+
+
+def signal_relay(
+    relayed: Relayed, left: Sequence[int], signals: Mapping[tuple[int, int], DirectSignal]
+) -> int | None:
+    """The candidate whose direct SNR pattern best explains this copy."""
+    copies = [
+        (gateway, snr)
+        for gateway, hops, byte, snr in relayed.other_reports()
+        if byte == relayed.relay_byte
+        and hops == relayed.hop_limit
+        and relay_byte_of(gateway) != byte
+    ]
+    if not copies or not left:
+        return None
+
+    def score(node: int) -> float:
+        total = 0.0
+        for gateway, snr in copies:
+            profile = signals.get((node, gateway))
+            total += 0.0 if profile is not None else UNHEARD
+            if snr is None:
+                continue
+            if profile is None or profile.snr_mean is None:
+                total -= math.log(SNR_WIDTH_DB)
+                continue
+            variance = SNR_SPREAD_DB**2 * (1 + 1 / profile.snr_count)
+            total += -0.5 * (snr - profile.snr_mean) ** 2 / variance
+            total -= 0.5 * math.log(2 * math.pi * variance)
+        return total
+
+    ranked = sorted(((score(node), node) for node in left), reverse=True)
+    unknown = sum(UNHEARD - (math.log(SNR_WIDTH_DB) if snr is not None else 0) for _, snr in copies)
+    rival = max(unknown, ranked[1][0] if len(ranked) > 1 else -math.inf)
+    return ranked[0][1] if ranked[0][0] - rival >= SCORE_MARGIN else None

@@ -1651,7 +1651,7 @@ items: 479 items
     estimate: null
 truncated: false
 
-## GET /api/v1/map/nodes?seen_since=2026-10-10T16:25:30.812000Z&position_since=2026-10-04T16:25:30.812000Z
+## GET /api/v1/map/nodes?seen_since=2026-10-10T16:25:30.812000Z&position_since=2026-09-27T16:25:30.812000Z
 
 items: 426 items
   - node_id: 1128130436
@@ -1722,7 +1722,7 @@ items: 426 items
     estimate: null
 truncated: false
 
-## GET /api/v1/map/nodes?seen_since=2026-10-08T16:25:30.812000Z&position_since=2026-10-04T16:25:30.812000Z
+## GET /api/v1/map/nodes?seen_since=2026-10-08T16:25:30.812000Z&position_since=2026-09-27T16:25:30.812000Z
 
 items: 479 items
   - node_id: 1128130436

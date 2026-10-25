@@ -9,6 +9,7 @@ import {
   nodeChannelsUrl,
   nodesUrl,
 } from "./api";
+import { POSITION_MAX_AGE_MS } from "./mapTimeFilter";
 import {
   formatHardware,
   formatNodeId,
@@ -34,8 +35,6 @@ const SORTS: NodeSort[] = [
   "altitude_lowest",
 ];
 const SEARCH_DELAY_MS = 300;
-// The map hides positions older than this unless its window is All.
-const POSITION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Every known node, 20 per page, filtered and sorted by the server: find one
@@ -463,7 +462,7 @@ function MapCell({ node, now }: { node: NodeListItem; now: number }) {
   const reported = new Date(node.position_observed_at);
   const old = now - reported.getTime() > POSITION_MAX_AGE_MS;
   const title = `Show on map; position from ${reported.toLocaleString()}${
-    old ? ", older than 7 days" : ""
+    old ? ", older than 14 days" : ""
   }`;
   return (
     <span className="map-cell">

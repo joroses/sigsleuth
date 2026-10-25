@@ -6,7 +6,7 @@ import { openedAt, startEarly } from "./useApi";
 
 const HOUR_MS = 60 * 60 * 1000;
 // Positions older than this are hidden unless the window is "All".
-const POSITION_MAX_AGE_HOURS = 7 * 24;
+export const POSITION_MAX_AGE_MS = 14 * 24 * HOUR_MS;
 
 /** How recently a node must have been seen, and links observed; null is all history. */
 export const SEEN_WINDOWS = [
@@ -61,7 +61,10 @@ export function mapUrls(window: SeenWindow, now: number): MapUrls {
     since,
     nodes: mapNodesUrl({
       seenSince: since,
-      positionSince: hours == null ? undefined : ago(POSITION_MAX_AGE_HOURS),
+      positionSince:
+        hours == null
+          ? undefined
+          : new Date(now - POSITION_MAX_AGE_MS).toISOString(),
     }),
     traceroute: links("traceroute"),
     direct: links("direct"),

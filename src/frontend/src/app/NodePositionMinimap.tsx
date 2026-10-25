@@ -33,7 +33,6 @@ import {
   nextCoverageArea,
   viewSpreadingFactor,
 } from "./coverageLayer";
-import { LINK_TIERS } from "./linkQuality";
 import {
   LINK_KINDS,
   LINK_LAYERS,
@@ -317,7 +316,7 @@ export function NodePositionMinimap({
             <button
               type="button"
               aria-pressed={showTraceroutes}
-              title={`Nodes in its traceroutes over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
+              title="Traceroute neighbours"
               onClick={() => setShowTraceroutes(!showTraceroutes)}
             >
               <Icon name="route" />
@@ -327,7 +326,7 @@ export function NodePositionMinimap({
             <button
               type="button"
               aria-pressed={showGateways}
-              title={`Gateways that heard it and nodes heard with it directly or as neighbours over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
+              title="Gateways that hear it"
               onClick={() => setShowGateways(!showGateways)}
             >
               <Icon name="radio" />
@@ -451,7 +450,13 @@ function ContactsKey({
       {traceroutes ? (
         <li>
           <LinkSwatch tier={null} linkKind="traceroute" />
-          traceroute
+          traceroute hop
+        </li>
+      ) : null}
+      {traceroutes ? (
+        <li>
+          <span className="contacts-legend-hops hop-tone-relay" />
+          Relay
         </li>
       ) : null}
       {zeroCost ? <ZeroCostKey /> : null}
@@ -467,23 +472,12 @@ function ContactsKey({
           </li>
         </>
       ) : null}
-      <li
-        className="minimap-key-tiers"
-        title="Signal heard at each half's end, as on the Map"
-      >
-        {LINK_TIERS.map(({ tier, label }) => (
-          <span key={tier} title={label}>
-            <LinkSwatch tier={tier} linkKind="traceroute" />
-          </span>
-        ))}
-        signal
-      </li>
       {gateways ? (
         <li
           title={`From its ${contacts.packets.toLocaleString()} newest packets${contacts.limited ? "; older ones were not read" : ""}`}
         >
           <span className="contacts-legend-hops hop-tone-1">1</span>
-          fewest hops to a gateway
+          Gateway: hops away
         </li>
       ) : null}
     </ul>

@@ -27,6 +27,33 @@ function stubFetch() {
   return fetchMock;
 }
 
+describe("mapUrls", () => {
+  it.each([
+    ["24h", "2026-10-24T12:00:00.000Z"],
+    ["3d", "2026-10-22T12:00:00.000Z"],
+    ["7d", "2026-10-18T12:00:00.000Z"],
+  ] as const)(
+    "keeps 14-day positions independently of the %s activity window",
+    (window, since) => {
+      const urls = mapUrls(window, Date.parse("2026-10-25T12:00:00Z"));
+      const nodes = new URL(urls.nodes, "http://localhost");
+
+      expect(nodes.searchParams.get("seen_since")).toBe(since);
+      expect(nodes.searchParams.get("position_since")).toBe(
+        "2026-10-11T12:00:00.000Z",
+      );
+    },
+  );
+
+  it("leaves all history without an activity or position cutoff", () => {
+    const urls = mapUrls("all", Date.parse("2026-10-25T12:00:00Z"));
+    const nodes = new URL(urls.nodes, "http://localhost");
+
+    expect(nodes.searchParams.has("seen_since")).toBe(false);
+    expect(nodes.searchParams.has("position_since")).toBe(false);
+  });
+});
+
 describe("startMapRequests", () => {
   it("asks for the saved window and link layers, which the map then reuses", async () => {
     localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("24h"));

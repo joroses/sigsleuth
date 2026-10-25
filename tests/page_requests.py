@@ -142,6 +142,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     day = (now - timedelta(days=1)).isoformat().replace("+00:00", "Z")
     three_days = (now - timedelta(days=3)).isoformat().replace("+00:00", "Z")
     week = (now - timedelta(days=7)).isoformat().replace("+00:00", "Z")
+    fortnight = (now - timedelta(days=14)).isoformat().replace("+00:00", "Z")
     text = portnums_pb2.PortNum.TEXT_MESSAGE_APP
     node, neighbour = subjects.node, subjects.neighbour
     name, channel = quote(subjects.name), quote(subjects.channel)
@@ -178,10 +179,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/nodes/{node}/contacts?since={week}"
     yield f"/api/v1/nodes/{node}/links?since={week}"
     yield "/api/v1/map/nodes"
-    yield f"/api/v1/map/nodes?seen_since={day}&position_since={week}"
+    yield f"/api/v1/map/nodes?seen_since={day}&position_since={fortnight}"
     # What the map opens on: the last 3 days, traceroute links only. Its
     # links add up every hourly row of the 3 days (549 ms live 2026-10-12).
-    yield f"/api/v1/map/nodes?seen_since={three_days}&position_since={week}"
+    yield f"/api/v1/map/nodes?seen_since={three_days}&position_since={fortnight}"
     yield f"/api/v1/map/links?link_kind=traceroute&since={three_days}", 250
     yield f"/api/v1/map/text-senders?since={three_days}"
     for kind in ("traceroute", "direct", "neighbor"):

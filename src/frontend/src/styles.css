@@ -2265,15 +2265,6 @@ dd {
   transform: none;
 }
 
-/* The signal colours side by side, as short swatches. */
-.minimap-key-tiers span {
-  display: flex;
-}
-
-.minimap-key-tiers .link-swatch {
-  width: 0.375rem;
-}
-
 /* A 0-hop arrowhead in map keys, pointing east. */
 .zero-cost-arrow {
   display: flex;

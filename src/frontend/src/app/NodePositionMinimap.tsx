@@ -377,7 +377,7 @@ export function NodePositionMinimap({
                 ],
               })}
               title={nodeLabel(node)}
-              withText
+              text="Share"
             />
           </div>
         </div>

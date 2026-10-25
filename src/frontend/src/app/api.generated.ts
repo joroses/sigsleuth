@@ -3130,6 +3130,7 @@ export interface operations {
         successful?: boolean;
         limit?: number;
         offset?: number;
+        packet?: number | null;
       };
       header?: never;
       path?: never;

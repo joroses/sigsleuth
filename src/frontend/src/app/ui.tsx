@@ -491,17 +491,19 @@ async function copyText(text: string): Promise<boolean> {
 
 /**
  * Copies a full link to `hash`, a view of this page; on a phone it opens the
- * share sheet instead. `withText` shows "Share" beside the icon.
+ * share sheet instead.
  */
 export function ShareButton({
   hash,
   title,
-  withText = false,
+  text,
+  onShare,
 }: {
   hash: string;
   /** For the share sheet. */
   title: string;
-  withText?: boolean;
+  text?: string;
+  onShare?: () => void;
 }) {
   const [copied, setCopied] = useState<boolean | null>(null);
   useEffect(() => {
@@ -513,6 +515,7 @@ export function ShareButton({
     copied === null ? "" : copied ? "Copied link" : "Could not copy the link";
 
   async function share() {
+    onShare?.();
     const url = new URL(hash, window.location.href).href;
     if (isNarrowScreen() && typeof navigator.share === "function") {
       try {
@@ -529,7 +532,7 @@ export function ShareButton({
   const label = feedback || "Share a link to this view";
   return (
     <>
-      {withText ? (
+      {text !== undefined ? (
         <button
           type="button"
           aria-label={label}
@@ -537,7 +540,7 @@ export function ShareButton({
           onClick={() => void share()}
         >
           <Icon name={icon} />
-          {copied ? "Copied" : "Share"}
+          {copied ? "Copied" : text}
         </button>
       ) : (
         <IconButton icon={icon} label={label} onClick={() => void share()} />

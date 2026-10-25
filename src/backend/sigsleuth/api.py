@@ -625,6 +625,7 @@ def create_app(
         successful: bool = False,
         limit: PageLimit = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
+        packet: Annotated[int | None, Query(ge=1)] = None,
     ) -> traceroute_explorer.TracerouteRuns:
         """Traceroute runs (a request and its reply) first heard since `since`,
         newest first, by the route shown (route: km, then hops) or by the straight
@@ -646,6 +647,7 @@ def create_app(
             limit=limit,
             offset=offset,
             default_preset=settings.default_preset,
+            packet_row_id=packet,
         )
 
     @app.get("/api/v1/traceroutes/hops")

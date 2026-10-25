@@ -15,6 +15,7 @@ import { formatNodeId } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 import { TracerouteExplorer } from "./TracerouteExplorer";
 import { useSetting, useViewState } from "./remember";
+import type { ExplorerLinkView } from "./routes";
 import { openedAt, useApi } from "./useApi";
 import {
   ErrorPanel,
@@ -71,6 +72,7 @@ export function LinksView({
   node = null,
   at = null,
   kind = null,
+  explorer = null,
 }: {
   tab: LinksTab;
   /** On the explorer, the two node searches, for runs with a hop between them; on line of sight, the two ends. */
@@ -81,6 +83,7 @@ export function LinksView({
   at?: number | null;
   /** On the links tab, the kind of the link a link to its row names. */
   kind?: LinkKind | null;
+  explorer?: ExplorerLinkView | null;
 }) {
   return (
     <section className="links-page" aria-label="Links">
@@ -102,11 +105,12 @@ export function LinksView({
         </Suspense>
       ) : (
         <WindowTabs
-          key={pair?.join("-") ?? node ?? ""}
+          key={JSON.stringify([pair, node, explorer])}
           tab={tab}
           pair={pair}
           node={node}
           kind={kind}
+          explorer={explorer}
         />
       )}
     </section>
@@ -118,11 +122,13 @@ function WindowTabs({
   pair,
   node,
   kind,
+  explorer,
 }: {
   tab: "links" | "traceroutes";
   pair: [number, number] | null;
   node: number | null;
   kind: LinkKind | null;
+  explorer: ExplorerLinkView | null;
 }) {
   // The window starts when it is chosen, so its URL stays the same while
   // shown, or when it was last chosen if that was minutes ago (openedAt).
@@ -140,7 +146,8 @@ function WindowTabs({
     "links.window",
     () =>
       windowStart(
-        tab === "traceroutes" && (pair !== null || node !== null)
+        tab === "traceroutes" &&
+          (pair !== null || node !== null || explorer !== null)
           ? "all"
           : node !== null || pair !== null
             ? "7d"
@@ -195,6 +202,7 @@ function WindowTabs({
         pair={pair}
         node={node}
         windowPicker={windowPicker}
+        linkView={explorer}
       />
     );
   }
@@ -507,7 +515,11 @@ function LinkRanking({
                   <th scope="col" className="link-node">
                     Node B
                   </th>
-                  {traceroutes ? <th scope="col">Explorer</th> : null}
+                  {traceroutes ? (
+                    <th scope="col" className="link-actions-cell">
+                      Actions
+                    </th>
+                  ) : null}
                   <LinkHeadings
                     sort={sort}
                     ascending={ascending}

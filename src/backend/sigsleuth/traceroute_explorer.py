@@ -255,6 +255,7 @@ def traceroute_runs(
     limit: int,
     offset: int,
     default_preset: str,
+    packet_row_id: int | None = None,
 ) -> TracerouteRuns:
     """One page of the runs first heard since `since` (by their first packet,
     traceroute_run), newest first, longest route first (route) or farthest
@@ -289,7 +290,7 @@ def traceroute_runs(
     first = searches[0] if searches else None
     second = searches[1] if len(searches) == 2 else None
     shown = connection.execute(
-        _page_sql(sort, len(searches)),
+        _page_sql(sort, len(searches), packet_row_id is not None),
         {
             "since": since_id,
             "first": json.dumps(sorted(first or ())),
@@ -301,6 +302,7 @@ def traceroute_runs(
             "pending_km": PENDING_KM,
             "limit": limit,
             "offset": offset,
+            "packet": packet_row_id,
         },
     ).fetchall()
     has_more = len(shown) > limit
@@ -404,7 +406,7 @@ _ORDER = {
 }
 
 
-def _page_sql(sort: TracerouteSort, searches: int) -> str:
+def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> str:
     """SQL: traceroute_runs' page and one run more, with each run's shown
     route in traceroute_run's route_ columns and reached."""
     # The replies to a broadcast request each name their own target, so a run
@@ -418,6 +420,10 @@ def _page_sql(sort: TracerouteSort, searches: int) -> str:
               AND {opted_out_sql("p.target_node_id")})
         AND (r.reached OR NOT :successful)
         AND (:channel IS NULL OR r.channel = :channel)"""
+    run = """(SELECT requester_node_id, request_packet_id
+        FROM traceroute_packet WHERE packet_row_id = :packet)"""
+    if single_run:
+        window += f" AND (r.requester_node_id, r.request_packet_id) = {run}"
     if searches == 0:
         runs = f"WITH shown AS (SELECT * FROM traceroute_run AS r WHERE {window})"
     else:
@@ -450,6 +456,7 @@ def _page_sql(sort: TracerouteSort, searches: int) -> str:
             JOIN traceroute_packet AS tr ON tr.packet_row_id = h.packet_row_id
             WHERE h.packet_row_id >= :since AND ({hops})
               AND (h.route_reached OR NOT :successful)
+              {f"AND (tr.requester_node_id, tr.request_packet_id) = {run}" if single_run else ""}
         ),
         found (requester_node_id, request_packet_id) AS (
             SELECT requester_node_id, request_packet_id FROM searched WHERE n = 1

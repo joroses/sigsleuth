@@ -3547,6 +3547,203 @@ matched_node_ids: []
 doubtful_node_ids: []
 has_more: true
 
+## GET /api/v1/traceroutes?packet=26709
+
+items: 1 items
+  - requester_node_id: 3556855606
+    target_node_id: 1317786337
+    first_received_at: "2026-10-11T06:09:12.404000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 26709
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    doubts: []
+    route:
+      packet_row_id: 26709
+      is_return: false
+      hops: 8
+      km: 175.3
+      reached: false
+      path:
+        nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 1770149960, 1317786337]
+        snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, -1.5]
+      path_hops: 8 items
+        - from_node_id: 3556855606
+          to_node_id: 522999951
+          snr_db: 11
+        - from_node_id: 522999951
+          to_node_id: 2749076957
+          snr_db: -7.25
+        - from_node_id: 2749076957
+          to_node_id: 1128130340
+          snr_db: -6.25
+      hop: null
+      unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 3556855606
+          to_node_id: 522999951
+          spent: 1
+          learned: null
+        - from_node_id: 522999951
+          to_node_id: 2749076957
+          spent: 1
+          learned:
+            free: 0
+            costly: 1
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 2749076957
+          to_node_id: 1128130340
+          spent: 1
+          learned:
+            free: 0
+            costly: 12
+            verdict: "costly"
+            role_node_id: null
+            role: null
+    positions: 8 items
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 1128130340
+        latitude: 50.7576
+        longitude: 19.3004
+        altitude_meters: 340
+      - node_id: 1317786337
+        latitude: 50.4562
+        longitude: 18.8809
+        altitude_meters: 341
+nodes: 10 items
+  - node_id: 522999951
+    long_name: "Node 588f"
+    short_name: "588f"
+    role: "ROUTER_LATE"
+    latitude: 50.7584
+    longitude: 18.8785
+    estimated: true
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+  - node_id: 1128130340
+    long_name: "Node e724"
+    short_name: "e724"
+    role: "ROUTER"
+    latitude: 50.7576
+    longitude: 19.3004
+    estimated: false
+matched_node_ids: []
+doubtful_node_ids: []
+has_more: false
+
+## GET /api/v1/traceroutes?packet=26709&node=3655149723&next_to=2658555076
+
+items: 1 items
+  - requester_node_id: 3556855606
+    target_node_id: 1317786337
+    first_received_at: "2026-10-11T06:09:12.404000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    request_packet_row_id: 26709
+    request_receptions: 4
+    reply_packet_row_id: null
+    reply_receptions: null
+    distance_km: null
+    doubts: []
+    route:
+      packet_row_id: 26709
+      is_return: false
+      hops: 8
+      km: 174.5
+      reached: false
+      path:
+        nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 2658555076, 1317786337]
+        snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, 12.5]
+      path_hops: 8 items
+        - from_node_id: 3556855606
+          to_node_id: 522999951
+          snr_db: 11
+        - from_node_id: 522999951
+          to_node_id: 2749076957
+          snr_db: -7.25
+        - from_node_id: 2749076957
+          to_node_id: 1128130340
+          snr_db: -6.25
+      hop:
+        from_node_id: 3655149723
+        to_node_id: 2658555076
+        snr_db: 12.5
+      unlikely: false
+      hop_costs: 8 items
+        - from_node_id: 3556855606
+          to_node_id: 522999951
+          spent: 1
+          learned: null
+        - from_node_id: 522999951
+          to_node_id: 2749076957
+          spent: 1
+          learned:
+            free: 0
+            costly: 1
+            verdict: "costly"
+            role_node_id: null
+            role: null
+        - from_node_id: 2749076957
+          to_node_id: 1128130340
+          spent: 1
+          learned:
+            free: 0
+            costly: 12
+            verdict: "costly"
+            role_node_id: null
+            role: null
+    positions: 8 items
+      - node_id: 702832197
+        latitude: 51.5572
+        longitude: 19.5101
+        altitude_meters: 299
+      - node_id: 1128130340
+        latitude: 50.7576
+        longitude: 19.3004
+        altitude_meters: 340
+      - node_id: 1317786337
+        latitude: 50.4562
+        longitude: 18.8809
+        altitude_meters: 341
+nodes: 10 items
+  - node_id: 522999951
+    long_name: "Node 588f"
+    short_name: "588f"
+    role: "ROUTER_LATE"
+    latitude: 50.7584
+    longitude: 18.8785
+    estimated: true
+  - node_id: 702832197
+    long_name: "Node 5e45"
+    short_name: "5e45"
+    role: "ROUTER"
+    latitude: 51.5572
+    longitude: 19.5101
+    estimated: false
+  - node_id: 1128130340
+    long_name: "Node e724"
+    short_name: "e724"
+    role: "ROUTER"
+    latitude: 50.7576
+    longitude: 19.3004
+    estimated: false
+matched_node_ids: [2658555076, 3655149723]
+doubtful_node_ids: []
+has_more: false
+
 ## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z&node=289b&next_to=!9e7654c4&channel=ShortFast&min_hops=1&successful=true
 
 items: []

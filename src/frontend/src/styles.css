@@ -376,6 +376,21 @@ a.icon-button {
   color: var(--accent);
 }
 
+.link-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.link-actions .icon-button {
+  color: var(--accent);
+}
+
+.node-table :is(th, td).link-actions-cell {
+  text-align: center;
+}
+
 .icon-button:hover {
   color: var(--accent);
   border-color: var(--border);
@@ -4179,11 +4194,44 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   }
 }
 
-/* The hop list with the link to all routes under it. */
 .traceroute-hops {
   display: grid;
   gap: var(--space-2);
   justify-items: start;
+}
+
+.traceroute-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  justify-self: stretch;
+}
+
+.traceroute-actions > :is(a, button) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: auto;
+  min-height: 4rem;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--surface);
+  text-align: center;
+  text-decoration: none;
+}
+
+.traceroute-actions > :is(a, button):hover {
+  background: var(--surface-subtle);
+}
+
+.traceroute-actions .icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
 }
 
 .hop-list {

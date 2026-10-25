@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
 
 import {
   type FloodRoutes,
@@ -16,6 +16,7 @@ import {
   hopGroup,
   hopTone,
   nodeName,
+  packetHopHref,
 } from "./nodeDisplay";
 import { packetRelays, relayPositions } from "./packetRelays";
 import { fadeMargin, linkTierColor, marginTier } from "./linkQuality";
@@ -40,6 +41,7 @@ import {
   NodeLink,
   RelayCell,
   ReturnLink,
+  ShareButton,
   StatusPanel,
   ShortTime,
   TierDot,
@@ -49,6 +51,7 @@ export function PacketDetailView({
   packetRowId,
   hop = null,
   relaysOnOpen = false,
+  receptionId = null,
   openedFrom = null,
 }: {
   packetRowId: number;
@@ -56,6 +59,7 @@ export function PacketDetailView({
   hop?: DirectedHop | null;
   /** Open the relay map. */
   relaysOnOpen?: boolean;
+  receptionId?: number | null;
   /** The page this one was opened from, for a link back. */
   openedFrom?: { href: string; label: string } | null;
 }) {
@@ -78,6 +82,7 @@ export function PacketDetailView({
           detail={detail}
           hop={hop}
           relaysOnOpen={relaysOnOpen}
+          receptionId={receptionId}
         />
       ) : null}
     </section>
@@ -88,10 +93,12 @@ function PacketDetailContent({
   detail,
   hop,
   relaysOnOpen,
+  receptionId,
 }: {
   detail: PacketDetail;
   hop: DirectedHop | null;
   relaysOnOpen: boolean;
+  receptionId: number | null;
 }) {
   const { packet, receptions } = detail;
   const minimap = useMemo(() => minimapMarkers(detail, hop), [detail, hop]);
@@ -136,7 +143,9 @@ function PacketDetailContent({
   // no listed report crossing it, everything is shown as usual.
   const hopIds = minimap.hopReports?.receptionIds;
   const narrowed = hop !== null && hopIds !== undefined && hopIds.size > 0;
-  const [othersShown, setOthersShown] = useState(false);
+  const [othersShown, setOthersShown] = useState(
+    receptionId !== null && !hopIds?.has(receptionId),
+  );
   const split = useMemo(
     () => (narrowed ? splitGroups(groups, hopIds) : null),
     [narrowed, groups, hopIds],
@@ -145,7 +154,11 @@ function PacketDetailContent({
   // on the minimap and in the table over whatever is pinned;
   // clicking a reception or a relay pins it, and clicking it again unpins it.
   const [hovered, setHovered] = useState<number | null>(null);
-  const [pinned, setPinned] = useState<MinimapFocus>(null);
+  const [pinned, setPinned] = useState<MinimapFocus>(
+    receptionId !== null && minimap.receptionHops.has(receptionId)
+      ? { kind: "reception", receptionId }
+      : null,
+  );
   const pinnedReception =
     pinned?.kind === "reception" ? pinned.receptionId : null;
   const pinnedRoutes =
@@ -260,6 +273,24 @@ function PacketDetailContent({
             </dl>
           ) : null}
           <ReceptionTable
+            shareHash={
+              detail.traceroute === null
+                ? null
+                : hop === null
+                  ? `#packets/${packet.packet_row_id}`
+                  : packetHopHref(
+                      packet.packet_row_id,
+                      hop.fromNodeId,
+                      hop.toNodeId,
+                    )
+            }
+            onShare={(id) => {
+              setHovered(null);
+              setHoveredHop(null);
+              setHighlightedNode(null);
+              setPinnedHop(null);
+              setPinned({ kind: "reception", receptionId: id });
+            }}
             groups={split?.matching ?? groups}
             sharedForward={sharedForward}
             sender={{
@@ -367,6 +398,8 @@ function NodeNameAndId({
 // request, the route from its reply may lead. A reception's rows carry its ID,
 // so the table reports which one the pointer is over or clicked.
 function ReceptionTable({
+  shareHash,
+  onShare,
   groups,
   others,
   sharedForward,
@@ -380,6 +413,8 @@ function ReceptionTable({
   onPin,
   ...highlight
 }: {
+  shareHash: string | null;
+  onShare: (receptionId: number) => void;
   groups: TracerouteGroup[];
   /** The reports without the page's hop, listed after a toggle; null when not split. */
   others: {
@@ -408,6 +443,21 @@ function ReceptionTable({
   }
   const otherCount =
     others?.groups.reduce((count, group) => count + group.rows.length, 0) ?? 0;
+  const action = (id: number) =>
+    shareHash === null ? (
+      <IconButton
+        icon="pin"
+        label="Pin on the map"
+        aria-pressed={pinned(id)}
+        onClick={() => onPin(id)}
+      />
+    ) : (
+      <ShareButton
+        hash={`${shareHash}?reception=${id}`}
+        title="Traceroute report"
+        onShare={() => onShare(id)}
+      />
+    );
   const renderGroups = (groups: TracerouteGroup[], part: string) =>
     groups.map(({ label, tone, rows }) => (
       <tbody key={`${part}-${label}`}>
@@ -428,6 +478,7 @@ function ReceptionTable({
               nodeNames={nodeNames}
               hovered={row.reception.reception_id === hovered}
               pinned={pinned(row.reception.reception_id)}
+              action={action(row.reception.reception_id)}
               hop={hop}
               {...highlight}
             />
@@ -439,6 +490,7 @@ function ReceptionTable({
               nodeNames={nodeNames}
               hovered={row.reply.reception_id === hovered}
               pinned={pinned(row.reply.reception_id)}
+              action={action(row.reply.reception_id)}
               hop={hop}
               {...highlight}
             />
@@ -455,8 +507,7 @@ function ReceptionTable({
         onMouseLeave={() => onHover(null)}
         onClick={(event) => {
           const id = eventReceptionId(event);
-          // Links in the row still just open their node.
-          if (id !== null && !(event.target as Element).closest("a")) {
+          if (id !== null && !(event.target as Element).closest("a, button")) {
             onPin(id);
           }
         }}
@@ -478,7 +529,9 @@ function ReceptionTable({
               Time
             </th>
             <th scope="col">
-              <span className="visually-hidden">Pin</span>
+              <span className="visually-hidden">
+                {shareHash === null ? "Pin" : "Share"}
+              </span>
             </th>
           </tr>
         </thead>
@@ -537,16 +590,6 @@ function rowProps(receptionId: number, hovered: boolean, pinned: boolean) {
   };
 }
 
-// The button that pins a report's row and its marks on the minimap. Its click
-// reaches the table's handler, which pins whichever row was clicked.
-function PinCell({ pinned }: { pinned: boolean }) {
-  return (
-    <td className="pin-cell">
-      <IconButton icon="pin" label="Pin on the map" aria-pressed={pinned} />
-    </td>
-  );
-}
-
 // How far the gateway was from the sender.
 function ReportKm({
   reception,
@@ -588,6 +631,7 @@ function AlsoReported({ count }: { count: number }) {
 // The route a request's reply says reached the target. It shares the pin and
 // hover of the reply report it came from.
 function ReplyRows({
+  action,
   reply,
   alsoReported,
   nodeNames,
@@ -596,6 +640,7 @@ function ReplyRows({
   hop,
   ...highlight
 }: {
+  action: ReactNode;
   reply: ReplyRoute;
   alsoReported: number;
   nodeNames: ReadonlyMap<number, string | null>;
@@ -619,7 +664,7 @@ function ReplyRows({
         <td className="number">—</td>
         <td className="mono">—</td>
         <td className="number">—</td>
-        <PinCell pinned={pinned} />
+        <td className="pin-cell">{action}</td>
       </tr>
       <tr {...props} className={`${props.className} route-row`}>
         <td colSpan={7}>
@@ -647,6 +692,7 @@ interface ReportSender {
 }
 
 function ReceptionRows({
+  action,
   reception,
   alsoReported,
   sharedForward,
@@ -658,6 +704,7 @@ function ReceptionRows({
   hop,
   ...highlight
 }: {
+  action: ReactNode;
   reception: PacketReception;
   alsoReported: number;
   sharedForward: RoutePath | null;
@@ -723,7 +770,7 @@ function ReceptionRows({
             +{offset.toFixed(1)} s
           </time>
         </td>
-        <PinCell pinned={pinned} />
+        <td className="pin-cell">{action}</td>
       </tr>
       {paths !== null && (forward !== null || paths.return_path !== null) ? (
         <tr {...props} className={`${props.className} route-row`}>

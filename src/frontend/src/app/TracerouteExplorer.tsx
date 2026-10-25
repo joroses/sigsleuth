@@ -30,6 +30,7 @@ import {
 import { type NodeHighlight, RouteHopList, RouteItem } from "./RouteItem";
 import { type MinimapFocus } from "./PacketMinimap";
 import { useSetting, useViewState } from "./remember";
+import { type ExplorerLinkView, explorerViewHref } from "./routes";
 import { useApi } from "./useApi";
 import {
   DoubtfulBadge,
@@ -37,6 +38,7 @@ import {
   Icon,
   PendingBadge,
   ShortTime,
+  ShareButton,
   SortHeading,
   StatusPanel,
   WideTable,
@@ -78,6 +80,7 @@ export function TracerouteExplorer({
   pair,
   node,
   windowPicker,
+  linkView = null,
 }: {
   since: string | undefined;
   /** When the window was chosen, to keep what is loaded for Back. */
@@ -87,16 +90,29 @@ export function TracerouteExplorer({
   node: number | null;
   /** The page's window choice, shown among the explorer's filters. */
   windowPicker: ReactNode;
+  linkView?: ExplorerLinkView | null;
 }) {
   // A hop in the URL fills both node searches; a node, the first.
   const linked = pair?.[0] ?? node;
+  const initialNode =
+    linkView !== null
+      ? linkView.node
+      : linked === null
+        ? null
+        : formatNodeId(linked);
+  const initialNextTo =
+    linkView !== null
+      ? linkView.nextTo
+      : pair === null
+        ? null
+        : formatNodeId(pair[1]);
   const [search, setSearch] = useViewState(
     "traceroutes.search",
-    linked === null ? "" : formatNodeId(linked),
+    initialNode ?? "",
   );
   const [nextToSearch, setNextToSearch] = useViewState(
     "traceroutes.nextToSearch",
-    pair === null ? "" : formatNodeId(pair[1]),
+    initialNextTo ?? "",
   );
   // The choices besides the searches are kept for the next visit.
   const [kept, keep] = useSetting<KeptFilters>(
@@ -113,14 +129,22 @@ export function TracerouteExplorer({
   const [filters, setFilters] = useViewState<ExplorerFilters>(
     "traceroutes.filters",
     {
-      ...(linked === null ? kept : { ...DEFAULT_FILTERS, sort: kept.sort }),
-      node: linked === null ? null : formatNodeId(linked),
-      nextTo: pair === null ? null : formatNodeId(pair[1]),
+      ...(linkView !== null
+        ? DEFAULT_FILTERS
+        : linked === null
+          ? kept
+          : { ...DEFAULT_FILTERS, sort: kept.sort }),
+      node: initialNode,
+      nextTo: initialNextTo,
       offset: 0,
     },
   );
+  const [packet, setPacket] = useViewState<number | null>(
+    "traceroutes.packet",
+    linkView?.packet ?? null,
+  );
   const { data, error } = useApi<TracerouteRuns>(
-    traceroutesUrl({ ...filters, since }),
+    traceroutesUrl({ ...filters, since, packet }),
     chosenAt,
   );
   const busiest = useApi<BusiestTraceroutes>(
@@ -139,6 +163,7 @@ export function TracerouteExplorer({
   // Any change of filter starts again at the first page. Only a choice made
   // here is kept for the next visit, not one Back brought back.
   const update = (change: Partial<typeof filters>) => {
+    setPacket(null);
     const next = { ...filters, offset: 0, ...change };
     setFilters(next);
     const { sort, channel, minHops, successful } = next;
@@ -165,18 +190,24 @@ export function TracerouteExplorer({
     nextToSearch.trim() === "" ? null : nextToSearch.trim();
   useEffect(() => {
     if (searched === filters.node && searchedNextTo === filters.nextTo) return;
-    const timer = window.setTimeout(
-      () =>
-        setFilters((current) => ({
-          ...current,
-          node: searched,
-          nextTo: searchedNextTo,
-          offset: 0,
-        })),
-      SEARCH_DELAY_MS,
-    );
+    const timer = window.setTimeout(() => {
+      setPacket(null);
+      setFilters((current) => ({
+        ...current,
+        node: searched,
+        nextTo: searchedNextTo,
+        offset: 0,
+      }));
+    }, SEARCH_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [searched, searchedNextTo, filters.node, filters.nextTo, setFilters]);
+  }, [
+    searched,
+    searchedNextTo,
+    filters.node,
+    filters.nextTo,
+    setFilters,
+    setPacket,
+  ]);
   // Each row shows its route through what was searched.
   const searchNote =
     filters.node !== null && filters.nextTo !== null
@@ -271,6 +302,9 @@ export function TracerouteExplorer({
         ) : (
           <>
             <RunTable
+              openOnLoad={packet !== null}
+              searchedNode={filters.node}
+              searchedNextTo={filters.nextTo}
               runs={data.items}
               searchNote={searchNote}
               matched={matched}
@@ -406,6 +440,9 @@ function NodeFilterChip({
 }
 
 function RunTable({
+  openOnLoad,
+  searchedNode,
+  searchedNextTo,
   runs,
   searchNote,
   matched,
@@ -415,6 +452,9 @@ function RunTable({
   sort,
   onSort,
 }: {
+  openOnLoad: boolean;
+  searchedNode: string | null;
+  searchedNextTo: string | null;
   runs: TracerouteRun[];
   /** Added to each route's name when it goes through what was searched. */
   searchNote: string;
@@ -427,7 +467,10 @@ function RunTable({
   sort: TracerouteSort;
   onSort: (sort: TracerouteSort) => void;
 }) {
-  const [open, setOpen] = useViewState<number | null>("traceroutes.open", null);
+  const [open, setOpen] = useViewState<number | null>(
+    "traceroutes.open",
+    openOnLoad ? runs[0].route.packet_row_id : null,
+  );
   const [highlightedNode, setHighlightedNode] = useState<number | null>(null);
   const [hoveredHop, setHoveredHop] = useState<DirectedHop | null>(null);
   const [pinned, setPinned] = useState<MinimapFocus>(null);
@@ -608,6 +651,11 @@ function RunTable({
                 <tr className="links-expanded">
                   <td colSpan={7}>
                     <LegMap
+                      shareHash={explorerViewHref({
+                        packet: run.route.packet_row_id,
+                        node: searchedNode,
+                        nextTo: searchedNextTo,
+                      })}
                       run={run}
                       nodes={nodes}
                       names={names}
@@ -697,6 +745,7 @@ function Packets({ run }: { run: TracerouteRun }) {
 
 /** The run's route on its own, from the row's own data. */
 function LegMap({
+  shareHash,
   run,
   nodes,
   names,
@@ -710,6 +759,7 @@ function LegMap({
   onHopHover,
   onHopClick,
 }: {
+  shareHash: string;
   run: TracerouteRun;
   nodes: NodeMap;
   names: ReadonlyMap<number, string | null>;
@@ -725,9 +775,6 @@ function LegMap({
     () => new Map(run.positions.map((heard) => [heard.node_id, heard])),
     [run],
   );
-  // With a hop searched, the packet opens on the reports with the hop,
-  // in the way this route crossed it.
-  const hop = run.route.hop;
   return (
     <div className="traceroute-map">
       {contents.markers.length === 0 ? (
@@ -763,12 +810,17 @@ function LegMap({
           highlightedHop={highlightedHop}
           onNodeHover={onNodeHover}
         />
-        <a
-          className="text-button"
-          href={runPacketHref(run, run.route.packet_row_id)}
-        >
-          {hop === null ? "View all routes" : "View all routes with this hop"}
-        </a>
+        <div className="traceroute-actions">
+          <a href={runPacketHref(run, run.route.packet_row_id)}>
+            <Icon name="route" />
+            View all routes
+          </a>
+          <ShareButton
+            hash={shareHash}
+            title="Traceroute"
+            text="Share this route"
+          />
+        </div>
       </div>
     </div>
   );

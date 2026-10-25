@@ -94,6 +94,7 @@ describe("Packet detail", () => {
   });
 
   it("opens on the reports with a hop from the hash", async () => {
+    const writeText = stubClipboard();
     const [requester, relay, otherRelay, target] = [
       0x11111111, 0x33333333, 0x44444444, 0x22222222,
     ];
@@ -118,33 +119,35 @@ describe("Packet detail", () => {
         { from_node_id: via, to_node_id: target, snr_db: 2 },
       ],
     });
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      jsonResponse({
-        packet: {
-          ...packet,
-          channel: "LongFast",
-          sender_node_id: requester,
-          recipient_node_id: target,
-          packet_id: 1234,
-          portnum: "TRACEROUTE_APP",
-        },
-        hops: [],
-        route_nodes: [
-          placed(requester, "Home"),
-          placed(relay, "Hilltop"),
-          placed(otherRelay, "Valley"),
-          placed(target, "Coast"),
-        ],
-        relay_nodes: [],
-        spreading_factor: 11,
-        traceroute: {
-          requester_node_id: requester,
-          target_node_id: target,
-        },
-        reply_route: null,
-        hop_costs: [],
-        receptions: [routed(21, relay), routed(22, otherRelay)],
-      }),
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() =>
+      Promise.resolve(
+        jsonResponse({
+          packet: {
+            ...packet,
+            channel: "LongFast",
+            sender_node_id: requester,
+            recipient_node_id: target,
+            packet_id: 1234,
+            portnum: "TRACEROUTE_APP",
+          },
+          hops: [],
+          route_nodes: [
+            placed(requester, "Home"),
+            placed(relay, "Hilltop"),
+            placed(otherRelay, "Valley"),
+            placed(target, "Coast"),
+          ],
+          relay_nodes: [],
+          spreading_factor: 11,
+          traceroute: {
+            requester_node_id: requester,
+            target_node_id: target,
+          },
+          reply_route: null,
+          hop_costs: [],
+          receptions: [routed(21, relay), routed(22, otherRelay)],
+        }),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -173,12 +176,52 @@ describe("Packet detail", () => {
     // Pinning a report keeps the page on the hop.
     fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
     expect(listed()).toEqual(["21"]);
+    const firstShare = screen.getByRole("button", {
+      name: "Share a link to this view",
+    });
+    fireEvent.click(firstShare);
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(`${window.location.hash}?reception=21`, window.location.href)
+          .href,
+      ),
+    );
+    expect(
+      container.querySelector("tr.pinned")?.getAttribute("data-reception-id"),
+    ).toBe("21");
+    fireEvent.click(firstShare);
+    expect(
+      container.querySelector("tr.pinned")?.getAttribute("data-reception-id"),
+    ).toBe("21");
+    fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
+    expect(container.querySelector("tr.pinned")).toBeNull();
 
     // The rest follow below, the hop's report staying first.
     fireEvent.click(
       screen.getByRole("button", { name: "Show 1 report without the hop" }),
     );
     expect(listed()).toEqual(["21", "22"]);
+    fireEvent.click(
+      within(container.querySelector("tr[data-reception-id='22']")!).getByRole(
+        "button",
+        { name: "Share a link to this view" },
+      ),
+    );
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(3));
+    const sharedUrl = writeText.mock.calls.at(-1)![0] as string;
+    cleanup();
+    window.history.replaceState(null, "", sharedUrl);
+    const reopened = render(<App />);
+    await waitFor(() =>
+      expect(
+        reopened.container
+          .querySelector("tr.pinned")
+          ?.getAttribute("data-reception-id"),
+      ).toBe("22"),
+    );
+    expect(
+      reopened.container.querySelector("tr[data-reception-id='21']"),
+    ).not.toBeNull();
   });
 
   it("times reports from the first one, even when it is hidden", async () => {
@@ -1975,6 +2018,81 @@ const FARM_TO_MILL = {
 };
 
 describe("Traceroute explorer", () => {
+  it("reopens and shares an expanded run with its searches, then clears the run target when searching", async () => {
+    const writeText = stubClipboard();
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url.startsWith("/api/v1/traceroutes/busiest")
+            ? {
+                requesters: [],
+                targets: [],
+                relays: [],
+                channels: [],
+                nodes: [],
+              }
+            : {
+                items: [{ ...FARM_TO_MILL, positions: [] }],
+                nodes: [],
+                has_more: false,
+              },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("sigsleuth.links.window", JSON.stringify("1h"));
+    localStorage.setItem(
+      "sigsleuth.traceroutes.filters",
+      JSON.stringify({
+        sort: "distance",
+        channel: "MediumFast",
+        minHops: 5,
+        successful: true,
+      }),
+    );
+    const hash = "#links/traceroutes?run=9&node=Hilltop&next_to=Ridge";
+    window.location.hash = hash;
+    render(<App />);
+
+    const viewAll = await screen.findByRole("link", {
+      name: "View all routes",
+    });
+    expect(viewAll.getAttribute("href")).toBe("#packets/9/hop/2-1");
+    const query = () =>
+      new URL(
+        fetchMock.mock.calls
+          .map(([url]) => url)
+          .filter((url) => url.startsWith("/api/v1/traceroutes?"))
+          .at(-1)!,
+        "http://test",
+      ).searchParams;
+    expect([...query()]).toEqual([
+      ["sort", "newest"],
+      ["limit", "50"],
+      ["offset", "0"],
+      ["node", "Hilltop"],
+      ["next_to", "Ridge"],
+      ["packet", "9"],
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        new URL(hash, window.location.href).href,
+      ),
+    );
+    expect(
+      JSON.parse(localStorage.getItem("sigsleuth.traceroutes.filters")!).sort,
+    ).toBe("distance");
+
+    fireEvent.change(screen.getByLabelText("Node on the route"), {
+      target: { value: "Farm" },
+    });
+    await waitFor(() => expect(query().get("node")).toBe("Farm"));
+    expect(query().has("packet")).toBe(false);
+  });
+
   it("opens on a node's runs from the hash, over all history and without the kept filters", async () => {
     const kept = {
       sort: "route",

@@ -117,6 +117,28 @@ def test_a_request_and_its_reply_make_one_run(path: Path) -> None:
     ]
 
 
+def test_a_shared_run_is_found_by_its_packet_with_or_without_a_hop(
+    sample_client: TestClient,
+) -> None:
+    runs = sample_client.get("/api/v1/traceroutes").json()["items"]
+    run = next(item for item in runs if item["route"]["path_hops"])
+    packet_ids = (run["request_packet_row_id"], run["reply_packet_row_id"])
+    hop = run["route"]["path_hops"][0]
+    for packet_id in packet_ids:
+        if packet_id is None:
+            continue
+        for search in ({}, {"node": hop["from_node_id"], "next_to": hop["to_node_id"]}):
+            response = sample_client.get(
+                "/api/v1/traceroutes", params={"packet": packet_id, **search}
+            )
+            assert response.status_code == 200
+            result = response.json()
+            [found] = result["items"]
+            assert (found["request_packet_row_id"], found["reply_packet_row_id"]) == packet_ids
+            assert not result["has_more"]
+    assert sample_client.get("/api/v1/traceroutes?packet=9007199254740991").json()["items"] == []
+
+
 def test_a_run_is_listed_in_the_window_of_its_first_packet(path: Path) -> None:
     traceroute(
         path,

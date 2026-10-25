@@ -206,6 +206,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield "/api/v1/chat/channels"
     for sort in ("newest", "route", "distance"):
         yield f"/api/v1/traceroutes?sort={sort}&limit=50&offset=0&since={day}"
+    yield f"/api/v1/traceroutes?packet={subjects.traceroute_packet}"
+    yield (
+        f"/api/v1/traceroutes?packet={subjects.traceroute_packet}&node={node}&next_to={neighbour}"
+    )
     yield (
         f"/api/v1/traceroutes?sort=newest&limit=50&offset=0&since={day}"
         f"&node={name}&next_to=!{neighbour:08x}&channel={channel}&min_hops=1&successful=true"

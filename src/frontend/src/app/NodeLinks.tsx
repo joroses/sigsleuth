@@ -168,7 +168,9 @@ export function NodeLinks({
                     ID
                   </th>
                   <th scope="col">Link kind</th>
-                  <th scope="col">Explorer</th>
+                  <th scope="col" className="link-actions-cell">
+                    Actions
+                  </th>
                   <LinkHeadings
                     sort={sort}
                     ascending={ascending}

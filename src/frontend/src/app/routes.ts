@@ -21,13 +21,20 @@ export type Route =
       at: number | null;
       /** On the links tab, the kind a link to one link's row names. */
       kind: LinkKind | null;
+      explorer: ExplorerLinkView | null;
     }
   | {
       page: "diagnostics";
       sender: number | null;
       heardDirectlyBy: number | null;
     }
-  | { page: "packet"; id: number; hop: DirectedHop | null; relays: boolean }
+  | {
+      page: "packet";
+      id: number;
+      hop: DirectedHop | null;
+      relays: boolean;
+      receptionId: number | null;
+    }
   | { page: "node"; id: number; view: NodeLinkView | null };
 
 /** What the map shows of a selected node besides the node itself. */
@@ -66,6 +73,12 @@ export interface NodeLinkView {
   show: MinimapLayer[];
 }
 
+export interface ExplorerLinkView {
+  packet: number;
+  node: string | null;
+  nextTo: string | null;
+}
+
 // A node number, or its !hex form as Meshtastic writes it (not !00000000).
 const NODE = String.raw`([1-9]\d*|!(?=[0-9a-fA-F]*[1-9a-fA-F])[0-9a-fA-F]{1,8})`;
 
@@ -90,11 +103,14 @@ export function routeFromHash(hash: string): Route {
   // links, ?kind= names the kind of the link whose row opens.
   const linksTab = hash.match(
     new RegExp(
-      String.raw`^#links(?:\/(traceroutes|line-of-sight))?(?:\/${NODE}(?:-${NODE})?)?(?:@(\d+))?(?:\?kind=(traceroute|direct|neighbor))?$`,
+      String.raw`^#links(?:\/(traceroutes|line-of-sight))?(?:\/${NODE}(?:-${NODE})?)?(?:@(\d+))?(?:\?(.*))?$`,
     ),
   );
   if (linksTab !== null) {
-    const [, tab = "links", first, second, time, kind] = linksTab;
+    const [, tab = "links", first, second, time, search] = linksTab;
+    const query = new URLSearchParams(search);
+    const kind = query.get("kind");
+    const packet = Number(query.get("run"));
     const pair: [number, number] | null =
       second === undefined ? null : [nodeNumber(first), nodeNumber(second)];
     const node =
@@ -111,7 +127,13 @@ export function routeFromHash(hash: string): Route {
       pair,
       node,
       at,
-      kind: kind === undefined ? null : (kind as LinkKind),
+      kind: ["traceroute", "direct", "neighbor"].includes(kind ?? "")
+        ? (kind as LinkKind)
+        : null,
+      explorer:
+        tab === "traceroutes" && Number.isSafeInteger(packet) && packet > 0
+          ? { packet, node: query.get("node"), nextTo: query.get("next_to") }
+          : null,
     };
   }
   // Diagnostics, optionally listing the packets one node sent, optionally
@@ -134,7 +156,7 @@ export function routeFromHash(hash: string): Route {
   // was heard by the second, or showing its relays.
   const packet = hash.match(
     new RegExp(
-      String.raw`^#packets\/([1-9]\d*)(?:\/hop\/${NODE}-${NODE}|\/(relays))?$`,
+      String.raw`^#packets\/([1-9]\d*)(?:\/hop\/${NODE}-${NODE}|\/(relays))?(?:\?reception=([1-9]\d*))?$`,
     ),
   );
   if (packet !== null && Number.isSafeInteger(Number(packet[1]))) {
@@ -150,6 +172,10 @@ export function routeFromHash(hash: string): Route {
       id: Number(packet[1]),
       hop,
       relays: packet[4] !== undefined,
+      receptionId:
+        packet[5] !== undefined && Number.isSafeInteger(Number(packet[5]))
+          ? Number(packet[5])
+          : null,
     };
   }
   const node = hash.match(new RegExp(String.raw`^#nodes\/${NODE}(?:\?(.*))?$`));
@@ -218,6 +244,13 @@ export function nodeViewHref(nodeId: number, view: NodeLinkView): string {
   if (view.show.length > 0) query.set("show", view.show.join(","));
   const search = decodeCommas(query);
   return `#nodes/${formatNodeId(nodeId)}${search === "" ? "" : `?${search}`}`;
+}
+
+export function explorerViewHref(view: ExplorerLinkView): string {
+  const query = new URLSearchParams({ run: String(view.packet) });
+  if (view.node !== null) query.set("node", view.node);
+  if (view.nextTo !== null) query.set("next_to", view.nextTo);
+  return `#links/traceroutes?${query}`;
 }
 
 // Commas need no escaping in a URL; left as they are, lists stay readable.

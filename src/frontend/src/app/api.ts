@@ -323,6 +323,7 @@ export async function request<T>(url: string, signal: AbortSignal): Promise<T> {
 export type TracerouteSort = "newest" | "route" | "distance";
 
 export interface TracerouteFilters {
+  packet?: number | null;
   since: string | undefined;
   sort: TracerouteSort;
   /** A node search: name, !hex or number. */
@@ -387,6 +388,7 @@ export function traceroutesUrl(filters: TracerouteFilters): string {
   if (filters.channel !== null) query.set("channel", filters.channel);
   if (filters.minHops > 0) query.set("min_hops", String(filters.minHops));
   if (filters.successful) query.set("successful", "true");
+  if (filters.packet != null) query.set("packet", String(filters.packet));
   return `/api/v1/traceroutes?${query}`;
 }
 

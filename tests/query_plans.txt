@@ -982,6 +982,76 @@ reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 
+## GET /api/v1/traceroutes?packet=10
+
+opt_out.opted_out
+  SCAN node_opt_out
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_run USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.unlikely_links
+  SCAN long_link
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+links.pinned_hops
+  SEARCH traceroute_hop USING PRIMARY KEY
+links.hop_costs
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
+links.hop_costs
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+
+## GET /api/v1/traceroutes?packet=10&node=168430090&next_to=185273099
+
+opt_out.opted_out
+  SCAN node_opt_out
+traceroute_explorer._matching_nodes
+  SCAN node_current
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SCAN traceroute_run
+  SEARCH traceroute_run USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+links.unlikely_links
+  SCAN long_link
+traceroute_explorer._saved_route
+  SEARCH reception USING PRIMARY KEY
+links.pinned_hops
+  SEARCH traceroute_hop USING PRIMARY KEY
+links.hop_costs
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
+links.hop_costs
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+
 ## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=<time>&node=hill&next_to=!0b0b0b0b&channel=LongFast&min_hops=1&successful=true
 
 db.first_packet_row_id_since

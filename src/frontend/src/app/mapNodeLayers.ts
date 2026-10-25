@@ -487,28 +487,6 @@ function addSelectedLayer(map: MapLibreMap): void {
 }
 
 /**
- * Names every shown node, or with `named` only those and the selected node,
- * such as the nodes heard in view while coverage is on. A filter, so the
- * node data stays as it is.
- */
-export function showNodeNames(
-  map: MapLibreMap,
-  named: readonly number[] | null,
-): void {
-  if (map.getLayer("node-labels") === undefined) return;
-  map.setFilter(
-    "node-labels",
-    named === null
-      ? SHOWN_NODE
-      : [
-          "all",
-          SHOWN_NODE,
-          ["any", selected, ["in", ["get", "nodeId"], ["literal", named]]],
-        ],
-  );
-}
-
-/**
  * The only writer to the node layers: shows the nodes with their focus,
  * selection and badges, and hides the clusters while a focus is active. Nodes
  * still inside a cluster at low zoom stay hidden until the map zooms in, as

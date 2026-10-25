@@ -1,55 +1,29 @@
-import { useEffect, useRef, useState } from "react";
-
 import type { TextSender, TextSenderList } from "./api";
 import { formatNodeId } from "./nodeDisplay";
 
 /**
  * Nodes whose broadcast text messages several gateways reported in the
- * window, most first, each with its region, such as Śląskie. Those not in placedIds have no recent
- * position and are marked. The list folds away under its heading.
+ * window, most first, each with its region, such as Śląskie. Those not in
+ * placedIds have no recent position.
  */
 export function ChattyNodes({
+  id,
   page,
   error,
   selectedNodeId,
   placedIds,
   onChoose,
 }: {
+  id?: string;
   page: TextSenderList | null;
   error: string | null;
   selectedNodeId: number | null;
   placedIds: ReadonlySet<number>;
   onChoose: (sender: TextSender) => void;
 }) {
-  // A node chosen elsewhere, such as on the map, is scrolled into view.
-  const list = useRef<HTMLUListElement | null>(null);
-  const [open, setOpen] = useState(true);
-  useEffect(() => {
-    list.current
-      ?.querySelector('[aria-pressed="true"]')
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedNodeId, page, open]);
   return (
-    <section
-      className={`chatty-nodes ${open ? "" : "chatty-nodes-closed"}`}
-      aria-label="Chatty nodes"
-    >
-      <div className="chatty-heading">
-        <button
-          type="button"
-          className="section-label chatty-toggle"
-          aria-expanded={open}
-          onClick={() => setOpen((value) => !value)}
-        >
-          Chatty nodes
-        </button>
-        {open ? (
-          <span className="chatty-hint">
-            Select a node to see which gateways hear its messages
-          </span>
-        ) : null}
-      </div>
-      {!open ? null : error !== null ? (
+    <section id={id} className="sidebar-list" aria-label="Chatty nodes">
+      {error !== null ? (
         <p className="sidebar-note">Chatty nodes could not load. {error}</p>
       ) : page === null ? (
         <p className="sidebar-note">Loading…</p>
@@ -58,35 +32,27 @@ export function ChattyNodes({
           No node's texts reached several gateways in the window.
         </p>
       ) : (
-        <ul ref={list}>
+        <ul>
           {page.items.map((sender) => {
             const placed = placedIds.has(sender.node_id);
             return (
               <li key={sender.node_id}>
                 <button
                   type="button"
+                  data-node-id={sender.node_id}
+                  className={placed ? undefined : "unplaced"}
                   aria-pressed={sender.node_id === selectedNodeId}
                   title={
                     placed ? undefined : "No recent position, not on the map"
                   }
                   onClick={() => onChoose(sender)}
                 >
-                  <strong className="chatty-region">
-                    {sender.region ?? "—"}
-                  </strong>
                   <span className="chatty-name">
                     <span>
                       {sender.long_name ?? formatNodeId(sender.node_id)}
                     </span>
-                    {placed ? null : (
-                      <span
-                        className="chatty-unplaced"
-                        aria-label="no position"
-                      >
-                        ○
-                      </span>
-                    )}
                   </span>
+                  <span className="chatty-region">{sender.region ?? "—"}</span>
                   <span className="chatty-count">
                     {sender.messages.toLocaleString()}
                   </span>

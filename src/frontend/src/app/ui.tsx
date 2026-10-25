@@ -60,6 +60,7 @@ type IconName =
   | "locate"
   | "mute"
   | "pin"
+  | "previous"
   | "profile"
   | "radio"
   | "route"
@@ -107,6 +108,7 @@ const iconPaths: Record<IconName, ReactNode> = {
   check: <path d="m5 12.5 4.5 4.5L19 7.5" />,
   // Points right; turned down on an expanded row's button.
   chevron: <path d="m9 6 6 6-6 6" />,
+  previous: <path d="m15 6-6 6 6 6" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
   // A person with a plus: add a node to a Meshtastic app.
   contact: (

@@ -4,7 +4,11 @@ import type { MapNode } from "./api";
 import { formatNodeId, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 
-/** A search box over the nodes on the map; ↑/↓ move, Enter picks, Esc clears. */
+/**
+ * A search box over the nodes on the map; ↑/↓ move, Enter picks, Esc clears.
+ * The results drop down over the page below and close when the box loses
+ * focus.
+ */
 export function NodeSearch({
   nodes,
   onSelect,
@@ -17,11 +21,12 @@ export function NodeSearch({
   /** Also accept a node ID absent from the map, for Diagnostics filters. */
   onSelectId?: (nodeId: number) => void;
   label?: string;
-  /** Leave the results open after a pick, to try the next one. */
+  /** Keep the query after a pick; a click in the box shows the results again. */
   keepResults?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const index = useMemo(() => nodeSearchIndex(nodes), [nodes]);
   const results = useMemo(() => searchNodes(index, query), [index, query]);
   const typed = query.trim();
@@ -39,11 +44,12 @@ export function NodeSearch({
       : null;
   const choices = results.length + (extraId === null ? 0 : 1);
   const listId = useId();
-  const open = query.trim() !== "";
+  const open = typed !== "" && !dismissed;
   const active = Math.min(activeIndex, choices - 1);
 
   const choose = (node: MapNode) => {
-    if (!keepResults) {
+    if (keepResults) setDismissed(true);
+    else {
       setQuery("");
       setActiveIndex(0);
     }
@@ -59,16 +65,22 @@ export function NodeSearch({
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (choices === 0) return;
       event.preventDefault();
+      if (!open) {
+        setDismissed(false);
+        return;
+      }
       const step = event.key === "ArrowDown" ? 1 : -1;
       setActiveIndex((active + step + choices) % choices);
-    } else if (event.key === "Enter" && results[active] !== undefined) {
-      event.preventDefault();
-      choose(results[active]);
-    } else if (event.key === "Enter" && extraId !== null) {
-      event.preventDefault();
-      chooseId(extraId);
     } else if (event.key === "Escape") {
       setQuery("");
+    } else if (event.key !== "Enter" || !open) {
+      return;
+    } else if (results[active] !== undefined) {
+      event.preventDefault();
+      choose(results[active]);
+    } else if (extraId !== null) {
+      event.preventDefault();
+      chooseId(extraId);
     }
   };
 
@@ -91,7 +103,11 @@ export function NodeSearch({
         onChange={(event) => {
           setQuery(event.target.value);
           setActiveIndex(0);
+          setDismissed(false);
         }}
+        onFocus={() => setDismissed(false)}
+        onClick={() => setDismissed(false)}
+        onBlur={() => setDismissed(true)}
         onKeyDown={onKeyDown}
       />
       {open ? (
@@ -111,12 +127,8 @@ export function NodeSearch({
                 <span className="node-avatar avatar-green">
                   {nodeMarkerLabel(node)}
                 </span>
-                <span className="node-search-names">
-                  <span>{nodeLabel(node)}</span>
-                  <span className="mono muted">
-                    {formatNodeId(node.node_id)}
-                  </span>
-                </span>
+                <span className="node-search-name">{nodeLabel(node)}</span>
+                <span className="mono muted">{formatNodeId(node.node_id)}</span>
               </li>
             ))}
             {extraId !== null ? (

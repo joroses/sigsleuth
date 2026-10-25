@@ -22,7 +22,12 @@ const heard = (node_id: number, long_name: string): CoverageViewNode => ({
 });
 
 const page: CoverageNodeList = {
-  nodes: [heard(3, "Third"), heard(1, "First"), heard(2, "Unplaced")],
+  nodes: [
+    heard(3, "Third"),
+    heard(1, "First"),
+    heard(2, "Unplaced"),
+    heard(4, "Filtered"),
+  ],
   unknown: 4,
   truncated: false,
 };
@@ -30,7 +35,7 @@ const page: CoverageNodeList = {
 const mapNode = (node_id: number) => ({ node_id }) as MapNode;
 
 describe("HeardInView", () => {
-  it("keeps the server's order and chooses only drawn nodes", () => {
+  it("keeps the server's order and chooses unplaced nodes but not filtered nodes", () => {
     const onChoose = vi.fn();
     render(
       <HeardInView
@@ -38,23 +43,28 @@ describe("HeardInView", () => {
         error={null}
         selectedNodeId={1}
         drawn={new Map([1, 3].map((id) => [id, mapNode(id)]))}
-        loadedIds={new Set([1, 3])}
+        loadedIds={new Set([1, 3, 4])}
         onChoose={onChoose}
       />,
     );
-    const list = screen.getByRole("region", { name: "Heard in view" });
+    const list = screen.getByRole("region", { name: "Coverage" });
     const rows = within(list).getAllByRole("button", {
-      name: /Third|First|Unplaced/,
+      name: /Third|First|Unplaced|Filtered/,
     });
     expect(rows.map((row) => row.textContent)).toEqual([
       "Third1",
       "First1",
       "Unplaced1",
+      "Filtered1",
     ]);
     expect(rows[1].getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(rows[0]);
     fireEvent.click(rows[2]);
-    expect(onChoose.mock.calls).toEqual([[mapNode(3)]]);
+    fireEvent.click(rows[3]);
+    expect(onChoose.mock.calls).toEqual([
+      [heard(3, "Third")],
+      [heard(2, "Unplaced")],
+    ]);
   });
 });

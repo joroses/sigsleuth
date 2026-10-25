@@ -163,7 +163,7 @@ def test_senders_three_other_gateways_heard_are_listed_most_messages_first(
         report(path, packet_id, NEAR, sender=0x33333333, minute=5, channel_id="Test")
     heard_by_three(4, 0x44444444)
     heard_by_three(5, 0x55555555, recipient=0x22222222)
-    heard_by_three(6, 0x66666666)  # no position, so it cannot be selected on the map
+    heard_by_three(6, 0x66666666)  # no position
     # Its own gateway does not count towards three.
     for packet_id in (7, 8, 9):
         for gateway in (NEAR, FAR, "!77777777"):
@@ -173,6 +173,7 @@ def test_senders_three_other_gateways_heard_are_listed_most_messages_first(
 
     assert [(item["node_id"], item["messages"], item["region"]) for item in page["items"]] == [
         (0x33333333, 2, "Madrid"),
+        (0x66666666, 1, None),
         (0x44444444, 1, "Madrid"),
     ]
     assert page["truncated"] is False

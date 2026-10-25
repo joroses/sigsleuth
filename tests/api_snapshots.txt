@@ -1855,25 +1855,25 @@ zero_cost_hops: 5 items
 
 ## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
 
-items: 45 items
+items: 73 items
   - node_id: 2740683528
     short_name: "8308"
     long_name: "Node 8308"
     region: "Śląskie"
     messages: 43
     last_sent_at: "2026-10-11T16:18:10.738000Z"
+  - node_id: 4269814177
+    short_name: "31a1"
+    long_name: "Node 31a1"
+    region: null
+    messages: 40
+    last_sent_at: "2026-10-11T15:31:21.799000Z"
   - node_id: 1128132236
     short_name: "ee8c"
     long_name: "Node ee8c"
     region: "Śląskie"
     messages: 40
     last_sent_at: "2026-10-11T14:26:38.332000Z"
-  - node_id: 715507060
-    short_name: "c574"
-    long_name: "Node c574"
-    region: "Śląskie"
-    messages: 18
-    last_sent_at: "2026-10-11T12:46:04.013000Z"
 truncated: false
 
 ## GET /api/v1/map/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
@@ -2550,7 +2550,7 @@ zero_cost_hops: 5 items
 
 ## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
 
-items: 22 items
+items: 34 items
   - node_id: 2740683528
     short_name: "8308"
     long_name: "Node 8308"
@@ -2563,12 +2563,12 @@ items: 22 items
     region: "Śląskie"
     messages: 20
     last_sent_at: "2026-10-11T14:26:38.332000Z"
-  - node_id: 715507060
-    short_name: "c574"
-    long_name: "Node c574"
-    region: "Śląskie"
-    messages: 15
-    last_sent_at: "2026-10-11T12:46:04.013000Z"
+  - node_id: 4269814177
+    short_name: "31a1"
+    long_name: "Node 31a1"
+    region: null
+    messages: 18
+    last_sent_at: "2026-10-11T15:31:21.799000Z"
 truncated: false
 
 ## GET /api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel=ShortFast

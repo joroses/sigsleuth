@@ -64,10 +64,8 @@ describe("Coverage here", () => {
     render(
       <CoverageCellDetails
         detail={{ data: cell, error: null, loading: false }}
-        onlyOf={null}
         isDrawn={(nodeId) => nodeId !== 7}
         onChooseNode={choose}
-        onClose={() => {}}
       />,
     );
 

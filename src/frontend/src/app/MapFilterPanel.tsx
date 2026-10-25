@@ -5,6 +5,7 @@ import { LinkQualityLegend, LinkSwatch } from "./MapLinkDetails";
 import {
   type LinkLayerChoice,
   type LinkTierChoice,
+  MAX_HOP_DEPTH,
   MAX_LINK_KM,
 } from "./mapLinkLayers";
 import { ANY, type FilterOption, type NodeFilter } from "./mapNodeFilter";
@@ -14,8 +15,6 @@ import {
   type NodeCategory,
 } from "./mapNodeLayers";
 import { SEEN_WINDOWS, type SeenWindow } from "./mapTimeFilter";
-import { isNarrowScreen } from "./narrowScreen";
-import { useSetting } from "./remember";
 import { IconButton } from "./ui";
 
 const CATEGORY_LABELS: Record<NodeCategory, string> = {
@@ -26,9 +25,13 @@ const CATEGORY_LABELS: Record<NodeCategory, string> = {
 
 /**
  * What the map draws: the time window, node filters and link layers, with
- * their legends. Floats over the map's top left and closes to a button.
+ * their legends, and the selected node's hop depth. Floats over
+ * the map's top left and closes to a button. Link settings show only while a
+ * link layer is on.
  */
 export function MapFilterPanel({
+  open,
+  onOpen,
   seenWindow,
   onSeenWindow,
   nodeFilter,
@@ -50,7 +53,12 @@ export function MapFilterPanel({
   showCoverage,
   onShowCoverage,
   coverageSpreadingFactor,
+  hopDepth,
+  onHopDepth,
+  nearbyShown,
 }: {
+  open: boolean;
+  onOpen: (open: boolean) => void;
   seenWindow: SeenWindow;
   onSeenWindow: (window: SeenWindow) => void;
   nodeFilter: NodeFilter;
@@ -75,9 +83,12 @@ export function MapFilterPanel({
   onShowCoverage: (shown: boolean) => void;
   /** The one spreading factor of the cells in view, else null. */
   coverageSpreadingFactor: number | null;
+  hopDepth: number;
+  onHopDepth: (depth: number) => void;
+  /** Nodes kept by the hop depth besides the selected one; null with none selected. */
+  nearbyShown: number | null;
 }) {
-  // Phones start with it closed so the map is visible.
-  const [open, setOpen] = useSetting("filterPanelOpen", !isNarrowScreen());
+  const anyLinkLayer = Object.values(linkChoice).some(Boolean);
   if (!open)
     return (
       <div className="map-filter-panel map-filter-panel-closed">
@@ -85,7 +96,7 @@ export function MapFilterPanel({
           icon="filter"
           label="Show map filters"
           aria-expanded={false}
-          onClick={() => setOpen(true)}
+          onClick={() => onOpen(true)}
         />
       </div>
     );
@@ -97,7 +108,7 @@ export function MapFilterPanel({
           icon="close"
           label="Hide map filters"
           aria-expanded={true}
-          onClick={() => setOpen(false)}
+          onClick={() => onOpen(false)}
         />
       </div>
       <div className="map-filter-body">
@@ -135,7 +146,7 @@ export function MapFilterPanel({
             onChange={(channel) => onNodeFilter({ ...nodeFilter, channel })}
           />
         </div>
-        <fieldset className="map-filter-checks">
+        <fieldset className="map-filter-checks map-filter-grid">
           <legend className="section-label">Nodes</legend>
           {NODE_CATEGORIES.map((category) => (
             <label key={category}>
@@ -161,7 +172,10 @@ export function MapFilterPanel({
               </span>
             </label>
           ))}
-          <label title="No position: placed near the nodes that hear it">
+          <label
+            className="map-filter-estimated"
+            title="No position: placed near the nodes that hear it"
+          >
             <input
               type="checkbox"
               checked={nodeFilter.estimated}
@@ -220,36 +234,68 @@ export function MapFilterPanel({
             </span>
             <span className="map-filter-name">Text reach</span>
           </label>
-          <label className="min-observations">
-            Observed at least
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={minObservations}
-              disabled={!Object.values(linkChoice).some(Boolean)}
-              onChange={(event) => onMinObservations(event.target.value)}
-            />
-            times
-          </label>
-          <label className="min-km">
-            At least
-            <input
-              type="range"
-              min={0}
-              max={MAX_LINK_KM}
-              step={5}
-              value={minKm}
-              disabled={!Object.values(linkChoice).some(Boolean)}
-              onChange={(event) => onMinKm(Number(event.target.value))}
-            />
-            <output>{minKm} km</output>
-          </label>
-          <LinkQualityLegend
-            choice={linkTiers}
-            onChoice={onLinkTiers}
-            zeroCost={linkChoice.traceroute}
-          />
+          {anyLinkLayer ? (
+            <>
+              <label className="min-observations">
+                Observed at least
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={minObservations}
+                  onChange={(event) => onMinObservations(event.target.value)}
+                />
+                times
+              </label>
+              <label className="min-km">
+                At least
+                <input
+                  type="range"
+                  min={0}
+                  max={MAX_LINK_KM}
+                  step={5}
+                  value={minKm}
+                  onChange={(event) => onMinKm(Number(event.target.value))}
+                />
+                <output>{minKm} km</output>
+              </label>
+              <div
+                className="hop-depth"
+                title={nearbyShown === null ? "Select a node first" : undefined}
+              >
+                <label htmlFor="map-hop-depth">Hop depth</label>
+                <input
+                  id="map-hop-depth"
+                  type="range"
+                  min={0}
+                  max={MAX_HOP_DEPTH}
+                  step={1}
+                  value={hopDepth}
+                  disabled={nearbyShown === null}
+                  onChange={(event) => onHopDepth(Number(event.target.value))}
+                />
+                <output htmlFor="map-hop-depth">{hopDepth}</output>
+                {nearbyShown === null ? null : (
+                  <span
+                    className="hop-depth-note"
+                    title={
+                      hopDepth === 0
+                        ? "Nodes linked directly to it"
+                        : `Nodes within ${hopDepth} ${hopDepth === 1 ? "relay" : "relays"} of it`
+                    }
+                  >
+                    {nearbyShown.toLocaleString()}{" "}
+                    {nearbyShown === 1 ? "node" : "nodes"}
+                  </span>
+                )}
+              </div>
+              <LinkQualityLegend
+                choice={linkTiers}
+                onChoice={onLinkTiers}
+                zeroCost={linkChoice.traceroute}
+              />
+            </>
+          ) : null}
         </fieldset>
         <fieldset className="map-filter-checks">
           <legend className="section-label">Signal surveys</legend>

@@ -6,7 +6,7 @@ import type {
 } from "./api";
 import { heardHowText, isCertain, marginColor } from "./coverageLayer";
 import { formatNodeId, nodeLabel, relayByteText } from "./nodeDisplay";
-import { DataItem, IconButton, LegendLine, ShortTime } from "./ui";
+import { DataItem, LegendLine, ShortTime } from "./ui";
 import type { ApiState } from "./useApi";
 
 function snr(value: number | null): string {
@@ -24,8 +24,8 @@ function networkLabel(network: CoverageCellNetwork): string {
 }
 
 /**
- * The "Coverage here" card for a clicked coverage cell: its totals, the nodes
- * heard there and how each was identified, unknown relays and the newest
+ * The card for a clicked coverage cell: its size and totals, the nodes heard
+ * there and how each was identified, unknown relays and the newest
  * measurements. Choosing a heard node selects it on the map.
  *
  * It shows average SNR as radios report it. SNR means different things at
@@ -34,42 +34,26 @@ function networkLabel(network: CoverageCellNetwork): string {
  */
 export function CoverageCellDetails({
   detail,
-  onlyOf,
   isDrawn,
   onChooseNode,
-  onClose,
 }: {
   detail: ApiState<CoverageCellDetail>;
-  /** How the selected node narrows the cell, or null for every node. */
-  onlyOf: string | null;
   /** Heard nodes the map draws can be chosen; others link to their page. */
   isDrawn: (nodeId: number) => boolean;
   onChooseNode: (nodeId: number) => void;
-  onClose: () => void;
 }) {
   const cell = detail.data;
   return (
     <section
-      className="selected-node sidebar-selection"
+      className="selected-node"
       aria-live="polite"
       aria-label="Coverage here"
     >
-      <div className="selected-node-heading">
-        <div>
-          <h3>Coverage here</h3>
-          {cell === null ? null : (
-            <span className="muted">
-              Cell about {cell.size_m.toLocaleString()} m across
-            </span>
-          )}
-          {onlyOf === null ? null : <div className="muted">{onlyOf}</div>}
-        </div>
-        <IconButton
-          icon="close"
-          label="Clear coverage cell"
-          onClick={onClose}
-        />
-      </div>
+      <p className="muted coverage-cell-size">
+        {cell === null
+          ? null
+          : `Cell about ${cell.size_m.toLocaleString()} m across`}
+      </p>
       {detail.error !== null ? (
         <p className="sidebar-note">The cell could not load. {detail.error}</p>
       ) : cell === null ? (

@@ -115,9 +115,7 @@ for (const inWindow of [true, false]) {
 
     await page.goto(`/#map/${node.node_id}`);
 
-    await expect(
-      page.getByRole("button", { name: "Clear selected node" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Back to / })).toBeVisible();
     await expect(page).toHaveURL(new RegExp(`#map/${node.node_id}$`));
     await expect
       .poll(() =>
@@ -129,11 +127,11 @@ for (const inWindow of [true, false]) {
       )
       .toEqual([node.longitude.toFixed(6), node.latitude.toFixed(6)]);
 
-    await page.getByRole("button", { name: "Clear selected node" }).click();
+    await page.getByRole("button", { name: /^Back to / }).click();
     await expect(page).toHaveURL(/#map$/);
-    await expect(
-      page.getByRole("button", { name: "Clear selected node" }),
-    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Back to / })).toHaveCount(
+      0,
+    );
   });
 }
 
@@ -238,9 +236,7 @@ for (const { width, linked } of [
       });
       await page.mouse.click(point.x, point.y);
     }
-    await expect(
-      page.getByRole("button", { name: "Clear selected node" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Back to / })).toBeVisible();
     release();
     await expect
       .poll(() =>
@@ -393,7 +389,15 @@ for (const { width, late, failed, kind, entry, show } of [
     failed: null,
     kind: "traceroute",
     entry: "unplaced",
-    show: "reach",
+    show: "traceroute,direct,neighbor,reach,coverage",
+  },
+  {
+    width: 390,
+    late: "coverage",
+    failed: null,
+    kind: "traceroute",
+    entry: "heard-unplaced",
+    show: "traceroute,direct,neighbor,coverage",
   },
   {
     width: 390,
@@ -408,6 +412,8 @@ for (const { width, late, failed, kind, entry, show } of [
     page,
     request,
   }) => {
+    const unplaced = entry === "unplaced" || entry === "heard-unplaced";
+    const fromCoverage = entry === "heard" || entry === "heard-unplaced";
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.setViewportSize({ width, height: 844 });
     const { items }: { items: MapNode[] } = await (
@@ -418,6 +424,15 @@ for (const { width, late, failed, kind, entry, show } of [
     ).json();
     // The sample has no survey spanning a node's text gateways and links.
     const node = { ...items[0], longitude: 0, latitude: 40 };
+    if (unplaced)
+      await page.route(`**/api/v1/nodes/${node.node_id}`, (route) =>
+        route.fulfill({
+          json: {
+            node: { ...node, position: null, estimate: null },
+            ports: [],
+          },
+        }),
+      );
     const gateway = { ...items[1], longitude: 1, latitude: 40.5 };
     const peer = { ...items[2], longitude: -1.2, latitude: 40.2 };
     const peers = {
@@ -430,7 +445,7 @@ for (const { width, late, failed, kind, entry, show } of [
       route.fulfill({
         json: {
           items: [
-            ...(entry === "unplaced" ? [] : [node]),
+            ...(unplaced ? [] : [node]),
             gateway,
             ...Object.values(peers),
           ],
@@ -456,34 +471,37 @@ for (const { width, late, failed, kind, entry, show } of [
         },
       }),
     );
-    await page.addInitScript((enabled) => {
-      localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
-      localStorage.setItem(
-        "sigsleuth.nodeFilter",
-        JSON.stringify({ channel: "*" }),
-      );
-      localStorage.setItem("sigsleuth.filterPanelOpen", "false");
-      localStorage.setItem(
-        "sigsleuth.map.camera",
-        JSON.stringify({ center: [0, 40], zoom: 10 }),
-      );
-      localStorage.setItem(
-        "sigsleuth.textReach",
-        JSON.stringify(enabled.includes("reach")),
-      );
-      localStorage.setItem(
-        "sigsleuth.coverage",
-        JSON.stringify(enabled.includes("coverage")),
-      );
-      localStorage.setItem(
-        "sigsleuth.linkLayers",
-        JSON.stringify({
-          traceroute: enabled.includes("traceroute"),
-          direct: enabled.includes("direct"),
-          neighbor: enabled.includes("neighbor"),
-        }),
-      );
-    }, enabled);
+    await page.addInitScript(
+      ({ enabled, fromCoverage }) => {
+        localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
+        localStorage.setItem(
+          "sigsleuth.nodeFilter",
+          JSON.stringify({ channel: "*" }),
+        );
+        localStorage.setItem("sigsleuth.filterPanelOpen", "false");
+        localStorage.setItem(
+          "sigsleuth.map.camera",
+          JSON.stringify({ center: [0, 40], zoom: 10 }),
+        );
+        localStorage.setItem(
+          "sigsleuth.textReach",
+          JSON.stringify(enabled.includes("reach")),
+        );
+        localStorage.setItem(
+          "sigsleuth.coverage",
+          JSON.stringify(!fromCoverage && enabled.includes("coverage")),
+        );
+        localStorage.setItem(
+          "sigsleuth.linkLayers",
+          JSON.stringify({
+            traceroute: enabled.includes("traceroute"),
+            direct: enabled.includes("direct"),
+            neighbor: enabled.includes("neighbor"),
+          }),
+        );
+      },
+      { enabled, fromCoverage },
+    );
     let release = () => {};
     const waiting = new Promise<void>((resolve) => {
       release = resolve;
@@ -503,7 +521,7 @@ for (const { width, late, failed, kind, entry, show } of [
               (link) =>
                 link.a_to_b.observations + link.b_to_a.observations >= 10,
             )!,
-            node_a: node.node_id,
+            node_a: unplaced ? gateway.node_id : node.node_id,
             node_b: peer.node_id,
           },
         ],
@@ -566,17 +584,29 @@ for (const { width, late, failed, kind, entry, show } of [
           ),
         ),
     );
+    const selectedCells =
+      unplaced && enabled.includes("coverage")
+        ? page.waitForRequest((request) => {
+            const url = new URL(request.url());
+            return (
+              url.pathname === "/api/v1/coverage/cells" &&
+              url.searchParams.get("node") === String(node.node_id)
+            );
+          })
+        : null;
     await page.goto(
       entry === "shared"
         ? `/#map/${node.node_id}?show=${show}&window=all`
         : "/#map",
     );
-    if (entry === "chatty" || entry === "heard" || entry === "unplaced") {
+    if (entry === "chatty" || fromCoverage || unplaced) {
       if (width <= 700)
         await page.getByRole("button", { name: "Expand map sidebar" }).click();
+      if (fromCoverage)
+        await page.getByRole("tab", { name: /Coverage/ }).click();
       await page
         .getByRole("region", {
-          name: entry === "heard" ? "Heard in view" : "Chatty nodes",
+          name: fromCoverage ? "Coverage" : "Chatty nodes",
         })
         .getByRole("button")
         .filter({ has: page.locator(".chatty-name") })
@@ -610,15 +640,13 @@ for (const { width, late, failed, kind, entry, show } of [
       });
       await page.mouse.click(point.x, point.y);
     }
-    await expect(
-      page.getByRole("button", { name: "Clear selected node" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Back to / })).toBeVisible();
     await first;
     release();
+    await selectedCells;
 
-    const points =
-      entry === "unplaced" ? [] : [[node.longitude, node.latitude]];
-    if (failed !== "links")
+    const points = unplaced ? [] : [[node.longitude, node.latitude]];
+    if (!unplaced && failed !== "links")
       for (const [kind, peer] of Object.entries(peers))
         if (enabled.includes(kind))
           points.push([peer.longitude, peer.latitude]);
@@ -626,6 +654,27 @@ for (const { width, late, failed, kind, entry, show } of [
       points.push([gateway.longitude, gateway.latitude]);
     if (enabled.includes("coverage") && failed !== "coverage")
       points.push([extent.west, extent.south], [extent.east, extent.north]);
+    if (unplaced) {
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const map = window.sigsleuthMap;
+            if (map === undefined || !map.loaded()) return -1;
+            return map.queryRenderedFeatures({
+              layers: [
+                "links-traceroute",
+                "links-traceroute-no-snr",
+                "links-direct",
+                "links-direct-no-snr",
+                "links-neighbor",
+                "links-neighbor-no-snr",
+                "links-zero-cost",
+              ],
+            }).length;
+          }),
+        )
+        .toBe(0);
+    }
     await expect
       .poll(() =>
         page.evaluate((points) => {

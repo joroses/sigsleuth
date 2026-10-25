@@ -16,6 +16,7 @@ import {
   type CoverageCellList,
   type CoverageExtent,
   type CoverageNodeList,
+  type CoverageViewNode,
   type LinkKind,
   MAP_LINK_LIMIT,
   MAP_NODE_LIMIT,
@@ -23,6 +24,8 @@ import {
   MapLinkList,
   MapNode,
   MapNodeList,
+  type NodeOverview,
+  nodeUrl,
   type TextReach,
   type TextSender,
   type TextSenderList,
@@ -51,7 +54,6 @@ import {
   type CellAddress,
   type CoverageFeatureCollection,
   type CoverageLineCollection,
-  type CoverageNodeMode,
   type CoverageArea,
   type CoverageView,
 } from "./coverageLayer";
@@ -62,7 +64,6 @@ import {
   LINK_KINDS,
   LINK_LAYERS,
   LINK_MIN_ZOOM,
-  MAX_HOP_DEPTH,
   addLinkLayers,
   buildLinkFeatureCollection,
   DEFAULT_LAYER_CHOICE,
@@ -88,7 +89,6 @@ import {
   addNodeLayers,
   clickableNodeLayers,
   applyNodeView,
-  showNodeNames,
   buildNodeFeatureCollection,
   type NodeFeatureCollection,
   type NodeView,
@@ -103,14 +103,12 @@ import { ChattyNodes } from "./ChattyNodes";
 import { nearestLine } from "./lineHit";
 import { isNarrowScreen } from "./narrowScreen";
 import {
-  estimateText,
-  mapReportPositionText,
   formatNodeId,
   formatRole,
   nodeHref,
   nodeLabel,
   nodeMarkerLabel,
-  shortLabel,
+  positionSource,
 } from "./nodeDisplay";
 import {
   ANY,
@@ -143,6 +141,7 @@ import {
 import { type MapLinkView, mapViewHref } from "./routes";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
+import { formatHours } from "./zones";
 import {
   CopyValue,
   Icon,
@@ -264,7 +263,7 @@ function focusTextReach(
 // view, and without zooming in, unless zoomIn fits them whatever the view.
 function focusCoverage(
   instance: maplibregl.Map,
-  node: MapNode,
+  node: MapNode | null,
   extent: CoverageExtent | null,
   zoomIn: boolean,
   otherNodes: MapNode[] = NO_NODES,
@@ -276,7 +275,8 @@ function focusCoverage(
   const bounds = new maplibregl.LngLatBounds(
     [extent.west, extent.south],
     [extent.east, extent.north],
-  ).extend([node.longitude, node.latitude]);
+  );
+  if (node !== null) bounds.extend([node.longitude, node.latitude]);
   for (const other of otherNodes)
     bounds.extend([other.longitude, other.latitude]);
   const view = instance.getBounds();
@@ -339,8 +339,8 @@ interface Selection {
   nodeId: number;
   /** "view" fits all enabled layers together. */
   fit: "none" | "coverage" | "view";
-  /** Set for a chatty node with no recent position, which is not drawn. */
-  unplaced?: TextSender;
+  /** A node from either sidebar list with no recent position. */
+  unplaced?: TextSender | CoverageViewNode;
   /** Fit coverage even when it is already in view, allowing a closer zoom. */
   zoomIn?: boolean;
 }
@@ -454,8 +454,7 @@ export function MapView({
   );
   const linksByKey = useRef(new Map<string, SelectedLink>());
   const selectedLinkKey = useRef<string | null>(null);
-  // The only nodes named, for the next style load; null names them all.
-  const namedNodes = useRef<readonly number[] | null>(null);
+  const cellChosen = useRef(false);
   // Clears the hovered cell's highlight and popup, set by setUpMap.
   const forgetCellHover = useRef<() => void>(() => {});
   // The only links shown; null shows them all.
@@ -559,7 +558,6 @@ export function MapView({
     false,
     linkView?.show.includes("coverage"),
   );
-  const [coverageMode, setCoverageMode] = useState<CoverageNodeMode>("heard");
   // The map's view and the area cells are fetched for, set when the map stops.
   const [coverageArea, setCoverageArea] = useState<CoverageArea | null>(null);
   const [selectedCell, setSelectedCell] = useState<CellAddress | null>(null);
@@ -656,7 +654,12 @@ export function MapView({
   // back when they no longer hide it.
   const selectedNode =
     selection === null ? null : (nodeMap.get(selection.nodeId) ?? null);
-  const unplacedSender = selection?.unplaced ?? null;
+  const unplacedNode =
+    selectedNode === null ? (selection?.unplaced ?? null) : null;
+  const nodeDetails = useApi<NodeOverview>(
+    unplacedNode === null ? null : nodeUrl(unplacedNode.node_id),
+  );
+  const detailNode = selectedNode ?? nodeDetails.data?.node ?? null;
   const [hopDepth, setHopDepth] = useViewState("map.hopDepth", 0);
   // On a phone the sidebar is a sheet over the map: closed at first, unless
   // a link chose a node, and opened by choosing something on the map. The
@@ -664,17 +667,30 @@ export function MapView({
   const [collapsed, setCollapsed] = useState(
     () => isNarrowScreen() && nodeId === null,
   );
+  // Phones start with the filters closed so the map is visible. There the
+  // filters and the sheet never show together: opening one closes the other.
+  const [filtersOpen, setFiltersOpen] = useSetting(
+    "filterPanelOpen",
+    !isNarrowScreen(),
+  );
+  if (filtersOpen && !collapsed && isNarrowScreen()) setFiltersOpen(false);
+  const [listTab, setListTab] = useSetting<ListTab>(
+    "map.listTab",
+    "chatty",
+    (value) => value === "chatty" || value === "heard",
+  );
   const [mapMessage, setMapMessage] = useState<string | null>(null);
   const [basemap, setBasemap] = useSetting("basemap", BASEMAPS[0].id, (value) =>
     BASEMAPS.some((option) => option.id === value),
   );
   const shownBasemap = useRef(basemap);
 
-  // The only ways the node selection changes.
+  // The only ways the node selection changes. The sidebar shows the latest
+  // choice, so a node replaces a chosen link or cell.
   const select = useCallback((node: MapNode) => {
     setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
     setChosenLinkKey(null);
-    setCoverageMode("heard");
+    setSelectedCell(null);
   }, []);
   const clearSelection = useCallback(() => {
     setSelection(null);
@@ -738,28 +754,34 @@ export function MapView({
   // switched on stay. Without any link layer there is nothing to walk, so
   // only the node itself stays (and the gateways of its texts, below).
   const anyLinkLayer = Object.values(linkChoice).some(Boolean);
-  const focusNodeId = selectedNode?.node_id ?? null;
+  const focusNodeId = selectedNode?.node_id ?? unplacedNode?.node_id ?? null;
   const hopFocus = useMemo(
     () =>
       focusNodeId === null
         ? null
-        : anyLinkLayer
-          ? withinHops(focusNodeId, loadedLinks, hopDepth)
-          : { nodeIds: [focusNodeId], linkKeys: [] },
-    [focusNodeId, anyLinkLayer, loadedLinks, hopDepth],
+        : unplacedNode !== null
+          ? { nodeIds: [], linkKeys: [] }
+          : anyLinkLayer
+            ? withinHops(focusNodeId, loadedLinks, hopDepth)
+            : { nodeIds: [focusNodeId], linkKeys: [] },
+    [focusNodeId, unplacedNode, anyLinkLayer, loadedLinks, hopDepth],
   );
 
-  // The selected node's text reach, for the same window as the map, unless
-  // the text reach layer is off. It stays loaded while a filter hides the
-  // node, but only shows while it is drawn.
+  // The sidebar needs the message count even with Text reach off.
   const reach = useApi<TextReach>(
-    selection === null || !showTextReach
-      ? null
-      : textReachUrl(selection.nodeId, urls.since),
+    selection === null ? null : textReachUrl(selection.nodeId, urls.since),
   );
-  const reachShown = selectedNode !== null || unplacedSender !== null;
-  const textReach = reachShown ? reach.data : null;
-  const textReachError = reachShown ? reach.error : null;
+  const reachShown = selectedNode !== null || unplacedNode !== null;
+  const textReach = reachShown && showTextReach ? reach.data : null;
+  const textReachError = reachShown && showTextReach ? reach.error : null;
+  const messagesSent =
+    reach.data === null
+      ? reach.error === null
+        ? "Loading…"
+        : "Could not load"
+      : reach.data.messages === 0
+        ? "None"
+        : reach.data.messages.toLocaleString();
   const textSenders = useApi<TextSenderList>(urls.textSenders, chosenAt);
   // Senders the map draws are listed, and so are senders with no recent
   // position, whose gateways still show; a sender a filter hides is left out.
@@ -799,14 +821,7 @@ export function MapView({
     (): NodeView =>
       selectedLink === null
         ? {
-            focus:
-              unplacedSender !== null
-                ? shares.length === 0
-                  ? null
-                  : new Set<number>()
-                : hopFocus === null
-                  ? null
-                  : new Set(hopFocus.nodeIds),
+            focus: hopFocus === null ? null : new Set(hopFocus.nodeIds),
             selectedId: focusNodeId,
             shares,
           }
@@ -818,13 +833,13 @@ export function MapView({
             selectedId: focusNodeId,
             shares: NO_SHARES,
           },
-    [selectedLink, unplacedSender, hopFocus, focusNodeId, shares],
+    [selectedLink, hopFocus, focusNodeId, shares],
   );
 
-  // Coverage cells for the area in view, of the selected node unless "All
-  // nodes" is chosen. The cells shown stay until the next ones arrive. They
-  // ignore the time window: surveys are rare drives, kept for months.
-  const coverageNode = coverageMode === "all" ? null : focusNodeId;
+  // Coverage cells for the area in view, only where the selected node was
+  // heard. The cells shown stay until the next ones arrive. They ignore the
+  // time window: surveys are rare drives, kept for months.
+  const coverageNode = focusNodeId;
   // Measurements follow their sender's channel; "not reported" keeps them
   // all, as it does for links.
   const coverageChannel =
@@ -853,7 +868,7 @@ export function MapView({
   // The nodes heard in view, of every node whatever is selected. The last
   // answer stays until the next one arrives.
   const heardAnswer = useApi<CoverageNodeList>(
-    showCoverage && coverageArea !== null
+    (showCoverage || listTab === "heard") && coverageArea !== null
       ? coverageNodesUrl(coverageArea.view, coverageChannel)
       : null,
   );
@@ -861,25 +876,11 @@ export function MapView({
   if (heardAnswer.data !== null && heardAnswer.data !== lastHeard)
     setLastHeard(heardAnswer.data);
   const heardInView = heardAnswer.error === null ? lastHeard : null;
-  // While coverage is on only the nodes heard in view and the selected one
-  // are named, so names leave the cells visible; every node until the first
-  // answer and after an error.
-  const namedIds = useMemo(
-    () =>
-      showCoverage && heardInView !== null
-        ? heardInView.nodes.map((node) => node.node_id)
-        : null,
-    [showCoverage, heardInView],
-  );
-  useEffect(() => {
-    namedNodes.current = namedIds;
-    if (map.current !== null) showNodeNames(map.current, namedIds);
-  }, [namedIds]);
   const coverageCells = coverage.data?.truncated
     ? coverageInView.data
     : coverage.data;
   const coverageError = coverage.error ?? coverageInView.error;
-  // Counts and the empty message are about what is in view, not the padding.
+  // Counts are about what is in view, not the padding.
   const coverageView = coverageArea?.view;
   const coverageCellsInView = useMemo(
     () =>
@@ -1001,7 +1002,8 @@ export function MapView({
   function setUpMap(instance: maplibregl.Map) {
     map.current = instance;
     window.sigsleuthMap = instance; // For e2e tests and the devtools console.
-    instance.addControl(new maplibregl.NavigationControl(), "bottom-left");
+    // Bottom right, clear of the filter panel on short screens.
+    instance.addControl(new maplibregl.NavigationControl(), "bottom-right");
     let styleLoaded = false;
     // True from the start of a style load, the first or a basemap switch,
     // until it finishes.
@@ -1009,12 +1011,14 @@ export function MapView({
     let hoveredId: string | number | null = null;
     let hoveredCellId: string | number | null = null;
     const nodeLayers = () => clickableNodeLayers(coverageShown.current);
-    // Whether a click at the point would take a marker or a link line;
-    // lines are taken from a few pixels away (nearestLine).
     const onNodeAt = (point: maplibregl.PointLike) =>
       instance.queryRenderedFeatures(point, {
         layers: [...nodeLayers(), "node-clusters"],
       }).length > 0;
+    const cellAt = (point: maplibregl.PointLike) =>
+      instance.queryRenderedFeatures(point, {
+        layers: [COVERAGE_FILL_LAYER],
+      })[0]?.properties;
     const linkNear = (point: maplibregl.Point) =>
       nearestLine(instance, point, LINK_LAYERS);
     let linkHovered = false;
@@ -1064,7 +1068,7 @@ export function MapView({
     const showCellPopup = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
       if (feature === undefined) return;
-      if (onNodeAt(event.point) || linkNear(event.point) !== undefined) {
+      if (onNodeAt(event.point)) {
         cellPopup.remove();
         highlightCell(null);
         return;
@@ -1195,9 +1199,9 @@ export function MapView({
       instance.once("moveend", spreadIfStillStacked);
       instance.easeTo({ center: bounds.getCenter(), zoom: SPIDER_MIN_ZOOM });
     };
-    // A marker over a line wins; selectNode handles that click.
+    // Markers and coverage cells take priority over links.
     const selectLink = (event: maplibregl.MapMouseEvent) => {
-      if (onNodeAt(event.point)) return;
+      if (onNodeAt(event.point) || cellAt(event.point) !== undefined) return;
       const key = linkNear(event.point)?.properties?.linkKey;
       if (typeof key !== "string") return;
       const selected = linksByKey.current.get(key);
@@ -1211,25 +1215,26 @@ export function MapView({
     };
     // The pointer shows wherever a click would take a line.
     const showLinkHover = (event: maplibregl.MapMouseEvent) => {
-      const near = linkNear(event.point) !== undefined;
+      const near =
+        cellAt(event.point) === undefined &&
+        linkNear(event.point) !== undefined;
       if (near === linkHovered) return;
       linkHovered = near;
       if (near) instance.getCanvas().style.cursor = "pointer";
       else if (hoveredId === null) instance.getCanvas().style.cursor = "";
     };
     // MapLibre sends no click after a drag, so only a still click on empty map
-    // clears the selection. With a link shown, it clears only the link, going
-    // back to the node selected before.
-    // A click on a coverage cell, and nothing above it, chooses the cell.
+    // goes back, one step like the sidebar's back button: from a link or cell
+    // to the node selected before, else to nothing selected.
+    // A click on a coverage cell without a marker chooses the cell.
     const clearSelectionOnEmptyClick = (event: maplibregl.MapMouseEvent) => {
-      if (onNodeAt(event.point) || linkNear(event.point) !== undefined) return;
-      const cell = instance.queryRenderedFeatures(event.point, {
-        layers: [COVERAGE_FILL_LAYER],
-      })[0]?.properties;
+      if (onNodeAt(event.point)) return;
+      const cell = cellAt(event.point);
       if (cell === undefined) {
+        if (linkNear(event.point) !== undefined) return;
         if (selectedLinkKey.current !== null) setChosenLinkKey(null);
+        else if (cellChosen.current) setSelectedCell(null);
         else clearSelection();
-        setSelectedCell(null);
         return;
       }
       setSelectedCell({
@@ -1344,7 +1349,6 @@ export function MapView({
         nodeView.current.data,
         nodeView.current.focusActive,
       );
-      showNodeNames(instance, namedNodes.current);
       measureNodeLayersIdle(instance);
     };
     const onLoad = () => {
@@ -1477,6 +1481,9 @@ export function MapView({
     );
   }, [neighborData]);
 
+  useEffect(() => {
+    cellChosen.current = selectedCell !== null;
+  }, [selectedCell]);
   // A selected link shows only itself, over any node focus.
   const hopLinkKeys = hopFocus?.linkKeys ?? null;
   useEffect(() => {
@@ -1521,23 +1528,21 @@ export function MapView({
     return [...ends.values()];
   }
   const extentUrl =
-    (selection?.fit === "coverage" || selection?.fit === "view") &&
-    showCoverage &&
-    selection.unplaced === undefined
+    (selection?.fit === "coverage" || selection?.fit === "view") && showCoverage
       ? coverageExtentUrl(selection.nodeId, coverageChannel)
       : null;
   const extent = useApi<CoverageExtent | null>(extentUrl);
   const fitReady =
     !extent.loading &&
     (selection?.fit === "view"
-      ? !reach.loading && linksReady
+      ? !reach.loading && (unplacedNode !== null || linksReady)
       : selection?.fit === "coverage" && showCoverage);
   const fittedSelection = useRef<Selection | null>(null);
   const fitSelection = useEffectEvent(() => {
     const instance = readyMap;
     if (
       instance === null ||
-      (selectedNode === null && unplacedSender === null) ||
+      (selectedNode === null && unplacedNode === null) ||
       selectedLink !== null
     )
       return;
@@ -1552,10 +1557,6 @@ export function MapView({
           ]
         : NO_NODES;
     fittedSelection.current = selection;
-    if (selectedNode === null) {
-      focusTextReach(instance, null, otherNodes);
-      return;
-    }
     focusCoverage(
       instance,
       selectedNode,
@@ -1567,14 +1568,7 @@ export function MapView({
   useEffect(() => {
     if (!fitReady || fittedSelection.current === selection) return;
     fitSelection();
-  }, [
-    selection,
-    fitReady,
-    readyMap,
-    selectedNode,
-    selectedLink,
-    unplacedSender,
-  ]);
+  }, [selection, fitReady, readyMap, selectedNode, selectedLink, unplacedNode]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
@@ -1586,6 +1580,24 @@ export function MapView({
     }
     setSelection({ nodeId: sender.node_id, fit: "view", unplaced: sender });
     setChosenLinkKey(null);
+    setSelectedCell(null);
+  }
+
+  function chooseCoverageNode(heard: CoverageViewNode) {
+    setShowCoverage(true);
+    const node = nodeMap.get(heard.node_id);
+    if (node !== undefined) {
+      select(node);
+      return;
+    }
+    setSelection({
+      nodeId: heard.node_id,
+      fit: "coverage",
+      zoomIn: true,
+      unplaced: heard,
+    });
+    setChosenLinkKey(null);
+    setSelectedCell(null);
   }
 
   // Selections are cleared, as the reloaded nodes and links may no longer
@@ -1603,9 +1615,17 @@ export function MapView({
     setLinkChoice({ ...linkChoice, [linkKind]: shown });
   }
 
-  function toggleCoverage(shown: boolean) {
-    setShowCoverage(shown);
-    if (!shown) setSelectedCell(null);
+  // Switching coverage on shows its list of heard nodes, unless a choice is
+  // shown: its back button and ‹ › keep to the list it came from.
+  function toggleCoverage(on: boolean) {
+    setShowCoverage(on);
+    if (!on) setSelectedCell(null);
+    else if (shown === null) setListTab("heard");
+  }
+
+  function openFilters(open: boolean) {
+    setFiltersOpen(open);
+    if (open && isNarrowScreen()) setCollapsed(true);
   }
 
   // A node chosen in the cell card shows where it was heard, without moving
@@ -1613,7 +1633,6 @@ export function MapView({
   function chooseHeardNode(nodeId: number) {
     setSelection({ nodeId, fit: "none" });
     setChosenLinkKey(null);
-    setCoverageMode("heard");
     setSelectedCell(null);
   }
 
@@ -1635,6 +1654,123 @@ export function MapView({
     selectedLinkB !== undefined
       ? { ...selectedLink, a: selectedLinkA, b: selectedLinkB }
       : null;
+  const shownPosition =
+    detailNode === null ||
+    (detailNode.position === null && detailNode.estimate === null)
+      ? null
+      : positionSource(detailNode);
+  const positionAge =
+    detailNode?.position == null || detailNode.estimate !== null ? null : (
+      <time
+        dateTime={detailNode.position.observed_at}
+        title={new Date(detailNode.position.observed_at).toLocaleString()}
+      >
+        {formatHours(
+          (chosenAt - Date.parse(detailNode.position.observed_at)) / 3_600_000,
+        )}{" "}
+        ago
+      </time>
+    );
+
+  // The sidebar shows the node lists, or else the latest choice in their
+  // place: a link or coverage cell over the selected node, or the node.
+  const shown: "link" | "cell" | "node" | null =
+    selectedLinkNodes !== null
+      ? "link"
+      : showCoverage && selectedCell !== null
+        ? "cell"
+        : selectedNode !== null || unplacedNode !== null
+          ? "node"
+          : null;
+  const activeTab = listTab;
+  const listName = activeTab === "heard" ? "Coverage" : "Chatty nodes";
+  const viewedId = focusNodeId;
+  const viewedName =
+    selectedNode !== null
+      ? nodeLabel(selectedNode)
+      : unplacedNode !== null
+        ? (unplacedNode.long_name ?? formatNodeId(unplacedNode.node_id))
+        : null;
+  // Back goes one step: from a link or cell to the node under it, if any.
+  const backTo =
+    shown === "node" || viewedName === null ? listName : viewedName;
+  function goBack() {
+    if (shown === "link") setChosenLinkKey(null);
+    else if (shown === "cell") setSelectedCell(null);
+    else clearSelection();
+  }
+
+  // Coverage keeps the list it had while a choice shows, as fitting
+  // each node moves the view, so ‹ › walk a steady list.
+  const [heardShown, setHeardShown] = useState(heardInView);
+  if (shown === null && heardShown !== heardInView) setHeardShown(heardInView);
+  // ‹ › step through the open list's nodes that can be chosen.
+  const stepIds =
+    activeTab === "heard"
+      ? (heardShown?.nodes ?? [])
+          .filter(
+            (node) => nodeMap.has(node.node_id) || !loadedIds.has(node.node_id),
+          )
+          .map((node) => node.node_id)
+      : (shownTextSenders?.items ?? []).map((sender) => sender.node_id);
+  const stepIndex =
+    shown === "node" && viewedId !== null ? stepIds.indexOf(viewedId) : -1;
+  function stepTo(index: number) {
+    const nodeId = stepIds[index];
+    if (activeTab === "heard") {
+      const node = heardShown?.nodes.find((node) => node.node_id === nodeId);
+      if (node !== undefined) chooseCoverageNode(node);
+      return;
+    }
+    const sender = shownTextSenders?.items.find(
+      (item) => item.node_id === nodeId,
+    );
+    if (sender !== undefined) chooseTextSender(sender);
+  }
+  // The arrow keys step too, unless something else takes them: a field, or
+  // the map, which pans with them.
+  const stepWithKey = useEffectEvent((event: KeyboardEvent) => {
+    if (stepIndex < 0 || event.altKey || event.ctrlKey || event.metaKey) return;
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    const target = event.target;
+    const free =
+      target === document.body ||
+      (target instanceof Element &&
+        target.closest(".map-sidebar") !== null &&
+        target.closest("input, select, textarea") === null);
+    const next = stepIndex + step;
+    if (step === 0 || !free || next < 0 || next >= stepIds.length) return;
+    event.preventDefault();
+    stepTo(next);
+  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => stepWithKey(event);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Back in the lists, the row of the node shown last is scrolled into view.
+  const [lastViewedId, setLastViewedId] = useState<number | null>(null);
+  if (viewedId !== null && viewedId !== lastViewedId) setLastViewedId(viewedId);
+  const lists = useRef<HTMLDivElement | null>(null);
+  const listsShown = shown === null && !collapsed;
+  useEffect(() => {
+    if (!listsShown || lastViewedId === null) return;
+    lists.current
+      ?.querySelector(`[data-node-id="${lastViewedId}"]`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [listsShown, lastViewedId, activeTab]);
+
+  const selectedCoverage =
+    showCoverage && selection !== null ? (
+      <SelectedCoverage
+        cells={coverageCellsInView}
+        onFit={() =>
+          setSelection({ ...selection, fit: "coverage", zoomIn: true })
+        }
+      />
+    ) : null;
 
   return (
     <section
@@ -1696,10 +1832,9 @@ export function MapView({
               Only the busiest coverage cells are shown. Zoom in to see all.
             </StatusPanel>
           ) : null}
-          {showCoverage && coverageCellsInView?.cells.length === 0 ? (
-            <StatusPanel>
-              No coverage measurements in view
-              {coverageNode === null ? "" : " for the selected node"}.
+          {textReachError !== null ? (
+            <StatusPanel tone="error">
+              Text reach could not load. {textReachError}
             </StatusPanel>
           ) : null}
           {failure !== null ? (
@@ -1713,6 +1848,8 @@ export function MapView({
           ) : null}
         </div>
         <MapFilterPanel
+          open={filtersOpen}
+          onOpen={openFilters}
           seenWindow={shownWindow.window}
           onSeenWindow={chooseSeenWindow}
           nodeFilter={nodeFilter}
@@ -1734,6 +1871,9 @@ export function MapView({
           onMinObservations={setMinObservationsText}
           minKm={minKm}
           onMinKm={setMinKm}
+          hopDepth={hopDepth}
+          onHopDepth={setHopDepth}
+          nearbyShown={focusNodeId === null ? null : nearbyShown}
         />
         <BasemapSwitcher value={basemap} onChange={setBasemap} />
         {selectedNode !== null && selectedLinkNodes === null ? (
@@ -1765,312 +1905,256 @@ export function MapView({
         </div>
         <div
           id="map-sidebar-content"
-          className="sidebar-scroll"
+          className="sidebar-content"
           hidden={collapsed}
         >
-          {selectedLinkNodes !== null ? (
-            <section
-              className="selected-node sidebar-selection"
-              aria-live="polite"
-            >
-              <MapLinkDetails
-                linkKind={selectedLinkNodes.linkKind}
-                link={selectedLinkNodes.link}
-                nodeA={selectedLinkNodes.a}
-                nodeB={selectedLinkNodes.b}
-                km={
-                  // Shown between reported positions only: a link to an
-                  // estimate mostly measures the estimate.
-                  selectedLinkNodes.a.estimate === null &&
-                  selectedLinkNodes.b.estimate === null
-                    ? drawnKm(selectedLinkNodes.a, selectedLinkNodes.b)
-                    : null
-                }
-                since={urls.since}
-                onClose={() => setChosenLinkKey(null)}
-              />
-            </section>
-          ) : null}
-          {unplacedSender !== null && selectedLinkNodes === null ? (
-            <UnplacedSenderCard
-              sender={unplacedSender}
-              reach={textReach}
-              reachError={textReachError}
-              showTextReach={showTextReach}
-              onClose={clearSelection}
-            />
-          ) : null}
-          <section
-            className="selected-node sidebar-selection"
-            aria-live="polite"
-            hidden={selectedLinkNodes !== null || selectedNode === null}
-          >
-            {selectedNode === null ? null : (
-              <>
-                <div className="selected-node-heading">
-                  <span className="node-avatar avatar-green" title="Short name">
-                    {nodeMarkerLabel(selectedNode)}
-                  </span>
-                  <div>
-                    <h3>{nodeLabel(selectedNode)}</h3>
-                    <span className="muted">
-                      <CopyValue
-                        value={formatNodeId(selectedNode.node_id)}
-                        label="node ID"
-                      />
-                    </span>
-                  </div>
-                  <a
-                    className="icon-button"
-                    href={nodeHref(selectedNode.node_id)}
-                    aria-label="View node details"
-                    title="View node details"
-                  >
-                    <Icon name="open" />
-                  </a>
-                  <IconButton
-                    icon="close"
-                    label="Clear selected node"
-                    onClick={clearSelection}
-                  />
-                </div>
-                <div className="hop-depth">
-                  <label className="section-label" htmlFor="map-hop-depth">
-                    Hop depth
-                  </label>
-                  <input
-                    id="map-hop-depth"
-                    type="range"
-                    min={0}
-                    max={MAX_HOP_DEPTH}
-                    step={1}
-                    value={hopDepth}
-                    disabled={!anyLinkLayer}
-                    onChange={(event) =>
-                      setHopDepth(Number(event.target.value))
-                    }
-                  />
-                  <output htmlFor="map-hop-depth">{hopDepth}</output>
-                  <span className="hop-depth-note">
-                    {anyLinkLayer
-                      ? `${nearbyShown.toLocaleString()} ${nearbyShown === 1 ? "node" : "nodes"} ${
-                          hopDepth === 0
-                            ? "linked directly"
-                            : `within ${hopDepth} ${hopDepth === 1 ? "relay" : "relays"}`
-                        }`
-                      : "Switch on a link layer to use hop depth."}
-                  </span>
-                </div>
-                {textReachError !== null ? (
-                  <p className="sidebar-note">
-                    Text reach could not load. {textReachError}
-                  </p>
-                ) : null}
-                <dl className="node-summary">
-                  <div>
-                    <dt>Role</dt>
-                    <dd className={selectedNode.role === null ? "muted" : ""}>
-                      {formatRole(selectedNode.role)}
-                      {selectedNode.last_gateway_at == null ? null : (
-                        <span
-                          className="gateway-note"
-                          title={`Last reported a packet ${new Date(selectedNode.last_gateway_at).toLocaleString()}`}
-                        >
-                          (Gateway)
-                        </span>
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Channel</dt>
-                    <dd
-                      className={selectedNode.channel === null ? "muted" : ""}
-                    >
-                      {selectedNode.channel ?? "Unknown"}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Altitude</dt>
-                    {selectedNode.position?.altitude_meters == null ? (
-                      <dd className="muted">Unknown</dd>
-                    ) : (
-                      <dd>{selectedNode.position.altitude_meters} m</dd>
-                    )}
-                  </div>
-                  <div>
-                    <dt>Last seen</dt>
-                    <dd>
-                      <ShortTime value={selectedNode.last_seen_at} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Last sent</dt>
-                    {selectedNode.last_sent_at === null ? (
-                      <dd className="muted">No own packet observed</dd>
-                    ) : (
-                      <dd>
-                        <ShortTime value={selectedNode.last_sent_at} />
-                        {selectedNode.last_sent_packet_row_id ===
-                        null ? null : (
-                          <a
-                            className="text-button"
-                            href={`#packets/${selectedNode.last_sent_packet_row_id}`}
-                          >
-                            Latest packet
-                          </a>
-                        )}
-                      </dd>
-                    )}
-                  </div>
-                  {selectedNode.estimate !== null ? (
-                    <div>
-                      <dt>Position</dt>
-                      <dd>{estimateText(selectedNode.estimate)}</dd>
-                    </div>
-                  ) : selectedNode.position?.from_map_report ? (
-                    <div>
-                      <dt>Position</dt>
-                      <dd>
-                        {mapReportPositionText(
-                          selectedNode.position.precision_km,
-                        )}
-                      </dd>
-                    </div>
-                  ) : null}
-                </dl>
-                {showCoverage ? (
-                  <CoverageSwitch
-                    mode={coverageMode}
-                    onMode={setCoverageMode}
-                    cells={coverageMode === "all" ? null : coverageCellsInView}
-                    onFit={() =>
-                      setSelection({
-                        nodeId: selectedNode.node_id,
-                        fit: "coverage",
-                        zoomIn: true,
-                      })
-                    }
-                  />
-                ) : null}
-              </>
-            )}
-          </section>
-          {showCoverage && selectedCell !== null ? (
-            <CoverageCellDetails
-              detail={cellDetail}
-              onlyOf={
-                selectedNode === null || coverageNode === null
-                  ? null
-                  : `Only where ${nodeLabel(selectedNode)} was heard`
-              }
-              isDrawn={(nodeId) => nodeMap.has(nodeId)}
-              onChooseNode={chooseHeardNode}
-              onClose={() => setSelectedCell(null)}
-            />
-          ) : null}
           <NodeSearch nodes={items} onSelect={select} keepResults />
-          {showCoverage ? (
-            <HeardInView
-              page={heardInView}
-              error={heardAnswer.error}
-              selectedNodeId={focusNodeId}
-              drawn={nodeMap}
-              loadedIds={loadedIds}
-              onChoose={select}
-            />
-          ) : null}
-          <ChattyNodes
-            page={shownTextSenders}
-            error={textSenders.error}
-            selectedNodeId={focusNodeId ?? unplacedSender?.node_id ?? null}
-            placedIds={loadedIds}
-            onChoose={chooseTextSender}
-          />
+          <div ref={lists} className="sidebar-lists" hidden={shown !== null}>
+            <div className="sidebar-tabs" role="tablist" aria-label="Lists">
+              {(["chatty", "heard"] as const).map((tab) => {
+                const count =
+                  tab === "heard"
+                    ? heardShown === null
+                      ? null
+                      : `${heardShown.nodes.length.toLocaleString()}${heardShown.truncated ? "+" : ""}`
+                    : shownTextSenders === null
+                      ? null
+                      : shownTextSenders.items.length.toLocaleString();
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === activeTab}
+                    aria-controls={`map-list-${tab}`}
+                    onClick={() => setListTab(tab)}
+                  >
+                    {tab === "heard" ? "Coverage" : "Chatty nodes"}
+                    {count === null ? null : (
+                      <span className="sidebar-tab-count">{count}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {activeTab === "heard" ? (
+              <HeardInView
+                id="map-list-heard"
+                page={heardShown}
+                error={heardAnswer.error}
+                selectedNodeId={viewedId}
+                drawn={nodeMap}
+                loadedIds={loadedIds}
+                onChoose={chooseCoverageNode}
+              />
+            ) : (
+              <ChattyNodes
+                id="map-list-chatty"
+                page={shownTextSenders}
+                error={textSenders.error}
+                selectedNodeId={viewedId}
+                placedIds={loadedIds}
+                onChoose={chooseTextSender}
+              />
+            )}
+          </div>
+          {shown === null ? null : (
+            <div className="sidebar-details">
+              <div className="sidebar-details-nav">
+                <button
+                  type="button"
+                  className="text-button sidebar-back"
+                  aria-label={`Back to ${backTo}`}
+                  onClick={goBack}
+                >
+                  <Icon name="back" />
+                  <span>{backTo}</span>
+                </button>
+                {stepIndex < 0 ? null : (
+                  <div className="sidebar-step">
+                    <IconButton
+                      icon="previous"
+                      label="Previous node"
+                      disabled={stepIndex === 0}
+                      onClick={() => stepTo(stepIndex - 1)}
+                    />
+                    <span>
+                      {(stepIndex + 1).toLocaleString()} /{" "}
+                      {stepIds.length.toLocaleString()}
+                    </span>
+                    <IconButton
+                      icon="chevron"
+                      label="Next node"
+                      disabled={stepIndex === stepIds.length - 1}
+                      onClick={() => stepTo(stepIndex + 1)}
+                    />
+                  </div>
+                )}
+              </div>
+              {shown === "link" && selectedLinkNodes !== null ? (
+                <section className="selected-node" aria-live="polite">
+                  <MapLinkDetails
+                    linkKind={selectedLinkNodes.linkKind}
+                    link={selectedLinkNodes.link}
+                    nodeA={selectedLinkNodes.a}
+                    nodeB={selectedLinkNodes.b}
+                    km={
+                      // Shown between reported positions only: a link to an
+                      // estimate mostly measures the estimate.
+                      selectedLinkNodes.a.estimate === null &&
+                      selectedLinkNodes.b.estimate === null
+                        ? drawnKm(selectedLinkNodes.a, selectedLinkNodes.b)
+                        : null
+                    }
+                    since={urls.since}
+                  />
+                </section>
+              ) : shown === "cell" ? (
+                <CoverageCellDetails
+                  detail={cellDetail}
+                  isDrawn={(nodeId) => nodeMap.has(nodeId)}
+                  onChooseNode={chooseHeardNode}
+                />
+              ) : detailNode === null && unplacedNode !== null ? (
+                <>
+                  <StatusPanel
+                    tone={nodeDetails.error === null ? undefined : "error"}
+                  >
+                    {nodeDetails.error ??
+                      (nodeDetails.loading
+                        ? "Loading node…"
+                        : "No current node details.")}
+                  </StatusPanel>
+                  {selectedCoverage}
+                </>
+              ) : detailNode !== null ? (
+                <section className="selected-node" aria-live="polite">
+                  <div className="selected-node-heading">
+                    <span
+                      className="node-avatar avatar-green"
+                      title="Short name"
+                    >
+                      {nodeMarkerLabel(detailNode)}
+                    </span>
+                    <div>
+                      <h3>{nodeLabel(detailNode)}</h3>
+                      <span className="muted">
+                        <CopyValue
+                          value={formatNodeId(detailNode.node_id)}
+                          label="node ID"
+                        />
+                      </span>
+                    </div>
+                    <a
+                      className="icon-button"
+                      href={nodeHref(detailNode.node_id)}
+                      aria-label="View node details"
+                      title="View node details"
+                    >
+                      <Icon name="open" />
+                    </a>
+                  </div>
+                  <dl className="node-summary node-card-facts">
+                    <div>
+                      <dt>Role</dt>
+                      <dd className={detailNode.role === null ? "muted" : ""}>
+                        {formatRole(detailNode.role)}
+                        {detailNode.last_gateway_at == null ? null : (
+                          <span
+                            className="gateway-note"
+                            title={`Last reported a packet ${new Date(detailNode.last_gateway_at).toLocaleString()}`}
+                          >
+                            (Gateway)
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Channel</dt>
+                      <dd
+                        className={detailNode.channel === null ? "muted" : ""}
+                      >
+                        {detailNode.channel ?? "Unknown"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Position</dt>
+                      <dd
+                        className={shownPosition === null ? "muted" : ""}
+                        title={shownPosition?.hover ?? undefined}
+                      >
+                        {shownPosition?.text ?? "Unknown"}
+                        {positionAge === null ? null : (
+                          <>
+                            ,{" "}
+                            {detailNode.position?.packet_row_id == null ? (
+                              positionAge
+                            ) : (
+                              <a
+                                href={`#packets/${detailNode.position.packet_row_id}`}
+                              >
+                                {positionAge}
+                              </a>
+                            )}
+                          </>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Altitude</dt>
+                      {detailNode.position?.altitude_meters == null ? (
+                        <dd className="muted">Unknown</dd>
+                      ) : (
+                        <dd>{detailNode.position.altitude_meters} m</dd>
+                      )}
+                    </div>
+                    <div>
+                      <dt>Last seen</dt>
+                      <dd>
+                        <ShortTime value={detailNode.last_seen_at} />
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Last sent</dt>
+                      {detailNode.last_sent_at === null ? (
+                        <dd className="muted">No own packet observed</dd>
+                      ) : (
+                        <dd>
+                          {/* The time opens the packet, so the row stays one line. */}
+                          {detailNode.last_sent_packet_row_id === null ? (
+                            <ShortTime value={detailNode.last_sent_at} />
+                          ) : (
+                            <a
+                              href={`#packets/${detailNode.last_sent_packet_row_id}`}
+                            >
+                              <ShortTime value={detailNode.last_sent_at} />
+                            </a>
+                          )}
+                        </dd>
+                      )}
+                    </div>
+                    <div>
+                      <dt title="Broadcast text messages">Messages sent</dt>
+                      <dd>{messagesSent}</dd>
+                    </div>
+                  </dl>
+                  {selectedCoverage}
+                </section>
+              ) : null}
+            </div>
+          )}
         </div>
       </aside>
     </section>
   );
 }
 
-// A chatty node with no recent position: its gateways show on the map, not it.
-function UnplacedSenderCard({
-  sender,
-  reach,
-  reachError,
-  showTextReach,
-  onClose,
-}: {
-  sender: TextSender;
-  reach: TextReach | null;
-  reachError: string | null;
-  showTextReach: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <section className="selected-node sidebar-selection" aria-live="polite">
-      <div className="selected-node-heading">
-        <span className="node-avatar avatar-green" title="Short name">
-          {shortLabel(sender.node_id, sender.short_name)}
-        </span>
-        <div>
-          <h3>{sender.long_name ?? formatNodeId(sender.node_id)}</h3>
-          <span className="muted">
-            <CopyValue value={formatNodeId(sender.node_id)} label="node ID" />
-          </span>
-        </div>
-        <a
-          className="icon-button"
-          href={nodeHref(sender.node_id)}
-          aria-label="View node details"
-          title="View node details"
-        >
-          <Icon name="open" />
-        </a>
-        <IconButton
-          icon="close"
-          label="Clear selected node"
-          onClick={onClose}
-        />
-      </div>
-      <p className="sidebar-note">
-        No recent position, so it is not on the map.{" "}
-        {!showTextReach
-          ? "Switch on Text reach to see its gateways."
-          : reachError !== null
-            ? `Text reach could not load. ${reachError}`
-            : reach === null
-              ? "Loading its gateways…"
-              : reach.gateways.length === 0
-                ? "No gateway reported its texts."
-                : `Showing the gateways that reported its ${reach.messages.toLocaleString()} ${reach.messages === 1 ? "text" : "texts"} on ${reach.channel}.`}
-      </p>
-    </section>
-  );
-}
+type ListTab = "chatty" | "heard";
 
-const COVERAGE_MODES: {
-  mode: CoverageNodeMode;
-  label: string;
-  title: string;
-}[] = [
-  {
-    mode: "heard",
-    label: "Heard from it",
-    title: "Where survey nodes heard this node",
-  },
-  { mode: "all", label: "All nodes", title: "Coverage of every node" },
-];
-
-// What the coverage layer shows while a node is selected, and how much of it
-// is guessed in the area in view.
-function CoverageSwitch({
-  mode,
-  onMode,
+function SelectedCoverage({
   cells,
   onFit,
 }: {
-  mode: CoverageNodeMode;
-  onMode: (mode: CoverageNodeMode) => void;
   cells: CoverageCellList | null;
   onFit: () => void;
 }) {
@@ -2081,23 +2165,7 @@ function CoverageSwitch({
     guessed += cell.guessed;
   }
   return (
-    <div className="coverage-switch">
-      <p className="section-label" id="map-coverage-mode">
-        Coverage
-      </p>
-      <div role="radiogroup" aria-labelledby="map-coverage-mode">
-        {COVERAGE_MODES.map((option) => (
-          <label key={option.mode} title={option.title}>
-            <input
-              type="radio"
-              name="map-coverage-mode"
-              checked={mode === option.mode}
-              onChange={() => onMode(option.mode)}
-            />
-            {option.label}
-          </label>
-        ))}
-      </div>
+    <div className="selected-coverage">
       {cells === null ? null : (
         <p className="sidebar-note">
           {measurements === 0
@@ -2106,7 +2174,7 @@ function CoverageSwitch({
         </p>
       )}
       <button type="button" className="text-button" onClick={onFit}>
-        Fit map to coverage
+        <Icon name="locate" /> Fit map to coverage
       </button>
     </div>
   );

@@ -511,9 +511,9 @@ def create_app(
         since: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=MAX_TEXT_SENDERS)] = MAX_TEXT_SENDERS,
     ) -> TextSenderList:
-        """Nodes with a valid position whose broadcast text messages first
-        received since `since` reached a few gateways besides their own, most
-        messages first. truncated is true when more senders matched."""
+        """Nodes whose broadcast text messages first received since `since`
+        reached a few gateways besides their own, most messages first.
+        truncated is true when more senders matched."""
         return text_senders(connection, since=_utc(since), limit=limit)
 
     @app.get("/api/v1/map/text-reach/{node_id}")

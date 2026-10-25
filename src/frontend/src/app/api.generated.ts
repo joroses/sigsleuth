@@ -367,9 +367,9 @@ export interface paths {
     };
     /**
      * Text Sender Page
-     * @description Nodes with a valid position whose broadcast text messages first
-     *     received since `since` reached a few gateways besides their own, most
-     *     messages first. truncated is true when more senders matched.
+     * @description Nodes whose broadcast text messages first received since `since`
+     *     reached a few gateways besides their own, most messages first.
+     *     truncated is true when more senders matched.
      */
     get: operations["text_sender_page_api_v1_map_text_senders_get"];
     put?: never;

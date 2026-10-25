@@ -135,10 +135,14 @@ describe("A selected traceroute link", () => {
       "LongFast",
     );
     expect(card.textContent).toContain("Last seen");
-    expect(card.textContent).toContain("Distance unknown");
-    expect(within(card).queryByRole("link", { name: /Line of sight/ })).toBe(
-      null,
-    );
+    // Between the two nodes: no distance, so no line of sight either.
+    const madrid = screen.getByRole("link", { name: "Madrid" });
+    const valencia = screen.getByRole("link", { name: "Valencia" });
+    const unknown = screen.getByText("Distance unknown");
+    expect(madrid.textContent).toBe("Mad…Madrid!00000001");
+    expect(before(madrid, unknown) && before(unknown, valencia)).toBe(true);
+    expect(before(valencia, card)).toBe(true);
+    expect(screen.queryByRole("link", { name: /Line of sight/ })).toBe(null);
     // Each way's packets under the card, in the same order.
     const hears = screen.getByText("Madrid → Valencia");
     const heard = screen.getByText("Valencia → Madrid");

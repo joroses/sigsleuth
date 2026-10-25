@@ -1350,6 +1350,19 @@ describe("Map text reach", () => {
             truncated: false,
           }),
         );
+      if (url === "/api/v1/nodes/9")
+        return Promise.resolve(
+          jsonResponse({
+            node: {
+              ...mapNode(9, "OFF long", "OFF"),
+              channel: "MediumFast",
+              latitude: null,
+              longitude: null,
+              position: null,
+            },
+            ports: [],
+          }),
+        );
       const reachMatch = /\/api\/v1\/map\/text-reach\/(\d+)/.exec(url);
       if (reachMatch !== null)
         return Promise.resolve(jsonResponse(reach[Number(reachMatch[1])]));
@@ -1396,10 +1409,10 @@ describe("Map text reach", () => {
         .map(([url]) => url)
         .filter((url) => url.startsWith("/api/v1/coverage/extent"));
     const chooseValencia = async () => {
-      fireEvent.change(
-        await screen.findByRole("combobox", { name: "Search nodes" }),
-        { target: { value: "Valencia" } },
-      );
+      const box = await screen.findByRole("combobox", { name: "Search nodes" });
+      // The box keeps the last query; a click shows its results again.
+      fireEvent.click(box);
+      fireEvent.change(box, { target: { value: "Valencia" } });
       fireEvent.click(await screen.findByRole("option", { name: /Valencia/ }));
       await screen.findByRole("heading", { name: "Valencia" });
     };
@@ -1480,8 +1493,11 @@ describe("Map text reach", () => {
         expect(
           hoursBefore(url ?? "", url === reach ? "since" : "seen_since"),
         ).toBeCloseTo(24, 1);
-      // The saved role filter would hide Madrid.
-      expect(screen.getByRole("button", { name: /MAD/ })).not.toBeNull();
+      // The saved role filter would hide Madrid. Its Chatty row waits behind
+      // the selected node's details.
+      expect(
+        screen.getByRole("button", { name: /MAD/, hidden: true }),
+      ).not.toBeNull();
       for (const [key, value] of Object.entries(saved))
         expect(loadSetting(key), key).toEqual(value);
       for (const [kind, name] of [
@@ -1533,19 +1549,19 @@ describe("Map text reach", () => {
     const chatty = await screen.findByRole("region", { name: "Chatty nodes" });
     fireEvent.click(await within(chatty).findByRole("button", { name: /OFF/ }));
 
-    expect(
-      await screen.findByRole("heading", { name: "OFF long" }),
-    ).not.toBeNull();
+    const card = (
+      await screen.findByRole("heading", { name: "OFF long" })
+    ).closest("section")!;
     expect(
       fetchMock.mock.calls.some(([url]) =>
         url.startsWith("/api/v1/map/text-reach/9?since="),
       ),
     ).toBe(true);
-    expect(
-      await screen.findByText(
-        /Showing the gateways that reported its 2 texts on MediumFast\./,
-      ),
-    ).not.toBeNull();
+    expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
+      "/api/v1/nodes/9",
+    );
+    expect(await within(card).findByText("MediumFast")).not.toBeNull();
+    expect(within(card).getByText("2")).not.toBeNull();
   });
 
   it("applies the role filter to the chatty nodes", async () => {

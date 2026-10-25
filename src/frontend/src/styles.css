@@ -526,7 +526,7 @@ thead th {
   left: var(--space-4);
   display: flex;
   flex-direction: column;
-  width: 17rem;
+  width: 18rem;
   max-width: calc(100% - 2rem);
   max-height: calc(100% - 2rem);
   background: var(--surface);
@@ -565,7 +565,7 @@ thead th {
 /* A label on the left, its menu on the right. */
 .map-filter-row {
   display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr);
+  grid-template-columns: 5.75rem minmax(0, 1fr);
   align-items: center;
   gap: var(--space-2);
 }
@@ -591,6 +591,22 @@ thead th {
 .map-filter-checks legend {
   margin-bottom: var(--space-1);
   padding: 0;
+}
+
+/* Node kinds two to a row. */
+.map-filter-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-3);
+}
+
+.map-filter-grid .map-filter-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-filter-estimated {
+  grid-column: 1 / -1;
 }
 
 .map-filter-checks label {
@@ -789,36 +805,8 @@ thead th {
   font-size: var(--text-xs);
 }
 
-.coverage-switch {
-  margin-bottom: var(--space-3);
-}
-
-.coverage-switch .section-label {
-  margin: 0 0 var(--space-1);
-}
-
-.coverage-switch [role="radiogroup"] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-3);
-  font-size: var(--text-sm);
-}
-
-.coverage-switch label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.coverage-switch input {
-  height: auto;
-  margin: 0;
-}
-
-.coverage-switch .sidebar-note {
-  margin-bottom: 0;
+.selected-coverage .sidebar-note {
+  margin-bottom: var(--space-1);
 }
 
 .map-filter-checks .link-swatch,
@@ -834,6 +822,7 @@ thead th {
 
 .map-filter-name {
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .map-filter-count {
@@ -897,6 +886,24 @@ thead th {
 .link-quality-legend .link-swatch {
   width: 1rem;
   transform: none;
+}
+
+/* In the map filters: the three tiers on one row, the other keys on the
+   next; the empty item between them takes a whole row. */
+.map-filter-checks .link-quality-legend {
+  row-gap: 0;
+  margin: 0;
+}
+
+.map-filter-checks .link-quality-legend::after {
+  content: "";
+  flex-basis: 100%;
+  order: 1;
+}
+
+.map-filter-checks .link-quality-legend li:nth-child(n + 4) {
+  order: 2;
+  margin-top: var(--space-1);
 }
 
 /* A layers button at the map's top right opens the background map menu. */
@@ -1002,12 +1009,14 @@ thead th {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Open, the sheet keeps one height (sheetOffset in MapView.tsx counts on
+     it), so switching between a list and a choice moves nothing. */
   .map-sidebar {
     position: absolute;
     right: 0;
     bottom: 0;
     left: 0;
-    max-height: 55%;
+    height: 55%;
     border-top: 1px solid var(--border);
     border-left: none;
     border-radius: var(--radius) var(--radius) 0 0;
@@ -1016,6 +1025,7 @@ thead th {
   }
 
   .sidebar-collapsed .map-sidebar {
+    height: auto;
     border-top: none;
     box-shadow: none;
   }
@@ -1034,29 +1044,124 @@ thead th {
     transform: rotate(90deg);
   }
 
-  .sidebar-scroll {
-    padding: var(--space-5) var(--space-4) var(--space-4);
+  .sidebar-content {
+    padding: var(--space-5) var(--space-4) var(--space-3);
   }
 }
 
-/* The selected link or node, then search, then Chatty nodes taking the
-   height left, then the clicked coverage cell. The list shrinks first; the
-   whole sidebar scrolls only once the list is at its smallest. */
-.sidebar-scroll {
+/* Search on top, then the node lists or, in their place, the chosen node,
+   link or cell. Each fills the height left and scrolls on its own, so
+   nothing above it moves. */
+.sidebar-content {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
-  overflow-y: auto;
   min-height: 0;
-  padding: var(--space-5);
+  padding: var(--space-4) var(--space-5) var(--space-3);
 }
 
-.sidebar-scroll > * {
-  flex: none;
-}
-
-.sidebar-scroll[hidden] {
+.sidebar-content[hidden],
+.sidebar-lists[hidden] {
   display: none;
+}
+
+.sidebar-content > .node-search {
+  flex: none;
+  margin-bottom: var(--space-3);
+}
+
+.sidebar-lists {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sidebar-details {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sidebar-tabs {
+  display: flex;
+  flex: none;
+  gap: var(--space-4);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-tabs button {
+  margin-bottom: -1px;
+  padding: var(--space-1) 0 var(--space-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.sidebar-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.sidebar-tab-count {
+  margin-left: var(--space-1);
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Back on the left, ‹ n / N › on the right. */
+.sidebar-details-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  margin-bottom: var(--space-2);
+}
+
+.sidebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+.sidebar-back > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-step {
+  display: flex;
+  flex: none;
+  gap: var(--space-1);
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-step .icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sidebar-details > .selected-node {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.coverage-cell-size {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
 }
 
 .section-label {
@@ -1074,29 +1179,44 @@ thead th {
   line-height: 1.7;
 }
 
-/* Results sit in the sidebar under the box and push the rest down. */
+/* Results drop down over what is below the box, so nothing moves. */
 .node-search {
-  margin: 0 0 var(--space-5);
+  position: relative;
+  margin: 0 0 var(--space-4);
 }
 
 .node-search input {
   width: 100%;
 }
 
-.node-search ul {
-  margin: var(--space-2) 0 0;
+.node-search ul,
+.node-search-empty {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  left: 0;
+  z-index: 5;
+  margin: 0;
   padding: var(--space-1);
-  list-style: none;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-overlay);
+}
+
+.node-search ul {
+  max-height: min(24rem, 40vh);
+  overflow-y: auto;
+  list-style: none;
 }
 
 .node-search li {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -1105,23 +1225,26 @@ thead th {
 }
 
 .node-search .node-avatar {
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.625rem;
 }
 
-.node-search-names {
-  display: grid;
+.node-search-name {
+  flex: 1 1 auto;
   min-width: 0;
-  font-size: var(--text-sm);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.node-search-names .mono {
+.node-search .mono {
+  flex: none;
   font-size: var(--text-xs);
 }
 
 .node-search-empty {
-  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
   color: var(--muted);
   font-size: var(--text-xs);
 }
@@ -1130,15 +1253,6 @@ thead th {
   margin: 0;
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
-}
-
-/* A selected link, node or coverage cell sits above search, so it is ruled
-   off below instead. */
-.sidebar-selection {
-  padding: 0 0 var(--space-4);
-  margin-bottom: var(--space-4);
-  border-top: 0;
-  border-bottom: 1px solid var(--border);
 }
 
 .selected-node-heading {
@@ -1156,6 +1270,12 @@ thead th {
 
 .selected-node-heading h3 {
   font-size: var(--text-lg);
+}
+
+.map-sidebar .selected-node-heading h3 {
+  display: grid;
+  align-content: center;
+  min-height: 2lh;
 }
 
 .node-page-link {
@@ -1190,21 +1310,79 @@ thead th {
   min-width: 0;
 }
 
-/* A selected link's node, as a title: one line, cut short, underlined only
-   on hover. */
+/* A selected link's node: badge, name and ID like the node card's heading.
+   The whole row opens its page; hover tints it instead of underlining. */
 .link-end {
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-radius: var(--radius);
   color: var(--text);
-  font-weight: 650;
   text-decoration: none;
+}
+
+.link-end > svg {
+  color: var(--muted);
+}
+
+/* The tint reaches a little past the row on both sides, so the badges and
+   arrows line up with the card; shadows, unlike margins, never scroll. */
+.link-end:hover,
+.link-end:focus-visible {
+  background: var(--surface-subtle);
+  box-shadow:
+    calc(-1 * var(--space-2)) 0 0 var(--surface-subtle),
+    var(--space-2) 0 0 var(--surface-subtle);
+}
+
+.link-end:hover > svg,
+.link-end:focus-visible > svg {
+  color: var(--accent);
+}
+
+.link-end-names {
+  display: grid;
+  min-width: 0;
+}
+
+/* One line, cut short; the full name on hover. */
+.link-end-name {
+  overflow: hidden;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.link-end:hover,
-.link-end:focus-visible {
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+.link-end-id {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+/* Between the two nodes: a line joining their badges, and the distance. */
+.link-ends-join {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 2.25rem;
+  font-size: var(--text-sm);
+}
+
+.link-ends-line {
+  justify-self: center;
+  align-self: stretch;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border);
+}
+
+.link-ends-km {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
 }
 
 /* Links to a selected link's other pages, last in its details. */
@@ -1367,6 +1545,18 @@ thead th {
   flex-wrap: wrap;
   align-items: baseline;
   column-gap: var(--space-2);
+}
+
+/* The map's node facts take one line each. */
+.selected-node .node-card-facts dd {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node-card-facts .gateway-note {
+  margin-left: var(--space-2);
 }
 
 /* Label and value side by side; a value may stack a few lines, such as a time and its packet link. */
@@ -2556,17 +2746,12 @@ code {
   overflow-wrap: anywhere;
 }
 
-/* The selected node's hop depth: a slider and its value. */
+/* The selected node's hop depth, in the map filters: a slider and its value. */
 .hop-depth {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.selected-node .hop-depth .section-label {
-  margin: 0;
 }
 
 .hop-depth-note {
@@ -3339,61 +3524,26 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   }
 }
 
-/* Chatty nodes: a scrollable list of senders, each row a button, as tall as
-   the sidebar allows. */
-.sidebar-scroll > .chatty-nodes {
+/* The sidebar's node lists: rows of buttons filling the height left. */
+.sidebar-list {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
-  flex: 0 1 auto;
-  min-height: 7rem;
-  margin: 0 0 var(--space-4);
-}
-
-.sidebar-scroll > .chatty-nodes-closed {
   min-height: 0;
 }
 
-/* The heading folds the list; a triangle shows which way. */
-.chatty-toggle {
-  align-self: flex-start;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-
-.chatty-toggle::before {
-  content: "▾ ";
-}
-
-.chatty-toggle[aria-expanded="false"]::before {
-  content: "▸ ";
-}
-
-.chatty-heading {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.chatty-hint {
-  color: var(--muted);
-  font-size: var(--text-xs);
-}
-
-.chatty-nodes ul {
+.sidebar-list ul {
   min-height: 0;
   overflow-y: auto;
-  margin: var(--space-2) 0 0;
-  padding: var(--space-1);
+  margin: 0;
+  padding: 0;
   list-style: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
 }
 
-.chatty-nodes li button {
+/* Chatty nodes: name, region, texts. */
+.sidebar-list li button {
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 5.5rem) minmax(1.5rem, auto);
   gap: var(--space-2);
   align-items: baseline;
   width: 100%;
@@ -3407,17 +3557,20 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   cursor: pointer;
 }
 
-.chatty-nodes li button:hover,
-.chatty-nodes li button[aria-pressed="true"] {
+.sidebar-list li button:hover,
+.sidebar-list li button[aria-pressed="true"] {
   background: var(--accent-soft);
 }
 
-/* The name shortens first so the no-position mark after it stays visible. */
 .chatty-region,
 .chatty-name > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.chatty-region {
+  color: var(--muted);
 }
 
 .chatty-name {
@@ -3426,22 +3579,16 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   min-width: 0;
 }
 
-.chatty-unplaced {
-  flex: none;
-  color: var(--muted);
+.sidebar-list li button.unplaced {
+  opacity: 0.6;
 }
 
 .chatty-count {
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-/* Heard in view: Chatty's rows with a margin dot first, at a fixed height
-   so Chatty nodes shrinks instead. */
-.sidebar-scroll > .heard-in-view {
-  flex: none;
-  max-height: 16rem;
-}
-
+/* Heard in view: a margin dot, the name, cells in view. */
 .heard-in-view li button,
 .heard-in-view .heard-unknown {
   grid-template-columns: 0.6em minmax(0, 1fr) auto;
@@ -3457,7 +3604,6 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 
 .heard-in-view li button[aria-disabled="true"] {
   cursor: default;
-  opacity: 0.6;
 }
 
 .heard-in-view li button[aria-disabled="true"]:hover {

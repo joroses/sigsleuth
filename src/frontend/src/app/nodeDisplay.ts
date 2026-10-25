@@ -282,15 +282,14 @@ export function formatKm(km: number | null): string {
   return km < 10 ? km.toFixed(1) : Math.round(km).toLocaleString();
 }
 
-/**
- * How a node with no reported position was placed and how rough it is, such
- * as "No reported position. Estimated from 3 radio neighbours, about 5 km away."
- */
-export function estimateText(estimate: {
+interface PositionEstimate {
   neighbours: number;
   spread_km: number;
   from_traceroute: boolean;
-}): string {
+}
+
+// Whom an estimate comes from: "3 radio neighbours, about 5 km away".
+function estimateSource(estimate: PositionEstimate): string {
   const kind = estimate.from_traceroute
     ? "traceroute neighbour"
     : "radio neighbour";
@@ -299,10 +298,43 @@ export function estimateText(estimate: {
     estimate.neighbours === 1
       ? "placed at it"
       : `about ${Math.max(1, Math.round(estimate.spread_km))} km away`;
+  return `${estimate.neighbours} ${kind}${plural}, ${near}`;
+}
+
+/**
+ * How a node with no reported position was placed and how rough it is, such
+ * as "No reported position. Estimated from 3 radio neighbours, about 5 km away."
+ */
+export function estimateText(estimate: PositionEstimate): string {
   const rough = estimate.from_traceroute
     ? " Rough: traceroute hops can be long."
     : "";
-  return `No reported position. Estimated from ${estimate.neighbours} ${kind}${plural}, ${near}.${rough}`;
+  return `No reported position. Estimated from ${estimateSource(estimate)}.${rough}`;
+}
+
+/**
+ * Where a drawn node's position comes from, short enough for one line, such
+ * as "Estimated, 3 neighbours", and the detail for its hover.
+ */
+export function positionSource(node: {
+  estimate: PositionEstimate | null;
+  position: { from_map_report: boolean; precision_km: number | null } | null;
+}): { text: string; hover: string | null } {
+  const { estimate, position } = node;
+  if (estimate !== null)
+    return {
+      text: `Estimated, ${estimate.neighbours} ${estimate.neighbours === 1 ? "neighbour" : "neighbours"}`,
+      hover: `${estimate.from_traceroute ? "Rough, from" : "From"} ${estimateSource(estimate)}`,
+    };
+  if (position?.from_map_report !== true)
+    return { text: "Reported", hover: null };
+  if (position.precision_km === null)
+    return { text: "Map report", hover: null };
+  const km = formatKm(position.precision_km);
+  return {
+    text: `Map report, ~${km} km`,
+    hover: `Rounded on purpose: within about ${km} km`,
+  };
 }
 
 /**

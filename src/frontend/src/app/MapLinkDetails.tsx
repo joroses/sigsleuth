@@ -19,10 +19,12 @@ import {
 import type { LinkTierChoice } from "./mapLinkLayers";
 import {
   formatKm,
+  formatNodeId,
   lineOfSightHref,
   linkDetailsHref,
   nodeHref,
   nodeLabel,
+  nodeMarkerLabel,
   shortLabel,
   tracerouteHopHref,
 } from "./nodeDisplay";
@@ -58,7 +60,8 @@ export function MapLinkDetails({
   nodeB: LinkEnd;
   km: number | null;
   since: string | undefined;
-  onClose: () => void;
+  /** Shows a close button; the map sidebar has its own way back. */
+  onClose?: () => void;
   linkSection?: boolean;
 }) {
   const hops = useApi<HopObservations>(
@@ -97,24 +100,37 @@ export function MapLinkDetails({
   return (
     <>
       <div className="link-direction-heading">
-        {/* One line each, cut short; the full name on hover. */}
+        {/* Both nodes as rows like the node card's heading, joined by a line
+            that carries the distance; a row opens that node's page. */}
         <div className="link-ends">
-          {[nodeA, nodeB].map((end) => (
-            <a
-              key={end.node_id}
-              className="link-end"
-              href={nodeHref(end.node_id)}
-              title={nodeLabel(end)}
-            >
-              {nodeLabel(end)}
-            </a>
-          ))}
+          {linkEndRow(nodeA)}
+          <div className="link-ends-join">
+            <span className="link-ends-line" aria-hidden="true" />
+            {km === null ? (
+              <span className="muted" title="A node has no reported position">
+                Distance unknown
+              </span>
+            ) : (
+              <span className="link-ends-km">
+                <strong>{formatKm(km)} km</strong>
+                <a
+                  className="text-button"
+                  href={lineOfSightHref(nodeA.node_id, nodeB.node_id)}
+                >
+                  Line of sight <Icon name="profile" />
+                </a>
+              </span>
+            )}
+          </div>
+          {linkEndRow(nodeB)}
         </div>
-        <IconButton
-          icon="close"
-          label="Clear selected link"
-          onClick={onClose}
-        />
+        {onClose === undefined ? null : (
+          <IconButton
+            icon="close"
+            label="Clear selected link"
+            onClick={onClose}
+          />
+        )}
       </div>
       <section className="link-card" aria-label="Link summary">
         {kicker.length > 0 ? (
@@ -130,25 +146,6 @@ export function MapLinkDetails({
             <ShortTime value={link.last_seen_at} />
           </p>
         ) : null}
-        <p className="link-card-row">
-          {km === null ? (
-            <span className="muted" title="A node has no reported position">
-              Distance unknown
-            </span>
-          ) : (
-            <>
-              <span>
-                <strong>{formatKm(km)} km</strong> apart
-              </span>
-              <a
-                className="text-button"
-                href={lineOfSightHref(nodeA.node_id, nodeB.node_id)}
-              >
-                Line of sight <Icon name="profile" />
-              </a>
-            </>
-          )}
-        </p>
       </section>
       {linkKind === "traceroute" ? (
         <details className="link-traceroutes">
@@ -193,6 +190,28 @@ export function MapLinkDetails({
         ) : null}
       </p>
     </>
+  );
+}
+
+/** One node of a selected link: its short-name badge, name and ID, opening
+ *  its page. */
+function linkEndRow(end: LinkEnd) {
+  return (
+    <a
+      className="link-end"
+      href={nodeHref(end.node_id)}
+      aria-label={nodeLabel(end)}
+      title={nodeLabel(end)}
+    >
+      <span className="node-avatar avatar-green" aria-hidden="true">
+        {nodeMarkerLabel(end)}
+      </span>
+      <span className="link-end-names">
+        <span className="link-end-name">{nodeLabel(end)}</span>
+        <span className="link-end-id">{formatNodeId(end.node_id)}</span>
+      </span>
+      <Icon name="open" />
+    </a>
   );
 }
 
@@ -346,7 +365,7 @@ export function ZeroCostKey() {
       <span className="zero-cost-arrow zero-cost-key" aria-hidden="true">
         <span />
       </span>
-      0-hop in that direction
+      0-hop
     </li>
   );
 }

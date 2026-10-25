@@ -189,9 +189,8 @@ def text_senders(
 ) -> TextSenderList:
     """Senders of broadcast text messages first received since `since`, most
     messages on their text reach channel first, when one of those reached
-    CHATTY_MIN_GATEWAYS other gateways. Only senders with a valid position are
-    listed, as only they can be selected on the map. The window starts at its
-    whole hour, like text_reach, so both count the same messages."""
+    CHATTY_MIN_GATEWAYS other gateways. The window starts at its whole hour,
+    like text_reach, so both count the same messages."""
     since_ms = None if since is None else to_epoch_ms(since)
     since_id = (
         0
@@ -211,7 +210,7 @@ def text_senders(
         ) AS sent
         JOIN node_current AS node ON node.node_id = sent.sender_node_id
         WHERE sent.choice = 1 AND sent.gateways >= :min_gateways
-          AND node.latitude IS NOT NULL AND {shown_sql("node.node_id")}
+          AND {shown_sql("node.node_id")}
         ORDER BY sent.messages DESC, sent.last_sent_at DESC
         LIMIT :limit
         """,
@@ -231,7 +230,9 @@ def text_senders(
     return TextSenderList(items, len(rows) > limit)
 
 
-def _region(latitude: float, longitude: float) -> str | None:
+def _region(latitude: float | None, longitude: float | None) -> str | None:
+    if latitude is None or longitude is None:
+        return None
     city = nearest_city(latitude, longitude, SENDER_PLACE_KM)
     return None if city is None else city.region
 

@@ -472,8 +472,12 @@ function LinkRanking({
             <table className="packet-table node-table links-table">
               <thead>
                 <tr>
-                  <th scope="col">Node A</th>
-                  <th scope="col">Node B</th>
+                  <th scope="col" className="link-node">
+                    Node A
+                  </th>
+                  <th scope="col" className="link-node">
+                    Node B
+                  </th>
                   {traceroutes ? <th scope="col">Explorer</th> : null}
                   <LinkHeadings
                     sort={sort}

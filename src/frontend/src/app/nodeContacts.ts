@@ -1,12 +1,21 @@
-import type { FeatureCollection, LineString } from "geojson";
-
-import type { ContactLink, NodeContact } from "./api";
+import type { ContactLink, LinkKind, LinkRow, NodeContact } from "./api";
+import { fromNode } from "./linkRows";
+import { type LinkFeatureCollection, linkHalves } from "./mapLinkLayers";
 import { formatKm } from "./nodeDisplay";
 
 /** The node page's contacts cover this many days. */
 export const CONTACT_DAYS = 7;
 
 type Place = { latitude: number; longitude: number };
+
+/**
+ * The contact groups shown: traceroute partners, and gateways (nodes that
+ * heard its packets, or with a direct or neighbour link).
+ */
+export interface ContactGroups {
+  traceroutes: boolean;
+  gateways: boolean;
+}
 
 /** A placed contact's marker: its tone and label say how close a tie it has. */
 export interface ContactMark {
@@ -20,56 +29,87 @@ export interface ContactMark {
 
 export interface ContactLayers {
   marks: ContactMark[];
-  /** From the node to each placed linked contact; radio is a direct or neighbour link. */
-  lines: FeatureCollection<LineString, { radio: boolean }>;
+  /**
+   * From the node to each placed contact, a line per link (kind and
+   * channel), in halves coloured by signal as on the Map.
+   */
+  lines: Record<LinkKind, LinkFeatureCollection>;
   /** Contacts with no position, not drawn. */
   unplaced: number;
 }
 
 /**
- * The contacts placed on the node's minimap. A contact with a direct or
- * neighbour link takes the direct tone; else a gateway takes the tone of
- * the fewest hops it heard the node's packets after, as on a packet page,
- * labelled with that number; a traceroute partner alone is muted. Lines
- * start at `origin`, the node's current position, and are left out without one.
+ * The contacts of the `shown` groups placed on the node's minimap. With
+ * gateways shown, a contact with a direct or neighbour link takes the direct
+ * tone; else a gateway takes the tone of the fewest hops it heard the node's
+ * packets after, as on a packet page, labelled with that number; a
+ * traceroute partner alone is muted. Lines are the node's `links` (its Links
+ * table's rows) of the shown groups, from `origin`, the node's current
+ * position, to placed contacts; none without an origin.
  */
 export function contactLayers(
+  nodeId: number,
   contacts: NodeContact[],
+  links: LinkRow[],
   origin: Place | null,
+  shown: ContactGroups,
 ): ContactLayers {
   const marks: ContactMark[] = [];
-  const lines: ContactLayers["lines"] = {
-    type: "FeatureCollection",
-    features: [],
-  };
+  const places = new Map<number, Place>();
   let unplaced = 0;
   for (const contact of contacts) {
+    const radio = contact.links.some((link) => link.kind !== "traceroute");
+    const gateway = shown.gateways && (radio || contact.heard_packets > 0);
+    const partner =
+      shown.traceroutes &&
+      contact.links.some((link) => link.kind === "traceroute");
+    if (!gateway && !partner) continue;
     const place = contact.node;
     if (place?.latitude == null || place.longitude == null) {
       unplaced += 1;
       continue;
     }
-    const radio = contact.links.some((link) => link.kind !== "traceroute");
     marks.push({
       contact,
       latitude: place.latitude,
       longitude: place.longitude,
       estimated: place.estimated,
-      tone: radio ? "hop-tone-direct" : contactHopTone(contact),
-      label: contact.fewest_hops === null ? "" : String(contact.fewest_hops),
+      tone: !gateway
+        ? "hop-tone-relay"
+        : radio
+          ? "hop-tone-direct"
+          : contactHopTone(contact),
+      label:
+        !gateway || contact.fewest_hops === null
+          ? ""
+          : String(contact.fewest_hops),
     });
-    if (origin !== null && contact.links.length > 0) {
-      lines.features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [origin.longitude, origin.latitude],
-            [place.longitude, place.latitude],
-          ],
-        },
-        properties: { radio },
-      });
+    places.set(contact.node_id, {
+      latitude: place.latitude,
+      longitude: place.longitude,
+    });
+  }
+  const empty = (): LinkFeatureCollection => ({
+    type: "FeatureCollection",
+    features: [],
+  });
+  const lines = { traceroute: empty(), direct: empty(), neighbor: empty() };
+  if (origin !== null) {
+    for (const row of links) {
+      // node_a is the node, so the half at its end shows what it hears.
+      const link = fromNode(row, nodeId);
+      const place = places.get(link.node_b);
+      const group =
+        link.link_kind === "traceroute" ? shown.traceroutes : shown.gateways;
+      if (place === undefined || !group) continue;
+      lines[link.link_kind].features.push(
+        ...linkHalves(
+          `${link.link_kind}:${link.node_b}:${link.channel}`,
+          link,
+          [origin.longitude, origin.latitude],
+          [place.longitude, place.latitude],
+        ),
+      );
     }
   }
   return { marks, lines, unplaced };

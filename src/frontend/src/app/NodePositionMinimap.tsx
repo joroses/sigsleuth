@@ -4,6 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import {
   type CoverageCellList,
   type CoverageExtent,
+  type LinkTable,
   type NodeContactList,
   type NodeDetail,
   type NodePositionHistory,
@@ -32,17 +33,23 @@ import {
   nextCoverageArea,
   viewSpreadingFactor,
 } from "./coverageLayer";
+import { LINK_TIERS } from "./linkQuality";
+import {
+  LINK_KINDS,
+  LINK_LAYERS,
+  addLinkLayers,
+  linkSourceId,
+} from "./mapLinkLayers";
+import { LinkSwatch } from "./MapLinkDetails";
 import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { useSetting } from "./remember";
-import { Icon, LegendLine } from "./ui";
+import { Icon } from "./ui";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
 const HISTORY_SOURCE = "position-history";
 const TRACK_LAYER = "position-track";
 const POINTS_LAYER = "position-points";
-const CONTACTS_SOURCE = "contacts";
-const CONTACT_LINE_LAYERS = ["contact-traceroute", "contact-radio"];
 // Position packets listed in a clicked spot's popup, newest first.
 const POPUP_PACKETS = 5;
 
@@ -54,8 +61,9 @@ type Current = { latitude: number; longitude: number; estimated: boolean };
 // position packets sent from that spot, with their dates and links.
 //
 // "Contacts" adds everything that tells where the node is over the last
-// CONTACT_DAYS, with no map rule hiding any: a line to each node linked with
-// it and a marker on each gateway that heard its packets (contactLayers).
+// CONTACT_DAYS, with no map rule hiding any: its links drawn as on the Map, to
+// each placed node linked with it (its Links table's rows, `links`), and a
+// marker on each gateway that heard its packets (contactLayers).
 // Clicking a contact lists its links' distances when heard, so a link
 // measured from a wrong position stands out by its range.
 //
@@ -64,11 +72,25 @@ type Current = { latitude: number; longitude: number; estimated: boolean };
 // what its own survey uploaded. Cells are fetched for the area in view.
 //
 // The view fits all that is shown, with every contact and every cell.
-export function NodePositionMinimap({ node }: { node: NodeDetail }) {
+export function NodePositionMinimap({
+  node,
+  links,
+}: {
+  node: NodeDetail;
+  links: LinkTable | null;
+}) {
   const { data: history, error } = useApi<NodePositionHistory>(
     nodePositionsUrl(node.node_id),
   );
-  const [showContacts, setShowContacts] = useSetting("node.contacts", false);
+  const [showTraceroutes, setShowTraceroutes] = useSetting(
+    "node.contacts.traceroutes",
+    false,
+  );
+  const [showGateways, setShowGateways] = useSetting(
+    "node.contacts.gateways",
+    false,
+  );
+  const showContacts = showTraceroutes || showGateways;
   const [since] = useState(
     () => new Date(now() - CONTACT_DAYS * 24 * 60 * 60 * 1000),
   );
@@ -115,11 +137,25 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
   const contacts = useMemo(
     () =>
       showContacts && contactsState.data !== null
-        ? contactLayers(contactsState.data.items, current)
+        ? contactLayers(
+            node.node_id,
+            contactsState.data.items,
+            links?.items ?? [],
+            current,
+            { traceroutes: showTraceroutes, gateways: showGateways },
+          )
         : null,
     // current is rebuilt each render; its place is what matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showContacts, contactsState.data, current?.latitude, current?.longitude],
+    [
+      showTraceroutes,
+      showGateways,
+      contactsState.data,
+      links,
+      node.node_id,
+      current?.latitude,
+      current?.longitude,
+    ],
   );
   const hasMap =
     loaded &&
@@ -282,12 +318,22 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
           >
             <button
               type="button"
-              aria-pressed={showContacts}
-              title={`Nodes linked with it and gateways that heard it over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
-              onClick={() => setShowContacts(!showContacts)}
+              aria-pressed={showTraceroutes}
+              title={`Nodes in its traceroutes over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
+              onClick={() => setShowTraceroutes(!showTraceroutes)}
             >
-              <Icon name="nodes" />
-              Contacts
+              <Icon name="route" />
+              Traceroutes
+              <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={showGateways}
+              title={`Gateways that heard it and nodes heard with it directly or as neighbours over the last ${CONTACT_DAYS} days, with no map rule hiding any`}
+              onClick={() => setShowGateways(!showGateways)}
+            >
+              <Icon name="radio" />
+              Gateways
               <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
             </button>
             <button
@@ -324,7 +370,11 @@ export function NodePositionMinimap({ node }: { node: NodeDetail }) {
             />
           ) : null}
           {contactsState.data !== null && (contacts?.marks.length ?? 0) > 0 ? (
-            <ContactsKey contacts={contactsState.data} />
+            <ContactsKey
+              contacts={contactsState.data}
+              traceroutes={showTraceroutes}
+              gateways={showGateways}
+            />
           ) : null}
         </div>
         <figcaption className="muted">
@@ -370,24 +420,56 @@ function ContactsNote({
   );
 }
 
-// A key to the contacts' lines and numbers, in the map's corner.
-function ContactsKey({ contacts }: { contacts: NodeContactList }) {
+// A key to the contacts' lines and numbers, in the map's corner: the Map's
+// link patterns and colours.
+function ContactsKey({
+  contacts,
+  traceroutes,
+  gateways,
+}: {
+  contacts: NodeContactList;
+  traceroutes: boolean;
+  gateways: boolean;
+}) {
   return (
     <ul className="coverage-line-legend minimap-key" aria-label="Key">
-      <li>
-        <LegendLine dashes={undefined} />
-        heard or neighbour
-      </li>
-      <li>
-        <LegendLine dashes="3 2" />
-        traceroute
-      </li>
+      {traceroutes ? (
+        <li>
+          <LinkSwatch tier={null} linkKind="traceroute" />
+          traceroute
+        </li>
+      ) : null}
+      {gateways ? (
+        <>
+          <li title="A gateway heard it with no relay, or it heard the gateway">
+            <LinkSwatch tier={null} linkKind="direct" />
+            heard directly
+          </li>
+          <li>
+            <LinkSwatch tier={null} linkKind="neighbor" />
+            neighbour
+          </li>
+        </>
+      ) : null}
       <li
-        title={`From its ${contacts.packets.toLocaleString()} newest packets${contacts.limited ? "; older ones were not read" : ""}`}
+        className="minimap-key-tiers"
+        title="Signal heard at each half's end, as on the Map"
       >
-        <span className="contacts-legend-hops hop-tone-1">1</span>
-        fewest hops to a gateway
+        {LINK_TIERS.map(({ tier, label }) => (
+          <span key={tier} title={label}>
+            <LinkSwatch tier={tier} linkKind="traceroute" />
+          </span>
+        ))}
+        signal
       </li>
+      {gateways ? (
+        <li
+          title={`From its ${contacts.packets.toLocaleString()} newest packets${contacts.limited ? "; older ones were not read" : ""}`}
+        >
+          <span className="contacts-legend-hops hop-tone-1">1</span>
+          fewest hops to a gateway
+        </li>
+      ) : null}
     </ul>
   );
 }
@@ -414,47 +496,16 @@ function coverageNote(
     : counts;
 }
 
-// Lines to the linked contacts, under the position history, and a marker on
+// The links to the contacts, under the position history, and a marker on
 // every placed contact. Returns the cleanup.
 function drawContacts(
   map: maplibregl.Map,
   contacts: ContactLayers,
 ): () => void {
-  const style = getComputedStyle(map.getContainer());
-  const radioColour = style.getPropertyValue("--accent").trim() || "#2f9e62";
-  // Dark, because the minimap is always on the pale Streets basemap, where
-  // the page's near-white text colour would vanish.
-  const tracerouteColour = "#334155";
-  map.addSource(CONTACTS_SOURCE, { type: "geojson", data: contacts.lines });
-  map.addLayer(
-    {
-      id: CONTACT_LINE_LAYERS[0],
-      type: "line",
-      source: CONTACTS_SOURCE,
-      filter: ["!", ["get", "radio"]],
-      paint: {
-        "line-color": tracerouteColour,
-        "line-width": 1.5,
-        "line-opacity": 0.8,
-        "line-dasharray": [3, 2],
-      },
-    },
-    TRACK_LAYER,
-  );
-  map.addLayer(
-    {
-      id: CONTACT_LINE_LAYERS[1],
-      type: "line",
-      source: CONTACTS_SOURCE,
-      filter: ["get", "radio"],
-      paint: {
-        "line-color": radioColour,
-        "line-width": 2,
-        "line-opacity": 0.8,
-      },
-    },
-    TRACK_LAYER,
-  );
+  // Shown at every zoom: the minimap starts wide.
+  for (const kind of LINK_KINDS) {
+    addLinkLayers(map, kind, contacts.lines[kind], TRACK_LAYER, 0);
+  }
   const popup = new maplibregl.Popup({
     className: "history-popup",
     maxWidth: "none",
@@ -484,10 +535,13 @@ function drawContacts(
   return () => {
     popup.remove();
     for (const marker of markers) marker.remove();
-    for (const layer of CONTACT_LINE_LAYERS) {
+    for (const layer of LINK_LAYERS) {
       if (map.getLayer(layer)) map.removeLayer(layer);
     }
-    if (map.getSource(CONTACTS_SOURCE)) map.removeSource(CONTACTS_SOURCE);
+    for (const kind of LINK_KINDS) {
+      if (map.getSource(linkSourceId(kind)))
+        map.removeSource(linkSourceId(kind));
+    }
   };
 }
 

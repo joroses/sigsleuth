@@ -1,7 +1,6 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo } from "react";
 
-import { type LinkKind, type LinkTable, nodeLinksUrl } from "./api";
-import { now } from "./clock";
+import type { LinkKind, LinkTable } from "./api";
 import { ExplorerCell, LinkCells, LinkHeadings, MoreRows } from "./LinkColumns";
 import {
   LINK_KIND_LABELS,
@@ -12,22 +11,28 @@ import {
 } from "./linkRows";
 import { LinkDetails } from "./LinkDetails";
 import { CONTACT_DAYS } from "./nodeContacts";
+import { formatNodeId } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 import { useSetting, useViewState } from "./remember";
 import { ErrorPanel, IconButton, NodeName, StatusPanel, WideTable } from "./ui";
-import { useApi } from "./useApi";
+import type { ApiState } from "./useApi";
 
 const ROWS_STEP = 10;
 
 /**
  * A node page's links of every kind over the last CONTACT_DAYS, with the
- * Links page's columns, including those to nodes with no position.
+ * Links page's columns, including those to nodes with no position. The page
+ * loads them (nodeLinksUrl, from `since`), as its minimap draws them too.
  */
-export function NodeLinks({ nodeId }: { nodeId: number }) {
-  const [since] = useState(
-    () => new Date(now() - CONTACT_DAYS * 24 * 60 * 60 * 1000),
-  );
-  const { data, error } = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
+export function NodeLinks({
+  nodeId,
+  links: { data, error },
+  since,
+}: {
+  nodeId: number;
+  links: ApiState<LinkTable>;
+  since: Date;
+}) {
   const [search, setSearch] = useViewState("node.links.search", "");
   const [kind, setKind] = useViewState<LinkKind | "">("node.links.kind", "");
   // Most heard first: by distance, links with no position would come last.
@@ -136,7 +141,12 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
             <table className="packet-table node-table links-table">
               <thead>
                 <tr>
-                  <th scope="col">Node</th>
+                  <th scope="col" className="link-node">
+                    Node
+                  </th>
+                  <th scope="col" className="link-node">
+                    ID
+                  </th>
                   <th scope="col">Link kind</th>
                   <th scope="col">Explorer</th>
                   <LinkHeadings
@@ -167,6 +177,9 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
                         <td className="link-node">
                           <NodeName nodeId={link.node_b} nodes={nodes} />
                         </td>
+                        <td className="link-node mono muted">
+                          {formatNodeId(link.node_b)}
+                        </td>
                         <td>{LINK_KIND_LABELS[link.link_kind]}</td>
                         <ExplorerCell link={link} />
                         <LinkCells
@@ -189,7 +202,7 @@ export function NodeLinks({ nodeId }: { nodeId: number }) {
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">
-                          <td colSpan={11}>
+                          <td colSpan={12}>
                             <LinkDetails
                               link={link}
                               linkKind={link.link_kind}

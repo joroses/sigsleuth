@@ -2,8 +2,10 @@ import { useState } from "react";
 
 import {
   type EstimatedPosition,
+  type LinkTable,
   NodeDetail,
   NodeOverview,
+  nodeLinksUrl,
   nodePacketsUrl,
   nodeUrl,
 } from "./api";
@@ -22,6 +24,7 @@ import {
 } from "./nodeDisplay";
 import { now as clockNow } from "./clock";
 import { NodeActivityCharts } from "./NodeActivityCharts";
+import { CONTACT_DAYS } from "./nodeContacts";
 import { NodeLinks } from "./NodeLinks";
 import { NodePositionMinimap } from "./NodePositionMinimap";
 import { PagedPacketTable, PortSelect } from "./PacketTable";
@@ -34,6 +37,11 @@ export function NodeDetailView({ nodeId }: { nodeId: number }) {
   // Ages are measured from when the page opened.
   const [now] = useState(clockNow);
   const { data: page, error } = useApi<NodeOverview>(nodeUrl(nodeId));
+  // For the Links table and the minimap's contact lines.
+  const [since] = useState(
+    () => new Date(now - CONTACT_DAYS * 24 * 60 * 60 * 1000),
+  );
+  const links = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
 
   return (
     <section aria-labelledby="node-heading">
@@ -93,11 +101,11 @@ export function NodeDetailView({ nodeId }: { nodeId: number }) {
             </StatusPanel>
           ) : (
             <>
-              <NodeSummary node={page.node} now={now} />
+              <NodeSummary node={page.node} links={links.data} now={now} />
               <NodeActivityCharts nodeId={nodeId} />
             </>
           )}
-          <NodeLinks nodeId={nodeId} />
+          <NodeLinks nodeId={nodeId} links={links} since={since} />
           <div className="section-intro compact heading-with-filter">
             <h3>Packets</h3>
             <PortSelect ports={page.ports} port={port} onChange={setPort} />
@@ -116,7 +124,15 @@ export function NodeDetailView({ nodeId }: { nodeId: number }) {
   );
 }
 
-function NodeSummary({ node, now }: { node: NodeDetail; now: number }) {
+function NodeSummary({
+  node,
+  links,
+  now,
+}: {
+  node: NodeDetail;
+  links: LinkTable | null;
+  now: number;
+}) {
   return (
     <div className="node-facts">
       <dl>
@@ -250,7 +266,7 @@ function NodeSummary({ node, now }: { node: NodeDetail; now: number }) {
           }
         />
       </dl>
-      <NodePositionMinimap node={node} />
+      <NodePositionMinimap node={node} links={links} />
     </div>
   );
 }

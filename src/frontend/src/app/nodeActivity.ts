@@ -9,9 +9,9 @@ export const CHART_DAYS = 7;
  */
 export const PORT_GROUPS = [
   { key: "TEXT_MESSAGE_APP", label: "Text", color: "var(--series-1)" },
-  { key: "POSITION_APP", label: "Position", color: "var(--series-2)" },
+  { key: "POSITION_APP", label: "Position", color: "var(--series-4)" },
   { key: "NODEINFO_APP", label: "Node info", color: "var(--series-3)" },
-  { key: "TELEMETRY_APP", label: "Telemetry", color: "var(--series-4)" },
+  { key: "TELEMETRY_APP", label: "Telemetry", color: "var(--series-2)" },
   { key: "TRACEROUTE_APP", label: "Traceroute", color: "var(--series-5)" },
   { key: "OTHER", label: "Other", color: "var(--series-other)" },
 ] as const;

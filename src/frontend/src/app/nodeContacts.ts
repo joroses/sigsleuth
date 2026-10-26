@@ -91,20 +91,13 @@ export function zeroCostLabel({ out, into }: ZeroCostWays): string {
       : "0-hop in";
 }
 
-/** What a 0-hop tag says, a sentence a way. */
+/** How often the hop was free, each way the label names. */
 export function zeroCostTitle({ out, into }: ZeroCostWays): string {
   const times = (hop: ZeroCostHop) =>
-    `${hop.free.toLocaleString()} of ${(hop.free + hop.costly).toLocaleString()} traceroutes`;
-  return [
-    out === null
-      ? null
-      : `It relays this node's copies without spending a hop, as for a favourite router: ${times(out)}.`,
-    into === null
-      ? null
-      : `This node relays its copies without spending a hop, as for a favourite router: ${times(into)}.`,
-  ]
-    .filter((line) => line !== null)
-    .join(" ");
+    `${hop.free.toLocaleString()} of ${(hop.free + hop.costly).toLocaleString()}`;
+  if (out !== null && into !== null)
+    return `Out ${times(out)} traceroutes, in ${times(into)}`;
+  return `${times((out ?? into)!)} traceroutes`;
 }
 
 /**

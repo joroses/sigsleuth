@@ -215,8 +215,9 @@ describe("0-cost hops", () => {
       into: free(1, NODE),
     });
     expect(ways.get("2:LongFast")).toEqual({ out: free(NODE, 2), into: null });
-    expect(zeroCostTitle(ways.get("2:LongFast")!)).toMatch(
-      /^It relays this node's copies/,
+    expect(zeroCostTitle(ways.get("2:LongFast")!)).toBe("3 of 4 traceroutes");
+    expect(zeroCostTitle(ways.get("1:LongFast")!)).toBe(
+      "Out 3 of 4 traceroutes, in 3 of 4",
     );
     expect(zeroCostLabel(ways.get("1:LongFast")!)).toBe("0-hop both ways");
     expect(zeroCostLabel(ways.get("2:LongFast")!)).toBe("0-hop out");

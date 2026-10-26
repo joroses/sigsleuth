@@ -2901,9 +2901,14 @@ code {
   color: var(--error);
 }
 
-/* A packet's port, tinted with its colour in the node page's packets chart. */
+/*
+ * A packet's port, tinted with its colour in the node page's packets chart.
+ * Mixed with the plain surface, not see-through, so striped rows keep the same
+ * tint; the left edge carries the full colour.
+ */
 .port-cell {
-  background: color-mix(in srgb, var(--port-color) 22%, transparent);
+  background: color-mix(in srgb, var(--port-color) 38%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--port-color);
 }
 
 /* Chat: a page-filling frame with a toolbar, a scrolling message column and a footer. */

@@ -1,6 +1,7 @@
 // Hover text (`title`) is one short phrase: see AGENTS.md "UI". Checks the
-// fixed words of each title, as an attribute, a `title:` property or a
-// `.title =` assignment; text from variables or calls is not checked.
+// fixed words of each title, as an attribute, a `title:` property, a
+// `.title =` assignment or what a function named `…Title` returns; other
+// text from variables or calls is not checked.
 
 const MAX_LENGTH = 60;
 
@@ -41,6 +42,12 @@ function check(context, node, value) {
   }
 }
 
+const isTitleFunction = (node) =>
+  /Title$/.test(
+    node.id?.name ??
+      (node.parent.type === "VariableDeclarator" ? node.parent.id.name : ""),
+  );
+
 const isTitle = (key) =>
   key?.type === "Identifier"
     ? key.name === "title"
@@ -53,7 +60,20 @@ export const hoverText = {
     schema: [],
   },
   create(context) {
+    // Whether each function we are inside is a `…Title` one.
+    const functions = [];
     return {
+      ":function"(node) {
+        const title = isTitleFunction(node);
+        functions.push(title);
+        if (title && node.expression) check(context, node.body, node.body);
+      },
+      ":function:exit"() {
+        functions.pop();
+      },
+      ReturnStatement(node) {
+        if (functions.at(-1)) check(context, node, node.argument);
+      },
       JSXAttribute(node) {
         if (node.name.name === "title") check(context, node, node.value);
       },

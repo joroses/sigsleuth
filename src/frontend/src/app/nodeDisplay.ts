@@ -232,10 +232,10 @@ export function relayNodeTitle(relay: {
 }): string {
   const byte = relayByteText(relay.node_id & 0xff);
   if (relay.how === "heard_directly")
-    return `Heard directly: the only node ending in ${byte} this gateway heard directly within a week of the packet`;
+    return `Heard directly: the only node ending in ${byte} this gateway hears`;
   const text = relayGuessText(relay.how, byte);
   return relay.candidates > 1
-    ? `${text}. ${relay.candidates} nodes ending in ${byte} could have relayed it.`
+    ? `${text} (${relay.candidates} nodes end in ${byte})`
     : text;
 }
 
@@ -251,7 +251,7 @@ export function relayMaybeTitle(reception: {
 }): string {
   // Firmware sends FF for a number ending in 00, as 0 means no relay.
   if (reception.relay_byte === (reception.gateway_node_id & 0xff || 0xff))
-    return "This gateway's own byte: it uploaded its own rebroadcast, which says nothing about the node it heard";
+    return "This gateway's own byte: it uploaded its own rebroadcast";
   const maybe = reception.relay_maybe
     .map(
       (node) =>
@@ -259,7 +259,7 @@ export function relayMaybeTitle(reception: {
     )
     .join(", ");
   const byte = relayByteText(reception.relay_byte ?? 0);
-  return `Unknown relay ending in ${byte}${maybe === "" ? "" : `. Maybe ${maybe}`}`;
+  return `Unknown relay ending in ${byte}${maybe === "" ? "" : `: maybe ${maybe}`}`;
 }
 
 // A node's short name for compact lists, else the last four hex digits of its ID.

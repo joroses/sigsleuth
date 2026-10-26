@@ -752,7 +752,7 @@ describe("Node detail", () => {
     const cells = tag.closest("tr")!.querySelectorAll("td");
     expect(cells[1].textContent).toBe("!22222222");
     expect(tag.closest("tr")!.textContent).toContain("LongFast");
-    expect(tag.getAttribute("title")).toMatch(/^This node relays its copies/);
+    expect(tag.getAttribute("title")).toBe("4 of 4 traceroutes");
     const [out] = screen.getAllByText("0-hop out");
     expect(out.closest("tr")!.querySelectorAll("td")[1].textContent).toBe(
       "!33333333",

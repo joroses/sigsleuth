@@ -2231,16 +2231,16 @@ function warningTitle(
   nodes: NodeIndex,
 ): string | undefined {
   if (warning === "no solid route") {
-    return "No solid path joins these zones, directly or through other zones.";
+    return "No solid path joins these zones, even through others";
   }
   if (warning === "one solid link") {
-    return "If either end goes quiet, no solid link joins these zones.";
+    return "If either end goes quiet, the zones lose their solid link";
   }
   if (warning === "one relay") {
     const relay = pair.sole_relay;
     const solid = pair.links.filter((link) => link.solid).length;
     const name = relay === null ? "one node" : directionEnd(relay, nodes);
-    return `All ${solid} solid links pass through ${name}: if it goes quiet, no solid link joins these zones.`;
+    return `All ${solid} solid links pass through ${name}`;
   }
   return undefined;
 }

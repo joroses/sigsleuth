@@ -495,7 +495,7 @@ function coverageNote(
     guessed += cell.guessed;
   }
   if (measurements === 0) return "No survey measurement in view; zoom out.";
-  const counts = `${measurements.toLocaleString()} survey ${measurements === 1 ? "measurement" : "measurements"} in view · ${guessed.toLocaleString()} guessed from the relay byte`;
+  const counts = `${measurements.toLocaleString()} survey ${measurements === 1 ? "measurement" : "measurements"} in view · ${guessed.toLocaleString()} identified using MQTT evidence`;
   return state.data.truncated
     ? `${counts} · busiest cells only, zoom in`
     : counts;

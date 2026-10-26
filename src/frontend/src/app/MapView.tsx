@@ -2256,7 +2256,7 @@ function SelectedCoverage({
         <p className="sidebar-note">
           {measurements === 0
             ? "No measurements in view."
-            : `${guessed.toLocaleString()} of ${measurements.toLocaleString()} measurements in view identified by guess.`}
+            : `${guessed.toLocaleString()} of ${measurements.toLocaleString()} measurements in view identified using MQTT evidence.`}
         </p>
       )}
       <button type="button" className="text-button" onClick={onFit}>

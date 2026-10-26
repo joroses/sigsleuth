@@ -225,20 +225,19 @@ def radio_links(
 def own_reach(
     connection: sqlite3.Connection, node_ids: Collection[int], *, from_km: float = 0
 ) -> dict[int, float]:
-    """Each node's reach: its longest direct or neighbour link it transmitted
-    on that the map trusts (links.trusted_sql), over the history kept, in km.
+    """Each node's reach: its longest trusted outgoing direct or neighbour
+    link, or traceroute hop with SNR, over the history kept, in km.
     Nodes with no such link from from_km up are left out: a caller that
     floors reach at from_km needs no shorter one, and reads far fewer rows."""
     limited = limited_nodes(connection, 0)
-    # Each pair's longest from the index alone, then the hours of the pairs
-    # with an end trusted_sql looks up, which need last_seen_at from the
-    # table: reading it for every hour took 15 times as long (2026-10-18,
-    # live copy).
+    # Read individual hours only for moved or doubtful ends: looking up every
+    # hour's last_seen_at took 15 times as long (2026-10-18, live copy).
     longest = connection.execute(
         """
         SELECT from_node_id, to_node_id, max(km) FROM link_hour INDEXED BY link_hour_pair
         WHERE from_node_id IN (SELECT value FROM json_each(:nodes)) AND km >= :from_km
-          AND link_kind IN ('direct', 'neighbor')
+          AND (link_kind IN ('direct', 'neighbor')
+               OR (link_kind = 'traceroute' AND snr_count > 0))
           AND (km < :long OR NOT EXISTS (
               SELECT 1 FROM long_link
               WHERE node_a = min(from_node_id, to_node_id)
@@ -254,7 +253,9 @@ def own_reach(
         FROM json_each(:pairs) AS p
         JOIN link_hour AS l INDEXED BY link_hour_pair
           ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
-        WHERE l.km >= :from_km AND l.link_kind IN ('direct', 'neighbor')
+        WHERE l.km >= :from_km
+          AND (l.link_kind IN ('direct', 'neighbor')
+               OR (l.link_kind = 'traceroute' AND l.snr_count > 0))
           AND (l.km < :long OR NOT EXISTS (
               SELECT 1 FROM long_link
               WHERE node_a = min(l.from_node_id, l.to_node_id)

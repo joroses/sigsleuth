@@ -125,12 +125,14 @@ Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; thei
 Solid lines need direct evidence; dashed guesses can also use the co-hearers' signal score (below). Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
 1. **Solid**: a survey heard the node directly. The measurement had no relay, or the relay byte matches exactly one node a survey heard directly nearby (a survey link: any survey node, same radio settings, 30 km, closest of 1 hour or 60 days). Checked before the rule-outs, so none can overrule a direct reception, and it wins over upload's name.
-2. **Rule-outs**: every row of the rule-out table except the two signal rows. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
+2. **Rule-outs**: every row of the rule-out table except the two signal rows. Unplaced nodes are excluded from guesses. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
 3. **Dashed**: of the candidates left, the first rule that names one: the co-hearer signal score; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left, also only within its reach (since 2026-10-23, below).
 4. **No line** otherwise. The cell lists up to three candidates that pass the rule-outs needing no packet (role, spreading factor, firmware, reach), nearest first.
 5. A measurement with a line, solid or dashed, paints while that node is alive; one without paints for 14 days.
 
 Packet pages and the chat's gateway reports (`packets._with_relays`) take the same steps with the gateway in the phone's place. Solid is the only candidate the gateway heard directly within 7 days of the packet, before the rule-outs: the study's stand-in for survey links, so the "with survey links" figures below are the page's own. Before, the page named someone in 99.1% of route receptions, 97.0% right, and in 98.9% with the true relay hidden. A reception that names no one lists up to three candidates the rule-outs left, nearest first, and one carrying the gateway's own byte names no one. Direct counts and radio links count either side of the packet, where upload has only those before: retention removes link hours at the same age as packets. The signal score uses only completed hours before the packet on both pages and uploads; without a profile, the other rules still apply.
+
+Since 2026-10-26, reach also counts trusted outgoing traceroute hops with SNR, even when shorter direct or neighbour links exist. A short gateway link does not limit the radio's demonstrated reach. Unplaced nodes are excluded from guesses and candidate lists; direct survey or gateway evidence still wins before those rule-outs. Several candidates leave the relay unnamed unless stronger evidence chooses one, and the remaining candidates are still listed.
 
 The next two tables describe the 2026-10-18 decision, before the reach check and signal score. On route truth, with the receiver's direct links standing in for survey links or without them:
 

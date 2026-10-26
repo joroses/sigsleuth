@@ -18,6 +18,7 @@ from sigsleuth.positions import (
     EstimatedPosition,
     guess_relay,
     node_estimate,
+    own_reach,
     radio_links,
     refresh_estimates,
 )
@@ -191,6 +192,52 @@ def test_a_node_heard_only_before_its_gateway_moved_is_not_placed_there(
     )
 
     assert estimates(connection) == {}
+
+
+@pytest.mark.parametrize(
+    ("condition", "expected"),
+    [
+        ("measured", 80.0),
+        ("missing-snr", 5.0),
+        ("receiver-moved", 5.0),
+        ("transmitter-moved", 0.0),
+        ("receiver-doubtful", 5.0),
+        ("transmitter-doubtful", 0.0),
+        ("unlikely-long-link", 5.0),
+    ],
+)
+def test_traceroute_reach_needs_a_measured_trusted_outgoing_hop(
+    connection: sqlite3.Connection, condition: str, expected: float
+) -> None:
+    for other, latitude in ((NODE, 0.1), (N1, 0.2), (N2, 0.8), (N3, 1.2)):
+        node(connection, other, latitude)
+    seen = now_ms() - HOUR_MS
+    link_hour(connection, NODE, N1, seen, km=5.0)
+    distance = 300.0 if condition == "unlikely-long-link" else 80.0
+    link_hour(
+        connection,
+        NODE,
+        N2,
+        seen,
+        link_kind="traceroute",
+        km=distance,
+        snr=[] if condition == "missing-snr" else [-8.0],
+    )
+    link_hour(connection, N3, NODE, seen, link_kind="traceroute", km=150.0, snr=[-12.0])
+    if condition.endswith("moved"):
+        moved = NODE if condition.startswith("transmitter") else N2
+        connection.execute(
+            "UPDATE node_current SET moved_at = ? WHERE node_id = ?", (seen + 1, moved)
+        )
+    if condition.endswith("doubtful"):
+        doubtful = NODE if condition.startswith("transmitter") else N2
+        connection.execute("INSERT INTO node_doubtful VALUES (?, 1, 300.0)", (doubtful,))
+    if condition == "unlikely-long-link":
+        connection.execute(
+            "INSERT INTO long_link VALUES (?, ?, ?, 0.0, 100.0, 0, 1)", (NODE, N2, distance)
+        )
+
+    assert own_reach(connection, {NODE}).get(NODE, 0) == expected
 
 
 def test_pages_draw_an_estimated_node_but_measure_no_distance_to_it(

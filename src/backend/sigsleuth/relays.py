@@ -341,11 +341,13 @@ def cannot_relay_at(
     position: tuple[float, float] | None,
     spreading_factors: set[int],
 ) -> bool:
-    """Whether a node cannot have relayed a packet heard at a position: it
+    """Whether a node is excluded from relay guesses: it is unplaced,
     never rebroadcasts (CLIENT_MUTE), its channel or map report puts it on
     none of these spreading factors, its firmware sends no relay byte, or it
     is farther than reach_km."""
-    if place is not None and place.role == "CLIENT_MUTE":
+    if place is None or place.latitude is None or place.longitude is None:
+        return True
+    if place.role == "CLIENT_MUTE":
         return True
     if radio is not None:
         heard_on = (radio.channel_spreading_factor, radio.preset_spreading_factor)
@@ -374,8 +376,7 @@ def _active(evidence: RelayEvidence, node: int, at: int) -> bool:
 
 
 def node_km(place: NodeSummary | None, position: tuple[float, float]) -> float | None:
-    """How far a node is from a position; None when it is unplaced: then no
-    distance rules it out, and it is never within reach."""
+    """How far a node is from a position; None when it is unplaced."""
     if place is None or place.latitude is None or place.longitude is None:
         return None
     return great_circle_km(place.latitude, place.longitude, *position)

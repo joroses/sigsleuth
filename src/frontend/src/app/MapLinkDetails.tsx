@@ -49,6 +49,7 @@ export function MapLinkDetails({
   link,
   nodeA,
   nodeB,
+  selectedNodeId,
   km,
   since,
   onClose,
@@ -58,12 +59,17 @@ export function MapLinkDetails({
   link: MapLink;
   nodeA: LinkEnd;
   nodeB: LinkEnd;
+  selectedNodeId?: number | null;
   km: number | null;
   since: string | undefined;
   /** Shows a close button; the map sidebar has its own way back. */
   onClose?: () => void;
   linkSection?: boolean;
 }) {
+  const [firstNode, secondNode] =
+    nodeB.node_id === selectedNodeId ? [nodeB, nodeA] : [nodeA, nodeB];
+  const firstDirection = firstNode === nodeA ? "a_to_b" : "b_to_a";
+  const secondDirection = firstNode === nodeA ? "b_to_a" : "a_to_b";
   const hops = useApi<HopObservations>(
     linkKind === "traceroute"
       ? tracerouteHopsUrl(nodeA.node_id, nodeB.node_id, since, link.channel)
@@ -100,10 +106,8 @@ export function MapLinkDetails({
   return (
     <>
       <div className="link-direction-heading">
-        {/* Both nodes as rows like the node card's heading, joined by a line
-            that carries the distance; a row opens that node's page. */}
         <div className="link-ends">
-          {linkEndRow(nodeA)}
+          {linkEndRow(firstNode)}
           <div className="link-ends-join">
             <span className="link-ends-line" aria-hidden="true" />
             {km === null ? (
@@ -122,7 +126,7 @@ export function MapLinkDetails({
               </span>
             )}
           </div>
-          {linkEndRow(nodeB)}
+          {linkEndRow(secondNode)}
         </div>
         {onClose === undefined ? null : (
           <IconButton
@@ -137,8 +141,8 @@ export function MapLinkDetails({
           <p className="link-card-channel">{kicker.join(" · ")}</p>
         ) : null}
         <div className="link-card-ways">
-          {way(nodeA, nodeB, link.a_to_b, "a_to_b")}
-          {way(nodeB, nodeA, link.b_to_a, "b_to_a")}
+          {way(firstNode, secondNode, link[firstDirection], firstDirection)}
+          {way(secondNode, firstNode, link[secondDirection], secondDirection)}
         </div>
         {linkSection ? (
           <p className="link-card-row">

@@ -1988,6 +1988,7 @@ export function MapView({
                     link={selectedLinkNodes.link}
                     nodeA={selectedLinkNodes.a}
                     nodeB={selectedLinkNodes.b}
+                    selectedNodeId={focusNodeId}
                     km={
                       // Shown between reported positions only: a link to an
                       // estimate mostly measures the estimate.

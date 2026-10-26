@@ -261,17 +261,20 @@ export function nodeViewHref(nodeId: number, view: NodeLinkView): string {
   return `#nodes/${formatNodeId(nodeId)}${minimapSearch(view)}`;
 }
 
-/** The packet's page, on `hop` when given, with its minimap as the view has it. */
 export function packetViewHref(
   packetRowId: number,
   hop: DirectedHop | null,
-  view: PacketLinkView,
+  view: PacketLinkView | null = null,
+  receptionId: number | null = null,
 ): string {
   const page =
     hop === null
       ? `#packets/${packetRowId}`
       : packetHopHref(packetRowId, hop.fromNodeId, hop.toNodeId);
-  return `${page}${minimapSearch(view)}`;
+  const query = new URLSearchParams(view === null ? "" : minimapSearch(view));
+  if (receptionId !== null) query.set("reception", String(receptionId));
+  const search = decodeCommas(query);
+  return `${page}${search === "" ? "" : `?${search}`}`;
 }
 
 function minimapSearch(view: NodeLinkView | PacketLinkView): string {

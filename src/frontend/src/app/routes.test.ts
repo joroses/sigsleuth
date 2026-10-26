@@ -125,10 +125,13 @@ describe("view links", () => {
         view,
       });
     const hop = { fromNodeId: 1, toNodeId: 0xa1b2c3d4 };
-    expect(routeFromHash(packetViewHref(7, hop, packets[0]))).toMatchObject({
+    expect(
+      routeFromHash(packetViewHref(7, hop, packets[0], 1836014619324416)),
+    ).toMatchObject({
       page: "packet",
       id: 7,
       hop,
+      receptionId: 1836014619324416,
       view: packets[0],
     });
     // Nothing set: the plain packet link, the map as the viewer left it.

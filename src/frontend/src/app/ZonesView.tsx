@@ -550,6 +550,7 @@ export function ZonesView() {
                       link={{ ...openedLink, channel: shown.channel ?? "" }}
                       nodeA={linkEnd(openedLink.node_a, nodes)}
                       nodeB={linkEnd(openedLink.node_b, nodes)}
+                      selectedNodeId={selectedRelay}
                       km={openedLink.km}
                       since={new Date(
                         Date.parse(shown.generated_at) -

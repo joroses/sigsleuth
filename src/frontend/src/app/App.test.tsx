@@ -175,11 +175,10 @@ describe("Packet detail", () => {
     ]);
 
     // The map's share link keeps the hop.
-    fireEvent.click(
-      within(container.querySelector(".packet-minimap")!).getByRole("button", {
-        name: "Share a link to this view",
-      }),
-    );
+    const mapShare = within(
+      container.querySelector(".packet-minimap")!,
+    ).getByRole("button", { name: "Share a link to this view" });
+    fireEvent.click(mapShare);
     await waitFor(() =>
       expect(writeText).toHaveBeenLastCalledWith(
         new URL(`#packets/7/hop/${requester}-${relay}`, window.location.href)
@@ -206,6 +205,13 @@ describe("Packet detail", () => {
     expect(
       container.querySelector("tr.pinned")?.getAttribute("data-reception-id"),
     ).toBe("21");
+    fireEvent.click(mapShare);
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(`${window.location.hash}?reception=21`, window.location.href)
+          .href,
+      ),
+    );
     fireEvent.click(firstShare);
     expect(
       container.querySelector("tr.pinned")?.getAttribute("data-reception-id"),
@@ -244,7 +250,7 @@ describe("Packet detail", () => {
         { name: "Share a link to this view" },
       ),
     );
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(4));
     const sharedUrl = writeText.mock.calls.at(-1)![0] as string;
     cleanup();
     window.history.replaceState(null, "", sharedUrl);

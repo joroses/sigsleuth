@@ -24,7 +24,6 @@ import {
   hopGroup,
   hopTone,
   nodeName,
-  packetHopHref,
 } from "./nodeDisplay";
 import { packetRelays, relayPositions } from "./packetRelays";
 import { fadeMargin, linkTierColor, marginTier } from "./linkQuality";
@@ -220,7 +219,12 @@ function PacketDetailContent({
         {/* With a map, its own share button links to it as shown. */}
         {!placed ? (
           <ShareButton
-            hash={`#packets/${packet.packet_row_id}`}
+            hash={packetViewHref(
+              packet.packet_row_id,
+              hop,
+              null,
+              pinnedReception,
+            )}
             title={`Packet ${packet.packet_id}`}
           />
         ) : null}
@@ -295,16 +299,10 @@ function PacketDetailContent({
             </dl>
           ) : null}
           <ReceptionTable
-            shareHash={
+            shareHref={
               detail.traceroute === null
                 ? null
-                : hop === null
-                  ? `#packets/${packet.packet_row_id}`
-                  : packetHopHref(
-                      packet.packet_row_id,
-                      hop.fromNodeId,
-                      hop.toNodeId,
-                    )
+                : (id) => packetViewHref(packet.packet_row_id, hop, null, id)
             }
             onSelect={(id) => {
               setHovered(null);
@@ -396,7 +394,13 @@ function PacketDetailContent({
             linkView={linkView}
             share={{
               title: `Packet ${packet.packet_id}`,
-              href: (view) => packetViewHref(packet.packet_row_id, hop, view),
+              href: (view) =>
+                packetViewHref(
+                  packet.packet_row_id,
+                  hop,
+                  view,
+                  pinnedReception,
+                ),
             }}
           />
         ) : null}
@@ -426,7 +430,7 @@ function NodeNameAndId({
 // request, the route from its reply may lead. A reception's rows carry its ID,
 // so the table reports which one the pointer is over or clicked.
 function ReceptionTable({
-  shareHash,
+  shareHref,
   onSelect,
   groups,
   others,
@@ -442,7 +446,7 @@ function ReceptionTable({
   onPin,
   ...highlight
 }: {
-  shareHash: string | null;
+  shareHref: ((receptionId: number) => string) | null;
   onSelect: (receptionId: number) => void;
   groups: TracerouteGroup[];
   /** The reports without the page's hop, listed after a toggle; null when not split. */
@@ -471,7 +475,7 @@ function ReceptionTable({
   const table = useRef<HTMLTableElement>(null);
   const stepWithKey = useEffectEvent((event: KeyboardEvent) => {
     if (
-      shareHash === null ||
+      shareHref === null ||
       event.defaultPrevented ||
       event.altKey ||
       event.ctrlKey ||
@@ -514,18 +518,18 @@ function ReceptionTable({
       ?.scrollIntoView?.({ block: "nearest" });
   });
   useEffect(() => {
-    if (shareHash === null) return;
+    if (shareHref === null) return;
     const onKey = (event: KeyboardEvent) => stepWithKey(event);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [shareHash]);
+  }, [shareHref]);
   if (groups.length === 0) {
     return <StatusPanel>No gateway reports saved.</StatusPanel>;
   }
   const otherCount =
     others?.groups.reduce((count, group) => count + group.rows.length, 0) ?? 0;
   const action = (id: number) =>
-    shareHash === null ? (
+    shareHref === null ? (
       <IconButton
         icon="pin"
         label="Pin on the map"
@@ -534,7 +538,7 @@ function ReceptionTable({
       />
     ) : (
       <ShareButton
-        hash={`${shareHash}?reception=${id}`}
+        hash={shareHref(id)}
         title="Traceroute report"
         onShare={() => onSelect(id)}
       />
@@ -616,7 +620,7 @@ function ReceptionTable({
             </th>
             <th scope="col">
               <span className="visually-hidden">
-                {shareHash === null ? "Pin" : "Share"}
+                {shareHref === null ? "Pin" : "Share"}
               </span>
             </th>
           </tr>

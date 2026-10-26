@@ -65,7 +65,8 @@ type IconName =
   | "profile"
   | "radio"
   | "route"
-  | "share";
+  | "share"
+  | "table";
 
 const iconPaths: Record<IconName, ReactNode> = {
   map: (
@@ -210,6 +211,12 @@ const iconPaths: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="2" />
       <path d="m9 21 3-7 3 7M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16" />
+    </>
+  ),
+  table: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M3 9h18M3 14.5h18M9 9v11" />
     </>
   ),
 };

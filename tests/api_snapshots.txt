@@ -4193,7 +4193,7 @@ truncated: false
 zones: 8 items
   - zone_id: 1
     name: "Node 41cd"
-    place: "Częstochowa"
+    place: "Myszków"
     region: "Śląskie"
     hub_node_id: 96879053
     members: [48914920, 55052681, 96879053, 104072574, 116759056, 164931732, 292857186, 408545373, 409975644, 507476722, 511336077, 522999951, … 53 items]
@@ -4201,8 +4201,8 @@ zones: 8 items
     text_gateways: 0
     text_senders: 0
     text_count: 0
-    latitude: 50.7584
-    longitude: 19.1169
+    latitude: 50.6003
+    longitude: 19.1103
     solid_paths: []
   - zone_id: 2
     name: "Node 2c3c"
@@ -4214,8 +4214,8 @@ zones: 8 items
     text_gateways: 5
     text_senders: 3
     text_count: 4
-    latitude: 51.7669
-    longitude: 19.4773
+    latitude: 51.7734
+    longitude: 19.4839
     solid_paths: []
   - zone_id: 3
     name: "Node 4ac9"
@@ -4227,8 +4227,8 @@ zones: 8 items
     text_gateways: 0
     text_senders: 0
     text_count: 0
-    latitude: 50.0236
-    longitude: 19.9688
+    latitude: 50.0367
+    longitude: 19.9819
     solid_paths: []
 zone_pairs: 21 items
   - zone_a: 1
@@ -4236,7 +4236,7 @@ zone_pairs: 21 items
     observations: 1263
     strongest_margin_db: 11.1
     hub_hops: 2
-    km: 114.9
+    km: 133
     through_nodes_a: 2
     through_nodes_b: 2
     solid_links: 0
@@ -4300,7 +4300,7 @@ zone_pairs: 21 items
     observations: 53
     strongest_margin_db: 11.3
     hub_hops: 2
-    km: 101.6
+    km: 88.1
     through_nodes_a: 2
     through_nodes_b: 1
     solid_links: 0
@@ -4348,7 +4348,7 @@ zone_pairs: 21 items
     observations: 842
     strongest_margin_db: 13
     hub_hops: 1
-    km: 131.5
+    km: 113.8
     through_nodes_a: 13
     through_nodes_b: 7
     solid_links: 0

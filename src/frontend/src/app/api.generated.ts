@@ -2302,8 +2302,8 @@ export interface components {
      *     (_place_names), and region the local name of the area the town is in, such
      *     as Catalunya; both are None when no town is within NEAREST_PLACE_KM of the
      *     zone's centre. latitude and longitude are the
-     *     members' density-weighted centre (_weighted_centre), None when no member
-     *     has a position.
+     *     members' density-weighted centre from reported positions (_weighted_centre),
+     *     None when no member has a reported position.
      *     text_gateways counts members that reported a broadcast text on the channel
      *     in the window, text_senders the members with a text counted in text
      *     reach, and text_count those senders' counted texts. solid_paths lists the

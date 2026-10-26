@@ -903,7 +903,6 @@ function mapFeatures(
   const zoneOf = new Map<number, number>();
   for (const zone of network.zones) {
     for (const id of zone.members) zoneOf.set(id, zone.zone_id);
-    if (zone.latitude === null || zone.longitude === null) continue;
     const color = colors.get(zone.zone_id) ?? "#6b7570";
     // The area covers reported positions only; estimates still get a dot.
     const points = zone.members
@@ -925,6 +924,7 @@ function mapFeatures(
         },
       });
     }
+    if (zone.latitude === null || zone.longitude === null) continue;
     const properties = {
       zone_id: zone.zone_id,
       color,

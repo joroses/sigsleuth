@@ -309,6 +309,35 @@ def test_a_zones_centre_is_drawn_to_where_its_members_crowd(path: Path) -> None:
     assert zone["longitude"] == 0.0
 
 
+@pytest.mark.parametrize("reported", [True, False])
+def test_estimated_positions_do_not_choose_a_zones_name(path: Path, reported: bool) -> None:
+    clique(path, X1, X2, X3, X4)
+    node(path, X1, 52.22977 if reported else None, 21.01178)
+    for node_id in (X2, X3, X4):
+        node(path, node_id)
+    with closing(open_current_database(path)) as connection, connection:
+        connection.executemany(
+            """
+            INSERT INTO node_estimate
+                (node_id, latitude, longitude, neighbours, spread_km, from_traceroute)
+            VALUES (?, 51.75925, 19.45598, 1, 0, 0)
+            """,
+            [(node_id,) for node_id in (X2, X3, X4)],
+        )
+
+    body = get_zones(path)
+    [zone] = body["zones"]
+
+    assert zone["members"] == [X1, X2, X3, X4]
+    assert [node["node_id"] for node in body["nodes"] if node["estimated"]] == [X2, X3, X4]
+    if reported:
+        assert (zone["latitude"], zone["longitude"]) == (52.22977, 21.01178)
+        assert zone["place"] == "Warsaw"
+    else:
+        assert (zone["latitude"], zone["longitude"], zone["place"]) == (None, None, None)
+        assert zone["name"] == "Node 1"
+
+
 # Around Cerdanyola del Vallès and Sabadell, 10-20 km north of Barcelona.
 SUBURBS = [(41.49, 2.14), (41.50, 2.13), (41.54, 2.11), (41.55, 2.10)]
 

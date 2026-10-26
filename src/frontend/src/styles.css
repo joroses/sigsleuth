@@ -5154,7 +5154,42 @@ div.zones-zone-end .link-end-name {
 }
 
 .zones-relays tbody tr.is-selected {
-  background: var(--surface-subtle);
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* The chosen relay's row, flashed when the card jumps to it. */
+@media (prefers-reduced-motion: no-preference) {
+  .zones-relays tbody tr.is-flashing {
+    animation: relay-row-flash 1.6s ease-out;
+  }
+}
+
+@keyframes relay-row-flash {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+
+/* The key relay card's ways to see it elsewhere. */
+.zones-relay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.zones-relay-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+.zones-relay-actions .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .table-wrap tbody tr.zones-pair-row:hover,

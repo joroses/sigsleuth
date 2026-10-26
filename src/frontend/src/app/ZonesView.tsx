@@ -1258,30 +1258,43 @@ function RelayCard({
         {node?.estimated ? (
           <DataItem label="Position" value="Estimated from its neighbours" />
         ) : null}
-        <DataItem
-          label="Show"
-          value={
-            <>
-              <a className="text-button" href={mapHref(nodeId)}>
-                On the Map page
-              </a>{" "}
-              <button
-                type="button"
-                className="text-button"
-                onClick={() =>
-                  document
-                    .getElementById("key-relays-heading")
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" })
-                }
-              >
-                In the table ↓
-              </button>
-            </>
-          }
-        />
       </dl>
+      <div className="zones-relay-actions">
+        {placed(node) !== null ? (
+          <a className="secondary-button" href={mapHref(nodeId)}>
+            <Icon name="pin" /> On the Map page
+          </a>
+        ) : null}
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => showRelayRow(nodeId)}
+        >
+          <Icon name="table" /> Row in the table
+        </button>
+      </div>
     </section>
   );
+}
+
+/** The id of a key relay's row in the table below the map. */
+function relayRowId(nodeId: number): string {
+  return `key-relay-${nodeId}`;
+}
+
+/**
+ * Scrolls the page to a key relay's row in the table and flashes it. The
+ * chosen relay always has a row (KeyRelays keeps it).
+ */
+function showRelayRow(nodeId: number) {
+  const row = document.getElementById(relayRowId(nodeId));
+  if (row === null) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.querySelector("a")?.focus({ preventScroll: true });
+  // Restart the flash on a second click.
+  row.classList.remove("is-flashing");
+  void row.offsetWidth;
+  row.classList.add("is-flashing");
 }
 
 /** A pair's alternative path in words: "2 links via Murcia". */
@@ -2495,7 +2508,16 @@ function KeyRelays({
         : { by, descending: !RELAY_TEXT_SORTS.includes(by) },
     );
   }
-  const rows = showAll ? sorted : sorted.slice(0, RELAY_ROWS);
+  // The chosen relay stays in the table whatever the zone and rows, first
+  // when it would be hidden.
+  const shownRows = showAll ? sorted : sorted.slice(0, RELAY_ROWS);
+  const picked = network.key_relays.find(
+    (relay) => relay.node_id === selectedRelay,
+  );
+  const rows =
+    picked === undefined || shownRows.includes(picked)
+      ? shownRows
+      : [picked, ...shownRows];
   const now = new Date(network.generated_at).getTime();
   const heading = (
     label: string,
@@ -2596,10 +2618,14 @@ function KeyRelays({
                 return (
                   <tr
                     key={relay.node_id}
+                    id={relayRowId(relay.node_id)}
                     className={
                       relay.node_id === selectedRelay
                         ? "is-selected"
                         : undefined
+                    }
+                    onAnimationEnd={(event) =>
+                      event.currentTarget.classList.remove("is-flashing")
                     }
                   >
                     <td>

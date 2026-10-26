@@ -3,8 +3,7 @@ chatty senders' regions.
 
 The list is cities.tsv.gz, cut from GeoNames (CC BY 4.0) by scripts/cities.py.
 It is read on first use, about 32,000 places, and kept for the process.
-Population lets zones take a nearby city's name rather than the suburb at
-their centre.
+Population lets zones take the biggest city inside their shaded area.
 """
 
 from __future__ import annotations
@@ -38,6 +37,27 @@ def cities_near(latitude: float, longitude: float, km: float) -> Iterator[City]:
     for cell in [(row + dy, column + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]:
         for city in grid.get(cell, ()):
             if great_circle_km(latitude, longitude, city.latitude, city.longitude) <= km:
+                yield city
+
+
+def cities_in_area(hull: tuple[tuple[float, float], ...]) -> Iterator[City]:
+    """Places inside or on a convex boundary, counter-clockwise as (longitude, latitude)."""
+    if len(hull) < 3:
+        return
+    west, east = min(p[0] for p in hull), max(p[0] for p in hull)
+    south, north = min(p[1] for p in hull), max(p[1] for p in hull)
+    for (row, column), cities in _grid().items():
+        if not (
+            math.floor(south) <= row <= math.floor(north)
+            and math.floor(west) <= column <= math.floor(east)
+        ):
+            continue
+        for city in cities:
+            if all(
+                (b[0] - a[0]) * (city.latitude - a[1]) - (b[1] - a[1]) * (city.longitude - a[0])
+                >= -1e-12
+                for a, b in zip(hull, (*hull[1:], hull[0]), strict=True)
+            ):
                 yield city
 
 

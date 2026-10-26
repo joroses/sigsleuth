@@ -45,7 +45,6 @@ import {
   solidPathLinks,
   textReachLookup,
   worseTextShare,
-  withoutLoneMembers,
   zoneColors,
   zoneName,
 } from "./zones";
@@ -254,7 +253,7 @@ export function ZonesView() {
       const point = placed(nodes.get(id));
       return point === null ? [] : [point];
     });
-    const area = withoutLoneMembers(points);
+    const area = members?.hull ?? [];
     setFocus({ points: area.length > 0 ? area : points });
   }
 

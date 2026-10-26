@@ -4193,7 +4193,7 @@ truncated: false
 zones: 8 items
   - zone_id: 1
     name: "Node 41cd"
-    place: "Myszków"
+    place: "Częstochowa"
     region: "Śląskie"
     hub_node_id: 96879053
     members: [48914920, 55052681, 96879053, 104072574, 116759056, 164931732, 292857186, 408545373, 409975644, 507476722, 511336077, 522999951, … 53 items]
@@ -4204,6 +4204,10 @@ zones: 8 items
     latitude: 50.6003
     longitude: 19.1103
     solid_paths: []
+    hull: 5 items
+      - [18.16, 50.4562]
+      - [19.1955, 50.2858]
+      - [19.261, 50.2989]
   - zone_id: 2
     name: "Node 2c3c"
     place: "Łódź"
@@ -4217,6 +4221,10 @@ zones: 8 items
     latitude: 51.7734
     longitude: 19.4839
     solid_paths: []
+    hull: 8 items
+      - [19.3135, 51.8193]
+      - [19.3397, 51.6096]
+      - [19.3528, 51.5965]
   - zone_id: 3
     name: "Node 4ac9"
     place: "Kraków"
@@ -4230,6 +4238,10 @@ zones: 8 items
     latitude: 50.0367
     longitude: 19.9819
     solid_paths: []
+    hull: 7 items
+      - [19.8246, 49.945]
+      - [20.3358, 49.4862]
+      - [20.4407, 49.4862]
 zone_pairs: 21 items
   - zone_a: 1
     zone_b: 2

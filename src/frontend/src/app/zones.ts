@@ -268,61 +268,6 @@ export function mostSolidLink(
 }
 
 /**
- * The shaded area of a zone: the convex hull of its placed members as
- * [longitude, latitude], leaving out lone members (a far-off or stale
- * position would stretch the area across the map). Fewer than 3 points make
- * no area.
- */
-export function zoneHull(points: Point[]): Point[] {
-  return convexHull(withoutLoneMembers(points));
-}
-
-// A member with no other member this close is left out of its zone's area.
-const LONE_MEMBER_KM = 50;
-const KM_PER_DEGREE = 111.2;
-
-/**
- * Drops points with no other point within LONE_MEMBER_KM, on a flat map
- * whose longitudes are scaled by the cosine of the latitude.
- */
-export function withoutLoneMembers(points: Point[]): Point[] {
-  const km = (a: Point, b: Point) =>
-    KM_PER_DEGREE *
-    Math.hypot(
-      (a[0] - b[0]) * Math.cos(((a[1] + b[1]) * Math.PI) / 360),
-      a[1] - b[1],
-    );
-  return points.filter((point, index) =>
-    points.some(
-      (other, otherIndex) =>
-        otherIndex !== index && km(point, other) <= LONE_MEMBER_KM,
-    ),
-  );
-}
-
-/** Andrew's monotone chain, counter-clockwise; under 3 points are returned as they are. */
-export function convexHull(points: Point[]): Point[] {
-  const sorted = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  if (sorted.length < 3) return sorted;
-  const cross = (o: Point, a: Point, b: Point) =>
-    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-  const half = (ordered: Point[]) => {
-    const chain: Point[] = [];
-    for (const point of ordered) {
-      while (
-        chain.length >= 2 &&
-        cross(chain[chain.length - 2], chain[chain.length - 1], point) <= 0
-      ) {
-        chain.pop();
-      }
-      chain.push(point);
-    }
-    return chain.slice(0, -1);
-  };
-  return [...half(sorted), ...half([...sorted].reverse())];
-}
-
-/**
  * The centre by area of a convex hull, which is always inside it, on a flat
  * map of [longitude, latitude]. A hull with no area (all points on a line)
  * gives the mean of its points; no points give null.

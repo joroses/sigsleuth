@@ -3209,6 +3209,7 @@ function sampleZones() {
     latitude: 40,
     longitude: -3,
     solid_paths: [],
+    hull: [],
   });
   const pair = (zone_a: number, zone_b: number, fields: object) => ({
     zone_a,

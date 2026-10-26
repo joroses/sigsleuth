@@ -328,6 +328,7 @@ def test_estimated_positions_do_not_choose_a_zones_name(path: Path, reported: bo
     body = get_zones(path)
     [zone] = body["zones"]
 
+    assert zone["hull"] == []
     assert zone["members"] == [X1, X2, X3, X4]
     assert [node["node_id"] for node in body["nodes"] if node["estimated"]] == [X2, X3, X4]
     if reported:
@@ -338,8 +339,8 @@ def test_estimated_positions_do_not_choose_a_zones_name(path: Path, reported: bo
         assert zone["name"] == "Node 1"
 
 
-# Around Cerdanyola del Vallès and Sabadell, 10-20 km north of Barcelona.
-SUBURBS = [(41.49, 2.14), (41.50, 2.13), (41.54, 2.11), (41.55, 2.10)]
+# West of Warsaw, with no town inside the boundary.
+SUBURBS = [(52.24, 20.94), (52.25, 20.94), (52.25, 20.95), (52.24, 20.95)]
 
 
 def test_a_suburbs_zone_is_named_after_the_city_beside_it(path: Path) -> None:
@@ -349,7 +350,7 @@ def test_a_suburbs_zone_is_named_after_the_city_beside_it(path: Path) -> None:
 
     [zone] = get_zones(path)["zones"]
 
-    assert (zone["place"], zone["region"]) == ("Barcelona", "Catalunya")
+    assert (zone["place"], zone["region"]) == ("Warsaw", "Mazowieckie")
     assert zone["name"] == "Node 1"  # the hub's name stays
 
 
@@ -361,21 +362,50 @@ def test_zones_in_one_city_get_different_names(path: Path) -> None:
 
     places = [zone["place"] for zone in get_zones(path)["zones"]]
 
-    assert sorted(places) == ["Barcelona", "Barcelona N"]
+    assert sorted(places) == ["Warsaw", "Warsaw W"]
 
 
-def test_a_zone_is_named_after_the_town_at_its_centre(path: Path) -> None:
-    # Four members in Toledo and two about 50 km north, near Madrid.
-    positions = [(39.86, -4.02), (39.87, -4.03), (39.85, -4.01), (39.86, -4.00)]
-    positions += [(40.30, -3.73), (40.31, -3.72)]
-    nodes = (X1, X2, X3, X4, 5, 6)
-    clique(path, *nodes)
-    for node_id, (latitude, longitude) in zip(nodes, positions, strict=True):
+def test_a_zone_is_named_after_the_biggest_city_inside_its_area(path: Path) -> None:
+    # Most members crowd a smaller town at the western end of the area.
+    positions = [(52.04, 20.44), (52.05, 20.44), (52.04, 20.46), (52.05, 20.46)]
+    positions += [(52.20, 20.98), (52.26, 20.98), (52.26, 21.05), (52.20, 21.05)]
+    clique(path, *range(1, 9))
+    for node_id, (latitude, longitude) in enumerate(positions, 1):
         node(path, node_id, latitude, longitude)
 
     [zone] = get_zones(path)["zones"]
 
-    assert (zone["place"], zone["region"]) == ("Toledo", "Castilla-La Mancha")
+    assert zone["latitude"] < 52.1
+    assert zone["place"] == "Warsaw"
+
+
+def test_a_city_outside_the_shaded_boundary_does_not_name_the_zone(path: Path) -> None:
+    # Warsaw is inside the bounding box, beyond the triangle's diagonal.
+    positions = [(52.14, 20.75), (52.32, 20.75), (52.14, 21.1)]
+    clique(path, X1, X2, X3)
+    for node_id, (latitude, longitude) in enumerate(positions, 1):
+        node(path, node_id, latitude, longitude)
+
+    [zone] = get_zones(path)["zones"]
+
+    assert zone["place"] == "Pruszków"
+
+
+def test_a_zones_area_keeps_distant_groups_but_excludes_lone_members(path: Path) -> None:
+    positions = [(40, 0), (40, 0.1), (40.1, 0.1), (40.1, 0), (40.05, 0.05)]
+    positions += [(40, 1), (40, 1.1), (40.1, 1.05), (40.6, 0)]
+    for a, b in itertools.combinations(range(1, 10), 2):
+        link(path, a, b, observations=16 if a <= 5 < b else 2)
+    for node_id, (latitude, longitude) in enumerate(positions, 1):
+        node(path, node_id, latitude, longitude)
+
+    [zone] = get_zones(path)["zones"]
+
+    assert [0, 40] in zone["hull"]
+    assert [0, 40.1] in zone["hull"]
+    assert [1.1, 40] in zone["hull"]
+    assert [1.05, 40.1] in zone["hull"]
+    assert [0, 40.6] not in zone["hull"]
 
 
 def test_a_pair_link_faces_from_its_first_zone_to_its_second(path: Path) -> None:

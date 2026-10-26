@@ -62,16 +62,15 @@ from sigsleuth.links import (
     map_links,
 )
 from sigsleuth.opt_out import shown_sql
-from sigsleuth.places import City, cities_near, nearest_city
+from sigsleuth.places import City, cities_in_area, nearest_city
 from sigsleuth.radio import distance_km, fade_margin, great_circle_km
 
 # Links longer than this count less toward zones, in proportion to their length.
 ZONE_NEAR_KM = 50
 # Members this close count toward each other's weight in a zone's centre.
 DENSE_KM = 10
-# A zone is named after the biggest town or city this close to its centre,
-# else the nearest one within NEAREST_PLACE_KM.
-PLACE_KM = 15
+# A member with no other member this close is left out of its zone's area.
+LONE_MEMBER_KM = 50
 NEAREST_PLACE_KM = 60
 COMPASS = ("E", "NE", "N", "NW", "W", "SW", "S", "SE")
 # Centring gathers members into spots this many degrees across (about 5 km),
@@ -120,8 +119,10 @@ class Zone:
     the hub's. place is the town or city the zone is named after, with a
     compass point when a nearer zone has the town's name, such as "Warsaw N"
     (_place_names), and region the local name of the area the town is in, such
-    as Catalunya; both are None when no town is within NEAREST_PLACE_KM of the
-    zone's centre. latitude and longitude are the
+    as Mazowieckie; both are None when no town is within NEAREST_PLACE_KM of the
+    zone's centre or inside its shaded area. hull is that area's boundary
+    as (longitude, latitude), excluding lone and estimated positions.
+    latitude and longitude are the
     members' density-weighted centre from reported positions (_weighted_centre),
     None when no member has a reported position.
     text_gateways counts members that reported a broadcast text on the channel
@@ -144,6 +145,7 @@ class Zone:
     latitude: float | None
     longitude: float | None
     solid_paths: tuple[tuple[int, int], ...]
+    hull: tuple[tuple[float, float], ...]
 
 
 @dataclass(frozen=True)
@@ -549,6 +551,7 @@ def _zones(
                 latitude=latitude,
                 longitude=longitude,
                 solid_paths=(),
+                hull=_zone_hull(placed),
             )
         )
     names = _place_names(rows)
@@ -569,9 +572,45 @@ def _spot(point: tuple[float, float]) -> tuple[float, float]:
     )
 
 
+def _zone_hull(placed: list[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
+    """The convex hull of reported members with a neighbour within LONE_MEMBER_KM."""
+    points = sorted(
+        set(
+            (lon, lat)
+            for index, (lat, lon) in enumerate(placed)
+            if any(
+                other_index != index
+                and 111.2
+                * math.hypot(
+                    (lon - other_lon) * math.cos(math.radians((lat + other_lat) / 2)),
+                    lat - other_lat,
+                )
+                <= LONE_MEMBER_KM
+                for other_index, (other_lat, other_lon) in enumerate(placed)
+            )
+        )
+    )
+    if len(points) < 3:
+        return tuple(points)
+
+    def half(ordered: Iterator[tuple[float, float]]) -> list[tuple[float, float]]:
+        chain: list[tuple[float, float]] = []
+        for point in ordered:
+            while len(chain) >= 2:
+                o, a = chain[-2:]
+                cross = (a[0] - o[0]) * (point[1] - o[1]) - (a[1] - o[1]) * (point[0] - o[0])
+                if cross > 0:
+                    break
+                chain.pop()
+            chain.append(point)
+        return chain[:-1]
+
+    return tuple(half(iter(points)) + half(reversed(points)))
+
+
 def _place_names(zones: list[Zone]) -> dict[int, tuple[City, str]]:
-    """Each placed zone's town and name. The town is the biggest within
-    PLACE_KM of the zone's centre, else the nearest within NEAREST_PLACE_KM.
+    """Each placed zone's town and name. The town is the biggest inside its
+    shaded area, else the nearest within NEAREST_PLACE_KM of its centre.
     Of zones sharing a town, the one whose centre is nearest it takes the
     town's name and the others add the compass point they lie towards from
     it, such as "Warsaw N"."""
@@ -580,7 +619,7 @@ def _place_names(zones: list[Zone]) -> dict[int, tuple[City, str]]:
         if zone.latitude is None or zone.longitude is None:
             continue
         town = max(
-            cities_near(zone.latitude, zone.longitude, PLACE_KM),
+            cities_in_area(zone.hull),
             key=lambda city: city.population,
             default=None,
         ) or nearest_city(zone.latitude, zone.longitude, NEAREST_PLACE_KM)

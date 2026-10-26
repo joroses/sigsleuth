@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { KeyRelay, NodeSummary, Zone, ZonePair } from "./api";
-import {
-  mostSolidLink,
-  relayMark,
-  textReachLookup,
-  hullCentre,
-  zoneHull,
-} from "./zones";
+import { mostSolidLink, relayMark, textReachLookup, hullCentre } from "./zones";
 
 function zone(zone_id: number): Zone {
   return {
@@ -24,6 +18,7 @@ function zone(zone_id: number): Zone {
     latitude: 40,
     longitude: -3,
     solid_paths: [],
+    hull: [],
   };
 }
 
@@ -65,57 +60,14 @@ function pair(zone_a: number, zone_b: number, fields: Partial<ZonePair> = {}) {
   } satisfies ZonePair;
 }
 
-describe("zoneHull", () => {
-  it("keeps a far group with neighbours of its own and leaves out a lone member", () => {
-    // A dense group near 40°N, three members together about 80 km east, and
-    // one member about 500 km away with no one near it.
-    const dense: [number, number][] = [
-      [0, 40],
-      [0.1, 40],
-      [0.1, 40.1],
-      [0, 40.1],
-      [0.05, 40.05],
-    ];
-    const farGroup: [number, number][] = [
-      [1, 40],
-      [1.1, 40],
-      [1.05, 40.1],
-    ];
-    const lone: [number, number] = [0, 44.5];
-
-    const hull = zoneHull([...dense, ...farGroup, lone]);
-
-    expect(hull).toContainEqual([0, 40]);
-    expect(hull).toContainEqual([0, 40.1]);
-    expect(hull).toContainEqual([1.1, 40]);
-    expect(hull).toContainEqual([1.05, 40.1]);
-    expect(hull).not.toContainEqual(lone);
-  });
-
-  it("makes no area from fewer than three points", () => {
-    expect(
-      zoneHull([
-        [0, 40],
-        [0.1, 40.1],
-      ]),
-    ).toHaveLength(2);
-  });
-});
-
 describe("hullCentre", () => {
-  it("is the middle of the area, however the members crowd one corner", () => {
-    const crowded: [number, number][] = [
+  it("is the middle of the area", () => {
+    const [longitude, latitude] = hullCentre([
       [0, 40],
-      [0.01, 40],
-      [0, 40.01],
-      [0.01, 40.01],
-      [0.005, 40.005],
       [0.2, 40],
       [0.2, 40.2],
       [0, 40.2],
-    ];
-
-    const [longitude, latitude] = hullCentre(zoneHull(crowded))!;
+    ])!;
 
     expect(longitude).toBeCloseTo(0.1, 6);
     expect(latitude).toBeCloseTo(40.1, 6);

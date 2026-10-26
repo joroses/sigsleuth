@@ -2300,8 +2300,10 @@ export interface components {
      *     the hub's. place is the town or city the zone is named after, with a
      *     compass point when a nearer zone has the town's name, such as "Warsaw N"
      *     (_place_names), and region the local name of the area the town is in, such
-     *     as Catalunya; both are None when no town is within NEAREST_PLACE_KM of the
-     *     zone's centre. latitude and longitude are the
+     *     as Mazowieckie; both are None when no town is within NEAREST_PLACE_KM of the
+     *     zone's centre or inside its shaded area. hull is that area's boundary
+     *     as (longitude, latitude), excluding lone and estimated positions.
+     *     latitude and longitude are the
      *     members' density-weighted centre from reported positions (_weighted_centre),
      *     None when no member has a reported position.
      *     text_gateways counts members that reported a broadcast text on the channel
@@ -2324,6 +2326,7 @@ export interface components {
       latitude: number | null;
       longitude: number | null;
       solid_paths: [number, number][];
+      hull: [number, number][];
     };
     /**
      * ZonePair

@@ -19,7 +19,6 @@ import {
   solidPathLinks,
   textReachLookup,
   hullCentre,
-  zoneHull,
 } from "./zones";
 import { nearestLine } from "./lineHit";
 import { linkTierColor, marginTier } from "./linkQuality";
@@ -904,11 +903,6 @@ function mapFeatures(
   for (const zone of network.zones) {
     for (const id of zone.members) zoneOf.set(id, zone.zone_id);
     const color = colors.get(zone.zone_id) ?? "#6b7570";
-    // The area covers reported positions only; estimates still get a dot.
-    const points = zone.members
-      .filter((id) => !estimated.has(id))
-      .map((id) => placed(nodes.get(id)))
-      .filter((point) => point !== null);
     for (const id of zone.members) {
       const point = placed(nodes.get(id));
       if (point === null) continue;
@@ -931,7 +925,7 @@ function mapFeatures(
       members: zone.members.length,
       label: `${names.get(zone.zone_id) ?? zone.name} (${zone.members.length})`,
     };
-    const hull = zoneHull(points);
+    const hull = zone.hull;
     let tag: [number, number] = [zone.longitude, zone.latitude];
     if (hull.length >= 3) {
       zones.push({

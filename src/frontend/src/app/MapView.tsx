@@ -659,8 +659,15 @@ export function MapView({
   // back when they no longer hide it.
   const selectedNode =
     selection === null ? null : (nodeMap.get(selection.nodeId) ?? null);
+  const unplaced = selection?.unplaced ?? null;
   const unplacedNode =
-    selectedNode === null ? (selection?.unplaced ?? null) : null;
+    selectedNode === null &&
+    unplaced !== null &&
+    (!("last_sent_at" in unplaced) ||
+      urls.since === undefined ||
+      Date.parse(unplaced.last_sent_at) >= Date.parse(urls.since))
+      ? unplaced
+      : null;
   const nodeDetails = useApi<NodeOverview>(
     unplacedNode === null ? null : nodeUrl(unplacedNode.node_id),
   );
@@ -1595,10 +1602,7 @@ export function MapView({
     setSelectedCell(null);
   }
 
-  // Selections are cleared, as the reloaded nodes and links may no longer
-  // include them or may have different details.
   function chooseSeenWindow(window: SeenWindow) {
-    clearSelection();
     setSelectedCell(null);
     setLinkedNode(null);
     setRequestedId(null);

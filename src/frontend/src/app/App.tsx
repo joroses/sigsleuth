@@ -122,11 +122,18 @@ export function App() {
             />
           ) : route.page === "packet" ? (
             <LazyPacketDetail
-              key={`${route.id}-${route.hop?.fromNodeId}-${route.hop?.toNodeId}-${route.relays}-${route.receptionId}`}
+              key={JSON.stringify([
+                route.id,
+                route.hop,
+                route.relays,
+                route.receptionId,
+                route.view,
+              ])}
               packetRowId={route.id}
               hop={route.hop}
               relaysOnOpen={route.relays}
               receptionId={route.receptionId}
+              linkView={route.view}
               openedFrom={openedFrom === null ? null : pageLabel(openedFrom)}
             />
           ) : route.page === "node" ? (

@@ -1,4 +1,12 @@
-import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 import {
   type FloodRoutes,
@@ -27,6 +35,7 @@ import {
   zeroCostHops,
 } from "./minimapMarkers";
 import { type NodeHighlight, RouteItem, type RouteMarkers } from "./RouteItem";
+import { type PacketLinkView, packetViewHref } from "./routes";
 import {
   type TracerouteGroup,
   samePath,
@@ -52,6 +61,7 @@ export function PacketDetailView({
   hop = null,
   relaysOnOpen = false,
   receptionId = null,
+  linkView = null,
   openedFrom = null,
 }: {
   packetRowId: number;
@@ -60,6 +70,8 @@ export function PacketDetailView({
   /** Open the relay map. */
   relaysOnOpen?: boolean;
   receptionId?: number | null;
+  /** The minimap a shared link set. */
+  linkView?: PacketLinkView | null;
   /** The page this one was opened from, for a link back. */
   openedFrom?: { href: string; label: string } | null;
 }) {
@@ -83,6 +95,7 @@ export function PacketDetailView({
           hop={hop}
           relaysOnOpen={relaysOnOpen}
           receptionId={receptionId}
+          linkView={linkView}
         />
       ) : null}
     </section>
@@ -94,11 +107,13 @@ function PacketDetailContent({
   hop,
   relaysOnOpen,
   receptionId,
+  linkView,
 }: {
   detail: PacketDetail;
   hop: DirectedHop | null;
   relaysOnOpen: boolean;
   receptionId: number | null;
+  linkView: PacketLinkView | null;
 }) {
   const { packet, receptions } = detail;
   const minimap = useMemo(() => minimapMarkers(detail, hop), [detail, hop]);
@@ -202,10 +217,13 @@ function PacketDetailContent({
     <>
       <div className="packet-heading">
         <h2 id="detail-heading">Packet {packet.packet_id}</h2>
-        <ShareButton
-          hash={`#packets/${packet.packet_row_id}`}
-          title={`Packet ${packet.packet_id}`}
-        />
+        {/* With a map, its own share button links to it as shown. */}
+        {!placed ? (
+          <ShareButton
+            hash={`#packets/${packet.packet_row_id}`}
+            title={`Packet ${packet.packet_id}`}
+          />
+        ) : null}
         <span>{packet.portnum ?? "Unknown application"}</span>
         <span>
           Reported by {packet.reception_count}{" "}
@@ -288,7 +306,7 @@ function PacketDetailContent({
                       hop.toNodeId,
                     )
             }
-            onShare={(id) => {
+            onSelect={(id) => {
               setHovered(null);
               setHoveredHop(null);
               setHighlightedNode(null);
@@ -317,6 +335,7 @@ function PacketDetailContent({
             {...routeHighlight}
             {...routeMarkers}
             pinned={(id) => id === pinnedReception || !!pinnedRoutes?.has(id)}
+            pinnedReception={pinnedReception}
             onHover={setHovered}
             onPin={(id) => {
               setPinnedHop(null);
@@ -374,6 +393,11 @@ function PacketDetailContent({
             relaysOnOpen={relaysOnOpen}
             onRelaysShow={() => setRelaysOpened(true)}
             expandable
+            linkView={linkView}
+            share={{
+              title: `Packet ${packet.packet_id}`,
+              href: (view) => packetViewHref(packet.packet_row_id, hop, view),
+            }}
           />
         ) : null}
       </div>
@@ -403,7 +427,7 @@ function NodeNameAndId({
 // so the table reports which one the pointer is over or clicked.
 function ReceptionTable({
   shareHash,
-  onShare,
+  onSelect,
   groups,
   others,
   sharedForward,
@@ -413,12 +437,13 @@ function ReceptionTable({
   nodeNames,
   hovered,
   pinned,
+  pinnedReception,
   onHover,
   onPin,
   ...highlight
 }: {
   shareHash: string | null;
-  onShare: (receptionId: number) => void;
+  onSelect: (receptionId: number) => void;
   groups: TracerouteGroup[];
   /** The reports without the page's hop, listed after a toggle; null when not split. */
   others: {
@@ -438,10 +463,62 @@ function ReceptionTable({
   hovered: number | null;
   /** Whether a reception is pinned, or on a pinned relay's route. */
   pinned: (receptionId: number) => boolean;
+  pinnedReception: number | null;
   onHover: (receptionId: number | null) => void;
   onPin: (receptionId: number) => void;
 } & NodeHighlight &
   RouteMarkers) {
+  const table = useRef<HTMLTableElement>(null);
+  const stepWithKey = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      shareHash === null ||
+      event.defaultPrevented ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey
+    )
+      return;
+    const step =
+      event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    const target = event.target;
+    const free =
+      target === document.body ||
+      (target instanceof Element &&
+        table.current?.contains(target) === true &&
+        target.closest("input, select, textarea, [contenteditable]") === null);
+    if (step === 0 || !free) return;
+    const visibleGroups = others?.shown
+      ? [...groups, ...others.groups]
+      : groups;
+    const ids = visibleGroups.flatMap((group) =>
+      group.rows.map((row) =>
+        row.kind === "reception"
+          ? row.reception.reception_id
+          : row.reply.reception_id,
+      ),
+    );
+    if (ids.length === 0) return;
+    const current =
+      pinnedReception === null ? -1 : ids.indexOf(pinnedReception);
+    const next =
+      current === -1
+        ? step === 1
+          ? 0
+          : ids.length - 1
+        : Math.max(0, Math.min(ids.length - 1, current + step));
+    event.preventDefault();
+    onSelect(ids[next]);
+    table.current
+      ?.querySelector(`tr[data-reception-id="${ids[next]}"]`)
+      ?.scrollIntoView?.({ block: "nearest" });
+  });
+  useEffect(() => {
+    if (shareHash === null) return;
+    const onKey = (event: KeyboardEvent) => stepWithKey(event);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [shareHash]);
   if (groups.length === 0) {
     return <StatusPanel>No gateway reports saved.</StatusPanel>;
   }
@@ -459,7 +536,7 @@ function ReceptionTable({
       <ShareButton
         hash={`${shareHash}?reception=${id}`}
         title="Traceroute report"
-        onShare={() => onShare(id)}
+        onShare={() => onSelect(id)}
       />
     );
   const renderGroups = (groups: TracerouteGroup[], part: string) =>
@@ -506,6 +583,7 @@ function ReceptionTable({
   return (
     <div className="table-wrap">
       <table
+        ref={table}
         className="reception-table"
         onMouseOver={(event) => onHover(eventReceptionId(event))}
         onMouseLeave={() => onHover(null)}

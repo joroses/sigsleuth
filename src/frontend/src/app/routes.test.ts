@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   type MapLinkView,
   type NodeLinkView,
+  type PacketLinkView,
   mapViewHref,
   nodeViewHref,
+  packetViewHref,
   routeFromHash,
 } from "./routes";
 
@@ -61,6 +63,27 @@ describe("routeFromHash", () => {
     });
     expect(routeFromHash("#nodes/2")).toMatchObject({ view: null });
   });
+
+  it("reads a shared packet page beside its pinned report", () => {
+    expect(
+      routeFromHash("#packets/7?reception=21&map=expanded&show=gateways"),
+    ).toEqual({
+      page: "packet",
+      id: 7,
+      hop: null,
+      relays: false,
+      receptionId: 21,
+      view: { expanded: true, show: ["gateways"] },
+    });
+    expect(routeFromHash("#packets/7/hop/1-2?reception=21")).toMatchObject({
+      hop: { fromNodeId: 1, toNodeId: 2 },
+      receptionId: 21,
+      view: null,
+    });
+    expect(routeFromHash("#packets/7?reception=0x15")).toMatchObject({
+      receptionId: null,
+    });
+  });
 });
 
 describe("view links", () => {
@@ -90,5 +113,27 @@ describe("view links", () => {
         id: 0xa1b2c3d4,
         view,
       });
+    const packets: PacketLinkView[] = [
+      { expanded: true, show: ["relays", "gateways"] },
+      { expanded: false, show: ["relays"] },
+    ];
+    for (const view of packets)
+      expect(routeFromHash(packetViewHref(7, null, view))).toMatchObject({
+        page: "packet",
+        id: 7,
+        hop: null,
+        view,
+      });
+    const hop = { fromNodeId: 1, toNodeId: 0xa1b2c3d4 };
+    expect(routeFromHash(packetViewHref(7, hop, packets[0]))).toMatchObject({
+      page: "packet",
+      id: 7,
+      hop,
+      view: packets[0],
+    });
+    // Nothing set: the plain packet link, the map as the viewer left it.
+    expect(packetViewHref(7, null, { expanded: false, show: [] })).toBe(
+      "#packets/7",
+    );
   });
 });

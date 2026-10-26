@@ -10,14 +10,15 @@ import {
   zeroCostColor,
 } from "./mapLinkLayers";
 import { nodeHref } from "./nodeDisplay";
-import { useSetting } from "./remember";
+import { useLinkedSetting } from "./remember";
+import type { PacketLinkView } from "./routes";
 import {
   TWO_WAY_OFFSET,
   type DirectedHop,
   type HopLines,
   type MinimapContents,
 } from "./minimapMarkers";
-import { Icon, NodeLink } from "./ui";
+import { Icon, IconButton, NodeLink, ShareButton } from "./ui";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
 /**
@@ -87,6 +88,8 @@ export function PacketMinimap({
   relaysOnOpen = false,
   onRelaysShow,
   expandable = false,
+  linkView = null,
+  share,
 }: {
   contents: MinimapContents;
   focus: MinimapFocus;
@@ -111,6 +114,10 @@ export function PacketMinimap({
   onRelaysShow?: () => void;
   /** Offers a bigger map over the page. */
   expandable?: boolean;
+  /** The switches and size a shared link set, over the saved switches. */
+  linkView?: PacketLinkView | null;
+  /** Offers a link to the map as shown, built by `href`. */
+  share?: { title: string; href: (view: PacketLinkView) => string };
 }) {
   const markerElements = useRef(new Map<string, HTMLElement>());
   // Kept in refs so a new handler does not rebuild the map.
@@ -120,13 +127,15 @@ export function PacketMinimap({
   const hopHover = useRef(onHopHover);
   const hopClick = useRef(onHopClick);
   const interactiveHops = onHopHover !== undefined;
-  const [relaysEnabled, setRelaysEnabled] = useSetting(
+  const [relaysEnabled, setRelaysEnabled] = useLinkedSetting(
     "packet.map.relays",
-    relaysOnOpen,
+    false,
+    relaysOnOpen ? true : linkView?.show.includes("relays"),
   );
-  const [gatewaysEnabled, setGatewaysEnabled] = useSetting(
+  const [gatewaysEnabled, setGatewaysEnabled] = useLinkedSetting(
     "packet.map.gateways",
     !relaysOnOpen,
+    linkView?.show.includes("gateways"),
   );
   // With nothing else placed, the relays are the map.
   const onlyRelays = markers.length === 0;
@@ -135,7 +144,7 @@ export function PacketMinimap({
   useEffect(() => {
     if (relaysShown) onRelaysShow?.();
   }, [relaysShown, onRelaysShow]);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(linkView?.expanded ?? false);
   useEffect(() => {
     if (!expanded) return;
     const close = (event: KeyboardEvent) => {
@@ -444,15 +453,14 @@ export function PacketMinimap({
       <figure
         className={`packet-minimap node-position ${expanded ? "node-position-expanded" : ""}`}
       >
-        <div className="node-position-head">
-          <h3>Position</h3>
-          <div
-            className="minimap-toggles"
-            role="group"
-            aria-label="Show on the map"
-          >
+        {relayMap !== null || expandable || share !== undefined ? (
+          <div className="node-position-head">
             {relayMap !== null ? (
-              <>
+              <div
+                className="minimap-toggles"
+                role="group"
+                aria-label="Show on the map"
+              >
                 <button
                   type="button"
                   aria-pressed={relaysShown}
@@ -470,21 +478,39 @@ export function PacketMinimap({
                   <Icon name="radio" />
                   Gateways
                 </button>
-              </>
+              </div>
             ) : null}
-            {expandable ? (
-              <button
-                type="button"
-                aria-pressed={expanded}
-                title={expanded ? "Back to the page (Esc)" : "A bigger map"}
-                onClick={() => setExpanded(!expanded)}
-              >
-                <Icon name={expanded ? "collapse" : "expand"} />
-                {expanded ? "Close" : "Expand"}
-              </button>
+            {expandable || share !== undefined ? (
+              <div className="minimap-actions">
+                {expandable ? (
+                  <IconButton
+                    icon={expanded ? "close" : "maximize"}
+                    label={
+                      expanded ? "Close the bigger map (Esc)" : "Expand the map"
+                    }
+                    aria-pressed={expanded}
+                    onClick={() => setExpanded(!expanded)}
+                  />
+                ) : null}
+                {share !== undefined ? (
+                  <ShareButton
+                    hash={share.href({
+                      expanded,
+                      show:
+                        relayMap === null
+                          ? []
+                          : [
+                              ...(relaysShown ? (["relays"] as const) : []),
+                              ...(gatewaysShown ? (["gateways"] as const) : []),
+                            ],
+                    })}
+                    title={share.title}
+                  />
+                ) : null}
+              </div>
             ) : null}
           </div>
-        </div>
+        ) : null}
         <div className="node-position-map">
           {failure !== null ? (
             <p className="muted">{MAP_FAILURE_MESSAGES[failure]}</p>
@@ -542,14 +568,15 @@ export function PacketMinimap({
             )
           ) : null}
           {undrawnHopsNote(shown)}
+          {showLegend && relaysShown ? (
+            <>
+              <br />
+              Relays shown are likely to have forwarded this packet. Lines show
+              likely routes between them. Zero-hop forwarding can make these
+              estimates less reliable.
+            </>
+          ) : null}
         </figcaption>
-        {showLegend && relaysShown ? (
-          <p className="packet-relay-legend muted">
-            Relays shown are likely to have forwarded this packet. Lines show
-            likely routes between them. Zero-hop forwarding can make these
-            estimates less reliable.
-          </p>
-        ) : null}
         {showLegend && allHops.hops > 0 ? (
           <LinkQualityLegend
             zeroCost={allHops.features.features.some(

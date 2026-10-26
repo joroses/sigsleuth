@@ -6,7 +6,7 @@ import {
   isSeenWindow,
 } from "./mapTimeFilter";
 import type { DirectedHop } from "./minimapMarkers";
-import { formatNodeId } from "./nodeDisplay";
+import { formatNodeId, packetHopHref } from "./nodeDisplay";
 
 export type Route =
   | { page: "map"; nodeId: number | null; view: MapLinkView | null }
@@ -34,6 +34,7 @@ export type Route =
       hop: DirectedHop | null;
       relays: boolean;
       receptionId: number | null;
+      view: PacketLinkView | null;
     }
   | { page: "node"; id: number; view: NodeLinkView | null };
 
@@ -71,6 +72,16 @@ const MINIMAP_LAYERS: readonly MinimapLayer[] = [
 export interface NodeLinkView {
   expanded: boolean;
   show: MinimapLayer[];
+}
+
+/** What a packet page's minimap shows besides the sender. */
+export type PacketMapLayer = "relays" | "gateways";
+const PACKET_MAP_LAYERS: readonly PacketMapLayer[] = ["relays", "gateways"];
+
+/** A shared packet page: a layer is on only when `show` lists it. */
+export interface PacketLinkView {
+  expanded: boolean;
+  show: PacketMapLayer[];
 }
 
 export interface ExplorerLinkView {
@@ -153,10 +164,11 @@ export function routeFromHash(hash: string): Route {
     };
   }
   // A packet, optionally showing only the reports where the first node
-  // was heard by the second, or showing its relays.
+  // was heard by the second, or showing its relays; ?reception= pins one
+  // report, and ?map= and ?show= set its minimap.
   const packet = hash.match(
     new RegExp(
-      String.raw`^#packets\/([1-9]\d*)(?:\/hop\/${NODE}-${NODE}|\/(relays))?(?:\?reception=([1-9]\d*))?$`,
+      String.raw`^#packets\/([1-9]\d*)(?:\/hop\/${NODE}-${NODE}|\/(relays))?(?:\?(.*))?$`,
     ),
   );
   if (packet !== null && Number.isSafeInteger(Number(packet[1]))) {
@@ -167,15 +179,18 @@ export function routeFromHash(hash: string): Route {
             fromNodeId: nodeNumber(packet[2]),
             toNodeId: nodeNumber(packet[3]),
           };
+    const query = new URLSearchParams(packet[5]);
+    const reception = query.get("reception") ?? "";
     return {
       page: "packet",
       id: Number(packet[1]),
       hop,
       relays: packet[4] !== undefined,
       receptionId:
-        packet[5] !== undefined && Number.isSafeInteger(Number(packet[5]))
-          ? Number(packet[5])
+        /^[1-9]\d*$/.test(reception) && Number.isSafeInteger(Number(reception))
+          ? Number(reception)
           : null,
+      view: minimapLinkView(query, PACKET_MAP_LAYERS),
     };
   }
   const node = hash.match(new RegExp(String.raw`^#nodes\/${NODE}(?:\?(.*))?$`));
@@ -183,7 +198,7 @@ export function routeFromHash(hash: string): Route {
     return {
       page: "node",
       id: nodeNumber(node[1]),
-      view: nodeLinkView(new URLSearchParams(node[2])),
+      view: minimapLinkView(new URLSearchParams(node[2]), MINIMAP_LAYERS),
     };
   }
   const mapNode = hash.match(
@@ -220,11 +235,15 @@ function mapLinkView(query: URLSearchParams): MapLinkView | null {
   };
 }
 
-function nodeLinkView(query: URLSearchParams): NodeLinkView | null {
+/** A node or packet link's minimap; null when it names neither part. */
+function minimapLinkView<T extends string>(
+  query: URLSearchParams,
+  layers: readonly T[],
+): { expanded: boolean; show: T[] } | null {
   if (!query.has("map") && !query.has("show")) return null;
   return {
     expanded: query.get("map") === "expanded",
-    show: listed(query, MINIMAP_LAYERS),
+    show: listed(query, layers),
   };
 }
 
@@ -239,11 +258,28 @@ export function mapViewHref(nodeId: number, view: MapLinkView): string {
 
 /** The node's page with its minimap as the view has it. */
 export function nodeViewHref(nodeId: number, view: NodeLinkView): string {
+  return `#nodes/${formatNodeId(nodeId)}${minimapSearch(view)}`;
+}
+
+/** The packet's page, on `hop` when given, with its minimap as the view has it. */
+export function packetViewHref(
+  packetRowId: number,
+  hop: DirectedHop | null,
+  view: PacketLinkView,
+): string {
+  const page =
+    hop === null
+      ? `#packets/${packetRowId}`
+      : packetHopHref(packetRowId, hop.fromNodeId, hop.toNodeId);
+  return `${page}${minimapSearch(view)}`;
+}
+
+function minimapSearch(view: NodeLinkView | PacketLinkView): string {
   const query = new URLSearchParams();
   if (view.expanded) query.set("map", "expanded");
   if (view.show.length > 0) query.set("show", view.show.join(","));
   const search = decodeCommas(query);
-  return `#nodes/${formatNodeId(nodeId)}${search === "" ? "" : `?${search}`}`;
+  return search === "" ? "" : `?${search}`;
 }
 
 export function explorerViewHref(view: ExplorerLinkView): string {

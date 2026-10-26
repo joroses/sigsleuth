@@ -59,6 +59,7 @@ type IconName =
   | "filter"
   | "layers"
   | "locate"
+  | "maximize"
   | "mute"
   | "pin"
   | "previous"
@@ -177,6 +178,8 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
     </>
   ),
+  // Arrows out to two corners: show something bigger, over the page.
+  maximize: <path d="M14 4h6v6m0-6-7 7M10 20H4v-6m0 6 7-7" />,
   // A speaker crossed out: hide a sender's messages.
   mute: (
     <>

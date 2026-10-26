@@ -46,7 +46,7 @@ import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
 import { spacedPositions } from "./nodePositionHistory";
 import { useLinkedSetting } from "./remember";
 import { type NodeLinkView, nodeViewHref } from "./routes";
-import { Icon, ShareButton } from "./ui";
+import { Icon, IconButton, ShareButton } from "./ui";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -307,7 +307,6 @@ export function NodePositionMinimap({
         className={`node-position ${expanded ? "node-position-expanded" : ""}`}
       >
         <div className="node-position-head">
-          <h3>Position</h3>
           <div
             className="minimap-toggles"
             role="group"
@@ -316,22 +315,20 @@ export function NodePositionMinimap({
             <button
               type="button"
               aria-pressed={showTraceroutes}
-              title="Traceroute neighbours"
+              title={`Traceroute neighbours, last ${CONTACT_DAYS} days`}
               onClick={() => setShowTraceroutes(!showTraceroutes)}
             >
               <Icon name="route" />
               Traceroutes
-              <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
             </button>
             <button
               type="button"
               aria-pressed={showGateways}
-              title="Gateways that hear it"
+              title={`Gateways that heard it, last ${CONTACT_DAYS} days`}
               onClick={() => setShowGateways(!showGateways)}
             >
               <Icon name="radio" />
               Gateways
-              <span className="minimap-toggle-hint">{CONTACT_DAYS} d</span>
             </button>
             <button
               type="button"
@@ -342,15 +339,14 @@ export function NodePositionMinimap({
               <Icon name="coverage" />
               Coverage
             </button>
-            <button
-              type="button"
+          </div>
+          <div className="minimap-actions">
+            <IconButton
+              icon={expanded ? "close" : "maximize"}
+              label={expanded ? "Close the bigger map (Esc)" : "Expand the map"}
               aria-pressed={expanded}
-              title={expanded ? "Back to the page (Esc)" : "A bigger map"}
               onClick={() => setExpanded(!expanded)}
-            >
-              <Icon name={expanded ? "collapse" : "expand"} />
-              {expanded ? "Close" : "Expand"}
-            </button>
+            />
             <ShareButton
               hash={nodeViewHref(node.node_id, {
                 expanded,
@@ -361,7 +357,6 @@ export function NodePositionMinimap({
                 ],
               })}
               title={nodeLabel(node)}
-              text="Share"
             />
           </div>
         </div>
@@ -418,15 +413,20 @@ function ContactsNote({
     );
   if (state.data === null || contacts === null)
     return <span className="data-line">Loading contacts…</span>;
-  if (state.data.items.length === 0) return null;
+  if (state.data.items.length === 0)
+    return (
+      <span className="data-line">
+        No contacts in the last {CONTACT_DAYS} days.
+      </span>
+    );
   const unplaced =
     contacts.unplaced > 0
       ? ` · ${contacts.unplaced.toLocaleString()} unplaced`
       : "";
   return (
     <span className="data-line">
-      {contacts.marks.length.toLocaleString()} contacts drawn{unplaced} · click
-      one for its distances
+      Last {CONTACT_DAYS} days: {contacts.marks.length.toLocaleString()}{" "}
+      contacts drawn{unplaced} · click one for its distances
     </span>
   );
 }

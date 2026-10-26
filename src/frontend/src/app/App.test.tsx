@@ -94,7 +94,7 @@ describe("Packet detail", () => {
     );
   });
 
-  it("opens on the reports with a hop from the hash", async () => {
+  it("pins, navigates and shares reports on a hop from the hash", async () => {
     const writeText = stubClipboard();
     const [requester, relay, otherRelay, target] = [
       0x11111111, 0x33333333, 0x44444444, 0x22222222,
@@ -174,14 +174,16 @@ describe("Packet detail", () => {
       expect.stringContaining("Hilltop"),
     ]);
 
+    // The map's share link keeps the hop.
     fireEvent.click(
-      within(container.querySelector(".packet-heading")!).getByRole("button", {
+      within(container.querySelector(".packet-minimap")!).getByRole("button", {
         name: "Share a link to this view",
       }),
     );
     await waitFor(() =>
       expect(writeText).toHaveBeenLastCalledWith(
-        new URL("#packets/7", window.location.href).href,
+        new URL(`#packets/7/hop/${requester}-${relay}`, window.location.href)
+          .href,
       ),
     );
     writeText.mockClear();
@@ -211,11 +213,31 @@ describe("Packet detail", () => {
     fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
     expect(container.querySelector("tr.pinned")).toBeNull();
 
+    const pinnedId = () =>
+      container.querySelector("tr.pinned")?.getAttribute("data-reception-id");
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(pinnedId()).toBe("21");
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(pinnedId()).toBe("21");
+
     // The rest follow below, the hop's report staying first.
     fireEvent.click(
       screen.getByRole("button", { name: "Show 1 report without the hop" }),
     );
     expect(listed()).toEqual(["21", "22"]);
+    fireEvent.keyDown(document.body, { key: "ArrowDown", ctrlKey: true });
+    expect(pinnedId()).toBe("21");
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(pinnedId()).toBe("22");
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(pinnedId()).toBe("22");
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(pinnedId()).toBe("21");
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(pinnedId()).toBe("21");
+    fireEvent.click(container.querySelector("tr[data-reception-id='21']")!);
+    fireEvent.keyDown(document.body, { key: "ArrowUp" });
+    expect(pinnedId()).toBe("22");
     fireEvent.click(
       within(container.querySelector("tr[data-reception-id='22']")!).getByRole(
         "button",
@@ -300,40 +322,43 @@ describe("Packet detail", () => {
     expect(rows.find((row) => row.includes("Carol"))).toContain("+20.0 s");
   });
 
+  // A broadcast two gateways reported, one through a relay.
+  const relayedPacket = {
+    packet: {
+      ...packet,
+      channel: "LongFast",
+      sender_node_id: 0x11111111,
+      recipient_node_id: 0xffffffff,
+      packet_id: 1234,
+      portnum: null,
+    },
+    hops: [],
+    route_nodes: [],
+    relay_nodes: [],
+    spreading_factor: 11,
+    traceroute: null,
+    reply_route: null,
+    hop_costs: [],
+    receptions: [
+      reception,
+      {
+        ...reception,
+        reception_id: 22,
+        gateway_node_id: 0xcccccccc,
+        hop_limit: 2,
+        direct: false,
+      },
+    ],
+  };
+
   it("opens a packet's relay map from the hash and loads its routes", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        jsonResponse({
-          packet: {
-            ...packet,
-            channel: "LongFast",
-            sender_node_id: 0x11111111,
-            recipient_node_id: 0xffffffff,
-            packet_id: 1234,
-            portnum: null,
-          },
-          hops: [],
-          route_nodes: [],
-          relay_nodes: [],
-          spreading_factor: 11,
-          traceroute: null,
-          reply_route: null,
-          hop_costs: [],
-          receptions: [
-            reception,
-            {
-              ...reception,
-              reception_id: 22,
-              gateway_node_id: 0xcccccccc,
-              hop_limit: 2,
-              direct: false,
-            },
-          ],
-        }),
-      )
+      .mockResolvedValueOnce(jsonResponse(relayedPacket))
       .mockResolvedValueOnce(jsonResponse({ hops: [], nodes: [] }));
     vi.stubGlobal("fetch", fetchMock);
+    // The link shows the relays whatever was chosen before.
+    localStorage.setItem("sigsleuth.packet.map.relays", "false");
 
     window.location.hash = "#packets/7/relays";
     render(<App />);
@@ -343,6 +368,57 @@ describe("Packet detail", () => {
     await waitFor(() =>
       expect(fetchMock.mock.calls[1]?.[0]).toBe(
         "/api/v1/packets/7/flood-routes",
+      ),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Relays" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("opens and shares a packet's map with its switches and size", async () => {
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/packets/7" ? relayedPacket : { hops: [], nodes: [] },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const writeText = stubClipboard();
+    localStorage.setItem("sigsleuth.packet.map.gateways", "true");
+
+    window.location.hash = "#packets/7?map=expanded&show=relays";
+    const { container } = render(<App />);
+
+    const close = await screen.findByRole("button", { name: /Close/ });
+    expect(close.getAttribute("aria-pressed")).toBe("true");
+    const relays = screen.getByRole("button", { name: "Relays" });
+    const gateways = screen.getByRole("button", { name: "Gateways" });
+    expect(relays.getAttribute("aria-pressed")).toBe("true");
+    expect(gateways.getAttribute("aria-pressed")).toBe("false");
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
+        "/api/v1/packets/7/flood-routes",
+      ),
+    );
+    // The link sets this page only; the saved choices stay.
+    expect(loadSetting("packet.map.gateways")).toBe(true);
+    expect(loadSetting("packet.map.relays")).toBeUndefined();
+    // The map has the share button, not the heading.
+    expect(container.querySelector(".packet-heading button")).toBeNull();
+
+    fireEvent.click(gateways);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(
+          "#packets/7?map=expanded&show=relays,gateways",
+          window.location.href,
+        ).href,
       ),
     );
   });
@@ -1324,7 +1400,7 @@ describe("Map text reach", () => {
     long_name: `${short_name} long`,
     region: null,
     messages,
-    last_sent_at: "2026-09-25T09:00:00Z",
+    last_sent_at: new Date().toISOString(),
   });
 
   function mockMap(reach: Record<number, unknown>) {

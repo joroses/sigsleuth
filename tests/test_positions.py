@@ -21,6 +21,7 @@ from sigsleuth.positions import (
     own_reach,
     radio_links,
     refresh_estimates,
+    traceroute_hops,
 )
 from sigsleuth.radio import great_circle_km
 from sigsleuth.reported import positions_when_heard
@@ -333,6 +334,29 @@ def test_a_relay_guess_prefers_a_radio_link_to_the_gateway_then_the_sender(
     assert guess(unlinked, sender_link, gateway_link) == (gateway_link, "gateway_link")
     assert guess(unlinked, sender_link) == (sender_link, "sender_link")
     assert guess(unlinked) is None
+
+
+def test_traceroute_hops_with_senders_count_measured_hops_either_way(
+    connection: sqlite3.Connection,
+) -> None:
+    sender, relay, other = 1, 0x2_3C, 0x3_3C
+    seen = now_ms() - 60_000
+
+    def hops(a: int, b: int, snr: list[float], *, at: int = seen, kind: str = "traceroute") -> None:
+        link_hour(connection, a, b, at, link_kind=kind, observations=3, snr=snr)
+
+    hops(sender, relay, [-5.0, -6.0])
+    hops(relay, sender, [2.0])
+    hops(sender, other, [])  # no SNR measured
+    hops(sender, other, [1.0], at=seen - 2 * DAY_MS)
+    hops(sender, other, [1.0], kind="direct")  # radio_links counts it
+    assert traceroute_hops(connection, {sender}, {relay, other}) == {sender: {relay: 3}}
+    # A node that sent one copy and may have relayed another counts each
+    # hop once in each role.
+    assert traceroute_hops(connection, {sender, relay}, {sender, relay}) == {
+        sender: {relay: 3},
+        relay: {sender: 3},
+    }
 
 
 def test_the_api_estimates_positions_when_it_starts(tmp_path: Path) -> None:

@@ -199,8 +199,7 @@ def radio_links(
     """Radio observations over the last RECENT_HOURS, or RECENT_HOURS either
     side of around (epoch ms), on every link with an end among node_ids, keyed
     by both ends: radio[a][b] == radio[b][a]."""
-    at = now_ms() if around is None else around + RECENT_HOURS * HOUR_MS
-    since_ms = (now_ms() if around is None else around) - RECENT_HOURS * HOUR_MS
+    since, at = _recent_hours(around)
     radio: dict[int, dict[int, int]] = defaultdict(dict)
     for a, b, observations in connection.execute(
         """
@@ -211,15 +210,63 @@ def radio_links(
                OR to_node_id IN (SELECT value FROM json_each(:nodes)))
         GROUP BY 1, 2
         """,
-        {
-            "since": since_ms - since_ms % HOUR_MS,
-            "at": at,
-            "nodes": json.dumps(sorted(node_ids)),
-        },
+        {"since": since, "at": at, "nodes": json.dumps(sorted(node_ids))},
     ):
         for node, other in ((a, b), (b, a)):
             radio[node][other] = radio[node].get(other, 0) + observations
     return radio
+
+
+def traceroute_hops(
+    connection: sqlite3.Connection,
+    senders: Collection[int],
+    node_ids: Collection[int],
+    *,
+    around: int | None = None,
+) -> dict[int, dict[int, int]]:
+    """Traceroute hops with a measured SNR between each sender and the
+    node_ids, either way, in radio_links' hours: hops[sender][node]."""
+    senders, node_ids = set(senders), set(node_ids)
+    if not senders or not node_ids:
+        return {}
+    since, at = _recent_hours(around)
+    found = {
+        (int(a), int(b)): int(count)
+        for first, second in ((senders, node_ids), (node_ids, senders))
+        for a, b, count in connection.execute(
+            """
+            SELECT from_node_id, to_node_id, sum(snr_count)
+            FROM link_hour INDEXED BY link_hour_pair
+            WHERE from_node_id IN (SELECT value FROM json_each(:first))
+              AND to_node_id IN (SELECT value FROM json_each(:second))
+              AND link_kind = 'traceroute' AND snr_count > 0
+              AND hour_start BETWEEN :since AND :at
+            GROUP BY 1, 2
+            """,
+            {
+                "first": json.dumps(sorted(first)),
+                "second": json.dumps(sorted(second)),
+                "since": since,
+                "at": at,
+            },
+        )
+    }
+    hops: dict[int, dict[int, int]] = defaultdict(dict)
+    for (a, b), count in found.items():
+        for sender, node in ((a, b), (b, a)):
+            if sender in senders and node in node_ids:
+                hops[sender][node] = hops[sender].get(node, 0) + count
+    return hops
+
+
+def _recent_hours(around: int | None) -> tuple[int, int]:
+    """The hour starts radio_links reads, from and to (epoch ms)."""
+    if around is None:
+        end = now_ms()
+        since = end - RECENT_HOURS * HOUR_MS
+    else:
+        since, end = around - RECENT_HOURS * HOUR_MS, around + RECENT_HOURS * HOUR_MS
+    return since - since % HOUR_MS, end
 
 
 def own_reach(

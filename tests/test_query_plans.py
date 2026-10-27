@@ -126,6 +126,22 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
     now = datetime.now(UTC)
     statements.section = "capture"
     with closing(statements.watch(open_current_database(path))) as connection:
+        position = mesh_pb2.Position(latitude_i=521000000, longitude_i=49000000)
+        envelope = application_envelope(
+            portnums_pb2.PortNum.POSITION_APP,
+            position.SerializeToString(),
+            sender=RELAY + 0x100,
+            bitfield=1,
+            gateway_id=GATEWAYS[0],
+        )
+        ingest_delivery(
+            connection,
+            MqttDelivery(
+                to_epoch_ms(now - timedelta(days=3)),
+                f"msh/EU_868/2/e/LongFast/{GATEWAYS[0]}",
+                envelope,
+            ),
+        )
         capture_some_history(connection, now - timedelta(minutes=30))
     with closing(open_database(path)) as connection:
         (relayed_text,) = connection.execute(

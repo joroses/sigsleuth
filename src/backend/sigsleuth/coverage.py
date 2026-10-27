@@ -483,6 +483,13 @@ def relay_evidence(
         {int(row["sender_node_id"]) for row in rows},
         [int(row["heard_at"]) for row in rows],
         spreading_factors={row["spreading_factor"] for row in rows if row["spreading_factor"]},
+        one_hop_senders={
+            int(row["sender_node_id"])
+            for row in rows
+            if row["hop_start"] is not None
+            and row["hop_limit"] is not None
+            and row["hop_start"] - row["hop_limit"] == 1
+        },
     )
 
 

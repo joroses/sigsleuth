@@ -15,14 +15,14 @@ import math
 import sqlite3
 from bisect import bisect_left
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from sigsleuth.db import NodeSummary, nodes_by_id
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import TRAITS
-from sigsleuth.positions import guess_relay, own_reach, radio_links
+from sigsleuth.positions import guess_relay, own_reach, radio_links, traceroute_hops
 from sigsleuth.radio import (
     PRESET_SPREADING_FACTORS,
     great_circle_km,
@@ -40,7 +40,7 @@ DAY_MS = 24 * HOUR_MS
 # is named only within its reach or NAME_KM.
 RULE_OUT_KM = 50
 NAME_KM = 20
-# A candidate that sent nothing this long either side of the packet is ruled out.
+# A candidate not seen this long either side of the packet is ruled out.
 ACTIVE_MS = DAY_MS
 COHEARER_WINDOW_MS = 7 * DAY_MS
 # Measured 2026-10-23 on two 14-day loranet.pl snapshots; revisit on another
@@ -114,16 +114,19 @@ class NodeRadio:
 @dataclass(frozen=True)
 class RelayEvidence:
     """What naming relays reads once per upload or packet: the nodes sending
-    each relay byte, their radio links (positions.radio_links), where they
-    and the senders are, their reach (positions.own_reach) and radio, the
-    hours they sent a packet in, and the first hour that history holds."""
+    each relay byte, their radio links (positions.radio_links), their
+    traceroute hops with the senders of one-hop copies
+    (positions.traceroute_hops), where they and the senders are, their reach
+    (positions.own_reach) and radio, the hours they sent a packet or appeared
+    in a traceroute, and the first hour that history holds."""
 
     by_byte: Mapping[int, list[int]]
     radio_links: Mapping[int, Mapping[int, int]]
+    sender_hops: Mapping[int, Mapping[int, int]]
     placed: Mapping[int, NodeSummary]
     reach: Mapping[int, float]
     radios: Mapping[int, NodeRadio]
-    sent_hours: Mapping[int, list[int]]
+    active_hours: Mapping[int, list[int]]
     history_from: int | None
 
     def candidates(self, relayed: Relayed) -> list[int]:
@@ -135,6 +138,14 @@ class RelayEvidence:
             if node not in (relayed.sender, relayed.receiver)
         ]
 
+    def sender_links(self, sender: int) -> dict[int, dict[int, int]]:
+        """The sender's radio links plus its traceroute hops, as
+        positions.guess_relay reads them."""
+        links = dict(self.radio_links.get(sender, {}))
+        for node, hops in self.sender_hops.get(sender, {}).items():
+            links[node] = links.get(node, 0) + hops
+        return {sender: links}
+
 
 def relay_evidence(
     connection: sqlite3.Connection,
@@ -144,13 +155,15 @@ def relay_evidence(
     *,
     spreading_factors: set[int],
     links_around: int | None = None,
+    one_hop_senders: Collection[int] = (),
 ) -> RelayEvidence:
     """The RelayEvidence for naming relays of these bytes for these senders,
     around these times (epoch ms), heard on these spreading factors (empty
     when unknown). Radio links are those of the last day, or of a day either
-    side of links_around (positions.radio_links). Candidates that
-    cannot_relay_at any position get no activity, reach or links: the
-    rule-outs drop them first."""
+    side of links_around (positions.radio_links); traceroute hops are read
+    only for one_hop_senders, the senders of copies heard after one hop.
+    Candidates that cannot_relay_at any position get no activity, reach or
+    links: the rule-outs drop them first."""
     by_byte = nodes_by_byte(connection, relay_bytes)
     candidates = {node for nodes in by_byte.values() for node in nodes}
     placed = nodes_by_id(connection, candidates | senders)
@@ -163,7 +176,9 @@ def relay_evidence(
         )
     }
     heard = list(times)
-    sent_hours: dict[int, list[int]] = defaultdict(list)
+    active_hours: dict[int, list[int]] = defaultdict(list)
+    start = min(heard, default=0) - ACTIVE_MS - HOUR_MS
+    end = max(heard, default=0) + ACTIVE_MS
     for node, hour in connection.execute(
         """
         SELECT DISTINCT node_id, hour_start FROM node_activity_hour INDEXED BY node_activity_node
@@ -173,22 +188,40 @@ def relay_evidence(
         """,
         {
             "nodes": json.dumps(sorted(possible)),
-            "start": min(heard, default=0) - ACTIVE_MS - HOUR_MS,
-            "end": max(heard, default=0) + ACTIVE_MS,
+            "start": start,
+            "end": end,
         },
     ):
-        sent_hours[int(node)].append(int(hour))
-    return RelayEvidence(
+        active_hours[int(node)].append(int(hour))
+    evidence = RelayEvidence(
         by_byte=by_byte,
         radio_links=radio_links(connection, possible, around=links_around),
+        sender_hops=traceroute_hops(connection, one_hop_senders, possible, around=links_around),
         placed=placed,
         reach=own_reach(connection, possible, from_km=NAME_KM),
         radios=radios,
-        sent_hours=sent_hours,
+        active_hours=active_hours,
         history_from=connection.execute(
             "SELECT min(hour_start) FROM node_activity_hour"
         ).fetchone()[0],
     )
+    silent = {node for node in possible if any(not _active(evidence, node, at) for at in heard)}
+    if silent:
+        for a, b, hour in connection.execute(
+            """
+            SELECT from_node_id, to_node_id, hour_start FROM link_hour
+            WHERE link_kind = 'traceroute' AND hour_start BETWEEN :start AND :end
+              AND (from_node_id IN (SELECT value FROM json_each(:nodes))
+                   OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+            """,
+            {"nodes": json.dumps(sorted(silent)), "start": start, "end": end},
+        ):
+            for node in (int(a), int(b)):
+                if node in silent:
+                    active_hours[node].append(int(hour))
+        for node in silent:
+            active_hours[node] = sorted(set(active_hours[node]))
+    return evidence
 
 
 def node_radios(connection: sqlite3.Connection, nodes: set[int]) -> dict[int, NodeRadio]:
@@ -241,7 +274,7 @@ def candidates_left(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
     - cannot_relay_at the receiver's position and spreading factor;
     - it reported the packet itself with other hops left than the copy's or
       one more;
-    - it sent nothing within ACTIVE_MS;
+    - it was not active within ACTIVE_MS;
     - one hop was used and the sender is beyond its reach and RULE_OUT_KM.
     """
     own_reports: dict[int, int | None] = {}
@@ -288,8 +321,10 @@ def name_relay(
     - gateway_link: its direct signal at the co-hearers best matches this
       copy (signal_relay); else it has the most radio links to them within
       its reach;
-    - sender_link: one hop used, it has the most radio links to the sender,
-      within its reach;
+    - sender_link: one hop used, it has the most radio links and traceroute
+      hops with the sender, within its reach. Traceroute hops count only
+      here: for the co-hearers they named more wrong nodes when the relay
+      was unknown (docs/relay-evidence.md);
     - reported: an MQTT gateway sending the byte, within its reach, reported
       the packet with one more hop left. It rebroadcast the packet, but the
       receiver may have heard another node's copy;
@@ -308,8 +343,11 @@ def name_relay(
         return named, "gateway_link"
     cohearers = relayed.cohearers()
     sender = relayed.sender if relayed.one_hop else None
-    for gateways, via in ((cohearers, None), ((), sender)):
-        guess = guess_relay(evidence.radio_links, left, gateways=gateways, sender=via)
+    for links, gateways, via in (
+        (evidence.radio_links, cohearers, None),
+        (evidence.sender_links(relayed.sender), (), sender),
+    ):
+        guess = guess_relay(links, left, gateways=gateways, sender=via)
         if guess is not None and within_reach(guess[0]):
             return guess
     # A report carrying the gateway's own byte counts like any other: on route
@@ -362,12 +400,13 @@ def cannot_relay_at(
 
 
 def _active(evidence: RelayEvidence, node: int, at: int) -> bool:
-    """Whether a node sent a packet within ACTIVE_MS of at, or reported one
-    as a gateway since then; true when history does not reach that far."""
+    """Whether a node sent a packet or appeared in a traceroute within
+    ACTIVE_MS of at, or reported a packet as a gateway since then; true
+    when history does not reach that far."""
     start = at - ACTIVE_MS
     if evidence.history_from is None or start < evidence.history_from:
         return True
-    hours = evidence.sent_hours.get(node, [])
+    hours = evidence.active_hours.get(node, [])
     index = bisect_left(hours, start - start % HOUR_MS)
     if index < len(hours) and hours[index] <= at + ACTIVE_MS:
         return True

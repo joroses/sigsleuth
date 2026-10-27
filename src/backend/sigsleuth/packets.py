@@ -516,6 +516,7 @@ def _with_relays(
         [at],
         spreading_factors=set() if spreading_factor is None else {spreading_factor},
         links_around=at,
+        one_hop_senders={sender},
     )
     pairs = [
         (node, reception.gateway_node_id)

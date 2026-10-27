@@ -465,6 +465,76 @@ def test_rule_outs_leave_the_only_candidate(
     assert heard(client, connection, relay_byte=0x3D)[:3] == (relay, "only_candidate", 1)
 
 
+@pytest.mark.parametrize("outgoing", [False, True])
+@pytest.mark.parametrize(
+    ("kind", "offset_hours", "active"),
+    [
+        ("traceroute", -25, False),
+        ("traceroute", -24, True),
+        ("traceroute", 24, True),
+        ("traceroute", 25, False),
+        ("neighbor", 0, False),
+    ],
+)
+def test_traceroute_hours_keep_a_relay_active_around_the_measurement(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    outgoing: bool,
+    kind: str,
+    offset_hours: int,
+    active: bool,
+) -> None:
+    relay = 0x0100003D
+    node(connection, relay, PHONE[0] + 0.05)
+    at = now_ms() - now_ms() % 3_600_000 - 4 * DAY_MS
+    insert_row(
+        connection,
+        "node_activity_hour",
+        hour_start=at - 4 * DAY_MS,
+        node_id=SENDER,
+        portnum=1,
+        is_broadcast=1,
+        packets=1,
+        last_sent_at=at - 4 * DAY_MS,
+    )
+    a, b = (relay, GATEWAY) if outgoing else (GATEWAY, relay)
+    link_hour(connection, a, b, at + offset_hours * 3_600_000, link_kind=kind)
+
+    result = heard(client, connection, heard_at_ms=at, relay_byte=0x3D)
+    assert result[:3] == ((relay, "only_candidate", 1) if active else (None, "unknown", 0))
+
+
+def test_a_batch_checks_activity_at_each_measurements_time(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    relay = 0x0100003D
+    node(connection, relay, PHONE[0] + 0.05)
+    hour = now_ms() - now_ms() % 3_600_000
+    for sender, at in ((SENDER, hour - 8 * DAY_MS), (relay, hour)):
+        insert_row(
+            connection,
+            "node_activity_hour",
+            hour_start=at,
+            node_id=sender,
+            portnum=1,
+            is_broadcast=1,
+            packets=1,
+            last_sent_at=at,
+        )
+    link_hour(
+        connection, relay, GATEWAY, hour - 4 * DAY_MS - 12 * 3_600_000, link_kind="traceroute"
+    )
+
+    result = upload(
+        client,
+        *[
+            measurement(seq, heard_at_ms=at, latitude=PHONE[0], relay_byte=0x3D)
+            for seq, at in enumerate((hour - 4 * DAY_MS, hour - 2 * DAY_MS, hour - 60_000), start=1)
+        ],
+    )
+    assert [row["node_id"] for row in result["heard"]] == [relay, None, relay]
+
+
 def test_the_only_candidate_left_is_named_within_its_reach(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
@@ -625,6 +695,42 @@ def test_a_packet_page_names_relays_by_the_survey_rules(
         (NEAR,),
     )
     assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
+
+
+def test_after_one_hop_traceroute_hops_with_the_sender_name_the_relay(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    for relay, latitude in ((NEAR, 0.01), (LINKED_TO_SENDER, 0.1), (LINKED_TO_GATEWAY, 0.15)):
+        node(connection, relay, PHONE[0] + latitude)
+    one_hop = {"hop_start": 2, "hop_limit": 1}
+
+    def hops(a: int, b: int, snr: list[float]) -> None:
+        seen = now_ms() - 60_000
+        link_hour(
+            connection, a, b, seen, link_kind="traceroute", observations=2 + len(snr), snr=snr
+        )
+
+    hops(SENDER, NEAR, [])  # no SNR measured
+    assert heard(client, connection, **one_hop)[:2] == (None, "unknown")
+    # A router no gateway hears directly: only traceroutes show it hearing
+    # the sender, or the sender hearing it.
+    hops(LINKED_TO_GATEWAY, SENDER, [-7.0])
+    assert heard(client, connection, **one_hop)[:2] == (LINKED_TO_GATEWAY, "sender_link")
+    # They add up with radio links.
+    link(connection, LINKED_TO_SENDER, SENDER, observations=2)
+    assert heard(client, connection, **one_hop)[:2] == (LINKED_TO_SENDER, "sender_link")
+    hops(SENDER, LINKED_TO_GATEWAY, [-6.0, -5.0])
+    assert heard(client, connection, **one_hop)[:2] == (LINKED_TO_GATEWAY, "sender_link")
+    # After more hops the relay need not have heard the sender.
+    assert heard(client, connection)[:2] == (None, "unknown")
+    # A co-hearer's traceroute hops name no relay.
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
+    hops(NEAR, GATEWAY, [3.0, 3.0, 3.0])
+    assert heard(client, connection)[:2] == (None, "unknown")
+
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=3, relay_byte=0x1A)
+    assert packet_relays(client, connection)[RECEIVER] == (LINKED_TO_GATEWAY, "sender_link")
 
 
 @pytest.mark.usefixtures("known_nodes")

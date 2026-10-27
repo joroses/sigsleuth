@@ -211,10 +211,17 @@ export function relayByteText(relayByte: number): string {
 
 /** The plain words for a relay guessed from its byte. */
 export function relayGuessText(
-  how: "reported" | "gateway_link" | "sender_link" | "only_candidate",
+  how:
+    | "receiver_heard"
+    | "reported"
+    | "gateway_link"
+    | "sender_link"
+    | "only_candidate",
   byte: string,
 ): string {
   switch (how) {
+    case "receiver_heard":
+      return `Guess: likeliest node ending in ${byte} this gateway hears`;
     case "reported":
       return "Guess: it relayed the packet (MQTT), maybe not the copy heard here";
     case "gateway_link":
@@ -222,7 +229,7 @@ export function relayGuessText(
     case "sender_link":
       return "Guess: linked to the sender";
     case "only_candidate":
-      return `Guess: the only node ending in ${byte} that could have relayed it`;
+      return `Guess: the likeliest node ending in ${byte} nearby`;
   }
 }
 
@@ -232,6 +239,7 @@ export function relayNodeTitle(relay: {
   candidates: number;
   how:
     | "heard_directly"
+    | "receiver_heard"
     | "reported"
     | "gateway_link"
     | "sender_link"

@@ -556,17 +556,12 @@ hop_costs: 12 items
 
 ## GET /api/v1/packets/11936/flood-routes
 
-hops: 2 items
-  - from_node_id: 3655149723
-    to_node_id: 861938604
-    step: 6
-    how: "probable"
-    probability: 0.876
+hops: 1 items
   - from_node_id: 3655149723
     to_node_id: 1550505660
     step: 6
     how: "probable"
-    probability: 0.988
+    probability: 0.948
 nodes: []
 
 ## GET /api/v1/nodes?sort=last_sent&limit=20&offset=0

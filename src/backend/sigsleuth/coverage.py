@@ -59,13 +59,15 @@ from sigsleuth.relays import (
     RULE_OUT_KM,
     Relayed,
     RelayEvidence,
-    candidates_left,
+    RelayScores,
     cannot_relay_at,
     direct_signals,
-    name_relay,
     node_km,
     node_radios,
     nodes_by_byte,
+    possible,
+    relay_probabilities,
+    relay_terms,
 )
 from sigsleuth.reported import save_bit
 
@@ -279,7 +281,7 @@ def save_upload(
                 "frequency_mhz": session.frequency_mhz,
             }
         )
-    points = coverage_points(connection, rows)
+    points = coverage_points(connection, _as_saved(connection, session.id, rows))
     saved = 0
     with transaction(connection):
         connection.execute(
@@ -352,7 +354,8 @@ def save_upload(
             connection, session_row_id, start=min(times) - reach, end=max(times) + reach
         )
     seqs = [m.seq for m in upload.measurements]
-    heard = saved_heard(connection, session_row_id, [m.seq for m in usable])
+    maybe = {m.seq: point.heard.maybe for m, point in zip(usable, points, strict=True)}
+    heard = saved_heard(connection, session_row_id, maybe)
     named = nodes_by_id(connection, {h.node_id for h in heard if h.node_id is not None})
     return UploadResult(
         saved=saved,
@@ -364,11 +367,52 @@ def save_upload(
     )
 
 
+_MEASUREMENT_FIELDS = (
+    "heard_at",
+    "latitude",
+    "longitude",
+    "accuracy_m",
+    "fix_age_ms",
+    "sender_node_id",
+    "recipient_node_id",
+    "packet_id",
+    "rx_snr",
+    "rx_rssi",
+    "hop_start",
+    "hop_limit",
+    "relay_byte",
+    "ok_to_mqtt",
+    "default_key",
+)
+
+
+def _as_saved(
+    connection: sqlite3.Connection, session_uuid: str, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The rows, those already saved as saved: a phone that resends one may
+    send another fix, which the save ignores."""
+    saved = {
+        int(row["seq"]): dict(row)
+        for row in connection.execute(
+            f"""
+            SELECT m.seq, {", ".join(f"m.{field}" for field in _MEASUREMENT_FIELDS)}
+            FROM coverage_session AS s
+            JOIN coverage_measurement AS m ON m.session_row_id = s.id
+            WHERE s.uuid = ? AND m.seq IN (SELECT value FROM json_each(?))
+            """,
+            (session_uuid, json.dumps([row["seq"] for row in rows])),
+        )
+    }
+    return [{**row, **saved.get(row["seq"], {})} for row in rows]
+
+
 def saved_heard(
-    connection: sqlite3.Connection, session_row_id: int, seqs: Sequence[int]
+    connection: sqlite3.Connection, session_row_id: int, maybe: Mapping[int, Sequence[int]]
 ) -> list[UploadHeard]:
-    """The heard node of a session's saved measurements with these seqs."""
-    if not seqs:
+    """The heard node of a session's saved measurements with these seqs, else
+    their maybe nodes (heard_node), km from the measurement; nodes that
+    turned OK to MQTT off are never suggested."""
+    if not maybe:
         return []
     rows = connection.execute(
         f"""
@@ -380,43 +424,40 @@ def saved_heard(
         WHERE m.session_row_id = ? AND m.seq IN (SELECT value FROM json_each(?))
         ORDER BY m.seq
         """,
-        (session_row_id, json.dumps(sorted(set(seqs)))),
+        (session_row_id, json.dumps(sorted(maybe))),
     ).fetchall()
-    unknown = [row for row in rows if row["node_id"] is None and row["relay_byte"]]
-    candidates = dict(
-        zip(
-            (row["seq"] for row in unknown),
-            relay_candidates(
-                connection,
-                [
-                    (
-                        row["relay_byte"],
-                        row["latitude"],
-                        row["longitude"],
-                        {row["spreading_factor"]} if row["spreading_factor"] else set(),
-                        {row["sender_node_id"], row["receiver_node_id"]},
-                    )
-                    for row in unknown
-                ],
-            ),
-            strict=True,
-        )
-    )
-    return [
-        UploadHeard(int(row["seq"]), row["node_id"], row["how"], candidates.get(row["seq"], ()))
+    hidden = opted_out(connection)
+    unknown = {
+        int(row["seq"]): [node for node in maybe.get(int(row["seq"]), ()) if node not in hidden]
         for row in rows
-    ]
+        if row["node_id"] is None
+    }
+    placed = nodes_by_id(connection, {node for nodes in unknown.values() for node in nodes})
+    heard = []
+    for row in rows:
+        candidates = []
+        for node in unknown.get(int(row["seq"]), []):
+            place = placed.get(node)
+            km = None if place is None else node_km(place, (row["latitude"], row["longitude"]))
+            if place is not None and km is not None:
+                candidates.append(
+                    CoverageCandidate(node, place.long_name, place.short_name, round(km, 1))
+                )
+        heard.append(UploadHeard(int(row["seq"]), row["node_id"], row["how"], tuple(candidates)))
+    return heard
 
 
 @dataclass(frozen=True)
 class HeardNode:
     """Which node's transmission the survey node received, and how upload
     decided that (SavedHow). node_id is None when unknown. candidates counts
-    the candidates the rule-outs left (heard_node); 1 when heard directly."""
+    the possible candidates (heard_node); 1 when heard directly. maybe holds
+    the likeliest candidates when unknown, for the upload's reply."""
 
     node_id: int | None
     how: SavedHow
     candidates: int
+    maybe: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -535,10 +576,11 @@ def heard_node(
 
     1. direct: the survey node heard the sender itself, by the map's rule for
        direct receptions (is_direct_reception).
-    2. A relay, by relays.name_relay among the candidates_left that are not
-       too_strong by the survey node's direct receptions, with the MQTT
-       gateways' reports of the same packet (_mqtt_reports).
-    3. unknown: no relay byte (older firmware), or nothing names one.
+    2. A relay, by relays.RelayScores.named among the possible candidates
+       that are not too_strong by the survey node's direct receptions, with
+       the MQTT gateways' reports of the same packet (_mqtt_reports).
+    3. unknown: no relay byte (older firmware), or nothing names one; maybe
+       lists the likeliest candidates with some evidence.
 
     A survey link (refresh_survey_links) wins over all but direct when the
     map reads it.
@@ -572,7 +614,7 @@ def heard_node(
     receptions = direct.get(_link_key(row), {})
     left = [
         node
-        for node in candidates_left(evidence, relayed)
+        for node in possible(evidence, relayed)
         if not too_strong(receptions.get(node, []), row)
     ]
     if not left:
@@ -582,9 +624,17 @@ def heard_node(
         ((node, gateway) for node in left for gateway in relayed.cohearers()),
         relayed.at,
     )
-    named = name_relay(evidence, relayed, left, signals)
-    if named is None:
-        return HeardNode(None, "unknown", len(left))
+    terms = {
+        node: found
+        for node, found in relay_terms(evidence, relayed, signals).items()
+        if node in left
+    }
+    scores = RelayScores(terms, relay_probabilities(terms))
+    named = scores.named()
+    # A survey receiver hears no candidate in relay_terms' heard.
+    if named is None or named[1] == "receiver_heard":
+        maybe = [node for node in scores.ranked() if scores.evidenced(node)]
+        return HeardNode(None, "unknown", len(left), tuple(maybe[:CELL_CANDIDATES]))
     return HeardNode(named[0], named[1], len(left))
 
 

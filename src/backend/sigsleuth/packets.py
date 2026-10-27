@@ -35,6 +35,8 @@ from sigsleuth.relays import (
     NamingStep,
     Relayed,
     RelayEvidence,
+    RelayScores,
+    ScoredHow,
     channel_spreading_factor,
     direct_receptions,
     direct_signals,
@@ -42,6 +44,7 @@ from sigsleuth.relays import (
     node_km,
     relay_evidence,
     rule_outs,
+    score_relays,
 )
 from sigsleuth.reported import positions_when_heard
 from sigsleuth.traceroute import (
@@ -99,9 +102,14 @@ class TracerouteHop:
 
 
 # How a reception's relay was named (_with_relays): heard_directly, else
-# relays.name_relay's guesses.
+# the score's guesses (relays.RelayScores.named).
 RelayNodeHow = Literal[
-    "heard_directly", "gateway_link", "sender_link", "reported", "only_candidate"
+    "heard_directly",
+    "receiver_heard",
+    "gateway_link",
+    "sender_link",
+    "reported",
+    "only_candidate",
 ]
 
 
@@ -109,8 +117,7 @@ RelayNodeHow = Literal[
 class RelayNode:
     """The node a reception's relay byte names (_with_relays). The byte is
     only the last of the relay's four, so known nodes share it: candidates
-    counts those sending it when heard_directly, else those the rule-outs
-    left. Every name but heard_directly is a guess."""
+    counts those sending it. Every name but heard_directly is a guess."""
 
     node_id: int
     name: str | None
@@ -120,8 +127,8 @@ class RelayNode:
 
 @dataclass(frozen=True)
 class RelayMaybe:
-    """A node that may have relayed a reception no rule names: km from the
-    gateway, None when either is unplaced."""
+    """A node that may have relayed a reception the score names no relay
+    for: km from the gateway, None when either is unplaced."""
 
     node_id: int
     name: str | None
@@ -528,16 +535,17 @@ def _relay_ids(receptions: list[PacketReception]) -> set[int]:
 
 @dataclass(frozen=True)
 class ReceptionNaming:
-    """How _with_relays names one relayed reception's relay: the copy as the
-    rules read it, how often its gateway heard each candidate directly
-    within COHEARER_WINDOW_MS of the packet (those never heard left out),
-    every candidate's rule-outs, and the naming steps over those left.
-    relay is what the packet page names: the only candidate heard directly,
-    else the deciding step's (the first that names one); rules_relay the
-    deciding step's alone."""
+    """How _with_relays names one relayed reception's relay: the copy, how
+    often its gateway heard each candidate directly within
+    COHEARER_WINDOW_MS of the packet (those never heard left out), and the
+    candidates' scores. relay is what the packet page names: the only
+    candidate heard directly, else the score's name. checks and steps are
+    the old rules' (relays.rule_outs, relays.naming_steps), for the relay
+    checks page."""
 
     copy: Relayed
     heard: Mapping[int, int]
+    scores: RelayScores
     checks: tuple[CandidateCheck, ...]
     steps: tuple[NamingStep, ...]
 
@@ -558,7 +566,11 @@ class ReceptionNaming:
     def relay(self) -> tuple[int, RelayNodeHow] | None:
         if len(self.heard) == 1:
             return next(iter(self.heard)), "heard_directly"
-        return self.rules_relay
+        return self.scored_relay
+
+    @property
+    def scored_relay(self) -> tuple[int, ScoredHow] | None:
+        return self.scores.named()
 
 
 @dataclass(frozen=True)
@@ -585,8 +597,8 @@ def relay_namings(
     in the survey node's place, where it was when heard:
 
     1. heard_directly: the only candidate the gateway heard directly within
-       COHEARER_WINDOW_MS of the packet, whatever the rule-outs say;
-    2. else relays.name_relay on the candidates left.
+       COHEARER_WINDOW_MS of the packet, whatever else it shows;
+    2. else the likeliest candidate by relays.score_relays, when sure enough.
 
     None when no reception has such a byte. Links count either side of the
     packet (at), where upload has only those before: the oldest packets
@@ -659,13 +671,17 @@ def name_copy(
     each candidate directly (direct, by (node, receiver))."""
     checks = rule_outs(evidence, copy)
     heard = {
-        check.node_id: direct[check.node_id, copy.receiver]
-        for check in checks
-        if direct.get((check.node_id, copy.receiver), 0) > 0
+        node: direct[node, copy.receiver]
+        for node in evidence.candidates(copy)
+        if direct.get((node, copy.receiver), 0) > 0
     }
     left = [check.node_id for check in checks if not check.ruled_out]
     return ReceptionNaming(
-        copy, heard, tuple(checks), tuple(naming_steps(evidence, copy, left, signals))
+        copy,
+        heard,
+        score_relays(evidence, copy, signals, set(heard)),
+        tuple(checks),
+        tuple(naming_steps(evidence, copy, left, signals)),
     )
 
 
@@ -679,9 +695,9 @@ def _with_relays(
     hidden: set[int],
 ) -> list[PacketReception]:
     """The receptions with relay_node filled in by relay_namings, else
-    relay_maybe: up to RELAY_MAYBE of the candidates left, nearest first.
-    A hidden node (opted out) is never named or listed: a copy it is named
-    for reads as undecided, as any other."""
+    relay_maybe: up to RELAY_MAYBE of the candidates with some evidence,
+    likeliest first. A hidden node (opted out) is never named or listed: a
+    copy it is named for reads as undecided, as any other."""
     found = relay_namings(connection, receptions, sender, at=at, spreading_factor=spreading_factor)
     if found is None:
         return receptions
@@ -696,21 +712,21 @@ def _with_relays(
         if naming is None:
             named.append(reception)
             continue
-        left = naming.left
         if (relay := naming.relay) is not None and relay[0] not in hidden:
-            candidates = len(naming.checks) if relay[1] == "heard_directly" else len(left)
+            candidates = len(found.evidence.candidates(naming.copy))
             node_relay = RelayNode(relay[0], name(relay[0]), candidates, relay[1])
             named.append(replace(reception, relay_node=node_relay))
             continue
         position = naming.copy.position
         maybe = []
-        for node in left:
-            if node in hidden:
+        for node in naming.scores.ranked():
+            if node in hidden or not naming.scores.evidenced(node):
                 continue
             km = None if position is None else node_km(found.evidence.placed.get(node), position)
             maybe.append(RelayMaybe(node, name(node), None if km is None else round(km, 1)))
-        maybe.sort(key=lambda node: (node.km is None, node.km or 0, node.node_id))
-        named.append(replace(reception, relay_maybe=tuple(maybe[:RELAY_MAYBE])))
+            if len(maybe) == RELAY_MAYBE:
+                break
+        named.append(replace(reception, relay_maybe=tuple(maybe)))
     return named
 
 

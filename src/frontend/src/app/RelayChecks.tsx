@@ -43,6 +43,7 @@ const COUNTS = [25, 50, 100, 200];
 
 const STEP_LABELS: Record<StepName, string> = {
   heard_directly: "Heard directly",
+  receiver_heard: "Heard by the gateway",
   signal: "Signal match",
   gateway_link: "Links with co-hearers",
   sender_link: "Links with the sender",

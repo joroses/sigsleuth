@@ -56,7 +56,13 @@ Outcome = Literal["right", "wrong", "undecided"]
 # The step that named a relay: the packet page's heard-directly step, else a
 # naming step (relays.naming_steps).
 RelayStepName = Literal[
-    "heard_directly", "signal", "gateway_link", "sender_link", "reported", "only_candidate"
+    "heard_directly",
+    "receiver_heard",
+    "signal",
+    "gateway_link",
+    "sender_link",
+    "reported",
+    "only_candidate",
 ]
 
 
@@ -240,7 +246,6 @@ def _checks(
         truth = truths.get(reception_id)
         true_relay = None if truth is None else truth[0]
         page, rules = original.relay, naming.rules_relay
-        page_deciding = original.deciding_step
         deciding = naming.deciding_step
         rules_step = None if deciding is None else deciding.rule
         ruled = {check.node_id: check.ruled_out for check in naming.checks}
@@ -256,11 +261,7 @@ def _checks(
             route_relay=node(true_relay),
             route_snr_db=None if truth is None else truth[1],
             page_relay=node(None if page is None else page[0]),
-            page_step="heard_directly"
-            if page is not None and page[1] == "heard_directly"
-            else None
-            if page_deciding is None
-            else page_deciding.rule,
+            page_step=None if page is None else page[1],
             page_outcome=_outcome(page, true_relay),
             rules_relay=node(None if rules is None else rules[0]),
             rules_step=rules_step,

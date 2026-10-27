@@ -78,6 +78,9 @@ derive._count_hop_costs
 
 db.rederive_pending
   SCAN derived_state
+coverage._as_saved
+  SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
 relays.nodes_by_byte
   SCAN node_current
 db.nodes_by_id

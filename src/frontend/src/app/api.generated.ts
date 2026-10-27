@@ -2147,6 +2147,7 @@ export interface components {
       page_step:
         | (
             | "heard_directly"
+            | "receiver_heard"
             | "signal"
             | "gateway_link"
             | "sender_link"
@@ -2159,6 +2160,7 @@ export interface components {
       rules_step:
         | (
             | "heard_directly"
+            | "receiver_heard"
             | "signal"
             | "gateway_link"
             | "sender_link"
@@ -2294,8 +2296,8 @@ export interface components {
     };
     /**
      * RelayMaybe
-     * @description A node that may have relayed a reception no rule names: km from the
-     *     gateway, None when either is unplaced.
+     * @description A node that may have relayed a reception the score names no relay
+     *     for: km from the gateway, None when either is unplaced.
      */
     RelayMaybe: {
       node_id: number;
@@ -2306,8 +2308,7 @@ export interface components {
      * RelayNode
      * @description The node a reception's relay byte names (_with_relays). The byte is
      *     only the last of the relay's four, so known nodes share it: candidates
-     *     counts those sending it when heard_directly, else those the rule-outs
-     *     left. Every name but heard_directly is a guess.
+     *     counts those sending it. Every name but heard_directly is a guess.
      */
     RelayNode: {
       node_id: number;
@@ -2316,6 +2317,7 @@ export interface components {
       /** @enum {string} */
       how:
         | "heard_directly"
+        | "receiver_heard"
         | "gateway_link"
         | "sender_link"
         | "reported"

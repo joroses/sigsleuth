@@ -19,6 +19,8 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
   heard (heard_node), decided once, at upload (schema.sql says why). A survey
   link (refresh_survey_links), from survey evidence alone, can name a relay
   later, and wins over upload's name.
+- The reply names each usable measurement's heard node as the map reads it,
+  for the phone's relay list; a resent batch reads what was saved.
 
 The map counts a measurement unless it is proven stale, and only while its
 node is known alive or the measurement is recent (_ALIVE_SQL;
@@ -90,6 +92,10 @@ SURVEY_LINK_TIERS_MS = (HOUR_MS, 60 * DAY_MS)
 # Untested at ground level.
 TOO_STRONG_DB = 30
 TOO_STRONG_KM = 1
+# The survey app's relay node list (relay_nodes). Its reach reads took 1 s
+# for 3,000 placed nodes on a laptop's two weeks of loranet.pl (2026-10-26);
+# the app asks about once a day.
+MAX_RELAY_NODES = 10_000
 # Fine coverage cells are Web Mercator tiles at this zoom: about 305 m times
 # cos(latitude) across, so 227 m at 42°N.
 FINE_LEVEL = 17
@@ -157,16 +163,47 @@ class Upload(BaseModel):
 
 
 @dataclass(frozen=True)
+class CoverageCandidate:
+    """A possible relay, km from a measurement or a cell's centre."""
+
+    node_id: int
+    long_name: str | None
+    short_name: str | None
+    km: float
+
+
+@dataclass(frozen=True)
+class UploadHeard:
+    """The heard node as the map reads it (_SHOWN), or possible relay hints."""
+
+    seq: int
+    node_id: int | None
+    how: HeardHow
+    candidates: tuple[CoverageCandidate, ...] = ()
+
+
+@dataclass(frozen=True)
+class UploadNode:
+    node_id: int
+    long_name: str | None
+    short_name: str | None
+
+
+@dataclass(frozen=True)
 class UploadResult:
     """saved counts new measurements, already_saved those the server held
     from an earlier upload. skipped counts unusable ones by reason. last_seq
     is the highest seq in the batch, saved or not, so the phone continues
-    after it; None for an empty batch."""
+    after it; None for an empty batch. heard has each usable measurement's
+    heard node and possible relays when unknown, read after the survey links
+    are refreshed, and nodes the names of those named."""
 
     saved: int
     already_saved: int
     skipped: dict[str, int] = field(default_factory=dict)
     last_seq: int | None = None
+    heard: list[UploadHeard] = field(default_factory=list)
+    nodes: list[UploadNode] = field(default_factory=list)
 
 
 def skip_reason(measurement: UploadMeasurement, *, now: int, max_age_days: int) -> str | None:
@@ -203,12 +240,14 @@ def save_upload(
     skipped: Counter[str] = Counter()
     session = upload.session
     rows = []
+    usable = []
     bits = []
     for m in upload.measurements:
         reason = skip_reason(m, now=now, max_age_days=max_age_days)
         if reason is not None:
             skipped[reason] += 1
             continue
+        usable.append(m)
         if m.ok_to_mqtt is not None and m.sender_node_id:
             bits.append((m.sender_node_id, m.ok_to_mqtt, m.heard_at_ms))
         # As capture reads MQTT headers: an unknown hop start leaves both
@@ -307,18 +346,66 @@ def save_upload(
     # Already saved rows too: when a refresh fails after the insert commits,
     # the phone gets a 503 and resends the batch, which saves nothing.
     if points:
-        heard = [point.heard_at for point in points]
+        times = [point.heard_at for point in points]
         reach = SURVEY_LINK_TIERS_MS[-1]
         refresh_survey_links(
-            connection, session_row_id, start=min(heard) - reach, end=max(heard) + reach
+            connection, session_row_id, start=min(times) - reach, end=max(times) + reach
         )
     seqs = [m.seq for m in upload.measurements]
+    heard = saved_heard(connection, session_row_id, [m.seq for m in usable])
+    named = nodes_by_id(connection, {h.node_id for h in heard if h.node_id is not None})
     return UploadResult(
         saved=saved,
         already_saved=len(rows) - saved,
         skipped=dict(skipped),
         last_seq=max(seqs) if seqs else None,
+        heard=heard,
+        nodes=[UploadNode(n.node_id, n.long_name, n.short_name) for n in named.values()],
     )
+
+
+def saved_heard(
+    connection: sqlite3.Connection, session_row_id: int, seqs: Sequence[int]
+) -> list[UploadHeard]:
+    """The heard node of a session's saved measurements with these seqs."""
+    if not seqs:
+        return []
+    rows = connection.execute(
+        f"""
+        SELECT m.seq, {_SHOWN} AS node_id, {_SHOWN_HOW} AS how,
+               m.relay_byte, m.latitude, m.longitude, s.spreading_factor,
+               m.sender_node_id, s.receiver_node_id
+        FROM {_MEASUREMENTS}
+        JOIN coverage_session AS s ON s.id = m.session_row_id
+        WHERE m.session_row_id = ? AND m.seq IN (SELECT value FROM json_each(?))
+        ORDER BY m.seq
+        """,
+        (session_row_id, json.dumps(sorted(set(seqs)))),
+    ).fetchall()
+    unknown = [row for row in rows if row["node_id"] is None and row["relay_byte"]]
+    candidates = dict(
+        zip(
+            (row["seq"] for row in unknown),
+            relay_candidates(
+                connection,
+                [
+                    (
+                        row["relay_byte"],
+                        row["latitude"],
+                        row["longitude"],
+                        {row["spreading_factor"]} if row["spreading_factor"] else set(),
+                        {row["sender_node_id"], row["receiver_node_id"]},
+                    )
+                    for row in unknown
+                ],
+            ),
+            strict=True,
+        )
+    )
+    return [
+        UploadHeard(int(row["seq"]), row["node_id"], row["how"], candidates.get(row["seq"], ()))
+        for row in rows
+    ]
 
 
 @dataclass(frozen=True)
@@ -1065,17 +1152,6 @@ class CoverageHeardNode:
 
 
 @dataclass(frozen=True)
-class CoverageCandidate:
-    """A node that may have relayed a cell's unknown relays, km from the
-    cell's centre."""
-
-    node_id: int
-    long_name: str | None
-    short_name: str | None
-    km: float
-
-
-@dataclass(frozen=True)
 class CoverageUnknownRelay:
     """Measurements in a cell whose heard node is unknown, by relay byte
     (None when the packet carried none), with the nodes that may have relayed
@@ -1234,11 +1310,21 @@ def coverage_cell(
         | {int(row["heard_node_id"]) for row in newest if row["heard_node_id"] is not None},
     )
     latitude, longitude = tile_centre(level, x, y)
-    candidates = relay_candidates(
-        connection,
-        {int(row["relay_byte"]) for row in unknown[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]},
-        (latitude, longitude),
-        {int(row["spreading_factor"]) for row in networks if row["spreading_factor"]},
+    relay_bytes = [
+        int(row["relay_byte"]) for row in unknown[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]
+    ]
+    spreading_factors = {
+        int(row["spreading_factor"]) for row in networks if row["spreading_factor"]
+    }
+    candidates = dict(
+        zip(
+            relay_bytes,
+            relay_candidates(
+                connection,
+                [(byte, latitude, longitude, spreading_factors, set()) for byte in relay_bytes],
+            ),
+            strict=True,
+        )
     )
     return CoverageCellDetail(
         level=level,
@@ -1278,17 +1364,14 @@ def coverage_cell(
 
 def relay_candidates(
     connection: sqlite3.Connection,
-    relay_bytes: set[int],
-    centre: tuple[float, float],
-    spreading_factors: set[int],
-) -> dict[int, tuple[CoverageCandidate, ...]]:
-    """For each relay byte, up to CELL_CANDIDATES placed nodes sending it,
-    nearest first, that could have relayed a packet heard at the cell's
-    centre on one of its spreading factors (relays.cannot_relay_at): a hint for
-    the cell's unknown relays, not a name. Nodes that turned OK to MQTT off
-    are left out, as they are never named."""
-    if not relay_bytes:
-        return {}
+    places: Sequence[tuple[int, float, float, set[int], set[int]]],
+) -> list[tuple[CoverageCandidate, ...]]:
+    """Up to CELL_CANDIDATES possible relays for each (byte, latitude,
+    longitude, spreading factors, excluded nodes), nearest first. Hints only;
+    nodes that turned OK to MQTT off are never suggested."""
+    if not places:
+        return []
+    relay_bytes = {byte for byte, _, _, _, _ in places}
     by_byte = nodes_by_byte(connection, relay_bytes)
     nodes = {node for found in by_byte.values() for node in found}
     hidden = opted_out(connection)
@@ -1296,10 +1379,13 @@ def relay_candidates(
     nodes -= hidden
     placed, radios = nodes_by_id(connection, nodes), node_radios(connection, nodes)
     reach = own_reach(connection, nodes, from_km=RULE_OUT_KM)
-    found: dict[int, tuple[CoverageCandidate, ...]] = {}
-    for relay_byte, senders in by_byte.items():
+    found = []
+    for relay_byte, latitude, longitude, spreading_factors, excluded in places:
+        centre = (latitude, longitude)
         near = []
-        for node in senders:
+        for node in by_byte.get(relay_byte, []):
+            if node in excluded:
+                continue
             place = placed.get(node)
             km = node_km(place, centre)
             if place is None or km is None:
@@ -1310,8 +1396,74 @@ def relay_candidates(
                     CoverageCandidate(node, place.long_name, place.short_name, round(km, 1))
                 )
         near.sort(key=lambda candidate: (candidate.km, candidate.node_id))
-        found[relay_byte] = tuple(near[:CELL_CANDIDATES])
+        found.append(tuple(near[:CELL_CANDIDATES]))
     return found
+
+
+@dataclass(frozen=True)
+class CoverageRelayNode:
+    """A node that could relay a survey's packets, where the map draws it,
+    and its reach (positions.own_reach) when longer than RULE_OUT_KM, within
+    which any node could relay it."""
+
+    node_id: int
+    long_name: str | None
+    short_name: str | None
+    latitude: float
+    longitude: float
+    estimated: bool
+    reach_km: float | None
+
+
+@dataclass(frozen=True)
+class CoverageRelayNodeList:
+    nodes: list[CoverageRelayNode]
+    truncated: bool
+
+
+def relay_nodes(
+    connection: sqlite3.Connection,
+    *,
+    spreading_factor: int | None,
+    limit: int = MAX_RELAY_NODES,
+) -> CoverageRelayNodeList:
+    """The placed nodes that could relay a packet on spreading_factor
+    (relays.cannot_relay_at, at any distance), most recently seen first, for
+    the survey app's relay guesses while offline. Nodes that turned
+    OK to MQTT off are left out, as they are never named."""
+    hidden = opted_out(connection)
+    seen = [
+        int(row[0])
+        for row in connection.execute(
+            "SELECT node_id FROM node_current ORDER BY last_seen_at DESC, node_id"
+        )
+        if int(row[0]) not in hidden
+    ]
+    placed, radios = nodes_by_id(connection, set(seen)), node_radios(connection, set(seen))
+    factors = set() if spreading_factor is None else {spreading_factor}
+    able = [
+        node
+        for node in seen
+        if not cannot_relay_at(placed.get(node), radios.get(node), math.inf, None, factors)
+    ]
+    shown = able[:limit]
+    reach = own_reach(connection, shown, from_km=RULE_OUT_KM)
+    nodes = []
+    for node in shown:
+        place = placed[node]
+        assert place.latitude is not None and place.longitude is not None
+        nodes.append(
+            CoverageRelayNode(
+                node_id=node,
+                long_name=place.long_name,
+                short_name=place.short_name,
+                latitude=place.latitude,
+                longitude=place.longitude,
+                estimated=place.estimated,
+                reach_km=round(reach[node], 1) if node in reach else None,
+            )
+        )
+    return CoverageRelayNodeList(nodes=nodes, truncated=len(able) > limit)
 
 
 def tile_centre(level: int, x: int, y: int) -> tuple[float, float]:

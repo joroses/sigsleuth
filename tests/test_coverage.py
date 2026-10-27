@@ -93,6 +93,11 @@ def test_an_upload_saves_its_measurements_once(
         "already_saved": 0,
         "skipped": {},
         "last_seq": 2,
+        "heard": [
+            {"seq": 1, "node_id": None, "how": "unknown", "candidates": []},
+            {"seq": 2, "node_id": None, "how": "unknown", "candidates": []},
+        ],
+        "nodes": [],
     }
     # A retry of the same batch, and the next batch overlapping it, save nothing twice.
     assert upload(client, *batch)["already_saved"] == 2
@@ -138,6 +143,8 @@ def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> No
             "in_future": 1,
         },
         "last_seq": 6,
+        "heard": [{"seq": 1, "node_id": None, "how": "unknown", "candidates": []}],
+        "nodes": [],
     }
 
 
@@ -522,6 +529,47 @@ def test_traceroute_reach_names_a_placed_relay_but_leaves_ambiguous_candidates(
     assert packet_relays(client, connection)[RECEIVER] == [(relay, 77.8), (other, 89.0)]
     candidates = fine_cell_detail(client, latitude, PHONE[1])["unknown_relays"][0]["candidates"]
     assert [candidate["node_id"] for candidate in candidates] == [relay, other]
+
+
+def test_the_survey_app_lists_the_placed_nodes_that_could_relay(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    reaching, near, unplaced, mute, long_fast = (
+        0x0100004F,
+        0x0200004F,
+        0x0300004F,
+        0x0400004F,
+        0x0500004F,
+    )
+    for placed in (reaching, near, mute, long_fast):
+        node(connection, placed, PHONE[0] + 0.5)
+    node(connection, unplaced)
+    connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (mute,))
+    connection.execute(
+        "UPDATE node_current SET channel = 'LongFast', channel_observed_at = ? WHERE node_id = ?",
+        (now_ms(), long_fast),
+    )
+    # Reach counts only past the 50 km within which any node may relay.
+    link(connection, near, GATEWAY, km=5.0)
+    link_hour(
+        connection,
+        reaching,
+        GATEWAY,
+        now_ms() - 3_600_000,
+        link_kind="traceroute",
+        km=100.0,
+        snr=[-8.0],
+    )
+
+    def listed(**params: Any) -> list[tuple[int, float | None]]:
+        response = client.get("/api/v1/coverage/relay-nodes", params=params)
+        assert response.status_code == 200, response.text
+        return sorted((n["node_id"], n["reach_km"]) for n in response.json()["nodes"])
+
+    assert listed(spreading_factor=7) == [(reaching, 100.0), (near, None)]
+    assert listed() == [(reaching, 100.0), (near, None), (long_fast, None)]
+    unauthorised = client.get("/api/v1/coverage/relay-nodes", headers={"Authorization": ""})
+    assert unauthorised.status_code == 401
 
 
 # Packet pages name a gateway's relay by the same rules, the gateway in the
@@ -1052,7 +1100,68 @@ def test_a_cells_unknown_relay_lists_the_nodes_that_could_have_relayed_it(
     ]
 
 
+@pytest.mark.usefixtures("known_nodes")
+def test_upload_replies_suggest_relays_at_each_saved_position(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    node(connection, 0x0400001A, PHONE[0] + 0.2)
+    connection.execute("UPDATE node_current SET short_name = 'Near' WHERE node_id = ?", (NEAR,))
+    nearby = measurement(1, sender_node_id=SENDER, latitude=PHONE[0], hop_limit=1)
+    reply = upload(
+        client,
+        nearby,
+        measurement(2, latitude=PHONE[0] + 5),
+        measurement(3, relay_byte=None),
+        direct(4, SENDER),
+    )
+
+    assert heard_in(reply) == [
+        (1, None, "unknown"),
+        (2, None, "unknown"),
+        (3, None, "unknown"),
+        (4, SENDER, "direct"),
+    ]
+    candidates = reply["heard"][0]["candidates"]
+    assert [c["node_id"] for c in candidates] == [NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY]
+    assert candidates[0]["short_name"] == "Near"
+    assert [c["km"] for c in candidates] == [1.1, 11.1, 16.7]
+    assert [h["candidates"] for h in reply["heard"][1:]] == [[], [], []]
+    assert reply["nodes"] == []
+
+    # A retry reads the saved fix even if the phone now sends another one.
+    retried = upload(client, {**nearby, "latitude": PHONE[0] + 5})
+    assert retried["already_saved"] == 1
+    assert retried["heard"] == reply["heard"][:1]
+
+
+@pytest.mark.usefixtures("known_nodes")
+def test_upload_relay_hints_exclude_each_packets_sender_and_receiver(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    sender, receiver, fourth = 0x0800001A, 0x0900001A, 0x0A00001A
+    node(connection, sender, PHONE[0] + 0.001)
+    node(connection, receiver, PHONE[0] + 0.002)
+    node(connection, fourth, PHONE[0] + 0.2)
+    reply = upload(
+        client,
+        measurement(1, sender_node_id=sender, latitude=PHONE[0], hop_limit=1),
+        measurement(2, sender_node_id=NEAR, latitude=PHONE[0], hop_limit=1),
+        session={**SESSION, "receiver_node_id": receiver},
+    )
+
+    assert heard_in(reply) == [(1, None, "unknown"), (2, None, "unknown")]
+    assert [[c["node_id"] for c in row["candidates"]] for row in reply["heard"]] == [
+        [NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY],
+        [sender, LINKED_TO_SENDER, LINKED_TO_GATEWAY],
+    ]
+
+
 RELAY, OTHER_RELAY, THIRD_RELAY = 0x05_00_00_1A, 0x06_00_00_1A, 0x07_00_00_1A
+
+
+def heard_in(reply: dict[str, Any]) -> list[tuple[int, int | None, str]]:
+    """(seq, node, how) of each measurement in an upload's reply."""
+    return [(heard["seq"], heard["node_id"], heard["how"]) for heard in reply["heard"]]
 
 
 def links(connection: sqlite3.Connection) -> list[tuple[int, int]]:
@@ -1071,13 +1180,20 @@ def test_a_relay_the_survey_node_heard_directly_names_its_relayed_packets(
 ) -> None:
     at = now_ms() - DAY_MS
     # A packet relayed by a node sending 1A, before any evidence: unknown.
-    upload(client, measurement(1, relay_byte=0x1A, heard_at_ms=at))
+    relayed = measurement(1, relay_byte=0x1A, heard_at_ms=at)
+    assert heard_in(upload(client, relayed)) == [(1, None, "unknown")]
     assert links(connection) == []
     # RELAY heard directly 5 km away ten minutes later names it.
     upload(client, direct(2, RELAY, heard_at_ms=at + 600_000, latitude=41.965))
     assert links(connection) == [(1, RELAY)]
     detail = fine_cell_detail(client, 41.91974, 1.569995)
     assert [(n["node_id"], n["how"]) for n in detail["heard_nodes"]] == [(RELAY, "survey_link")]
+    # The first batch sent again reads the link, with the name SigSleuth knows.
+    node(connection, RELAY, PHONE[0])
+    connection.execute("UPDATE node_current SET short_name = 'RL' WHERE node_id = ?", (RELAY,))
+    reply = upload(client, relayed)
+    assert heard_in(reply) == [(1, RELAY, "survey_link")]
+    assert reply["nodes"] == [{"node_id": RELAY, "long_name": None, "short_name": "RL"}]
     # Another node sending 1A, heard only three hours away, is a later tier.
     upload(client, direct(3, OTHER_RELAY, heard_at_ms=at - 3 * 3_600_000))
     assert links(connection) == [(1, RELAY)]
@@ -1354,9 +1470,12 @@ def test_relayed_packets_follow_the_relays_own_bit(
     assert cell_measurements(client, node=RELAY) == 2
 
     # RELAY turns it off: the link still names it, and its measurements join
-    # the unknown relay with its byte.
-    upload(client, direct(4, RELAY, ok_to_mqtt=False, heard_at_ms=at + 120_000))
+    # the unknown relay with its byte, in the phone's reply too.
+    reply = upload(client, direct(4, RELAY, ok_to_mqtt=False, heard_at_ms=at + 120_000))
     assert links(connection) == [(2, RELAY)]
+    assert heard_in(reply) == [(4, None, "unknown")]
+    reply = upload(client, measurement(2, sender_node_id=OPTED_OUT, heard_at_ms=at))
+    assert heard_in(reply) == [(2, None, "unknown")]
     assert sorted(opt_outs(connection)) == [RELAY, OPTED_OUT]
     detail = fine_cell_detail(client, *PHONE)
     assert detail["heard_nodes"] == []
@@ -1396,6 +1515,11 @@ def test_an_opted_out_node_is_not_suggested_as_a_cells_relay(
 
     assert [[c["node_id"] for c in relay["candidates"]] for relay in relays] == [
         [LINKED_TO_SENDER, LINKED_TO_GATEWAY]
+    ]
+    reply = upload(client, measurement(1))
+    assert [c["node_id"] for c in reply["heard"][0]["candidates"]] == [
+        LINKED_TO_SENDER,
+        LINKED_TO_GATEWAY,
     ]
 
 

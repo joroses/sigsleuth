@@ -314,7 +314,8 @@ def survey_upload(now: datetime) -> dict[str, object]:
         "hop_start": 3,
         "hop_limit": 3,
     }
-    return {"session": session, "measurements": [measurement, direct]}
+    unknown = {**measurement, "seq": 3, "latitude": 53.05}
+    return {"session": session, "measurements": [measurement, direct, unknown]}
 
 
 def coverage_requests(client: TestClient, now: datetime) -> Iterator[str]:
@@ -326,6 +327,7 @@ def coverage_requests(client: TestClient, now: datetime) -> Iterator[str]:
     yield f"/api/v1/coverage/extent?node={REQUESTER}"
     yield f"/api/v1/coverage/extent?node={REQUESTER}&channel=LongFast"
     yield "/api/v1/coverage/nodes?west=4&south=51&east=6&north=53"
+    yield "/api/v1/coverage/relay-nodes?spreading_factor=11"
     cells = client.get(f"/api/v1/coverage/cells?{area}").json()
     cell = cells["cells"][0]
     yield f"/api/v1/coverage/cells/{cells['level']}/{cell['x']}/{cell['y']}"

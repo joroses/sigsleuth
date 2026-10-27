@@ -127,6 +127,12 @@ coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
+coverage.saved_heard
+  SEARCH coverage_session USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+  SEARCH coverage_relay USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
 
 ## GET /api/v1/packets?limit=50
 
@@ -1420,6 +1426,34 @@ coverage.coverage_nodes
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+
+## GET /api/v1/coverage/relay-nodes?spreading_factor=11
+
+opt_out.opted_out
+  SCAN node_opt_out
+coverage.relay_nodes
+  SCAN node_current
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
   SEARCH coverage_relay USING PRIMARY KEY

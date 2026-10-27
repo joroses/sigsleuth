@@ -52,12 +52,14 @@ from sigsleuth.coverage import (
     CoverageCellList,
     CoverageExtent,
     CoverageNodeList,
+    CoverageRelayNodeList,
     Upload,
     UploadResult,
     coverage_cell,
     coverage_cells,
     coverage_extent,
     coverage_nodes,
+    relay_nodes,
     save_upload,
 )
 from sigsleuth.db import (
@@ -705,8 +707,10 @@ def create_app(
     def coverage_upload(connection: Connection, upload: Upload) -> UploadResult:
         """Save one signal survey session's measurements from a phone. Unusable
         measurements are skipped and counted, and ones already saved are
-        ignored, so a retried batch is harmless. On 503, also sent while
-        derived tables are rebuilt, the phone retries the same batch later.
+        ignored, so a retried batch is harmless. The reply names the node each
+        usable one heard, with possible relays when unknown, as the map does.
+        On 503, also sent while derived tables are rebuilt, the phone retries
+        the same batch later.
         Refused unless SIGSLEUTH_UPLOAD_PASSWORD is set."""
         # Upload names each relay once, partly by ruling out every other node
         # with its byte (coverage.heard_node); half-rebuilt node tables would
@@ -722,6 +726,16 @@ def create_app(
                 settings.retention_days, settings.coverage_retention_days
             ),
         )
+
+    @app.get("/api/v1/coverage/relay-nodes", dependencies=[Uploader])
+    def coverage_relay_nodes(
+        connection: Connection,
+        spreading_factor: Annotated[int | None, Query(ge=5, le=12)] = None,
+    ) -> CoverageRelayNodeList:
+        """The placed nodes that could relay a survey's packets on
+        spreading_factor, with their reach, for the survey app's relay guesses
+        offline. Takes the upload password."""
+        return relay_nodes(connection, spreading_factor=spreading_factor)
 
     @app.get("/api/v1/coverage/cells")
     def coverage_cell_page(

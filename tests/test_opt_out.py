@@ -330,6 +330,17 @@ def masked_packets(connection: sqlite3.Connection, hidden: set[int]) -> list[int
     return routes + neighbours
 
 
+def test_the_survey_apps_relay_nodes_name_no_node_that_opted_out(
+    hidden_sample: tuple[Path, Subjects, set[int]],
+) -> None:
+    path, _, hidden = hidden_sample
+    client = TestClient(create_app(Settings(path, upload_password="survey")))
+    response = client.get("/api/v1/coverage/relay-nodes", auth=("phone", "survey"))
+    assert response.status_code == 200, response.text
+    assert response.json()["nodes"]
+    assert list(leaks(response.json(), hidden)) == []
+
+
 def test_an_opted_out_node_reads_as_one_never_heard(
     sample: Sample,
     hidden_sample: tuple[Path, Subjects, set[int]],

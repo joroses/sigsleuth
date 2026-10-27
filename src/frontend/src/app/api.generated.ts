@@ -624,11 +624,35 @@ export interface paths {
      * Coverage Upload
      * @description Save one signal survey session's measurements from a phone. Unusable
      *     measurements are skipped and counted, and ones already saved are
-     *     ignored, so a retried batch is harmless. On 503, also sent while
-     *     derived tables are rebuilt, the phone retries the same batch later.
+     *     ignored, so a retried batch is harmless. The reply names the node each
+     *     usable one heard, with possible relays when unknown, as the map does.
+     *     On 503, also sent while derived tables are rebuilt, the phone retries
+     *     the same batch later.
      *     Refused unless SIGSLEUTH_UPLOAD_PASSWORD is set.
      */
     post: operations["coverage_upload_api_v1_coverage_uploads_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/coverage/relay-nodes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Coverage Relay Nodes
+     * @description The placed nodes that could relay a survey's packets on
+     *     spreading_factor, with their reach, for the survey app's relay guesses
+     *     offline. Takes the upload password.
+     */
+    get: operations["coverage_relay_nodes_api_v1_coverage_relay_nodes_get"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -927,8 +951,7 @@ export interface components {
     };
     /**
      * CoverageCandidate
-     * @description A node that may have relayed a cell's unknown relays, km from the
-     *     cell's centre.
+     * @description A possible relay, km from a measurement or a cell's centre.
      */
     CoverageCandidate: {
       node_id: number;
@@ -1087,6 +1110,26 @@ export interface components {
     CoverageNodeList: {
       nodes: components["schemas"]["CoverageViewNode"][];
       unknown: number;
+      truncated: boolean;
+    };
+    /**
+     * CoverageRelayNode
+     * @description A node that could relay a survey's packets, where the map draws it,
+     *     and its reach (positions.own_reach) when longer than RULE_OUT_KM, within
+     *     which any node could relay it.
+     */
+    CoverageRelayNode: {
+      node_id: number;
+      long_name: string | null;
+      short_name: string | null;
+      latitude: number;
+      longitude: number;
+      estimated: boolean;
+      reach_km: number | null;
+    };
+    /** CoverageRelayNodeList */
+    CoverageRelayNodeList: {
+      nodes: components["schemas"]["CoverageRelayNode"][];
       truncated: boolean;
     };
     /**
@@ -2220,6 +2263,25 @@ export interface components {
       measurements: components["schemas"]["UploadMeasurement"][];
     };
     /**
+     * UploadHeard
+     * @description The heard node as the map reads it (_SHOWN), or possible relay hints.
+     */
+    UploadHeard: {
+      seq: number;
+      node_id: number | null;
+      /** @enum {string} */
+      how:
+        | "direct"
+        | "reported"
+        | "gateway_link"
+        | "sender_link"
+        | "survey_link"
+        | "only_candidate"
+        | "unknown";
+      /** @default [] */
+      candidates: components["schemas"]["CoverageCandidate"][];
+    };
+    /**
      * UploadMeasurement
      * @description One packet the survey node heard. Times are epoch milliseconds on the
      *     phone's clock. A missing SNR or RSSI is null; 0 is a real reading.
@@ -2242,12 +2304,20 @@ export interface components {
       ok_to_mqtt: boolean | null;
       default_key: boolean | null;
     };
+    /** UploadNode */
+    UploadNode: {
+      node_id: number;
+      long_name: string | null;
+      short_name: string | null;
+    };
     /**
      * UploadResult
      * @description saved counts new measurements, already_saved those the server held
      *     from an earlier upload. skipped counts unusable ones by reason. last_seq
      *     is the highest seq in the batch, saved or not, so the phone continues
-     *     after it; None for an empty batch.
+     *     after it; None for an empty batch. heard has each usable measurement's
+     *     heard node and possible relays when unknown, read after the survey links
+     *     are refreshed, and nodes the names of those named.
      */
     UploadResult: {
       saved: number;
@@ -2256,6 +2326,8 @@ export interface components {
         [key: string]: number;
       };
       last_seq: number | null;
+      heard: components["schemas"]["UploadHeard"][];
+      nodes: components["schemas"]["UploadNode"][];
     };
     /**
      * UploadSession
@@ -3280,6 +3352,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["UploadResult"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  coverage_relay_nodes_api_v1_coverage_relay_nodes_get: {
+    parameters: {
+      query?: {
+        spreading_factor?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CoverageRelayNodeList"];
         };
       };
       /** @description Validation Error */

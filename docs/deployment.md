@@ -49,7 +49,7 @@ While capturing, packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14) are 
 
 ## A public server
 
-SigSleuth has no accounts. Anyone who can reach it sees everything it recorded; only Diagnostics and signal survey uploads take a password (HTTP Basic, any user name): `SIGSLEUTH_ADMIN_PASSWORD` for Diagnostics and `SIGSLEUTH_UPLOAD_PASSWORD` for uploads, so surveyors need not get the admin one. Without the first, Diagnostics is open; without the second, uploads are refused. Put it behind a reverse proxy with HTTPS, since Basic sends the password in the clear.
+SigSleuth has no accounts. Anyone who can reach it sees everything it recorded; only Diagnostics and signal survey uploads take a password (HTTP Basic, any user name): `SIGSLEUTH_ADMIN_PASSWORD` for Diagnostics and `SIGSLEUTH_UPLOAD_PASSWORD` for uploads and the survey app's list of nodes that could relay, so surveyors need not get the admin one. Without the first, Diagnostics is open; without the second, uploads are refused. Put it behind a reverse proxy with HTTPS, since Basic sends the password in the clear.
 
 Keep `SIGSLEUTH_API_HOST=127.0.0.1` and let the proxy reach the published port; Docker's published ports bypass firewalls such as ufw, so `0.0.0.0` would also expose the plain-HTTP port. With [Caddy](https://caddyserver.com/), which fetches the certificate itself:
 

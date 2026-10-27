@@ -52,6 +52,97 @@ UNHEARD = math.log(0.05)
 
 # How name_relay named a relay.
 RelayHow = Literal["gateway_link", "sender_link", "reported", "only_candidate"]
+# What relay_terms reads for each candidate (WEIGHTS); 0 when it tells nothing,
+# as for a node SigSleuth does not know.
+RelayTerm = Literal[
+    "unplaced",
+    "estimated",
+    "log_km",
+    "beyond_reach",
+    "near5",
+    "in_reach",
+    "receiver_far",
+    "glink",
+    "glink_log",
+    "slink",
+    "slink_log",
+    "sender_far",
+    "snr_llr",
+    "rep_plus1",
+    "rep_same",
+    "rep_other",
+    "role_router",
+    "role_router_late",
+    "role_client",
+    "role_mute",
+    "role_none",
+    "channel_same",
+    "channel_other",
+    "inactive",
+    "rheard",
+]
+# A conditional logit over each copy's candidates and a node SigSleuth does
+# not know (UNKNOWN_SCORE), assuming 1% of relays are unknown. Fitted
+# 2026-10-27 on route truth from live loranet.pl, 13-27 Oct (every 8th
+# traceroute, 29,142 copies; receivers with and without links of their own):
+# beside the ladder, 26,610 right / 152 wrong without the gateway's links,
+# 28,675 / 117 with them, against 23,105 / 465 and 28,612 / 179. Weights are
+# per mesh: refit with scripts/relay-fit.py.
+WEIGHTS: dict[RelayTerm, float] = {
+    "unplaced": -8.15,
+    "estimated": -0.81,
+    "log_km": -2.12,
+    "beyond_reach": 2.16,
+    "near5": -0.48,
+    "in_reach": 1.77,
+    "receiver_far": -3.52,
+    "glink": 1.29,
+    "glink_log": 0.63,
+    "slink": 2.05,
+    "slink_log": 0.54,
+    "sender_far": -0.55,
+    "snr_llr": 0.19,
+    "rep_plus1": 2.38,
+    "rep_same": -0.02,
+    "rep_other": -4.72,
+    "role_router": 3.41,
+    "role_router_late": 1.42,
+    "role_client": -0.6,
+    "role_mute": -3.02,
+    "role_none": -0.19,
+    "channel_same": 1.36,
+    "channel_other": -2.96,
+    "inactive": -5.87,
+    "rheard": 4.92,
+}
+UNKNOWN_SCORE = -4.93
+NAME_PROBABILITY = 0.8
+FAR_KM = 50
+ROLE_TERMS: dict[str | None, RelayTerm] = {
+    "ROUTER": "role_router",
+    "ROUTER_LATE": "role_router_late",
+    "CLIENT": "role_client",
+    "CLIENT_MUTE": "role_mute",
+    None: "role_none",
+}
+# Terms that tie a candidate to the copy. A name needs one: alone, role and
+# channel let an unplaced ROUTER nothing linked to the copy beat an unknown
+# node.
+EVIDENCE_TERMS: frozenset[RelayTerm] = frozenset(
+    {"in_reach", "near5", "glink", "slink", "rep_plus1", "rheard"}
+)
+# The evidence families a name is worded by, largest contribution first.
+WORDING: dict[RelayTerm, "ScoredHow"] = {
+    "glink": "gateway_link",
+    "glink_log": "gateway_link",
+    "snr_llr": "gateway_link",
+    "slink": "sender_link",
+    "slink_log": "sender_link",
+    "rep_plus1": "reported",
+    "in_reach": "only_candidate",
+    "near5": "only_candidate",
+    "rheard": "receiver_heard",
+}
 # Why rule_outs removed a candidate, in the order it checks.
 RuleOut = Literal[
     "unplaced",
@@ -73,6 +164,10 @@ NAMED_HOW: dict[NamingRule, RelayHow] = {
     "reported": "reported",
     "only_candidate": "only_candidate",
 }
+# How a score names a relay: as name_relay, or receiver_heard, the receiver
+# heard it directly (packet pages only). only_candidate words a name by
+# distance: it is the likeliest nearby, not the only one.
+ScoredHow = Literal["gateway_link", "sender_link", "reported", "only_candidate", "receiver_heard"]
 # A gateway's report: gateway, hops left, relay byte and SNR.
 Report = tuple[int, int | None, int | None, float | None]
 
@@ -183,18 +278,13 @@ def relay_evidence(
     when unknown). Radio links are those of the last day, or of a day either
     side of links_around (positions.radio_links); traceroute hops are read
     only for one_hop_senders, the senders of copies heard after one hop.
-    Candidates that cannot_relay_at any position get no activity, reach or
-    links: the rule-outs drop them first."""
+    Candidates that cannot_relay get no activity, reach or links."""
     by_byte = nodes_by_byte(connection, relay_bytes)
     candidates = {node for nodes in by_byte.values() for node in nodes}
     placed = nodes_by_id(connection, candidates | senders)
     radios = node_radios(connection, candidates)
     possible = {
-        node
-        for node in candidates
-        if not cannot_relay_at(
-            placed.get(node), radios.get(node), math.inf, None, spreading_factors
-        )
+        node for node in candidates if not cannot_relay(radios.get(node), spreading_factors)
     }
     heard = list(times)
     active_hours: dict[int, list[int]] = defaultdict(list)
@@ -498,6 +588,18 @@ def static_rule_outs(
     return out
 
 
+def cannot_relay(radio: NodeRadio | None, spreading_factors: set[int]) -> bool:
+    """Whether a node cannot have sent a relayed copy heard on these spreading
+    factors (empty when unknown): its firmware sends no relay byte, or its
+    map report's preset is on another spreading factor."""
+    if radio is None:
+        return False
+    if radio.firmware is not None and radio.firmware < TRAITS["relay_byte"].version:
+        return True
+    preset = radio.preset_spreading_factor
+    return bool(spreading_factors) and preset is not None and preset not in spreading_factors
+
+
 def cannot_relay_at(
     place: NodeSummary | None,
     radio: NodeRadio | None,
@@ -624,3 +726,168 @@ def signal_scores(
 
     unknown = sum(UNHEARD - (math.log(SNR_WIDTH_DB) if snr is not None else 0) for _, snr in copies)
     return {node: score(node) for node in left}, unknown
+
+
+def possible(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
+    """The candidates that may have sent the copy: all but those that
+    cannot_relay."""
+    spreading_factors = set() if relayed.spreading_factor is None else {relayed.spreading_factor}
+    return [
+        node
+        for node in evidence.candidates(relayed)
+        if not cannot_relay(evidence.radios.get(node), spreading_factors)
+    ]
+
+
+def relay_terms(
+    evidence: RelayEvidence,
+    relayed: Relayed,
+    signals: Mapping[tuple[int, int], DirectSignal],
+    heard: Collection[int] = (),
+) -> dict[int, dict[RelayTerm, float]]:
+    """Each possible candidate's non-zero terms (WEIGHTS). heard holds the
+    candidates the receiver heard directly around the copy; none for a
+    survey receiver."""
+    # Co-hearers whose own byte differs: one sending it may upload its own rebroadcast.
+    sounding = [
+        (gateway, snr)
+        for gateway, hops, byte, snr in relayed.other_reports()
+        if byte == relayed.relay_byte
+        and hops == relayed.hop_limit
+        and relay_byte_of(gateway) != byte
+        and snr is not None
+    ]
+    own: dict[int, int | None] = {}
+    for gateway, hops, _, _ in relayed.other_reports():
+        own.setdefault(gateway, hops)
+    sender = evidence.placed.get(relayed.sender)
+    sender_at = None
+    if relayed.one_hop and sender is not None and sender.latitude is not None:
+        if sender.longitude is not None:
+            sender_at = (sender.latitude, sender.longitude)
+    sender_links = evidence.sender_links(relayed.sender)[relayed.sender] if relayed.one_hop else {}
+    cohearers = relayed.cohearers()
+    found = {}
+    for node in possible(evidence, relayed):
+        terms: dict[RelayTerm, float] = {}
+        place = evidence.placed.get(node)
+        reach = evidence.reach.get(node, 0.0)
+        km = None if relayed.position is None else node_km(place, relayed.position)
+        if place is None or place.latitude is None or place.longitude is None:
+            terms["unplaced"] = 1
+        elif place.estimated:
+            terms["estimated"] = 1
+        # An estimated node on its receiver was placed by the nodes that heard
+        # it, so its distance is circular.
+        if km is not None and not (place is not None and place.estimated and km < 1):
+            terms["log_km"] = math.log1p(km)
+            terms["beyond_reach"] = max(0.0, math.log(max(km, 0.001) / max(reach, NAME_KM)))
+            terms["near5"] = float(km < 5)
+            terms["in_reach"] = float(km <= max(reach, NAME_KM))
+            terms["receiver_far"] = float(km > max(reach, FAR_KM))
+        if relayed.one_hop:
+            if links := sender_links.get(node, 0):
+                terms["slink"] = 1
+                terms["slink_log"] = math.log1p(links)
+            sender_km = None if sender_at is None else node_km(place, sender_at)
+            terms["sender_far"] = float(sender_km is not None and sender_km > max(reach, FAR_KM))
+        best = max((evidence.radio_links.get(g, {}).get(node, 0) for g in cohearers), default=0)
+        if best:
+            terms["glink"] = 1
+            terms["glink_log"] = math.log1p(best)
+        snr_llr = 0.0
+        for gateway, snr in sounding:
+            profile = signals.get((node, gateway))
+            if profile is not None and profile.snr_mean is not None:
+                # Against an unknown node, whose SNR is anywhere in SNR_WIDTH_DB.
+                variance = SNR_SPREAD_DB**2 * (1 + 1 / profile.snr_count)
+                snr_llr += (
+                    -0.5 * (snr - profile.snr_mean) ** 2 / variance
+                    - 0.5 * math.log(2 * math.pi * variance)
+                    + math.log(SNR_WIDTH_DB)
+                )
+        terms["snr_llr"] = snr_llr
+        hops = own.get(node)
+        if hops is not None and relayed.hop_limit is not None:
+            if hops == relayed.hop_limit + 1:
+                terms["rep_plus1"] = 1
+            else:
+                terms["rep_same" if hops == relayed.hop_limit else "rep_other"] = 1
+        if (role := ROLE_TERMS.get(None if place is None else place.role)) is not None:
+            terms[role] = 1
+        radio = evidence.radios.get(node)
+        channel = None if radio is None else radio.channel_spreading_factor
+        if channel is not None and relayed.spreading_factor is not None:
+            terms["channel_same" if channel == relayed.spreading_factor else "channel_other"] = 1
+        if not _active(evidence, node, relayed.at):
+            terms["inactive"] = 1
+        if node in heard:
+            terms["rheard"] = 1
+        found[node] = {term: value for term, value in terms.items() if value}
+    return found
+
+
+@dataclass(frozen=True)
+class RelayScores:
+    """Each possible candidate's terms and probability of being the relay,
+    and None's: a node SigSleuth does not know."""
+
+    terms: Mapping[int, Mapping[RelayTerm, float]]
+    probabilities: Mapping[int | None, float]
+
+    def ranked(self) -> list[int]:
+        """The candidates, likeliest first."""
+        return sorted(
+            (node for node in self.probabilities if node is not None),
+            key=lambda node: (-self.probabilities[node], node),
+        )
+
+    def evidenced(self, node: int) -> bool:
+        """Whether an evidence term counts for a candidate (EVIDENCE_TERMS, or a
+        signal that matches it better than an unknown node's)."""
+        terms = self.terms.get(node, {})
+        return any(terms.get(term) for term in EVIDENCE_TERMS) or terms.get("snr_llr", 0) > 0
+
+    def named(self, hidden: Collection[int] = ()) -> tuple[int, ScoredHow] | None:
+        """The likeliest candidate when it reaches NAME_PROBABILITY with
+        evidence, and how; None otherwise, or when it is hidden."""
+        ranked = self.ranked()
+        if not ranked:
+            return None
+        best = ranked[0]
+        if self.probabilities[best] < NAME_PROBABILITY or not self.evidenced(best):
+            return None
+        return None if best in hidden else (best, wording(self.terms[best]))
+
+
+def score_relays(
+    evidence: RelayEvidence,
+    relayed: Relayed,
+    signals: Mapping[tuple[int, int], DirectSignal],
+    heard: Collection[int] = (),
+) -> RelayScores:
+    """relay_terms and relay_probabilities of one copy."""
+    terms = relay_terms(evidence, relayed, signals, heard)
+    return RelayScores(terms, relay_probabilities(terms))
+
+
+def relay_probabilities(
+    terms: Mapping[int, Mapping[RelayTerm, float]],
+) -> dict[int | None, float]:
+    """A softmax of each candidate's weighted terms and UNKNOWN_SCORE."""
+    scores: dict[int | None, float] = {None: UNKNOWN_SCORE}
+    for node, its in terms.items():
+        scores[node] = sum(WEIGHTS[term] * value for term, value in its.items())
+    top = max(scores.values())
+    total = sum(math.exp(score - top) for score in scores.values())
+    return {node: math.exp(score - top) / total for node, score in scores.items()}
+
+
+def wording(terms: Mapping[RelayTerm, float]) -> ScoredHow:
+    """How a name is worded: the evidence family that adds most to its
+    score. Role and channel never word one."""
+    totals: dict[ScoredHow, float] = defaultdict(float)
+    for term, how in WORDING.items():
+        totals[how] += WEIGHTS[term] * terms.get(term, 0.0)
+    how, total = max(totals.items(), key=lambda item: item[1])
+    return how if total > 0 else "only_candidate"

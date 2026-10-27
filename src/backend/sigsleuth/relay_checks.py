@@ -478,7 +478,8 @@ def relay_check(
             naming.copy, receiver=CHOSEN_RECEIVER, position=receiver_at or naming.copy.position
         )
         naming = name_copy(found.relays.evidence, copy, {}, found.relays.signals)
-    checks = _checks(found, hidden, {reception_id: naming})
+    # In gateway mode the check's survey answer stays a survey receiver's.
+    checks = _checks(found, hidden, {reception_id: naming} if receiver_mode == "survey" else None)
     check = checks[reception_id]
     reception = next(r for r in found.receptions if r.reception_id == reception_id)
     places = _places(connection, found, reception, hidden)

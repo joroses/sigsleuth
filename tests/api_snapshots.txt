@@ -5345,13 +5345,13 @@ check:
     relay:
       node_id: 2224775088
       name: "Node 5fb0"
-    how: "receiver_heard"
+    how: "gateway_link"
     outcome: null
     why: "named"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.998
+    probability: 0.992
     route_probability: null
   candidates: 11
   possible: 11

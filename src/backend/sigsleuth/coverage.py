@@ -453,7 +453,8 @@ class HeardNode:
     """Which node's transmission the survey node received, and how upload
     decided that (SavedHow). node_id is None when unknown. candidates counts
     the possible candidates (heard_node); 1 when heard directly. maybe holds
-    the likeliest candidates when unknown, for the upload's reply."""
+    the likeliest candidates with some evidence, for the upload's reply when
+    the saved measurement is unknown: a resent one keeps its first name."""
 
     node_id: int | None
     how: SavedHow
@@ -632,11 +633,11 @@ def heard_node(
     }
     scores = RelayScores(terms, relay_probabilities(terms))
     named = scores.named()
+    maybe = tuple([node for node in scores.ranked() if scores.evidenced(node)][:CELL_CANDIDATES])
     # A survey receiver hears no candidate in relay_terms' heard.
     if named is None or named[1] == "receiver_heard":
-        maybe = [node for node in scores.ranked() if scores.evidenced(node)]
-        return HeardNode(None, "unknown", len(left), tuple(maybe[:CELL_CANDIDATES]))
-    return HeardNode(named[0], named[1], len(left))
+        return HeardNode(None, "unknown", len(left), maybe)
+    return HeardNode(named[0], named[1], len(left), maybe)
 
 
 def _is_direct(row: Mapping[str, Any]) -> bool:
@@ -1463,6 +1464,9 @@ def relay_candidates(
             summary = evidence.placed.get(node)
             km = None if summary is None else node_km(summary, place)
             if node in hidden or not scores.evidenced(node) or summary is None or km is None:
+                continue
+            # The score saw one spreading factor at most; a cell may have several.
+            if cannot_relay(evidence.radios.get(node), spreading_factors):
                 continue
             near.append(
                 CoverageCandidate(node, summary.long_name, summary.short_name, round(km, 1))

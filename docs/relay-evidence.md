@@ -1,6 +1,6 @@
 # Relay evidence: which sources name a relay
 
-Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages name relays by the decision below since 2026-10-18. Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
+Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages named relays by the 2026-10-18 decision below, and by one score since 2026-10-27 ([Decision: one score](#decision-one-score-2026-10-27)). Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
 
 ## The problem
 
@@ -120,7 +120,34 @@ Agreement needs no truth, so it can be read on all traffic. On all relayed recep
 
 Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; their positions, roles and channels 0.1 / 0.2; the packet's other receptions 0.1 / 0.1; the receiver's direct links to the candidates, 7 days, 0.7 / 1.3; the co-hearers' direct SNR of the candidates 0.2 / 3.6; own reach 0.4 / 1.0; activity 0.1 / 0.2. `radio_links` for the candidates over 24 h costs 17.6 / 31.9, and traceroute hops to the receiver 22 / 23, because `traceroute_hop` has no index by node. Upload reads `radio_links` once per batch, as before, and no traceroute hops.
 
+## Decision: one score (2026-10-27)
+
+Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of naming rules, gave way to one score (`relays.py`). Solid lines are unchanged: heard directly, a survey link, and on packet pages the only candidate the gateway heard directly. "Too strong" still removes a survey candidate first.
+
+- **Candidates**: every node sending the byte except those that cannot have sent the copy: firmware without the relay byte, or a map report preset on another spreading factor. Unplaced, CLIENT_MUTE, silent, far and other-channel nodes stay in, with terms against them. So does a node SigSleuth does not know, the unknown option, scoring `UNKNOWN_SCORE`.
+- **Score**: each candidate's terms times their weights (`WEIGHTS`), summed. A softmax over the candidates and the unknown option gives each a probability.
+- **Name**: the likeliest candidate, dashed, when its probability is at least 0.8 and an evidence term counts for it: within its reach (20 km floor), within 5 km, linked to a co-hearer or (after one hop) the sender, reported one hop earlier, heard directly by the receiving gateway, or a signal that matches better than an unknown node's. Without the evidence rule, role and channel let an unplaced ROUTER with nothing tying it to the copy beat the unknown option. The name is worded by the evidence family that adds most to its score; a role never words one.
+- **Estimated nodes on the receiver**: no distance terms for an estimated node within 1 km of the receiver. Its estimate comes from the nodes that heard it, so its 0 km is circular. Dropping distance for every estimated node cost about 1,400 right names.
+- **No name**: up to three candidates with evidence, likeliest first, on packet pages, upload replies and the coverage cell (scored there as a copy heard at the cell's centre).
+
+Measured on a copy of live loranet.pl `msh/#`, 13–27 October, every 8th traceroute: 29,142 receptions whose route names the relay. Weights were fitted on one week and tested on the other, both ways; the shipped table is fitted on all of them. The relay is unknown for 1% of copies by assumption: route truth never has one, so each copy also counts with its true relay removed, labelled unknown, at that weight. Right / wrong, and wrong names with the true relay hidden:
+
+| Receiver | Ladder | Score |
+|---|---|---|
+| Survey stand-in: the gateway with no links of its own, its report and route left out | 23,105 / 465, hidden 7,438 | 26,610 / 152, hidden 5,303 |
+| Packet page: the gateway with its own direct receptions | 28,612 / 179, hidden 8,375 | 28,675 / 117, hidden 6,538 |
+
+Calibration, packet pages where heard directly does not decide: names at 0.8–0.9 were right 81% of the time, at 0.99 or more 99.8%. Without role terms the score failed both receivers: it named fewer right and more wrong than the ladder. With them, distance would otherwise word nearly every name. Without the unknown option, wrong names with the true relay hidden rise two to three times. A hearing-rate term (how often each co-hearer hears the candidate) added nothing on ordinary copies at a 1% unknown share and cost 290 ms per busy page; not used.
+
+What the weights say: distance falls steeply to about 50 km, then flattens (`log_km`, `beyond_reach`, `receiver_far`); being within reach and links count for a candidate; reporting the packet with other hops left, not being active within a day, an unplaced node and CLIENT_MUTE count strongly against it; ROUTER counts for it, as route truth sits on routers' paths. With no role or links, a lone candidate is named only within about 10 km.
+
+Weights are per mesh. To refit on another network, or after a firmware change: `uv run --locked --with numpy python scripts/relay-fit.py DATABASE`. It prints out-of-fold figures for the refit and the current table, then a table to paste into `relays.py`. Packet pages score at read time, and upload names are saved facts, so no derived table needs a rebuild.
+
+Revisit at ground level: surveys have no route truth yet, and route truth favours routers.
+
 ## Decision (2026-10-18)
+
+Superseded for naming by the score above, 2026-10-27; solid lines are as decided here.
 
 Solid lines need direct evidence; dashed guesses can also use the co-hearers' signal score (below). Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
@@ -192,18 +219,19 @@ Decided: survey links and upload leave out a candidate whose copy is over 30 dB 
 
 ### Wording
 
-Every relayed name stays a guess unless it is solid.
+Every relayed name stays a guess unless it is solid. Since 2026-10-27 a guess is worded by the evidence that adds most to its score.
 
 | Evidence | Line | Wording |
 |---|---|---|
 | Heard directly | solid | Heard directly |
 | Gateway heard it directly (packet page) | no "≈" | Heard directly: the only node ending in 1a this gateway heard directly within a week of the packet |
 | Survey link | solid | Heard directly nearby: the only node ending in 1a a survey heard |
-| Signal score, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
+| Gateway heard it and others directly (packet page, `receiver_heard`) | dashed | Guess: likeliest node ending in 1a this gateway hears |
+| Links with a co-hearer or its signal, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
 | `sender_link` | dashed | Guess: linked to the sender |
 | `reported` | dashed | Guess: it relayed the packet (MQTT), maybe not the copy heard here |
-| Only candidate left | dashed | Guess: the only node ending in 1a that could have relayed it |
-| None | none | Unknown relay ending in 1a; Maybe X (3.2 km), Y (12 km) |
+| Distance, `only_candidate` | dashed | Guess: the likeliest node ending in 1a nearby |
+| None | none | Unknown relay ending in 1a; Maybe X (3.2 km), Y (12 km), likeliest first |
 
 ## Routes between packet relays (2026-10-23)
 

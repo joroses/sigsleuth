@@ -720,9 +720,9 @@ def create_app(
         On 503, also sent while derived tables are rebuilt, the phone retries
         the same batch later.
         Refused unless SIGSLEUTH_UPLOAD_PASSWORD is set."""
-        # Upload names each relay once, partly by ruling out every other node
-        # with its byte (coverage.heard_node); half-rebuilt node tables would
-        # leave some out and name the wrong one for good.
+        # Upload names each relay once, weighing every other node with its
+        # byte (coverage.heard_node); half-rebuilt node tables would leave
+        # some out and name the wrong one for good.
         if rederive_pending(connection):
             raise ApiError(
                 503, "rebuilding", "SigSleuth is rebuilding its tables; send the batch later."

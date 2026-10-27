@@ -46,7 +46,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 |---|---|
 | RSSI / SNR | Signal strength / signal-to-noise ratio as the receiver measured it. Not delivery success. |
 | Hop start / hop limit | Header counters; their difference is hops travelled. Equal values alone do not prove direct reception. |
-| Relay byte | The last byte of the relaying node's number. Usually matches many nodes; pages name one by the [relay evidence](relay-evidence.md) rules, marked "≈" unless the gateway heard it directly. |
+| Relay byte | The last byte of the relaying node's number. Usually matches many nodes; pages name the likeliest by the [relay evidence](relay-evidence.md) score, marked "≈" unless the gateway heard it directly. |
 | Spreading factor | LoRa setting fixed by the modem preset, guessed from the channel name. |
 | Fade margin | How far an SNR is above the weakest decodable at its spreading factor. Links are rated by it. |
 | ChUtil / AirUtil | A node's reported channel busy share / own transmit share. |
@@ -87,7 +87,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Measurement | One packet the survey node heard. Not a reception. |
 | Heard node | The node the survey node actually received: the sender if direct, else the last relay, often guessed from the relay byte ([relay evidence](relay-evidence.md)). The map's line to it is solid when it was heard directly or by a survey link, dashed when guessed. |
 | Survey link | A heard node named from a direct reception: the one node sending that relay byte that a survey node heard directly nearby around then (`coverage.survey_candidates`). It wins over upload's guess. |
-| Own reach | A node's longest trusted link it transmitted on (`positions.own_reach`). A relay candidate farther than it and 50 km is ruled out; one is named only within it or 20 km. |
-| Only candidate | A heard node guessed because the rule-outs left no other node sending its relay byte (`coverage.heard_node`). |
+| Own reach | A node's longest trusted link it transmitted on (`positions.own_reach`). A receiver within it or 20 km counts for a relay candidate, one beyond it and 50 km against it. |
+| Only candidate | A heard node guessed mainly by distance: the likeliest node sending its relay byte near the survey node or gateway (`coverage.heard_node`). Named so before 2026-10-27, when it was the only one left. |
 | Still-true measurement | One the coverage map counts: not heard before its node moved or flew, and recent or of a node seen since ([coverage](coverage.md)). |
 | Coverage cell | A square of the map's coverage grid, coloured by average fade margin. |

@@ -15,6 +15,7 @@ from sigsleuth.config import Settings
 from sigsleuth.coverage import fine_cell
 from sigsleuth.db import migrate_database, now_ms, open_current_database, recreate_derived
 from sigsleuth.derive import rederive
+from sigsleuth.relays import Relayed, relay_evidence, rule_outs
 from sigsleuth.retention import apply_retention
 
 SESSION = {
@@ -463,6 +464,28 @@ def test_rule_outs_leave_the_only_candidate(
     mqtt_report(connection, earlier, hop_limit=3, relay_byte=0x33)
 
     assert heard(client, connection, relay_byte=0x3D)[:3] == (relay, "only_candidate", 1)
+    # Relay checks show each candidate's rule-out.
+    copy = Relayed(
+        sender=SENDER,
+        receiver=RECEIVER,
+        at=now_ms() - 60_000,
+        position=PHONE,
+        spreading_factor=7,
+        hop_start=4,
+        hop_limit=1,
+        relay_byte=0x3D,
+        reports=[(earlier, 3, 0x33, 5.0)],
+    )
+    evidence = relay_evidence(connection, {0x3D}, {SENDER}, [copy.at], spreading_factors={7})
+    assert {check.node_id: check.ruled_out for check in rule_outs(evidence, copy)} == {
+        mute: ("client_mute",),
+        on_long_fast: ("channel",),
+        preset: ("preset",),
+        old_firmware: ("firmware",),
+        silent: ("silent",),
+        earlier: ("own_report",),
+        relay: (),
+    }
 
 
 @pytest.mark.parametrize("outgoing", [False, True])

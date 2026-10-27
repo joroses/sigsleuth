@@ -7,6 +7,7 @@ its routes, hops and payload show such a node as unknown (opt_out.py).
 """
 
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal
@@ -28,14 +29,19 @@ from sigsleuth.opt_out import SHOWN_PACKET, opted_out
 from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
 from sigsleuth.relays import (
     COHEARER_WINDOW_MS,
+    NAMED_HOW,
+    CandidateCheck,
+    DirectSignal,
+    NamingStep,
     Relayed,
-    candidates_left,
+    RelayEvidence,
     channel_spreading_factor,
     direct_receptions,
     direct_signals,
-    name_relay,
+    naming_steps,
     node_km,
     relay_evidence,
+    rule_outs,
 )
 from sigsleuth.reported import positions_when_heard
 from sigsleuth.traceroute import (
@@ -245,50 +251,12 @@ def packet_detail(
     """Return the packet and its receptions, nearest the sender first, or None
     if it does not exist or is not shown. include_hidden_relays is for internal
     inference only: the caller must filter its output before serving it."""
-    row = connection.execute(
-        """
-        SELECT t.*,
-               COALESCE(sender.long_name, sender.short_name) AS sender_name,
-               COALESCE(recipient.long_name, recipient.short_name) AS recipient_name
-        FROM packet AS t
-        LEFT JOIN node_current AS sender ON sender.node_id = t.sender_node_id
-        LEFT JOIN node_current AS recipient ON recipient.node_id = t.recipient_node_id
-        WHERE t.id = ?
-        """,
-        (packet_row_id,),
-    ).fetchone()
     hidden = opted_out(connection)
-    if row is None or not hidden.isdisjoint((row["sender_node_id"], row["recipient_node_id"])):
+    row = _shown_packet(connection, packet_row_id, hidden)
+    if row is None:
         return None
-    reception_rows = connection.execute(
-        """
-        SELECT r.id, r.received_at, r.gateway_node_id,
-               r.rx_snr, r.rx_rssi, r.hop_start, r.hop_limit, r.relay_byte, r.route_payload,
-               COALESCE(gateway.long_name, gateway.short_name) AS gateway_name,
-               gateway.short_name AS gateway_short_name
-        FROM reception AS r
-        LEFT JOIN node_current AS gateway ON gateway.node_id = r.gateway_node_id
-        WHERE r.packet_row_id = ?
-        ORDER BY r.id
-        LIMIT ?
-        """,
-        (packet_row_id, MAX_PACKET_RECEPTIONS),
-    ).fetchall()
     sender = int(row["sender_node_id"])
-    places = nodes_when_heard(
-        connection,
-        int(row["first_received_at"]),
-        {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
-    )
-    receptions = sorted(
-        (
-            _packet_reception(
-                item, row, places.get(int(item["gateway_node_id"])), places.get(sender), hidden
-            )
-            for item in reception_rows
-        ),
-        key=_hop_order,
-    )
+    receptions, places = _receptions(connection, row, hidden)
     receptions = _with_relays(
         connection,
         receptions,
@@ -355,6 +323,95 @@ def packet_detail(
             connection, row, traceroute, (*hops, *(reply_route.hops if reply_route else ()))
         ),
     )
+
+
+@dataclass(frozen=True)
+class RelayedPacket:
+    """A shown packet, its receptions as its page lists them before relays
+    are named, and how _with_relays names each relayed one's relay, None
+    when none has a relay to name. Opted-out nodes stay among the
+    candidates, as for the packet page: callers must not name them."""
+
+    packet: PacketRow
+    receptions: tuple[PacketReception, ...]
+    relays: "PacketRelays | None"
+
+
+def relayed_packet(connection: sqlite3.Connection, packet_row_id: int) -> RelayedPacket | None:
+    """The RelayedPacket of a shown packet; None when it is not shown."""
+    hidden = opted_out(connection)
+    row = _shown_packet(connection, packet_row_id, hidden)
+    if row is None:
+        return None
+    receptions, _ = _receptions(connection, row, hidden)
+    return RelayedPacket(
+        packet_row(row),
+        tuple(receptions),
+        relay_namings(
+            connection,
+            receptions,
+            int(row["sender_node_id"]),
+            at=int(row["first_received_at"]),
+            spreading_factor=channel_spreading_factor(str(row["channel"])),
+        ),
+    )
+
+
+def _shown_packet(
+    connection: sqlite3.Connection, packet_row_id: int, hidden: set[int]
+) -> sqlite3.Row | None:
+    row: sqlite3.Row | None = connection.execute(
+        """
+        SELECT t.*,
+               COALESCE(sender.long_name, sender.short_name) AS sender_name,
+               COALESCE(recipient.long_name, recipient.short_name) AS recipient_name
+        FROM packet AS t
+        LEFT JOIN node_current AS sender ON sender.node_id = t.sender_node_id
+        LEFT JOIN node_current AS recipient ON recipient.node_id = t.recipient_node_id
+        WHERE t.id = ?
+        """,
+        (packet_row_id,),
+    ).fetchone()
+    if row is None or not hidden.isdisjoint((row["sender_node_id"], row["recipient_node_id"])):
+        return None
+    return row
+
+
+def _receptions(
+    connection: sqlite3.Connection, row: sqlite3.Row, hidden: set[int]
+) -> tuple[list[PacketReception], dict[int, NodeSummary]]:
+    """The packet's receptions in _hop_order, and the sender and gateways
+    where they were when it was heard."""
+    reception_rows = connection.execute(
+        """
+        SELECT r.id, r.received_at, r.gateway_node_id,
+               r.rx_snr, r.rx_rssi, r.hop_start, r.hop_limit, r.relay_byte, r.route_payload,
+               COALESCE(gateway.long_name, gateway.short_name) AS gateway_name,
+               gateway.short_name AS gateway_short_name
+        FROM reception AS r
+        LEFT JOIN node_current AS gateway ON gateway.node_id = r.gateway_node_id
+        WHERE r.packet_row_id = ?
+        ORDER BY r.id
+        LIMIT ?
+        """,
+        (int(row["id"]), MAX_PACKET_RECEPTIONS),
+    ).fetchall()
+    sender = int(row["sender_node_id"])
+    places = nodes_when_heard(
+        connection,
+        int(row["first_received_at"]),
+        {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
+    )
+    receptions = sorted(
+        (
+            _packet_reception(
+                item, row, places.get(int(item["gateway_node_id"])), places.get(sender), hidden
+            )
+            for item in reception_rows
+        ),
+        key=_hop_order,
+    )
+    return receptions, places
 
 
 def _hop_costs(
@@ -469,49 +526,85 @@ def _relay_ids(receptions: list[PacketReception]) -> set[int]:
     return ids
 
 
-def _with_relays(
+@dataclass(frozen=True)
+class ReceptionNaming:
+    """How _with_relays names one relayed reception's relay: the copy as the
+    rules read it, how often its gateway heard each candidate directly
+    within COHEARER_WINDOW_MS of the packet (those never heard left out),
+    every candidate's rule-outs, and the naming steps over those left.
+    relay is what the packet page names: the only candidate heard directly,
+    else the deciding step's (the first that names one); rules_relay the
+    deciding step's alone."""
+
+    copy: Relayed
+    heard: Mapping[int, int]
+    checks: tuple[CandidateCheck, ...]
+    steps: tuple[NamingStep, ...]
+
+    @property
+    def left(self) -> list[int]:
+        return [check.node_id for check in self.checks if not check.ruled_out]
+
+    @property
+    def deciding_step(self) -> NamingStep | None:
+        return next((step for step in self.steps if step.named is not None), None)
+
+    @property
+    def rules_relay(self) -> tuple[int, RelayNodeHow] | None:
+        step = self.deciding_step
+        return None if step is None or step.named is None else (step.named, NAMED_HOW[step.rule])
+
+    @property
+    def relay(self) -> tuple[int, RelayNodeHow] | None:
+        if len(self.heard) == 1:
+            return next(iter(self.heard)), "heard_directly"
+        return self.rules_relay
+
+
+@dataclass(frozen=True)
+class PacketRelays:
+    """What relay_namings read once for a packet, and each relayed
+    reception's ReceptionNaming by reception_id."""
+
+    evidence: RelayEvidence
+    signals: Mapping[tuple[int, int], DirectSignal]
+    namings: Mapping[int, ReceptionNaming]
+
+
+def relay_namings(
     connection: sqlite3.Connection,
     receptions: list[PacketReception],
     sender: int,
     *,
     at: int,
     spreading_factor: int | None,
-    hidden: set[int],
-) -> list[PacketReception]:
-    """The receptions with relay_node or relay_maybe filled in where a relay
-    byte is neither the sender's nor the gateway's (a gateway sending its own
-    byte uploaded its own rebroadcast). By coverage's rules (relays.py), with
-    the gateway in the survey node's place, where it was when heard:
+) -> PacketRelays | None:
+    """How each reception whose relay byte is neither the sender's nor the
+    gateway's (a gateway sending its own byte uploaded its own rebroadcast)
+    gets its relay named, by coverage's rules (relays.py) with the gateway
+    in the survey node's place, where it was when heard:
 
     1. heard_directly: the only candidate the gateway heard directly within
        COHEARER_WINDOW_MS of the packet, whatever the rule-outs say;
-    2. else relays.name_relay on the candidates_left;
-    3. else relay_maybe: up to RELAY_MAYBE of those left, nearest first.
+    2. else relays.name_relay on the candidates left.
 
-    A hidden node (opted out) is never named or listed: a copy it is named
-    for reads as undecided, as any other.
-
-    Links count either side of the packet (at), where upload has only those
-    before: the oldest packets would otherwise outlive their evidence, which
-    retention removes at the same age."""
-    relayed = {
-        reception.reception_id
+    None when no reception has such a byte. Links count either side of the
+    packet (at), where upload has only those before: the oldest packets
+    would otherwise outlive their evidence, which retention removes at the
+    same age."""
+    relayed = [
+        reception
         for reception in receptions
         if reception.relay_byte
         and not reception.direct
         and reception.relay_byte
         not in (relay_byte_of(sender), relay_byte_of(reception.gateway_node_id))
-    }
+    ]
     if not relayed:
-        return receptions
-    relay_bytes = {
-        int(reception.relay_byte)
-        for reception in receptions
-        if reception.reception_id in relayed and reception.relay_byte
-    }
+        return None
     evidence = relay_evidence(
         connection,
-        relay_bytes,
+        {int(reception.relay_byte) for reception in relayed if reception.relay_byte},
         {sender},
         [at],
         spreading_factors=set() if spreading_factor is None else {spreading_factor},
@@ -535,16 +628,8 @@ def _with_relays(
         (reception.gateway_node_id, reception.hop_limit, reception.relay_byte, reception.rx_snr)
         for reception in receptions
     ]
-
-    def name(node: int) -> str | None:
-        place = evidence.placed.get(node)
-        return None if place is None else place.long_name or place.short_name
-
-    named = []
-    for reception in receptions:
-        if reception.reception_id not in relayed or reception.relay_byte is None:
-            named.append(reception)
-            continue
+    namings = {}
+    for reception in relayed:
         gateway = reception.gateway_node_id
         position = None
         if reception.gateway_latitude is not None and reception.gateway_longitude is not None:
@@ -557,30 +642,61 @@ def _with_relays(
             spreading_factor=spreading_factor,
             hop_start=reception.hop_start,
             hop_limit=reception.hop_limit,
-            relay_byte=reception.relay_byte,
+            relay_byte=int(reception.relay_byte or 0),
             reports=reports,
         )
-        every = evidence.candidates(copy)
-        heard = [node for node in every if direct.get((node, gateway), 0) > 0]
-        left = None
-        relay = None
-        if len(heard) == 1:
-            relay = RelayNode(heard[0], name(heard[0]), len(every), "heard_directly")
-        else:
-            left = candidates_left(evidence, copy)
-            guess = name_relay(evidence, copy, left, signals)
-            if guess is not None:
-                relay = RelayNode(guess[0], name(guess[0]), len(left), guess[1])
-        if relay is not None and relay.node_id not in hidden:
-            named.append(replace(reception, relay_node=relay))
+        checks = rule_outs(evidence, copy)
+        heard = {
+            check.node_id: direct[check.node_id, gateway]
+            for check in checks
+            if direct.get((check.node_id, gateway), 0) > 0
+        }
+        left = [check.node_id for check in checks if not check.ruled_out]
+        namings[reception.reception_id] = ReceptionNaming(
+            copy, heard, tuple(checks), tuple(naming_steps(evidence, copy, left, signals))
+        )
+    return PacketRelays(evidence, signals, namings)
+
+
+def _with_relays(
+    connection: sqlite3.Connection,
+    receptions: list[PacketReception],
+    sender: int,
+    *,
+    at: int,
+    spreading_factor: int | None,
+    hidden: set[int],
+) -> list[PacketReception]:
+    """The receptions with relay_node filled in by relay_namings, else
+    relay_maybe: up to RELAY_MAYBE of the candidates left, nearest first.
+    A hidden node (opted out) is never named or listed: a copy it is named
+    for reads as undecided, as any other."""
+    found = relay_namings(connection, receptions, sender, at=at, spreading_factor=spreading_factor)
+    if found is None:
+        return receptions
+
+    def name(node: int) -> str | None:
+        place = found.evidence.placed.get(node)
+        return None if place is None else place.long_name or place.short_name
+
+    named = []
+    for reception in receptions:
+        naming = found.namings.get(reception.reception_id)
+        if naming is None:
+            named.append(reception)
             continue
-        if left is None:
-            left = candidates_left(evidence, copy)
+        left = naming.left
+        if (relay := naming.relay) is not None and relay[0] not in hidden:
+            candidates = len(naming.checks) if relay[1] == "heard_directly" else len(left)
+            node_relay = RelayNode(relay[0], name(relay[0]), candidates, relay[1])
+            named.append(replace(reception, relay_node=node_relay))
+            continue
+        position = naming.copy.position
         maybe = []
         for node in left:
             if node in hidden:
                 continue
-            km = None if position is None else node_km(evidence.placed.get(node), position)
+            km = None if position is None else node_km(found.evidence.placed.get(node), position)
             maybe.append(RelayMaybe(node, name(node), None if km is None else round(km, 1)))
         maybe.sort(key=lambda node: (node.km is None, node.km or 0, node.node_id))
         named.append(replace(reception, relay_maybe=tuple(maybe[:RELAY_MAYBE])))

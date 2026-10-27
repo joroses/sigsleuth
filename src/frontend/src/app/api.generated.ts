@@ -830,7 +830,7 @@ export interface paths {
      * Relay Checks Page
      * @description Every relayed reception whose own traceroute route names its relay,
      *     in the `count` newest traceroute packets before packet row `before_id`,
-     *     with the relay packet pages name and what the rules alone name.
+     *     with the relay packet pages name and what a survey receiver there names.
      */
     get: operations["relay_checks_page_api_v1_diagnostics_relay_checks_get"];
     put?: never;
@@ -1159,7 +1159,7 @@ export interface components {
     /**
      * CoverageRelayNode
      * @description A node that could relay a survey's packets, where the map draws it,
-     *     and its reach (positions.own_reach) when longer than RULE_OUT_KM, within
+     *     and its reach (positions.own_reach) when longer than FAR_KM, within
      *     which any node could relay it.
      */
     CoverageRelayNode: {
@@ -2065,22 +2065,54 @@ export interface components {
       recipient_name: string | null;
     };
     /**
+     * RelayAnswer
+     * @description What one receiver names: relay and how, None when none; outcome
+     *     against the route's relay, None without one; the likeliest candidate
+     *     and its probability; the route's relay's probability, None when it
+     *     cannot have sent the copy.
+     */
+    RelayAnswer: {
+      relay: components["schemas"]["RelayCheckNode"] | null;
+      how:
+        | (
+            | "heard_directly"
+            | "receiver_heard"
+            | "gateway_link"
+            | "sender_link"
+            | "reported"
+            | "only_candidate"
+          )
+        | null;
+      outcome: ("right" | "wrong" | "undecided") | null;
+      /** @enum {string} */
+      why:
+        | "heard_directly"
+        | "named"
+        | "below"
+        | "unknown"
+        | "no_evidence"
+        | "no_candidates";
+      likeliest: components["schemas"]["RelayCheckNode"] | null;
+      probability: number | null;
+      route_probability: number | null;
+    };
+    /**
      * RelayCandidate
-     * @description A node sending the copy's relay byte, as the rules read it. key names
-     *     it in steps, signals and links: its node_id, or a negative number for
-     *     an opted-out node, which has no id, name or position here.
+     * @description A node sending the copy's relay byte, as the score reads it. key names
+     *     it in signals and links: its node_id, or a negative number for an
+     *     opted-out node, which has no id, name or position here.
      *
      *     It is placed where pages draw it now (estimated when only its neighbours
      *     place it). receiver_km and sender_km (one hop only) are its distances,
-     *     reach_km its own reach (0 when unknown); it is ruled out beyond
-     *     max(reach_km, RULE_OUT_KM) and named only within max(reach_km, NAME_KM)
-     *     (within_naming_reach).
-     *     heard_directly counts the gateway's direct receptions of it around the
-     *     packet. activity_hours is the hour it was last active nearest the
-     *     packet, in hours from it (negative before); None when none is within
-     *     ACTIVE_MS, or when it was not looked up after a rule-out that needs no
-     *     history. own_hop_limit is the hops left in its own report of the
-     *     packet.
+     *     reach_km its own reach (0 when unknown). heard_directly counts the
+     *     gateway's direct receptions of it around the packet. activity_hours is
+     *     the hour it was last active nearest the packet, in hours from it
+     *     (negative before); None when none is within ACTIVE_MS. own_hop_limit is
+     *     the hops left in its own report of the packet.
+     *     possible is false when it cannot have sent the copy (firmware, map
+     *     report preset); it then has no probability, score or terms. score is the
+     *     sum of its terms' scores; evidence: one of them ties it to the copy, as
+     *     a name needs.
      */
     RelayCandidate: {
       key: number;
@@ -2097,22 +2129,15 @@ export interface components {
       receiver_km: number | null;
       sender_km: number | null;
       reach_km: number;
-      within_naming_reach: boolean;
       heard_directly: number;
       activity_hours: number | null;
       last_gateway_at: string | null;
       own_hop_limit: number | null;
-      ruled_out: (
-        | "unplaced"
-        | "client_mute"
-        | "channel"
-        | "preset"
-        | "firmware"
-        | "receiver_far"
-        | "own_report"
-        | "silent"
-        | "sender_far"
-      )[];
+      possible: boolean;
+      probability: number | null;
+      score: number | null;
+      evidence: boolean;
+      terms: components["schemas"]["RelayTermScore"][];
     };
     /**
      * RelayCheck
@@ -2120,16 +2145,13 @@ export interface components {
      *
      *     route_relay is the node before the gateway in the copy's own route, with
      *     that hop's SNR; None when the route names none (route_relay below).
-     *     page_relay is what the packet page names (heard directly first);
-     *     rules_relay what the rules alone name, as for a survey measurement, each
-     *     with the step that named it. Each outcome compares one with route_relay,
-     *     None without one.
-     *     candidates counts the nodes sending the byte, left those no rule-out
-     *     removed. route_relay_ruled_out lists the rule-outs that removed the
-     *     route's relay: empty when it was left, None when it is no candidate.
-     *     mixed: another gateway heard the same rebroadcast (same byte and hops
-     *     left), but its route names another relay. steps sums up each naming
-     *     step.
+     *     page is what the packet page names (heard directly first); survey what
+     *     a receiver at the gateway with no links of its own names, as for a
+     *     survey measurement. candidates counts the nodes sending the byte,
+     *     possible those that may have sent the copy. route_relay_possible is
+     *     None when the route's relay is no candidate. mixed: another gateway
+     *     heard the same rebroadcast (same byte and hops left), but its route
+     *     names another relay.
      */
     RelayCheck: {
       packet_row_id: number;
@@ -2143,58 +2165,21 @@ export interface components {
       hop_limit: number | null;
       route_relay: components["schemas"]["RelayCheckNode"] | null;
       route_snr_db: number | null;
-      page_relay: components["schemas"]["RelayCheckNode"] | null;
-      page_step:
-        | (
-            | "heard_directly"
-            | "receiver_heard"
-            | "signal"
-            | "gateway_link"
-            | "sender_link"
-            | "reported"
-            | "only_candidate"
-          )
-        | null;
-      page_outcome: ("right" | "wrong" | "undecided") | null;
-      rules_relay: components["schemas"]["RelayCheckNode"] | null;
-      rules_step:
-        | (
-            | "heard_directly"
-            | "receiver_heard"
-            | "signal"
-            | "gateway_link"
-            | "sender_link"
-            | "reported"
-            | "only_candidate"
-          )
-        | null;
-      rules_outcome: ("right" | "wrong" | "undecided") | null;
+      page: components["schemas"]["RelayAnswer"];
+      survey: components["schemas"]["RelayAnswer"];
       candidates: number;
-      left: number;
-      route_relay_ruled_out:
-        | (
-            | "unplaced"
-            | "client_mute"
-            | "channel"
-            | "preset"
-            | "firmware"
-            | "receiver_far"
-            | "own_report"
-            | "silent"
-            | "sender_far"
-          )[]
-        | null;
+      possible: number;
+      route_relay_possible: boolean | null;
       mixed: boolean;
-      steps: components["schemas"]["RelayStepSummary"][];
     };
     /**
      * RelayCheckDetail
-     * @description One relayed reception's naming, step by step: what each candidate's
-     *     rule-outs found, the heard-directly step, then each naming step in
-     *     order, with what they read. route lists the nodes of the copy's route
-     *     (None a gap) and route_snr_db each hop's SNR; route_places places them
-     *     as packet pages do. one_hop: the copy was heard after one hop, which the
-     *     sender_far and sender_link rules need.
+     * @description One relayed reception's naming: each candidate's terms and
+     *     probability, and an unknown node's (unknown_probability), with what the
+     *     terms read. route lists the nodes of the copy's route (None a gap) and
+     *     route_snr_db each hop's SNR; route_places places them as packet pages
+     *     do. one_hop: the copy was heard after one hop, which the sender terms
+     *     need.
      *
      *     The survey receiver has no direct links and starts at the gateway's
      *     position. Gateway mode reproduces the gateway's own naming. moved
@@ -2215,8 +2200,8 @@ export interface components {
       route_snr_db: (number | null)[];
       route_places: components["schemas"]["RelayPlace"][];
       candidates: components["schemas"]["RelayCandidate"][];
+      unknown_probability: number;
       reports: components["schemas"]["RelayCheckReport"][];
-      steps: components["schemas"]["RelayCheckStep"][];
       signals: components["schemas"]["RelaySignal"][];
       links: components["schemas"]["RelayLinks"][];
       activity_from: string | null;
@@ -2247,9 +2232,9 @@ export interface components {
      * RelayCheckReport
      * @description One gateway's report of the packet. Kinds: receiver (the reception
      *     checked), sender (its own upload), cohearer (same relay byte and hops
-     *     left), earlier (one more hop left), other. signal: the signal step reads
-     *     it (a co-hearer that does not send the byte). route_relay is the relay
-     *     its own route names.
+     *     left), earlier (one more hop left), other. signal: the signal term reads
+     *     it (a co-hearer that does not send the byte, with an SNR). route_relay
+     *     is the relay its own route names.
      */
     RelayCheckReport: {
       reception_id: number;
@@ -2265,23 +2250,6 @@ export interface components {
       sends_byte: boolean;
       signal: boolean;
       route_relay: components["schemas"]["RelayCheckNode"] | null;
-    };
-    /**
-     * RelayCheckStep
-     * @description A naming step (relays.NamingStep), by candidate key.
-     */
-    RelayCheckStep: {
-      /** @enum {string} */
-      rule:
-        | "signal"
-        | "gateway_link"
-        | "sender_link"
-        | "reported"
-        | "only_candidate";
-      scores: components["schemas"]["RelayScore"][];
-      pick: number | null;
-      named: number | null;
-      baseline: number | null;
     };
     /**
      * RelayLinks
@@ -2333,19 +2301,16 @@ export interface components {
     };
     /**
      * RelayRules
-     * @description The rules' thresholds: km, hours, days and score margin.
+     * @description The score's settings: the probability a name needs, an unknown
+     *     node's score, km, hours and days its terms read.
      */
     RelayRules: {
-      rule_out_km: number;
+      name_probability: number;
+      unknown_score: number;
       name_km: number;
+      far_km: number;
       active_hours: number;
       heard_days: number;
-      score_margin: number;
-    };
-    /** RelayScore */
-    RelayScore: {
-      key: number;
-      score: number;
     };
     /**
      * RelaySignal
@@ -2359,23 +2324,40 @@ export interface components {
       snr_mean_db: number | null;
     };
     /**
-     * RelayStepSummary
-     * @description What one naming step found: evidence when it had something to rank
-     *     by (co-hearer copies for the signal step, a link or a report for the
-     *     others), the candidate it points to, and whether it names that one
-     *     (within its naming reach).
+     * RelayTermScore
+     * @description One of a candidate's terms (relays.WEIGHTS): its value and what it
+     *     adds to the candidate's score, its weight times value.
      */
-    RelayStepSummary: {
+    RelayTermScore: {
       /** @enum {string} */
-      rule:
-        | "signal"
-        | "gateway_link"
-        | "sender_link"
-        | "reported"
-        | "only_candidate";
-      evidence: boolean;
-      pick: components["schemas"]["RelayCheckNode"] | null;
-      named: boolean;
+      term:
+        | "unplaced"
+        | "estimated"
+        | "log_km"
+        | "beyond_reach"
+        | "near5"
+        | "in_reach"
+        | "receiver_far"
+        | "glink"
+        | "glink_log"
+        | "slink"
+        | "slink_log"
+        | "sender_far"
+        | "snr_llr"
+        | "rep_plus1"
+        | "rep_same"
+        | "rep_other"
+        | "role_router"
+        | "role_router_late"
+        | "role_client"
+        | "role_mute"
+        | "role_none"
+        | "channel_same"
+        | "channel_other"
+        | "inactive"
+        | "rheard";
+      value: number;
+      score: number;
     };
     /**
      * ReplyRoute

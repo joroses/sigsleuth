@@ -4951,39 +4951,34 @@ checks: 46 items
       node_id: 3655149723
       name: "Node 289b"
     route_snr_db: -1.75
-    page_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    page_step: "heard_directly"
-    page_outcome: "right"
-    rules_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    rules_step: "signal"
-    rules_outcome: "right"
+    page:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "heard_directly"
+      outcome: "right"
+      why: "heard_directly"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
+    survey:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "sender_link"
+      outcome: "right"
+      why: "named"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
     candidates: 1
-    left: 1
-    route_relay_ruled_out: []
+    possible: 1
+    route_relay_possible: true
     mixed: false
-    steps: 5 items
-      - rule: "signal"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "gateway_link"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "sender_link"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
   - packet_row_id: 31074
     reception_id: 106196
     received_at: "2026-10-11T16:21:06.886000Z"
@@ -5000,39 +4995,34 @@ checks: 46 items
       node_id: 3655149723
       name: "Node 289b"
     route_snr_db: 12.5
-    page_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    page_step: "heard_directly"
-    page_outcome: "right"
-    rules_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    rules_step: "signal"
-    rules_outcome: "right"
+    page:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "heard_directly"
+      outcome: "right"
+      why: "heard_directly"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
+    survey:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "sender_link"
+      outcome: "right"
+      why: "named"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
     candidates: 1
-    left: 1
-    route_relay_ruled_out: []
+    possible: 1
+    route_relay_possible: true
     mixed: false
-    steps: 5 items
-      - rule: "signal"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "gateway_link"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "sender_link"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
   - packet_row_id: 30914
     reception_id: 105620
     received_at: "2026-10-11T15:55:55.948000Z"
@@ -5049,37 +5039,34 @@ checks: 46 items
       node_id: 3655149723
       name: "Node 289b"
     route_snr_db: 12.25
-    page_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    page_step: "heard_directly"
-    page_outcome: "right"
-    rules_relay:
-      node_id: 3655149723
-      name: "Node 289b"
-    rules_step: "signal"
-    rules_outcome: "right"
+    page:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "heard_directly"
+      outcome: "right"
+      why: "heard_directly"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
+    survey:
+      relay:
+        node_id: 3655149723
+        name: "Node 289b"
+      how: "gateway_link"
+      outcome: "right"
+      why: "named"
+      likeliest:
+        node_id: 3655149723
+        name: "Node 289b"
+      probability: 1
+      route_probability: 1
     candidates: 1
-    left: 1
-    route_relay_ruled_out: []
+    possible: 1
+    route_relay_possible: true
     mixed: false
-    steps: 5 items
-      - rule: "signal"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "gateway_link"
-        evidence: true
-        pick:
-          node_id: 3655149723
-          name: "Node 289b"
-        named: true
-      - rule: "sender_link"
-        evidence: false
-        pick: null
-        named: false
 traceroutes: 25
 oldest_at: "2026-10-11T15:36:04.640000Z"
 newest_at: "2026-10-11T16:21:06.845000Z"
@@ -5102,37 +5089,34 @@ check:
   hop_limit: 2
   route_relay: null
   route_snr_db: null
-  page_relay:
-    node_id: 2224775088
-    name: "Node 5fb0"
-  page_step: "heard_directly"
-  page_outcome: null
-  rules_relay:
-    node_id: 2224775088
-    name: "Node 5fb0"
-  rules_step: "signal"
-  rules_outcome: null
+  page:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "heard_directly"
+    outcome: null
+    why: "heard_directly"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.998
+    route_probability: null
+  survey:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "gateway_link"
+    outcome: null
+    why: "named"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.992
+    route_probability: null
   candidates: 11
-  left: 5
-  route_relay_ruled_out: null
+  possible: 11
+  route_relay_possible: null
   mixed: false
-  steps: 5 items
-    - rule: "signal"
-      evidence: true
-      pick:
-        node_id: 2224775088
-        name: "Node 5fb0"
-      named: true
-    - rule: "gateway_link"
-      evidence: true
-      pick:
-        node_id: 2224775088
-        name: "Node 5fb0"
-      named: true
-    - rule: "sender_link"
-      evidence: false
-      pick: null
-      named: false
 receiver_mode: "survey"
 moved: false
 channel: "ShortFast"
@@ -5181,12 +5165,24 @@ candidates: 11 items
     receiver_km: 168.5
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -16.67
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.13
+        score: -10.88
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.13
+        score: 4.6
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -5201,12 +5197,24 @@ candidates: 11 items
     receiver_km: 193.6
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -14.9
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.27
+        score: -11.17
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.27
+        score: 4.9
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -5221,12 +5229,25 @@ candidates: 11 items
     receiver_km: 45.3
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: []
+    possible: true
+    probability: 0.0001
+    score: -5
+    evidence: false
+    terms: 3 items
+      - term: "log_km"
+        value: 3.83
+        score: -8.13
+      - term: "beyond_reach"
+        value: 0.82
+        score: 1.77
+      - term: "channel_same"
+        value: 1
+        score: 1.36
+unknown_probability: 0.0001
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -5272,34 +5293,6 @@ reports: 4 items
     sends_byte: false
     signal: false
     route_relay: null
-steps: 5 items
-  - rule: "signal"
-    scores: 5 items
-      - key: 1116113328
-        score: -6.43
-      - key: 1244080816
-        score: -6.43
-      - key: 1770343088
-        score: -6.43
-    pick: 2224775088
-    named: 2224775088
-    baseline: -6.43
-  - rule: "gateway_link"
-    scores: 5 items
-      - key: 1116113328
-        score: 0
-      - key: 1244080816
-        score: 0
-      - key: 1770343088
-        score: 0
-    pick: 2224775088
-    named: 2224775088
-    baseline: null
-  - rule: "sender_link"
-    scores: []
-    pick: null
-    named: null
-    baseline: null
 signals: 1 items
   - key: 2224775088
     gateway_node_id: 2658512488
@@ -5312,11 +5305,12 @@ links: 1 items
     traceroute: 0
 activity_from: "2026-10-08T15:00:00Z"
 rules:
-  rule_out_km: 50
+  name_probability: 0.8
+  unknown_score: -4.93
   name_km: 20
+  far_km: 50
   active_hours: 24
   heard_days: 7
-  score_margin: 3
 
 ## GET /api/v1/diagnostics/relay-checks/90660?receiver=gateway
 
@@ -5335,31 +5329,34 @@ check:
   hop_limit: 2
   route_relay: null
   route_snr_db: null
-  page_relay:
-    node_id: 2224775088
-    name: "Node 5fb0"
-  page_step: "heard_directly"
-  page_outcome: null
-  rules_relay: null
-  rules_step: null
-  rules_outcome: null
+  page:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "heard_directly"
+    outcome: null
+    why: "heard_directly"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.998
+    route_probability: null
+  survey:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "receiver_heard"
+    outcome: null
+    why: "named"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.998
+    route_probability: null
   candidates: 11
-  left: 5
-  route_relay_ruled_out: null
+  possible: 11
+  route_relay_possible: null
   mixed: false
-  steps: 5 items
-    - rule: "signal"
-      evidence: false
-      pick: null
-      named: false
-    - rule: "gateway_link"
-      evidence: false
-      pick: null
-      named: false
-    - rule: "sender_link"
-      evidence: false
-      pick: null
-      named: false
 receiver_mode: "gateway"
 moved: false
 channel: "ShortFast"
@@ -5408,12 +5405,24 @@ candidates: 11 items
     receiver_km: 168.5
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -16.67
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.13
+        score: -10.88
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.13
+        score: 4.6
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -5428,12 +5437,24 @@ candidates: 11 items
     receiver_km: 193.6
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -14.9
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.27
+        score: -11.17
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.27
+        score: 4.9
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -5448,12 +5469,25 @@ candidates: 11 items
     receiver_km: 45.3
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: []
+    possible: true
+    probability: 0
+    score: -5
+    evidence: false
+    terms: 3 items
+      - term: "log_km"
+        value: 3.83
+        score: -8.13
+      - term: "beyond_reach"
+        value: 0.82
+        score: 1.77
+      - term: "channel_same"
+        value: 1
+        score: 1.36
+unknown_probability: 0
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -5499,31 +5533,16 @@ reports: 4 items
     sends_byte: false
     signal: false
     route_relay: null
-steps: 5 items
-  - rule: "signal"
-    scores: []
-    pick: null
-    named: null
-    baseline: null
-  - rule: "gateway_link"
-    scores: []
-    pick: null
-    named: null
-    baseline: null
-  - rule: "sender_link"
-    scores: []
-    pick: null
-    named: null
-    baseline: null
 signals: []
 links: []
 activity_from: "2026-10-08T15:00:00Z"
 rules:
-  rule_out_km: 50
+  name_probability: 0.8
+  unknown_score: -4.93
   name_km: 20
+  far_km: 50
   active_hours: 24
   heard_days: 7
-  score_margin: 3
 
 ## GET /api/v1/diagnostics/relay-checks/90660?latitude=52.0&longitude=19.0
 
@@ -5542,37 +5561,34 @@ check:
   hop_limit: 2
   route_relay: null
   route_snr_db: null
-  page_relay:
-    node_id: 2224775088
-    name: "Node 5fb0"
-  page_step: "heard_directly"
-  page_outcome: null
-  rules_relay:
-    node_id: 2224775088
-    name: "Node 5fb0"
-  rules_step: "signal"
-  rules_outcome: null
+  page:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "heard_directly"
+    outcome: null
+    why: "heard_directly"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.998
+    route_probability: null
+  survey:
+    relay:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    how: "gateway_link"
+    outcome: null
+    why: "named"
+    likeliest:
+      node_id: 2224775088
+      name: "Node 5fb0"
+    probability: 0.998
+    route_probability: null
   candidates: 11
-  left: 3
-  route_relay_ruled_out: null
+  possible: 11
+  route_relay_possible: null
   mixed: false
-  steps: 5 items
-    - rule: "signal"
-      evidence: true
-      pick:
-        node_id: 2224775088
-        name: "Node 5fb0"
-      named: true
-    - rule: "gateway_link"
-      evidence: true
-      pick:
-        node_id: 2224775088
-        name: "Node 5fb0"
-      named: false
-    - rule: "sender_link"
-      evidence: false
-      pick: null
-      named: false
 receiver_mode: "survey"
 moved: true
 channel: "ShortFast"
@@ -5621,12 +5637,24 @@ candidates: 11 items
     receiver_km: 190.6
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -16.66
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.26
+        score: -11.14
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.25
+        score: 4.87
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -5641,12 +5669,24 @@ candidates: 11 items
     receiver_km: 227.5
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far", "silent"]
+    possible: true
+    probability: 0
+    score: -14.89
+    evidence: false
+    terms: 6 items
+      - term: "log_km"
+        value: 5.43
+        score: -11.51
+      - term: "inactive"
+        value: 1
+        score: -5.87
+      - term: "beyond_reach"
+        value: 2.43
+        score: 5.25
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -5661,12 +5701,25 @@ candidates: 11 items
     receiver_km: 73.8
     sender_km: null
     reach_km: 0
-    within_naming_reach: false
     heard_directly: 0
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
-    ruled_out: ["receiver_far"]
+    possible: true
+    probability: 0
+    score: -8.49
+    evidence: false
+    terms: 4 items
+      - term: "log_km"
+        value: 4.31
+        score: -9.15
+      - term: "receiver_far"
+        value: 1
+        score: -3.52
+      - term: "beyond_reach"
+        value: 1.31
+        score: 2.82
+unknown_probability: 0.0011
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -5712,34 +5765,6 @@ reports: 4 items
     sends_byte: false
     signal: false
     route_relay: null
-steps: 5 items
-  - rule: "signal"
-    scores: 3 items
-      - key: 1244080816
-        score: -6.43
-      - key: 1770343088
-        score: -6.43
-      - key: 2224775088
-        score: -1.91
-    pick: 2224775088
-    named: 2224775088
-    baseline: -6.43
-  - rule: "gateway_link"
-    scores: 3 items
-      - key: 1244080816
-        score: 0
-      - key: 1770343088
-        score: 0
-      - key: 2224775088
-        score: 18
-    pick: 2224775088
-    named: null
-    baseline: null
-  - rule: "sender_link"
-    scores: []
-    pick: null
-    named: null
-    baseline: null
 signals: 1 items
   - key: 2224775088
     gateway_node_id: 2658512488
@@ -5752,8 +5777,9 @@ links: 1 items
     traceroute: 0
 activity_from: "2026-10-08T15:00:00Z"
 rules:
-  rule_out_km: 50
+  name_probability: 0.8
+  unknown_score: -4.93
   name_km: 20
+  far_km: 50
   active_hours: 24
   heard_days: 7
-  score_margin: 3

@@ -74,23 +74,32 @@ def test_relay_checks_agree_with_packet_pages(sample_client: TestClient) -> None
         shown = next(
             item for item in packet["receptions"] if item["reception_id"] == check["reception_id"]
         )
-        named = check["page_relay"]
+        named = check["page"]["relay"]
         relay = shown["relay_node"]
         assert (None if named is None else named["node_id"]) == (
             None if relay is None else relay["node_id"]
         )
-        detail = sample_client.get(f"/api/v1/diagnostics/relay-checks/{check['reception_id']}")
-        steps = detail.json()["steps"]
-        deciding = next((step["named"] for step in steps if step["named"] is not None), None)
-        rules = check["rules_relay"]
-        assert deciding == (None if rules is None else rules["node_id"])
-        outcomes.add(check["rules_outcome"])
+        detail = sample_client.get(
+            f"/api/v1/diagnostics/relay-checks/{check['reception_id']}"
+        ).json()
+        assert detail["check"]["survey"] == check["survey"]
+        # A survey name is the likeliest candidate, sure enough and with evidence.
+        possible = [c for c in detail["candidates"] if c["possible"]]
+        likeliest = max(possible, key=lambda c: c["probability"], default=None)
+        survey = check["survey"]["relay"]
+        if survey is not None:
+            assert likeliest is not None and survey["node_id"] == likeliest["node_id"]
+            assert likeliest["probability"] >= detail["rules"]["name_probability"]
+            assert likeliest["evidence"]
+        total = sum(c["probability"] for c in possible) + detail["unknown_probability"]
+        assert abs(total - 1) < 0.01
+        outcomes.add(check["survey"]["outcome"])
     assert "right" in outcomes
 
 
 def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClient) -> None:
     checks = sample_client.get("/api/v1/diagnostics/relay-checks?count=500").json()["checks"]
-    check = next(item for item in checks if item["page_step"] == "heard_directly")
+    check = next(item for item in checks if item["page"]["how"] == "heard_directly")
     url = f"/api/v1/diagnostics/relay-checks/{check['reception_id']}"
     default = sample_client.get(url).json()
     gateway_mode = sample_client.get(url, params={"receiver": "gateway"}).json()
@@ -106,12 +115,11 @@ def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClie
     assert moved["moved"] and moved["receiver"]["placed_by"] == "chosen"
     gateway = check["gateway"]["node_id"]
     for survey in (default, moved):
-        assert survey["check"]["page_relay"] == check["page_relay"]
-        assert survey["check"]["page_step"] == "heard_directly"
+        assert survey["check"]["page"] == check["page"]
         assert all(candidate["heard_directly"] == 0 for candidate in survey["candidates"])
         report = next(r for r in survey["reports"] if r["gateway"]["node_id"] == gateway)
         assert report["kind"] == "cohearer" and report["signal"]
-    assert moved["steps"] == default["steps"]
+    assert moved["candidates"] == default["candidates"]
     assert sample_client.get(url, params={"latitude": 52.0}).status_code == 400
     assert (
         sample_client.get(

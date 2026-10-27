@@ -56,18 +56,19 @@ from sigsleuth.positions import own_reach
 from sigsleuth.radio import PRESET_SPREADING_FACTORS, fade_margin, great_circle_km, preset_name
 from sigsleuth.relays import (
     DAY_MS,
-    RULE_OUT_KM,
+    FAR_KM,
+    NodeRadio,
     Relayed,
     RelayEvidence,
     RelayScores,
-    cannot_relay_at,
+    cannot_relay,
     direct_signals,
     node_km,
     node_radios,
-    nodes_by_byte,
     possible,
     relay_probabilities,
     relay_terms,
+    score_relays,
 )
 from sigsleuth.reported import save_bit
 
@@ -1342,7 +1343,7 @@ def coverage_cell(
     ).fetchall()
     unknown = connection.execute(
         f"""
-        SELECT m.relay_byte, count(*) AS measurements
+        SELECT m.relay_byte, count(*) AS measurements, max(m.heard_at) AS last_heard_at
         FROM {_MEASUREMENTS}
         WHERE {where} AND {_SHOWN} IS NULL
         GROUP BY m.relay_byte ORDER BY measurements DESC, m.relay_byte
@@ -1367,18 +1368,18 @@ def coverage_cell(
         | {int(row["heard_node_id"]) for row in newest if row["heard_node_id"] is not None},
     )
     latitude, longitude = tile_centre(level, x, y)
-    relay_bytes = [
-        int(row["relay_byte"]) for row in unknown[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]
-    ]
+    relayed = [row for row in unknown[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]]
     spreading_factors = {
         int(row["spreading_factor"]) for row in networks if row["spreading_factor"]
     }
     candidates = dict(
         zip(
-            relay_bytes,
+            (int(row["relay_byte"]) for row in relayed),
             relay_candidates(
                 connection,
-                [(byte, latitude, longitude, spreading_factors, set()) for byte in relay_bytes],
+                [(int(row["relay_byte"]), int(row["last_heard_at"])) for row in relayed],
+                (latitude, longitude),
+                spreading_factors,
             ),
             strict=True,
         )
@@ -1421,46 +1422,61 @@ def coverage_cell(
 
 def relay_candidates(
     connection: sqlite3.Connection,
-    places: Sequence[tuple[int, float, float, set[int], set[int]]],
+    copies: Sequence[tuple[int, int]],
+    place: tuple[float, float],
+    spreading_factors: set[int],
 ) -> list[tuple[CoverageCandidate, ...]]:
-    """Up to CELL_CANDIDATES possible relays for each (byte, latitude,
-    longitude, spreading factors, excluded nodes), nearest first. Hints only;
-    nodes that turned OK to MQTT off are never suggested."""
-    if not places:
+    """Up to CELL_CANDIDATES likeliest relays with some evidence for each
+    (byte, heard_at) heard at place, as relays.score_relays ranks them for
+    a copy there with nothing else known. Hints only; nodes that turned
+    OK to MQTT off are never suggested."""
+    if not copies:
         return []
-    relay_bytes = {byte for byte, _, _, _, _ in places}
-    by_byte = nodes_by_byte(connection, relay_bytes)
-    nodes = {node for found in by_byte.values() for node in found}
+    evidence = relays.relay_evidence(
+        connection,
+        {byte for byte, _ in copies},
+        set(),
+        [at for _, at in copies],
+        spreading_factors=spreading_factors,
+    )
     hidden = opted_out(connection)
-    by_byte = {byte: [n for n in found if n not in hidden] for byte, found in by_byte.items()}
-    nodes -= hidden
-    placed, radios = nodes_by_id(connection, nodes), node_radios(connection, nodes)
-    reach = own_reach(connection, nodes, from_km=RULE_OUT_KM)
     found = []
-    for relay_byte, latitude, longitude, spreading_factors, excluded in places:
-        centre = (latitude, longitude)
+    for relay_byte, at in copies:
+        # Sender and receiver 0: no known node is either.
+        scores = score_relays(
+            evidence,
+            Relayed(
+                0,
+                0,
+                at,
+                place,
+                next(iter(spreading_factors)) if len(spreading_factors) == 1 else None,
+                None,
+                None,
+                relay_byte,
+                [],
+            ),
+            {},
+        )
         near = []
-        for node in by_byte.get(relay_byte, []):
-            if node in excluded:
+        for node in scores.ranked():
+            summary = evidence.placed.get(node)
+            km = None if summary is None else node_km(summary, place)
+            if node in hidden or not scores.evidenced(node) or summary is None or km is None:
                 continue
-            place = placed.get(node)
-            km = node_km(place, centre)
-            if place is None or km is None:
-                continue
-            reach_km = max(reach.get(node, 0), RULE_OUT_KM)
-            if not cannot_relay_at(place, radios.get(node), reach_km, centre, spreading_factors):
-                near.append(
-                    CoverageCandidate(node, place.long_name, place.short_name, round(km, 1))
-                )
-        near.sort(key=lambda candidate: (candidate.km, candidate.node_id))
-        found.append(tuple(near[:CELL_CANDIDATES]))
+            near.append(
+                CoverageCandidate(node, summary.long_name, summary.short_name, round(km, 1))
+            )
+            if len(near) == CELL_CANDIDATES:
+                break
+        found.append(tuple(near))
     return found
 
 
 @dataclass(frozen=True)
 class CoverageRelayNode:
     """A node that could relay a survey's packets, where the map draws it,
-    and its reach (positions.own_reach) when longer than RULE_OUT_KM, within
+    and its reach (positions.own_reach) when longer than FAR_KM, within
     which any node could relay it."""
 
     node_id: int
@@ -1485,9 +1501,9 @@ def relay_nodes(
     limit: int = MAX_RELAY_NODES,
 ) -> CoverageRelayNodeList:
     """The placed nodes that could relay a packet on spreading_factor
-    (relays.cannot_relay_at, at any distance), most recently seen first, for
-    the survey app's relay guesses while offline. Nodes that turned
-    OK to MQTT off are left out, as they are never named."""
+    (_could_relay), most recently seen first, for the survey app's relay
+    guesses while offline. Nodes that turned OK to MQTT off are left out,
+    as they are never named."""
     hidden = opted_out(connection)
     seen = [
         int(row[0])
@@ -1498,13 +1514,9 @@ def relay_nodes(
     ]
     placed, radios = nodes_by_id(connection, set(seen)), node_radios(connection, set(seen))
     factors = set() if spreading_factor is None else {spreading_factor}
-    able = [
-        node
-        for node in seen
-        if not cannot_relay_at(placed.get(node), radios.get(node), math.inf, None, factors)
-    ]
+    able = [node for node in seen if _could_relay(placed.get(node), radios.get(node), factors)]
     shown = able[:limit]
-    reach = own_reach(connection, shown, from_km=RULE_OUT_KM)
+    reach = own_reach(connection, shown, from_km=FAR_KM)
     nodes = []
     for node in shown:
         place = placed[node]
@@ -1521,6 +1533,20 @@ def relay_nodes(
             )
         )
     return CoverageRelayNodeList(nodes=nodes, truncated=len(able) > limit)
+
+
+def _could_relay(
+    place: NodeSummary | None, radio: NodeRadio | None, spreading_factors: set[int]
+) -> bool:
+    """Whether the survey app may guess a node as a relay: it is placed,
+    rebroadcasts (not CLIENT_MUTE), its channel is on none of the other
+    spreading factors, and it is not one that cannot_relay."""
+    if place is None or place.latitude is None or place.longitude is None:
+        return False
+    if place.role == "CLIENT_MUTE" or cannot_relay(radio, spreading_factors):
+        return False
+    channel = None if radio is None else radio.channel_spreading_factor
+    return not spreading_factors or channel is None or channel in spreading_factors
 
 
 def tile_centre(level: int, x: int, y: int) -> tuple[float, float]:

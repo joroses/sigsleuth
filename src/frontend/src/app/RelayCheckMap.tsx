@@ -14,9 +14,10 @@ type Place = { latitude: number; longitude: number };
 
 /**
  * One relay check on a map: the receiver and the co-hearers (squares), the
- * sender, every placed candidate coloured by what the rules made of it, the
- * route the copy took, and the rule-out (dashed) and naming (solid) reach
- * of the route's relay, the named ones and the selected candidate.
+ * sender, every placed candidate coloured by whether any evidence ties it to
+ * the copy, the route the copy took, and the far (dashed) and within
+ * (solid) reach of the route's relay, the named ones and the selected
+ * candidate.
  */
 export function RelayCheckMap({
   detail,
@@ -39,7 +40,7 @@ export function RelayCheckMap({
   const named = useMemo(
     () =>
       new Set(
-        [detail.check.page_relay, detail.check.rules_relay].flatMap((node) =>
+        [detail.check.page.relay, detail.check.survey.relay].flatMap((node) =>
           node?.node_id == null ? [] : [node.node_id],
         ),
       ),
@@ -85,7 +86,7 @@ export function RelayCheckMap({
       element.type = "button";
       element.className = [
         "relay-map-node",
-        candidate.ruled_out.length > 0 ? "out" : "left",
+        candidate.evidence ? "left" : "out",
         named.has(candidate.key) ? "named" : "",
         candidate.key === routeKey ? "route" : "",
         candidate.key === selected ? "selected" : "",
@@ -171,7 +172,7 @@ export function RelayCheckMap({
               : colour("--accent");
         return [
           {
-            km: Math.max(candidate.reach_km, detail.rules.rule_out_km),
+            km: Math.max(candidate.reach_km, detail.rules.far_km),
             out: 1,
           },
           { km: Math.max(candidate.reach_km, detail.rules.name_km), out: 0 },
@@ -298,8 +299,8 @@ function addLayers(map: maplibregl.Map) {
 
 /**
  * What the view first shows: the receiver, the sender, the route and the
- * candidates that matter (left, the route's relay, the named ones). Ruled-out
- * candidates far away stay off it.
+ * candidates that matter (with evidence, the route's relay, the named ones).
+ * Others far away stay off it.
  */
 function viewBounds(
   detail: RelayCheckDetail,
@@ -314,7 +315,7 @@ function viewBounds(
     ...detail.candidates.flatMap((candidate) =>
       candidate.latitude !== null &&
       candidate.longitude !== null &&
-      (candidate.ruled_out.length === 0 ||
+      (candidate.evidence ||
         candidate.key === routeKey ||
         named.has(candidate.key))
         ? [{ latitude: candidate.latitude, longitude: candidate.longitude }]
@@ -331,7 +332,7 @@ function viewBounds(
   );
 }
 
-/** Drawn above: ruled out, then left, then named, then the route's relay. */
+/** Drawn above: without evidence, then with, then named, then the route's relay. */
 function layer(
   candidate: RelayCandidate,
   routeKey: number | null,
@@ -339,7 +340,7 @@ function layer(
 ): number {
   if (candidate.key === routeKey) return 3;
   if (named.has(candidate.key)) return 2;
-  return candidate.ruled_out.length === 0 ? 1 : 0;
+  return candidate.evidence ? 1 : 0;
 }
 
 function label(className: string, text: string, title: string): HTMLElement {
@@ -365,7 +366,9 @@ function candidateTitle(candidate: RelayCandidate): string {
       ? "An opted-out node"
       : formatNodeId(candidate.node_id));
   const state =
-    candidate.ruled_out.length === 0 ? "left" : candidate.ruled_out.join(", ");
+    candidate.probability === null
+      ? "cannot have sent it"
+      : `${Math.round(candidate.probability * 100)}%`;
   return `${name}: ${state}, reach ${formatKm(candidate.reach_km)} km`;
 }
 

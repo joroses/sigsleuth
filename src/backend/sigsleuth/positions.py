@@ -20,10 +20,9 @@ import math
 import sqlite3
 import statistics
 from collections import defaultdict
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
 
 from sigsleuth.db import now_ms, to_epoch_ms, transaction
 from sigsleuth.decode import UNKNOWN_NODE
@@ -52,10 +51,6 @@ DOUBTFUL_PARTNER_KM = 150
 # MAX_DOUBT_ALTITUDE_M (junk) are ignored.
 HORIZON_KM_PER_ROOT_M = 4.1
 MAX_DOUBT_ALTITUDE_M = 4000
-
-# Why guess_relay chose a node: it has a radio link to a gateway, else to
-# the sender.
-RelayReason = Literal["gateway_link", "sender_link"]
 
 
 @dataclass(frozen=True)
@@ -360,36 +355,6 @@ def _estimates(connection: sqlite3.Connection, since_ms: int) -> list[EstimatedP
         if estimate is not None:
             estimates.append(estimate)
     return estimates
-
-
-def guess_relay(
-    radio: Mapping[int, Mapping[int, int]],
-    candidates: Sequence[int],
-    *,
-    gateways: Sequence[int],
-    sender: int | None,
-) -> tuple[int, RelayReason] | None:
-    """Which of the candidates (the nodes whose number ends in a relay byte)
-    most likely relayed a packet to whoever heard it: the one with the most
-    radio observations (radio_links of the candidates) with one of the
-    gateways that heard the same transmission, else with the sender. Pass
-    sender None when the relay need not have heard the sender itself. None
-    when no link points to one. A guess only: it is never counted as a link,
-    which would make it circular."""
-    best: tuple[int, int] | None = None
-    for gateway in gateways:
-        heard = radio.get(gateway, {})
-        for node in candidates:
-            if node in heard and (best is None or (heard[node], -node) > (best[1], -best[0])):
-                best = (node, heard[node])
-    if best is not None:
-        return best[0], "gateway_link"
-    if sender is not None:
-        heard = radio.get(sender, {})
-        linked = [node for node in candidates if node in heard]
-        if linked:
-            return max(linked, key=lambda node: (heard[node], -node)), "sender_link"
-    return None
 
 
 def _estimate(

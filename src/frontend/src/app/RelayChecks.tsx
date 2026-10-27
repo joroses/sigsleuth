@@ -1,12 +1,12 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
+  RelayAnswer,
   RelayCandidate,
   RelayCheck,
   RelayCheckDetail,
   RelayCheckList,
   RelayCheckReport,
-  RelayCheckStep,
   relayCheckUrl,
   relayChecksUrl,
 } from "./api";
@@ -21,15 +21,15 @@ import { useSetting, useViewState } from "./remember";
 import { useApi, usePagedApi } from "./useApi";
 import { Badge, NodeLink, ShortTime, StatusPanel, WideTable } from "./ui";
 
-type Answer = "rules" | "page";
-type Outcome = NonNullable<RelayCheck["rules_outcome"]>;
+type Answer = "survey" | "page";
+type Outcome = NonNullable<RelayAnswer["outcome"]>;
 type Show = Outcome | "not_right" | "all";
-type StepName = NonNullable<RelayCheck["rules_step"]>;
-type RuleOut = RelayCandidate["ruled_out"][number];
+type How = NonNullable<RelayAnswer["how"]>;
+type Term = RelayCandidate["terms"][number]["term"];
 type CheckNode = RelayCheck["sender"];
 
 const ANSWERS: { value: Answer; label: string }[] = [
-  { value: "rules", label: "Rules only (as for a survey)" },
+  { value: "survey", label: "Survey receiver (no links of its own)" },
   { value: "page", label: "Packet page (heard directly first)" },
 ];
 const SHOWS: { value: Show; label: string }[] = [
@@ -40,27 +40,54 @@ const SHOWS: { value: Show; label: string }[] = [
   { value: "all", label: "All" },
 ];
 const COUNTS = [25, 50, 100, 200];
+// Candidates the score table shows before "Show all".
+const SCORE_ROWS = 8;
 
-const STEP_LABELS: Record<StepName, string> = {
+const HOW_LABELS: Record<How, string> = {
   heard_directly: "Heard directly",
   receiver_heard: "Heard by the gateway",
-  signal: "Signal match",
   gateway_link: "Links with co-hearers",
   sender_link: "Links with the sender",
   reported: "Reported one hop earlier",
-  only_candidate: "Only candidate",
+  only_candidate: "Distance",
 };
 
-const RULE_OUT_LABELS: Record<RuleOut, string> = {
+const WHY_LABELS: Record<
+  Exclude<RelayAnswer["why"], "heard_directly" | "named">,
+  string
+> = {
+  below: "Likeliest not sure enough",
+  unknown: "An unknown node likeliest",
+  no_evidence: "Likeliest has no evidence",
+  no_candidates: "No candidate",
+};
+
+const TERM_LABELS: Record<Term, string> = {
   unplaced: "no position",
-  client_mute: "CLIENT_MUTE",
-  channel: "channel on another SF",
-  preset: "map report on another SF",
-  firmware: "firmware without relay byte",
-  receiver_far: "receiver beyond its reach",
-  own_report: "its own report's hops",
-  silent: "not active within 24 h",
-  sender_far: "sender beyond its reach",
+  estimated: "estimated position",
+  log_km: "distance",
+  beyond_reach: "beyond its reach",
+  near5: "under 5 km",
+  in_reach: "within reach",
+  receiver_far: "receiver far",
+  glink: "linked to a co-hearer",
+  glink_log: "co-hearer links",
+  slink: "linked to the sender",
+  slink_log: "sender links",
+  sender_far: "sender far",
+  snr_llr: "signal match",
+  rep_plus1: "reported one hop earlier",
+  rep_same: "reported, same hops",
+  rep_other: "reported, other hops",
+  role_router: "ROUTER",
+  role_router_late: "ROUTER_LATE",
+  role_client: "CLIENT",
+  role_mute: "CLIENT_MUTE",
+  role_none: "no role",
+  channel_same: "channel on this SF",
+  channel_other: "channel on another SF",
+  inactive: "not active",
+  rheard: "heard by the gateway",
 };
 
 const OUTCOME_TONES = {
@@ -72,7 +99,7 @@ const OUTCOME_TONES = {
 /**
  * Diagnostics' relay checks (#diagnostics/relays): traceroute copies whose
  * route names their relay, against the relay SigSleuth names, and one
- * copy's naming step by step (#diagnostics/relays/<reception>).
+ * copy's scores term by term (#diagnostics/relays/<reception>).
  */
 export function RelayChecks({ receptionId }: { receptionId: number | null }) {
   // The list loads once it is first shown, and stays loaded while a copy is
@@ -103,50 +130,30 @@ export function RelayChecks({ receptionId }: { receptionId: number | null }) {
   );
 }
 
-function outcomeOf(check: RelayCheck, answer: Answer): Outcome | null {
-  return answer === "page" ? check.page_outcome : check.rules_outcome;
-}
-
 /** Why a check came out as it did, to group the list by. */
 function whyOf(check: RelayCheck, answer: Answer): string {
-  const outcome = outcomeOf(check, answer);
-  const step = answer === "page" ? check.page_step : check.rules_step;
-  const out = check.route_relay_ruled_out;
-  const route = check.route_relay?.node_id ?? null;
-  if (outcome === "right" && step !== null) {
-    return `Named by ${STEP_LABELS[step].toLowerCase()}`;
+  const given = check[answer];
+  if (given.why === "heard_directly") return "Heard directly";
+  if (given.why === "named" && given.how !== null) {
+    return `Named by ${HOW_LABELS[given.how].toLowerCase()}`;
   }
-  if (out === null) return "Route's relay is no candidate";
-  if (out.length > 0) {
-    return `Route's relay ruled out: ${out.map((rule) => RULE_OUT_LABELS[rule]).join(", ")}`;
+  if (check.route_relay_possible === null) {
+    return "Route's relay is no candidate";
   }
-  // The steps that point to the route's relay without naming it.
-  const missed = check.steps
-    .filter((item) => item.pick?.node_id === route && route !== null)
-    .map((item) => STEP_LABELS[item.rule].toLowerCase());
-  const missedText =
-    missed.length === 0 ? "" : `; ${missed.join(", ")} points to it`;
-  if (outcome === "wrong" && step !== null) {
-    return `Another named by ${STEP_LABELS[step].toLowerCase()}${missedText}`;
-  }
-  const beyond = check.steps.find((item) => item.pick !== null && !item.named);
-  if (beyond !== undefined) {
-    const whom = beyond.pick?.node_id === route ? "route's relay" : "another";
-    return `${STEP_LABELS[beyond.rule]} points to ${whom}, beyond its naming reach`;
-  }
-  if (check.steps.some((item) => item.rule === "signal" && item.evidence)) {
-    return "Signal match too close to call";
-  }
-  if (!check.steps.some((item) => item.evidence)) {
-    return "No co-hearer, link or report to go on";
-  }
-  return "Reported one hop earlier: none or several within reach";
+  if (!check.route_relay_possible) return "Route's relay cannot have sent it";
+  return WHY_LABELS[given.why as keyof typeof WHY_LABELS];
 }
 
 function shows(outcome: Outcome | null, show: Show): boolean {
   if (show === "all") return true;
   if (show === "not_right") return outcome !== "right";
   return outcome === show;
+}
+
+function percent(probability: number | null): string {
+  if (probability === null) return "—";
+  const value = probability * 100;
+  return `${value < 1 && value > 0 ? "<1" : Math.round(value)}%`;
 }
 
 function CheckList({
@@ -159,7 +166,7 @@ function CheckList({
 }) {
   const [answer, setAnswer] = useSetting<Answer>(
     "relayChecks.answer",
-    "rules",
+    "survey",
     (value) => ANSWERS.some((item) => item.value === value),
   );
   const [show, setShow] = useSetting<Show>(
@@ -187,10 +194,10 @@ function CheckList({
   const checks = useMemo(() => data?.checks ?? [], [data]);
   const counts = { right: 0, wrong: 0, undecided: 0 };
   for (const check of checks) {
-    const outcome = outcomeOf(check, answer);
+    const outcome = check[answer].outcome;
     if (outcome !== null) counts[outcome] += 1;
   }
-  const kept = checks.filter((check) => shows(outcomeOf(check, answer), show));
+  const kept = checks.filter((check) => shows(check[answer].outcome, show));
   const whys = new Map<string, number>();
   for (const check of kept) {
     const reason = whyOf(check, answer);
@@ -218,8 +225,8 @@ function CheckList({
           <p className="diagnostic-lede">
             Traceroute copies whose own route names their relay: the node before
             the gateway, when it sends the copy&apos;s relay byte. Each is
-            checked against the relay SigSleuth names. Open one to see what
-            ruled each candidate out and which step decided.
+            checked against the relay SigSleuth names. Open one to see each
+            candidate&apos;s score, term by term.
           </p>
         </div>
       </div>
@@ -313,9 +320,10 @@ function CheckList({
                     <th>Why</th>
                     <th>Route says</th>
                     <th>Named</th>
+                    <th>Likeliest</th>
                     <th>Sender → gateway</th>
                     <th>Byte · hops</th>
-                    <th className="number">Left</th>
+                    <th className="number">Possible</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -354,9 +362,7 @@ function CheckList({
 }
 
 function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
-  const named = answer === "page" ? check.page_relay : check.rules_relay;
-  const step = answer === "page" ? check.page_step : check.rules_step;
-  const outcome = outcomeOf(check, answer);
+  const given = check[answer];
   return (
     <tr>
       <td>
@@ -365,8 +371,8 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         </a>
       </td>
       <td>
-        {outcome !== null ? (
-          <Badge tone={OUTCOME_TONES[outcome]}>{outcome}</Badge>
+        {given.outcome !== null ? (
+          <Badge tone={OUTCOME_TONES[given.outcome]}>{given.outcome}</Badge>
         ) : null}
         {check.mixed ? <MixedBadge /> : null}
       </td>
@@ -376,16 +382,29 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         {check.route_snr_db !== null ? (
           <span className="muted"> {check.route_snr_db} dB</span>
         ) : null}
+        {given.route_probability !== null ? (
+          <span className="muted"> · {percent(given.route_probability)}</span>
+        ) : null}
       </td>
       <td>
-        {named === null ? (
+        {given.relay === null ? (
           <span className="muted">none</span>
         ) : (
           <>
-            {nodeText(named)}
-            {step !== null ? (
-              <span className="muted"> · {STEP_LABELS[step]}</span>
+            {nodeText(given.relay)}
+            {given.how !== null ? (
+              <span className="muted"> · {HOW_LABELS[given.how]}</span>
             ) : null}
+          </>
+        )}
+      </td>
+      <td>
+        {given.likeliest === null ? (
+          <span className="muted">—</span>
+        ) : (
+          <>
+            {nodeText(given.likeliest)}
+            <span className="muted"> {percent(given.probability)}</span>
           </>
         )}
       </td>
@@ -397,7 +416,7 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         {hopsText(check.hop_start, check.hop_limit)}
       </td>
       <td className="number">
-        {check.left} of {check.candidates}
+        {check.possible} of {check.candidates}
       </td>
     </tr>
   );
@@ -504,7 +523,7 @@ function CheckDetail({
       ) : shown === null ? (
         <StatusPanel>Loading…</StatusPanel>
       ) : (
-        <CheckSteps
+        <CheckScores
           detail={shown}
           updating={state.loading}
           onReceiver={(at) => {
@@ -521,7 +540,7 @@ function CheckDetail({
   );
 }
 
-function CheckSteps({
+function CheckScores({
   detail,
   updating,
   onReceiver,
@@ -536,17 +555,11 @@ function CheckSteps({
   const [selected, setSelected] = useState<number | null>(null);
   const check = detail.check;
   const candidates = detail.candidates;
-  const byKey = new Map(
-    candidates.map((candidate) => [candidate.key, candidate]),
-  );
-  const left = candidates.filter(
-    (candidate) => candidate.ruled_out.length === 0,
-  );
+  const possible = candidates.filter((candidate) => candidate.possible);
   const heard = candidates.filter((candidate) => candidate.heard_directly > 0);
-  const decidingIndex = detail.steps.findIndex((step) => step.named !== null);
   const routeKey = check.route_relay?.node_id ?? null;
-  const name = (key: number | null) =>
-    key === null ? "—" : candidateName(byKey.get(key));
+  // What this receiver names: the survey answer, or the gateway's own.
+  const given = detail.receiver_mode === "gateway" ? check.page : check.survey;
   return (
     <>
       <div className="detail-heading">
@@ -590,21 +603,13 @@ function CheckSteps({
           <div>
             <dt>Packet page names</dt>
             <dd>
-              <Answered
-                node={check.page_relay}
-                step={check.page_step}
-                outcome={check.page_outcome}
-              />
+              <Answered answer={check.page} />
             </dd>
           </div>
           <div>
-            <dt>Rules name</dt>
+            <dt>Survey receiver names</dt>
             <dd>
-              <Answered
-                node={check.rules_relay}
-                step={check.rules_step}
-                outcome={check.rules_outcome}
-              />
+              <Answered answer={check.survey} />
             </dd>
           </div>
         </dl>
@@ -643,11 +648,13 @@ function CheckSteps({
           <span className="relay-map-gateway receiver">R</span> receiver{" "}
           <span className="relay-map-gateway cohearer">C</span> co-hearer{" "}
           <span className="relay-map-sender now">S</span> sender{" "}
-          <span className="relay-map-node left">left</span>{" "}
-          <span className="relay-map-node out">ruled out</span>{" "}
+          <span className="relay-map-node left">with evidence</span>{" "}
+          <span className="relay-map-node out">without</span>{" "}
           <span className="relay-map-node left estimated">estimated</span> ·
-          blue line: the route · dashed circle: rule-out reach · solid: naming
-          reach (route&apos;s relay blue, named green, clicked yellow)
+          blue line: the route · solid circle: reach or {detail.rules.name_km}{" "}
+          km, within which counts for it · dashed: reach or{" "}
+          {detail.rules.far_km} km, beyond which counts against it (route&apos;s
+          relay blue, named green, clicked yellow)
         </p>
         <p className="relay-map-move">
           {updating ? <span className="muted">Updating… </span> : null}
@@ -673,9 +680,9 @@ function CheckSteps({
             {byteText(check.relay_byte)}
           </h3>
           <p>
-            A red cell is a rule that removes the candidate. Position, role,
-            spreading factor and firmware need no history, so after one of them
-            the rest are not checked. {left.length} left.
+            {possible.length} may have sent this copy. Firmware without the
+            relay byte, or a map report on another spreading factor, rules out
+            the rest; everything else only counts for or against a candidate.
           </p>
         </div>
         <CandidateTable
@@ -691,8 +698,9 @@ function CheckSteps({
           <h3 id="relay-heard-heading">2. Heard directly (packet page only)</h3>
           <p>
             The packet page names the only candidate this gateway heard directly
-            within {detail.rules.heard_days} days of the packet, whatever the
-            rule-outs say. Survey measurements skip this step.
+            within {detail.rules.heard_days} days of the packet. When it heard
+            more, each of them counts as heard by the gateway in its score.
+            Survey measurements skip this.
           </p>
         </div>
         <p
@@ -701,7 +709,7 @@ function CheckSteps({
           {detail.receiver_mode === "survey"
             ? "The survey receiver has no direct links: nothing to read."
             : heard.length === 0
-              ? "It heard none directly: the naming steps decide."
+              ? "It heard none directly: the score decides."
               : heard.length === 1
                 ? `It heard only ${candidateName(heard[0])} directly (${heard[0].heard_directly} times): the packet page names it.`
                 : `It heard ${heard.length} directly (${heard
@@ -709,51 +717,31 @@ function CheckSteps({
                       (candidate) =>
                         `${candidateName(candidate)} ${candidate.heard_directly}`,
                     )
-                    .join(", ")}): not one, so the naming steps decide.`}
+                    .join(", ")}): not one, so the score decides.`}
         </p>
       </section>
 
-      <section aria-labelledby="relay-steps-heading">
+      <section aria-labelledby="relay-score-heading">
         <div className="section-intro compact">
-          <h3 id="relay-steps-heading">
-            3. Naming steps over the {left.length} left
-          </h3>
+          <h3 id="relay-score-heading">3. Scores</h3>
           <p>
-            The first step that names a candidate decides. A step names one only
-            within its naming reach: the receiver no farther than its own reach
-            or {detail.rules.name_km} km.
+            Each term times its weight adds to a candidate&apos;s score; a node
+            SigSleuth does not know scores {detail.rules.unknown_score}. The
+            scores give each a probability, and the likeliest is named at{" "}
+            {Math.round(detail.rules.name_probability * 100)}% or more when one
+            of its terms ties it to the copy: within reach, under 5 km, linked
+            to a co-hearer or the sender, reported one hop earlier, heard by the
+            gateway, or a matching signal.
           </p>
         </div>
-        {left.length === 0 ? (
-          <p className="relay-step-result">
-            No candidate is left: nothing is named.
-          </p>
-        ) : (
-          <ol className="relay-steps">
-            {detail.steps.map((step, stepIndex) => (
-              <StepItem
-                key={step.rule}
-                step={step}
-                detail={detail}
-                left={left}
-                byKey={byKey}
-                state={
-                  decidingIndex === stepIndex
-                    ? "decides"
-                    : decidingIndex !== -1 && stepIndex > decidingIndex
-                      ? "after"
-                      : "none"
-                }
-                decidedBy={
-                  decidingIndex === -1
-                    ? null
-                    : STEP_LABELS[detail.steps[decidingIndex].rule]
-                }
-                name={name}
-              />
-            ))}
-          </ol>
-        )}
+        <p
+          className={`relay-step-result ${given.relay !== null && given.why !== "heard_directly" ? "decides" : ""}`}
+        >
+          {scoreResult(given, detail)}
+        </p>
+        <ScoreTable detail={detail} routeKey={routeKey} />
+        <SignalTable detail={detail} routeKey={routeKey} />
+        <LinkTable detail={detail} routeKey={routeKey} />
       </section>
 
       <section aria-labelledby="relay-reports-heading">
@@ -770,30 +758,51 @@ function CheckSteps({
   );
 }
 
-function Answered({
-  node,
-  step,
-  outcome,
-}: {
-  node: CheckNode | null;
-  step: StepName | null;
-  outcome: Outcome | null;
-}) {
+function Answered({ answer }: { answer: RelayAnswer }) {
   return (
     <>
-      {node === null ? (
+      {answer.relay === null ? (
         <span className="muted">none</span>
       ) : (
-        <NodeRef node={node} />
+        <NodeRef node={answer.relay} />
       )}
-      {step !== null ? (
-        <span className="muted"> by {STEP_LABELS[step].toLowerCase()}</span>
+      {answer.how !== null ? (
+        <span className="muted">
+          {" "}
+          by {HOW_LABELS[answer.how].toLowerCase()}
+        </span>
+      ) : answer.likeliest !== null ? (
+        <span className="muted">
+          {" "}
+          · likeliest {nodeText(answer.likeliest)} at{" "}
+          {percent(answer.probability)}
+        </span>
       ) : null}{" "}
-      {outcome !== null ? (
-        <Badge tone={OUTCOME_TONES[outcome]}>{outcome}</Badge>
+      {answer.outcome !== null ? (
+        <Badge tone={OUTCOME_TONES[answer.outcome]}>{answer.outcome}</Badge>
       ) : null}
     </>
   );
+}
+
+function scoreResult(given: RelayAnswer, detail: RelayCheckDetail): string {
+  const likeliest = nodeText(given.likeliest);
+  const at = percent(given.probability);
+  const needs = percent(detail.rules.name_probability);
+  switch (given.why) {
+    case "heard_directly":
+      return "Heard directly decides before the score.";
+    case "named":
+      return `${nodeText(given.relay)} at ${at}: named, worded by ${HOW_LABELS[given.how ?? "only_candidate"].toLowerCase()}.`;
+    case "below":
+      return `Likeliest ${likeliest} at ${at}, under ${needs}: no name.`;
+    case "unknown":
+      return `A node SigSleuth does not know is likelier (${percent(detail.unknown_probability)}) than ${likeliest} (${at}): no name.`;
+    case "no_evidence":
+      return `${likeliest} at ${at}, but nothing ties it to the copy: no name.`;
+    case "no_candidates":
+      return "No candidate may have sent it: no name.";
+  }
 }
 
 function RouteChain({ detail }: { detail: RelayCheckDetail }) {
@@ -838,15 +847,13 @@ function candidateName(candidate: RelayCandidate | undefined): string {
   );
 }
 
-function Cell({
-  hit,
-  children,
-}: {
-  /** The rule this cell shows removed the candidate. */
-  hit: boolean;
-  children: ReactNode;
-}) {
-  return <td className={hit ? "rule-hit" : undefined}>{children}</td>;
+/** Candidates by probability, those that cannot have sent the copy last. */
+function byProbability(candidates: RelayCandidate[]): RelayCandidate[] {
+  return [...candidates].sort(
+    (a, b) =>
+      (b.probability ?? -1) - (a.probability ?? -1) ||
+      (a.receiver_km ?? Infinity) - (b.receiver_km ?? Infinity),
+  );
 }
 
 function CandidateTable({
@@ -863,27 +870,11 @@ function CandidateTable({
   const [allShown, setAllShown] = useState(false);
   const rules = detail.rules;
   const copySf = detail.spreading_factor;
-  const order = (candidate: RelayCandidate) => [
-    candidate.key === routeKey ? 0 : 1,
-    candidate.ruled_out.length === 0 ? 0 : 1,
-    candidate.receiver_km ?? Infinity,
-  ];
-  const sorted = [...detail.candidates].sort((a, b) => {
-    const [x, y] = [order(a), order(b)];
-    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
-  });
-  const STATIC = ["unplaced", "client_mute", "channel", "preset", "firmware"];
-  const early = (candidate: RelayCandidate) =>
-    candidate.key !== routeKey &&
-    candidate.ruled_out.some((rule) => STATIC.includes(rule));
-  const hiddenCount = sorted.filter(early).length;
-  const rows = allShown
-    ? sorted
-    : sorted.filter((candidate) => !early(candidate));
-  const has = (candidate: RelayCandidate, rule: RuleOut) =>
-    candidate.ruled_out.includes(rule);
-  const checked = (candidate: RelayCandidate) =>
-    !candidate.ruled_out.some((rule) => STATIC.includes(rule));
+  const sorted = byProbability(detail.candidates);
+  const hidden = (candidate: RelayCandidate) =>
+    candidate.key !== routeKey && !candidate.possible;
+  const hiddenCount = sorted.filter(hidden).length;
+  const rows = allShown ? sorted : sorted.filter((c) => !hidden(c));
   return (
     <>
       <WideTable>
@@ -891,7 +882,7 @@ function CandidateTable({
           <thead>
             <tr>
               <th>Candidate</th>
-              <th>Result</th>
+              <th className="number">Probability</th>
               <th>Position</th>
               <th>Role</th>
               <th>
@@ -906,15 +897,11 @@ function CandidateTable({
               </th>
               <th>
                 Receiver km
-                <span className="column-note">
-                  ≤ reach or {rules.rule_out_km} km
-                </span>
+                <span className="column-note">of its reach</span>
               </th>
               <th>
                 Own report
-                <span className="column-note">
-                  hops left: copy&apos;s or one more
-                </span>
+                <span className="column-note">hops left</span>
               </th>
               <th>
                 Active
@@ -925,12 +912,6 @@ function CandidateTable({
               <th>
                 Sender km
                 <span className="column-note">one hop only</span>
-              </th>
-              <th>
-                Naming reach
-                <span className="column-note">
-                  ≤ reach or {rules.name_km} km
-                </span>
               </th>
               <th className="number">Heard directly</th>
             </tr>
@@ -957,28 +938,22 @@ function CandidateTable({
                   )}
                   {candidate.key === routeKey ? <RouteBadge /> : null}
                 </th>
-                <td>
-                  {candidate.ruled_out.length === 0 ? (
-                    <Badge tone="green">left</Badge>
+                <td className="number">
+                  {candidate.possible ? (
+                    percent(candidate.probability)
                   ) : (
-                    <Badge tone="neutral">ruled out</Badge>
+                    <Badge tone="neutral">cannot</Badge>
                   )}
                 </td>
-                <Cell hit={has(candidate, "unplaced")}>
+                <td>
                   {candidate.latitude === null && candidate.node_id !== null
-                    ? has(candidate, "unplaced")
-                      ? "none"
-                      : "—"
+                    ? "none"
                     : candidate.estimated
                       ? "estimated"
                       : "now"}
-                </Cell>
-                <Cell hit={has(candidate, "client_mute")}>
-                  {candidate.role ?? "—"}
-                </Cell>
-                <Cell
-                  hit={has(candidate, "channel") || has(candidate, "preset")}
-                >
+                </td>
+                <td>{candidate.role ?? "—"}</td>
+                <td>
                   {candidate.channel_spreading_factor === null &&
                   candidate.preset_spreading_factor === null
                     ? "unknown"
@@ -992,62 +967,32 @@ function CandidateTable({
                       ]
                         .filter((text) => text !== null)
                         .join(", ")}
-                </Cell>
-                <Cell hit={has(candidate, "firmware")}>
-                  {firmwareText(candidate.firmware)}
-                </Cell>
-                <Cell hit={has(candidate, "receiver_far")}>
-                  {checked(candidate) ? (
-                    <KmOf
-                      km={candidate.receiver_km}
-                      limit={Math.max(candidate.reach_km, rules.rule_out_km)}
-                    />
-                  ) : (
-                    <NotChecked />
-                  )}
-                </Cell>
-                <Cell hit={has(candidate, "own_report")}>
-                  {!checked(candidate) ? (
-                    <NotChecked />
-                  ) : candidate.own_hop_limit === null ? (
+                </td>
+                <td>{firmwareText(candidate.firmware)}</td>
+                <td>
+                  <KmOf
+                    km={candidate.receiver_km}
+                    limit={Math.max(candidate.reach_km, rules.name_km)}
+                  />
+                </td>
+                <td>
+                  {candidate.own_hop_limit === null ? (
                     <span className="muted">no report</span>
                   ) : (
                     `${candidate.own_hop_limit} left`
                   )}
-                </Cell>
-                <Cell hit={has(candidate, "silent")}>
-                  {!checked(candidate) ? (
-                    <NotChecked />
-                  ) : (
-                    <ActivityText candidate={candidate} />
-                  )}
-                </Cell>
-                <Cell hit={has(candidate, "sender_far")}>
-                  {!checked(candidate) || !detail.one_hop ? (
+                </td>
+                <td>
+                  <ActivityText candidate={candidate} />
+                </td>
+                <td>
+                  {!detail.one_hop ? (
                     <span className="muted">—</span>
                   ) : (
                     <KmOf
                       km={candidate.sender_km}
-                      limit={Math.max(candidate.reach_km, rules.rule_out_km)}
+                      limit={Math.max(candidate.reach_km, rules.far_km)}
                     />
-                  )}
-                </Cell>
-                <td>
-                  {candidate.ruled_out.length > 0 ? (
-                    <span className="muted">—</span>
-                  ) : (
-                    <>
-                      {candidate.within_naming_reach ? (
-                        "within"
-                      ) : (
-                        <span className="rule-miss">beyond</span>
-                      )}
-                      <span className="muted">
-                        {" "}
-                        ({formatKm(candidate.receiver_km)} of{" "}
-                        {formatKm(Math.max(candidate.reach_km, rules.name_km))})
-                      </span>
-                    </>
                   )}
                 </td>
                 <td className="number">
@@ -1067,8 +1012,8 @@ function CandidateTable({
           onClick={() => setAllShown(!allShown)}
         >
           {allShown
-            ? "Hide those ruled out before any distance check"
-            : `Show ${hiddenCount} more ruled out before any distance check`}
+            ? "Hide those that cannot have sent it"
+            : `Show ${hiddenCount} more that cannot have sent it`}
         </button>
       ) : null}
     </>
@@ -1095,13 +1040,13 @@ function PlacementNotes({ detail }: { detail: RelayCheckDetail }) {
     <p>
       Receiver{" "}
       {receiver === null
-        ? "unplaced: no rule that needs its position applies."
+        ? "unplaced: no distance counts."
         : receiver.placed_by === "chosen"
           ? "placed on this page."
           : detail.receiver_mode === "survey"
             ? `at ${nodeText(detail.check.gateway)}'s position (${PLACED_BY[receiver.placed_by]}).`
             : `${nodeText(detail.check.gateway)}: ${PLACED_BY[receiver.placed_by]}.`}{" "}
-      The rules place the candidates and the sender where they are now, else
+      The score places the candidates and the sender where they are now, else
       estimated from their neighbours (hollow).{" "}
       {sender === null
         ? "The sender is unplaced."
@@ -1129,10 +1074,6 @@ function kmBetween(
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
-function NotChecked() {
-  return <span className="muted">not checked</span>;
-}
-
 function ActivityText({ candidate }: { candidate: RelayCandidate }) {
   const hours = candidate.activity_hours;
   const gateway =
@@ -1154,92 +1095,107 @@ function ActivityText({ candidate }: { candidate: RelayCandidate }) {
   );
 }
 
-function StepItem({
-  step,
+function signed(value: number): string {
+  return `${value < 0 ? "−" : "+"}${Math.abs(value).toFixed(2)}`;
+}
+
+function ScoreTable({
   detail,
-  left,
-  byKey,
-  state,
-  decidedBy,
-  name,
+  routeKey,
 }: {
-  step: RelayCheckStep;
   detail: RelayCheckDetail;
-  left: RelayCandidate[];
-  byKey: Map<number, RelayCandidate>;
-  /** decides: this step names the relay; after: an earlier one did. */
-  state: "decides" | "after" | "none";
-  decidedBy: string | null;
-  name: (key: number | null) => string;
+  routeKey: number | null;
 }) {
-  const label = STEP_LABELS[step.rule];
+  const [allShown, setAllShown] = useState(false);
+  const possible = byProbability(
+    detail.candidates.filter((candidate) => candidate.possible),
+  );
+  const rows = allShown ? possible : possible.slice(0, SCORE_ROWS);
+  if (possible.length === 0) return null;
   return (
-    <li className={`relay-step relay-step-${state}`}>
-      <h4>
-        {label}{" "}
-        {state === "decides" ? (
-          <Badge tone="green">names {name(step.named)}</Badge>
-        ) : state === "after" ? (
-          <Badge tone="neutral">after {decidedBy}</Badge>
-        ) : (
-          <Badge tone="neutral">names none</Badge>
-        )}
-      </h4>
-      <p className="relay-step-rule">{STEP_RULES[step.rule](detail)}</p>
-      <StepFigures step={step} detail={detail} left={left} byKey={byKey} />
-      <p
-        className={`relay-step-result ${state === "decides" ? "decides" : ""}`}
-      >
-        {stepResult(step, detail, left, byKey, name)}
-        {state === "after" && step.named !== null
-          ? " Not used: an earlier step decided."
-          : ""}
-      </p>
-    </li>
+    <>
+      <WideTable>
+        <table className="relay-step-table">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th className="number">Probability</th>
+              <th className="number">Score</th>
+              <th>Terms, largest first</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((candidate) => (
+              <tr key={candidate.key}>
+                <th scope="row">
+                  {candidateName(candidate)}
+                  {candidate.key === routeKey ? <RouteBadge /> : null}
+                  {candidate.evidence ? null : (
+                    <span className="muted"> · no evidence</span>
+                  )}
+                </th>
+                <td className="number">{percent(candidate.probability)}</td>
+                <td className="number">{signed(candidate.score ?? 0)}</td>
+                <td className="relay-terms">
+                  {candidate.terms.map((term) => (
+                    <span
+                      key={term.term}
+                      className={term.score < 0 ? "against" : "for"}
+                      title={`Value ${term.value}`}
+                    >
+                      {TERM_LABELS[term.term]} {signed(term.score)}
+                    </span>
+                  ))}
+                </td>
+              </tr>
+            ))}
+            <tr className="muted">
+              <th scope="row">A node SigSleuth does not know</th>
+              <td className="number">{percent(detail.unknown_probability)}</td>
+              <td className="number">{signed(detail.rules.unknown_score)}</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </WideTable>
+      {possible.length > SCORE_ROWS ? (
+        <button
+          type="button"
+          className="text-button relay-more"
+          onClick={() => setAllShown(!allShown)}
+        >
+          {allShown
+            ? `Show the ${SCORE_ROWS} likeliest`
+            : `Show all ${possible.length}`}
+        </button>
+      ) : null}
+    </>
   );
 }
 
-const STEP_RULES: Record<
-  RelayCheckStep["rule"],
-  (detail: RelayCheckDetail) => string
-> = {
-  signal: (detail) =>
-    `Each co-hearer that does not send the byte reported this copy's SNR; each candidate's usual direct SNR at that gateway (7 days before) says how likely it is to be the relay. A gateway that never heard a candidate counts against it. The best names one when it beats the next candidate and a node no co-hearer hears by ${detail.rules.score_margin} or more.`,
-  gateway_link: () =>
-    "The candidate with the most radio links with any one co-hearer (direct receptions and neighbour reports).",
-  sender_link: () =>
-    "After one hop only: the candidate with the most radio links and traceroute hops with the sender.",
-  reported: () =>
-    "A gateway sending the byte that reported the packet with one more hop left rebroadcast it, though the receiver may have heard another copy. It names one when it is the only such candidate within its naming reach.",
-  only_candidate: () => "The one candidate left, if within its naming reach.",
-};
-
-function StepFigures({
-  step,
+/** The co-hearers' SNR against each candidate's usual direct SNR there. */
+function SignalTable({
   detail,
-  left,
-  byKey,
+  routeKey,
 }: {
-  step: RelayCheckStep;
   detail: RelayCheckDetail;
-  left: RelayCandidate[];
-  byKey: Map<number, RelayCandidate>;
+  routeKey: number | null;
 }) {
-  const scores = new Map(step.scores.map((score) => [score.key, score.score]));
-  const routeKey = detail.check.route_relay?.node_id ?? null;
-  if (step.rule === "signal") {
-    if (scores.size === 0) return null;
-    const copies = detail.reports.filter((report) => report.signal);
-    const profile = new Map(
-      detail.signals.map((signal) => [
-        `${signal.key}/${signal.gateway_node_id}`,
-        signal,
-      ]),
-    );
-    const rows = [...left].sort(
-      (a, b) => (scores.get(b.key) ?? 0) - (scores.get(a.key) ?? 0),
-    );
-    return (
+  const copies = detail.reports.filter((report) => report.signal);
+  if (copies.length === 0 || detail.signals.length === 0) return null;
+  const profile = new Map(
+    detail.signals.map((signal) => [
+      `${signal.key}/${signal.gateway_node_id}`,
+      signal,
+    ]),
+  );
+  const keys = new Set(detail.signals.map((signal) => signal.key));
+  const rows = byProbability(
+    detail.candidates.filter((candidate) => keys.has(candidate.key)),
+  );
+  return (
+    <>
+      <h4 className="relay-score-figures">Signal at the co-hearers</h4>
       <WideTable>
         <table className="relay-step-table">
           <thead>
@@ -1248,23 +1204,14 @@ function StepFigures({
               {copies.map((report) => (
                 <th key={report.reception_id}>
                   {nodeText(report.gateway)}
-                  <span className="column-note">
-                    copy{" "}
-                    {report.snr_db === null ? "no SNR" : `${report.snr_db} dB`}
-                  </span>
+                  <span className="column-note">copy {report.snr_db} dB</span>
                 </th>
               ))}
-              <th className="number">Score</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((candidate) => (
-              <tr
-                key={candidate.key}
-                className={
-                  candidate.key === step.pick ? "step-pick-row" : undefined
-                }
-              >
+              <tr key={candidate.key}>
                 <th scope="row">
                   {candidateName(candidate)}
                   {candidate.key === routeKey ? <RouteBadge /> : null}
@@ -1276,9 +1223,9 @@ function StepFigures({
                   return (
                     <td key={report.reception_id}>
                       {signal === undefined ? (
-                        <span className="rule-miss">never heard</span>
+                        <span className="muted">never heard</span>
                       ) : signal.snr_mean_db === null ? (
-                        `heard, no SNR`
+                        "heard, no SNR"
                       ) : (
                         <>
                           {signal.snr_mean_db.toFixed(1)} dB
@@ -1288,38 +1235,41 @@ function StepFigures({
                     </td>
                   );
                 })}
-                <td className="number">
-                  {scores.get(candidate.key)?.toFixed(1)}
-                </td>
               </tr>
             ))}
-            <tr className="muted">
-              <th scope="row">A node no co-hearer hears</th>
-              {copies.map((report) => (
-                <td key={report.reception_id}>never heard</td>
-              ))}
-              <td className="number">{step.baseline?.toFixed(1)}</td>
-            </tr>
           </tbody>
         </table>
       </WideTable>
-    );
-  }
-  if (step.rule === "gateway_link" || step.rule === "sender_link") {
-    if (scores.size === 0) return null;
-    const others =
-      step.rule === "gateway_link"
-        ? detail.reports
-            .filter((report) => report.kind === "cohearer")
-            .map((report) => report.gateway)
-        : [detail.check.sender];
-    const links = new Map(
-      detail.links.map((link) => [`${link.key}/${link.node_id}`, link]),
-    );
-    const rows = [...left].sort(
-      (a, b) => (scores.get(b.key) ?? 0) - (scores.get(a.key) ?? 0),
-    );
-    return (
+    </>
+  );
+}
+
+/** Radio links with the co-hearers, and radio links and traceroute hops with the sender after one hop. */
+function LinkTable({
+  detail,
+  routeKey,
+}: {
+  detail: RelayCheckDetail;
+  routeKey: number | null;
+}) {
+  if (detail.links.length === 0) return null;
+  const sender = detail.check.sender.node_id;
+  const others = [
+    ...detail.reports
+      .filter((report) => report.kind === "cohearer")
+      .map((report) => report.gateway),
+    ...(detail.one_hop ? [detail.check.sender] : []),
+  ];
+  const links = new Map(
+    detail.links.map((link) => [`${link.key}/${link.node_id}`, link]),
+  );
+  const keys = new Set(detail.links.map((link) => link.key));
+  const rows = byProbability(
+    detail.candidates.filter((candidate) => keys.has(candidate.key)),
+  );
+  return (
+    <>
+      <h4 className="relay-score-figures">Links</h4>
       <WideTable>
         <table className="relay-step-table">
           <thead>
@@ -1328,23 +1278,18 @@ function StepFigures({
               {others.map((other) => (
                 <th key={other.node_id}>
                   {nodeText(other)}
-                  {step.rule === "sender_link" ? (
-                    <span className="column-note">radio + traceroute</span>
+                  {other.node_id === sender ? (
+                    <span className="column-note">
+                      sender: radio + traceroute
+                    </span>
                   ) : null}
                 </th>
               ))}
-              <th className="number">Most</th>
-              <th>Naming reach</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((candidate) => (
-              <tr
-                key={candidate.key}
-                className={
-                  candidate.key === step.pick ? "step-pick-row" : undefined
-                }
-              >
+              <tr key={candidate.key}>
                 <th scope="row">
                   {candidateName(candidate)}
                   {candidate.key === routeKey ? <RouteBadge /> : null}
@@ -1355,117 +1300,19 @@ function StepFigures({
                     <td key={other.node_id}>
                       {link === undefined
                         ? "—"
-                        : step.rule === "sender_link"
+                        : other.node_id === sender
                           ? `${link.radio} + ${link.traceroute}`
                           : link.radio}
                     </td>
                   );
                 })}
-                <td className="number">{scores.get(candidate.key) ?? 0}</td>
-                <td>
-                  {candidate.within_naming_reach ? (
-                    "within"
-                  ) : (
-                    <span className="rule-miss">beyond</span>
-                  )}
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </WideTable>
-    );
-  }
-  if (step.rule === "reported") {
-    const earlier = detail.reports.filter(
-      (report) => report.kind === "earlier" && report.sends_byte,
-    );
-    if (earlier.length === 0) return null;
-    return (
-      <ul className="relay-step-list">
-        {earlier.map((report) => {
-          const candidate =
-            report.gateway.node_id === null
-              ? undefined
-              : byKey.get(report.gateway.node_id);
-          return (
-            <li key={report.reception_id}>
-              {nodeText(report.gateway)} reported it with{" "}
-              {report.hop_limit === 1 ? "1 hop" : `${report.hop_limit} hops`}{" "}
-              left:{" "}
-              {candidate === undefined
-                ? "not a candidate"
-                : candidate.ruled_out.length > 0
-                  ? "ruled out"
-                  : candidate.within_naming_reach
-                    ? "left, within its naming reach"
-                    : "left, beyond its naming reach"}
-            </li>
-          );
-        })}
-      </ul>
-    );
-  }
-  return null;
-}
-
-function stepResult(
-  step: RelayCheckStep,
-  detail: RelayCheckDetail,
-  left: RelayCandidate[],
-  byKey: Map<number, RelayCandidate>,
-  name: (key: number | null) => string,
-): string {
-  const picked =
-    step.pick === null
-      ? ""
-      : step.named !== null
-        ? `${name(step.pick)}, within its naming reach: named.`
-        : `${name(step.pick)}, but beyond its naming reach (${formatKm(byKey.get(step.pick)?.receiver_km ?? null)} km).`;
-  switch (step.rule) {
-    case "signal": {
-      if (step.scores.length === 0)
-        return "No co-hearer that does not send the byte reported this copy: nothing to compare.";
-      const ranked = [...step.scores].sort((a, b) => b.score - a.score);
-      const best = ranked[0];
-      const runnerUp = ranked.length > 1 ? ranked[1] : null;
-      const baseline = step.baseline ?? -Infinity;
-      const rivalIsUnknown = runnerUp === null || baseline >= runnerUp.score;
-      const rival = rivalIsUnknown ? baseline : runnerUp.score;
-      const margin = best.score - rival;
-      const against = rivalIsUnknown
-        ? `a node no co-hearer hears (${baseline.toFixed(1)})`
-        : `${name(runnerUp.key)} (${runnerUp.score.toFixed(1)})`;
-      return `Best ${name(best.key)} at ${best.score.toFixed(1)}, against ${against}: margin ${margin.toFixed(1)}, needs ${detail.rules.score_margin}. ${step.pick !== null ? picked : "No name."}`;
-    }
-    case "gateway_link":
-      if (step.scores.length === 0) return "No co-hearers: nothing to read.";
-      if (step.pick === null)
-        return "No candidate left has a radio link with a co-hearer.";
-      return `Most links: ${picked}`;
-    case "sender_link":
-      if (step.scores.length === 0)
-        return "More than one hop used: the relay need not have heard the sender.";
-      if (step.pick === null)
-        return "No candidate left has a radio link or traceroute hop with the sender.";
-      return `Most links: ${picked}`;
-    case "reported": {
-      const reporters = step.scores.filter((score) => score.score > 0);
-      if (reporters.length === 0)
-        return "No candidate left reported the packet with one more hop left.";
-      if (step.named !== null) return `${name(step.named)}: named.`;
-      const within = reporters.filter(
-        (score) => byKey.get(score.key)?.within_naming_reach,
-      );
-      return within.length === 0
-        ? `${reporters.map((score) => name(score.key)).join(", ")} did, beyond naming reach.`
-        : `${within.length} within naming reach did: not one.`;
-    }
-    case "only_candidate":
-      return left.length === 1
-        ? picked
-        : `${left.length} candidates are left: not one.`;
-  }
+    </>
+  );
 }
 
 function ReportTable({ detail }: { detail: RelayCheckDetail }) {
@@ -1519,7 +1366,7 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
                 <td>
                   {KIND_LABELS[report.kind]}
                   {report.signal ? (
-                    <span className="muted"> · signal step</span>
+                    <span className="muted"> · signal term</span>
                   ) : null}
                   {detail.receiver_mode === "survey" &&
                   report.gateway.node_id === detail.check.gateway.node_id ? (

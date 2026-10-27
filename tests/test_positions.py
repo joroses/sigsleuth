@@ -16,10 +16,8 @@ from sigsleuth.db import migrate_database, nodes_by_id, now_ms, open_current_dat
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
 from sigsleuth.positions import (
     EstimatedPosition,
-    guess_relay,
     node_estimate,
     own_reach,
-    radio_links,
     refresh_estimates,
     traceroute_hops,
 )
@@ -315,25 +313,6 @@ def test_the_map_and_node_page_show_an_estimated_node(tmp_path: Path) -> None:
     # A placed node is drawn at its reported position and has no estimate.
     placed = next(item for item in items if item["node_id"] == N1)
     assert (placed["latitude"], placed["estimate"]) == (0.1, None)
-
-
-def test_a_relay_guess_prefers_a_radio_link_to_the_gateway_then_the_sender(
-    connection: sqlite3.Connection,
-) -> None:
-    gateway, sender = 1, 2
-    # Three nodes ending in the same byte: unlinked, heard by the sender,
-    # heard by the gateway.
-    unlinked, sender_link, gateway_link = 0x1_3C, 0x2_3C, 0x3_3C
-    link(connection, sender_link, sender)
-    link(connection, gateway_link, gateway, kind="neighbor")
-    radio = radio_links(connection, {unlinked, sender_link, gateway_link})
-
-    def guess(*candidates: int) -> object:
-        return guess_relay(radio, list(candidates), gateways=(gateway,), sender=sender)
-
-    assert guess(unlinked, sender_link, gateway_link) == (gateway_link, "gateway_link")
-    assert guess(unlinked, sender_link) == (sender_link, "sender_link")
-    assert guess(unlinked) is None
 
 
 def test_traceroute_hops_with_senders_count_measured_hops_either_way(

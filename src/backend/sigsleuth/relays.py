@@ -1,13 +1,14 @@
-"""Naming the node a relayed copy of a packet came from, by the rules decided
-in docs/relay-evidence.md: for survey measurements (coverage.heard_node) and
-for gateways' receptions on packet pages (packets.py).
+"""Naming the node a relayed copy of a packet came from: for survey
+measurements (coverage.heard_node) and for gateways' receptions on packet
+pages (packets.py).
 
 A relay byte is only the last byte of the relay's number, so many known nodes
-send it: the candidates. Rule-outs (candidates_left) remove those that could
-not have relayed the copy where it was heard; then the first rule that names
-exactly one of the rest wins (name_relay). A node that turned OK to MQTT
-off is still a candidate, so its copies are not pinned on another node, but
-callers never name it (opt_out.py).
+send it: the candidates. Each that may have sent the copy gets a score from
+its evidence terms (relay_terms, WEIGHTS), and so does a node SigSleuth does
+not know; a softmax turns scores into probabilities, and the likeliest is
+named when sure enough and tied to the copy (RelayScores.named). A node
+that turned OK to MQTT off keeps its probability, so its copies are not
+pinned on another node, but callers never name it (opt_out.py).
 """
 
 import json
@@ -22,7 +23,7 @@ from typing import Literal
 from sigsleuth.db import NodeSummary, nodes_by_id
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import TRAITS
-from sigsleuth.positions import guess_relay, own_reach, radio_links, traceroute_hops
+from sigsleuth.positions import own_reach, radio_links, traceroute_hops
 from sigsleuth.radio import (
     PRESET_SPREADING_FACTORS,
     great_circle_km,
@@ -34,24 +35,20 @@ from sigsleuth.radio import (
 
 DAY_MS = 24 * HOUR_MS
 # Measured on 14.6 days of live loranet.pl to 2026-10-12 with gateways
-# standing in for phones (docs/relay-evidence.md). A candidate is ruled out
-# when the receiver is farther than its own reach (positions.own_reach) and
-# RULE_OUT_KM: 61% of the wrong candidates went, 0.2% of the true relays. It
-# is named only within its reach or NAME_KM.
-RULE_OUT_KM = 50
+# standing in for phones (docs/relay-evidence.md): reach terms count a
+# receiver within max(own reach, NAME_KM) for a candidate, beyond
+# max(own reach, FAR_KM) against it.
 NAME_KM = 20
-# A candidate not seen this long either side of the packet is ruled out.
+FAR_KM = 50
+# A candidate not seen this long either side of the packet counts as inactive.
 ACTIVE_MS = DAY_MS
 COHEARER_WINDOW_MS = 7 * DAY_MS
 # Measured 2026-10-23 on two 14-day loranet.pl snapshots; revisit on another
-# mesh. The best signal score must beat the next candidate and an unknown node.
+# mesh. A candidate's usual direct SNR at a co-hearer is its mean, spread
+# SNR_SPREAD_DB; a node no co-hearer knows could show any SNR in SNR_WIDTH_DB.
 SNR_SPREAD_DB = 2.6
 SNR_WIDTH_DB = 31.0
-SCORE_MARGIN = 3.0
-UNHEARD = math.log(0.05)
 
-# How name_relay named a relay.
-RelayHow = Literal["gateway_link", "sender_link", "reported", "only_candidate"]
 # What relay_terms reads for each candidate (WEIGHTS); 0 when it tells nothing,
 # as for a node SigSleuth does not know.
 RelayTerm = Literal[
@@ -117,7 +114,6 @@ WEIGHTS: dict[RelayTerm, float] = {
 }
 UNKNOWN_SCORE = -4.93
 NAME_PROBABILITY = 0.8
-FAR_KM = 50
 ROLE_TERMS: dict[str | None, RelayTerm] = {
     "ROUTER": "role_router",
     "ROUTER_LATE": "role_router_late",
@@ -143,30 +139,9 @@ WORDING: dict[RelayTerm, "ScoredHow"] = {
     "near5": "only_candidate",
     "rheard": "receiver_heard",
 }
-# Why rule_outs removed a candidate, in the order it checks.
-RuleOut = Literal[
-    "unplaced",
-    "client_mute",
-    "channel",
-    "preset",
-    "firmware",
-    "receiver_far",
-    "own_report",
-    "silent",
-    "sender_far",
-]
-# naming_steps' steps, in order; the signal step names as gateway_link.
-NamingRule = Literal["signal", "gateway_link", "sender_link", "reported", "only_candidate"]
-NAMED_HOW: dict[NamingRule, RelayHow] = {
-    "signal": "gateway_link",
-    "gateway_link": "gateway_link",
-    "sender_link": "sender_link",
-    "reported": "reported",
-    "only_candidate": "only_candidate",
-}
-# How a score names a relay: as name_relay, or receiver_heard, the receiver
-# heard it directly (packet pages only). only_candidate words a name by
-# distance: it is the likeliest nearby, not the only one.
+# How a score names a relay, by the evidence that adds most (wording):
+# receiver_heard, the receiver heard it directly (packet pages only), and
+# only_candidate, distance: the likeliest nearby, not the only one.
 ScoredHow = Literal["gateway_link", "sender_link", "reported", "only_candidate", "receiver_heard"]
 # A gateway's report: gateway, hops left, relay byte and SNR.
 Report = tuple[int, int | None, int | None, float | None]
@@ -255,8 +230,7 @@ class RelayEvidence:
         ]
 
     def sender_links(self, sender: int) -> dict[int, dict[int, int]]:
-        """The sender's radio links plus its traceroute hops, as
-        positions.guess_relay reads them."""
+        """The sender's radio links plus its traceroute hops."""
         links = dict(self.radio_links.get(sender, {}))
         for node, hops in self.sender_hops.get(sender, {}).items():
             links[node] = links.get(node, 0) + hops
@@ -378,216 +352,6 @@ def nodes_by_byte(connection: sqlite3.Connection, relay_bytes: set[int]) -> dict
     return found
 
 
-@dataclass(frozen=True)
-class CandidateCheck:
-    """How rule_outs read one candidate: its km from the receiver and, after
-    one hop, from the sender (None when unknown or not needed), its own reach
-    (positions.own_reach, 0 when unknown), and the hops left in its own
-    report of the packet. ruled_out lists every rule-out that removes it, in
-    order; empty when it is left."""
-
-    node_id: int
-    receiver_km: float | None
-    sender_km: float | None
-    reach_km: float
-    own_hop_limit: int | None
-    ruled_out: tuple[RuleOut, ...]
-
-
-def rule_outs(evidence: RelayEvidence, relayed: Relayed) -> list[CandidateCheck]:
-    """Each candidate with what rules it out:
-
-    - static_rule_outs, for any receiver; after one of those the rest are
-      not checked, as relay_evidence reads no history for it;
-    - receiver_far: the receiver is beyond its reach and RULE_OUT_KM;
-    - own_report: it reported the packet itself with other hops left than
-      the copy's or one more;
-    - silent: it was not active within ACTIVE_MS;
-    - sender_far: one hop was used and the sender is beyond its reach and
-      RULE_OUT_KM.
-    """
-    own_reports: dict[int, int | None] = {}
-    for gateway, hop_limit, _, _ in relayed.other_reports():
-        own_reports.setdefault(gateway, hop_limit)
-    sender = evidence.placed.get(relayed.sender)
-    sender_at = None
-    if relayed.one_hop and sender is not None and sender.latitude is not None:
-        if sender.longitude is not None:
-            sender_at = (sender.latitude, sender.longitude)
-    spreading_factors = set() if relayed.spreading_factor is None else {relayed.spreading_factor}
-    hop_limit = relayed.hop_limit
-    checks = []
-    for node in evidence.candidates(relayed):
-        place = evidence.placed.get(node)
-        reach = evidence.reach.get(node, 0.0)
-        own = own_reports.get(node)
-        out = static_rule_outs(place, evidence.radios.get(node), spreading_factors)
-        receiver_km = sender_km = None
-        if not out:
-            if relayed.position is not None:
-                receiver_km = node_km(place, relayed.position)
-            if sender_at is not None:
-                sender_km = node_km(place, sender_at)
-            if receiver_km is not None and receiver_km > max(reach, RULE_OUT_KM):
-                out.append("receiver_far")
-            if own is not None and hop_limit is not None and own not in (hop_limit, hop_limit + 1):
-                out.append("own_report")
-            if not _active(evidence, node, relayed.at):
-                out.append("silent")
-            if sender_km is not None and sender_km > max(reach, RULE_OUT_KM):
-                out.append("sender_far")
-        checks.append(CandidateCheck(node, receiver_km, sender_km, reach, own, tuple(out)))
-    return checks
-
-
-def candidates_left(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
-    """The candidates that could have relayed the copy: no rule_outs."""
-    return [check.node_id for check in rule_outs(evidence, relayed) if not check.ruled_out]
-
-
-@dataclass(frozen=True)
-class NamingStep:
-    """One of naming_steps' steps: scores holds what it ranks each candidate
-    left by, empty when it had nothing to read; pick is the one it points
-    to, None when none stands out; named is pick when it is within its
-    naming reach. baseline is the signal step's score for a node SigSleuth
-    does not know, which the best must also beat by SCORE_MARGIN."""
-
-    rule: NamingRule
-    scores: Mapping[int, float]
-    pick: int | None
-    named: int | None
-    baseline: float | None = None
-
-
-def naming_steps(
-    evidence: RelayEvidence,
-    relayed: Relayed,
-    left: Sequence[int],
-    signals: Mapping[tuple[int, int], "DirectSignal"],
-) -> list[NamingStep]:
-    """Every naming step over the candidates left, in order; the first that
-    names one decides (name_relay). None names one beyond its naming reach,
-    max(own reach, NAME_KM) from the receiver:
-
-    - signal: its direct signal at the co-hearers best matches this copy
-      (signal_scores);
-    - gateway_link: it has the most radio links with one co-hearer;
-    - sender_link: one hop used, it has the most radio links and traceroute
-      hops with the sender. Traceroute hops count only here: for the
-      co-hearers they named more wrong nodes when the relay was unknown
-      (docs/relay-evidence.md);
-    - reported: the only MQTT gateway sending the byte that reported the
-      packet with one more hop left. It rebroadcast the packet, but the
-      receiver may have heard another node's copy;
-    - only_candidate: no other is left.
-    """
-    if not left:
-        return []
-
-    def within_reach(node: int | None) -> int | None:
-        return node if node is not None and within_naming_reach(evidence, relayed, node) else None
-
-    steps = []
-    scored = signal_scores(relayed, left, signals)
-    if scored is None:
-        steps.append(NamingStep("signal", {}, None, None))
-    else:
-        scores, unknown = scored
-        ranked = sorted(((score, node) for node, score in scores.items()), reverse=True)
-        rival = max(unknown, ranked[1][0] if len(ranked) > 1 else -math.inf)
-        pick = ranked[0][1] if ranked[0][0] - rival >= SCORE_MARGIN else None
-        steps.append(NamingStep("signal", scores, pick, pick, unknown))
-    cohearers = relayed.cohearers()
-    sender_links = evidence.sender_links(relayed.sender)[relayed.sender]
-    sender = relayed.sender if relayed.one_hop else None
-    link_steps: list[tuple[NamingRule, Mapping[int, Mapping[int, int]], Sequence[int], int | None]]
-    link_steps = [
-        ("gateway_link", evidence.radio_links, cohearers, None),
-        ("sender_link", {relayed.sender: sender_links}, (), sender),
-    ]
-    for rule, links, gateways, via in link_steps:
-        heard = [links.get(node, {}) for node in (*gateways, *([] if via is None else [via]))]
-        counts = {node: max(c.get(node, 0) for c in heard) for node in left} if heard else {}
-        guess = guess_relay(links, left, gateways=gateways, sender=via)
-        pick = None if guess is None else guess[0]
-        steps.append(NamingStep(rule, counts, pick, within_reach(pick)))
-    # A report carrying the gateway's own byte counts like any other: on route
-    # truth, with one more hop left it was the relay 84.5% of the time, with
-    # as many 3.7% (docs/relay-evidence.md).
-    hop_limit = relayed.hop_limit
-    reporters = {
-        gateway
-        for gateway, gateway_hop_limit, _, _ in relayed.other_reports()
-        if hop_limit is not None
-        and relay_byte_of(gateway) == relayed.relay_byte
-        and gateway_hop_limit == hop_limit + 1
-    }
-    reported = [node for node in left if node in reporters and within_reach(node)]
-    steps.append(
-        NamingStep(
-            "reported",
-            {node: float(node in reporters) for node in left},
-            reported[0] if len(reported) == 1 else None,
-            reported[0] if len(reported) == 1 else None,
-        )
-    )
-    # Like the steps above, only within its reach: a far one left alone
-    # mostly stands in for a relay SigSleuth does not know
-    # (docs/relay-evidence.md, 2026-10-23).
-    only = left[0] if len(left) == 1 else None
-    steps.append(NamingStep("only_candidate", {}, only, within_reach(only)))
-    return steps
-
-
-def within_naming_reach(evidence: RelayEvidence, relayed: Relayed, node: int) -> bool:
-    """Whether the receiver is within max(own reach, NAME_KM) of a node, so
-    that a naming step may name it."""
-    if relayed.position is None:
-        return False
-    km = node_km(evidence.placed.get(node), relayed.position)
-    return km is not None and km <= max(evidence.reach.get(node, 0), NAME_KM)
-
-
-def name_relay(
-    evidence: RelayEvidence,
-    relayed: Relayed,
-    left: Sequence[int],
-    signals: Mapping[tuple[int, int], "DirectSignal"],
-) -> tuple[int, RelayHow] | None:
-    """The relay among the candidates left, by the first of naming_steps
-    that names one; None when none does."""
-    for step in naming_steps(evidence, relayed, left, signals):
-        if step.named is not None:
-            return step.named, NAMED_HOW[step.rule]
-    return None
-
-
-def static_rule_outs(
-    place: NodeSummary | None, radio: NodeRadio | None, spreading_factors: set[int]
-) -> list[RuleOut]:
-    """What excludes a node from relay guesses wherever the receiver is: it
-    is unplaced, never rebroadcasts (CLIENT_MUTE), its channel or map report
-    puts it on none of these spreading factors, or its firmware sends no
-    relay byte."""
-    if place is None or place.latitude is None or place.longitude is None:
-        return ["unplaced"]
-    out: list[RuleOut] = []
-    if place.role == "CLIENT_MUTE":
-        out.append("client_mute")
-    if radio is not None:
-        heard_on: list[tuple[RuleOut, int | None]] = [
-            ("channel", radio.channel_spreading_factor),
-            ("preset", radio.preset_spreading_factor),
-        ]
-        for rule, known in heard_on:
-            if spreading_factors and known is not None and known not in spreading_factors:
-                out.append(rule)
-        if radio.firmware is not None and radio.firmware < TRAITS["relay_byte"].version:
-            out.append("firmware")
-    return out
-
-
 def cannot_relay(radio: NodeRadio | None, spreading_factors: set[int]) -> bool:
     """Whether a node cannot have sent a relayed copy heard on these spreading
     factors (empty when unknown): its firmware sends no relay byte, or its
@@ -598,21 +362,6 @@ def cannot_relay(radio: NodeRadio | None, spreading_factors: set[int]) -> bool:
         return True
     preset = radio.preset_spreading_factor
     return bool(spreading_factors) and preset is not None and preset not in spreading_factors
-
-
-def cannot_relay_at(
-    place: NodeSummary | None,
-    radio: NodeRadio | None,
-    reach_km: float,
-    position: tuple[float, float] | None,
-    spreading_factors: set[int],
-) -> bool:
-    """Whether a node is excluded from relay guesses: static_rule_outs, or it
-    is farther than reach_km."""
-    if static_rule_outs(place, radio, spreading_factors):
-        return True
-    km = None if position is None else node_km(place, position)
-    return km is not None and km > reach_km
 
 
 def _active(evidence: RelayEvidence, node: int, at: int) -> bool:
@@ -690,42 +439,6 @@ def direct_signals(
             {"pairs": json.dumps(wanted), "start": end - COHEARER_WINDOW_MS, "end": end},
         )
     }
-
-
-def signal_scores(
-    relayed: Relayed, left: Sequence[int], signals: Mapping[tuple[int, int], DirectSignal]
-) -> tuple[dict[int, float], float] | None:
-    """How well each candidate's direct SNR pattern at the co-hearers explains
-    this copy's reports (a log likelihood), and the score of a node no
-    co-hearer has heard; None when no co-hearer that does not send the byte
-    reported the copy."""
-    copies = [
-        (gateway, snr)
-        for gateway, hops, byte, snr in relayed.other_reports()
-        if byte == relayed.relay_byte
-        and hops == relayed.hop_limit
-        and relay_byte_of(gateway) != byte
-    ]
-    if not copies or not left:
-        return None
-
-    def score(node: int) -> float:
-        total = 0.0
-        for gateway, snr in copies:
-            profile = signals.get((node, gateway))
-            total += 0.0 if profile is not None else UNHEARD
-            if snr is None:
-                continue
-            if profile is None or profile.snr_mean is None:
-                total -= math.log(SNR_WIDTH_DB)
-                continue
-            variance = SNR_SPREAD_DB**2 * (1 + 1 / profile.snr_count)
-            total += -0.5 * (snr - profile.snr_mean) ** 2 / variance
-            total -= 0.5 * math.log(2 * math.pi * variance)
-        return total
-
-    unknown = sum(UNHEARD - (math.log(SNR_WIDTH_DB) if snr is not None else 0) for _, snr in copies)
-    return {node: score(node) for node in left}, unknown
 
 
 def possible(evidence: RelayEvidence, relayed: Relayed) -> list[int]:

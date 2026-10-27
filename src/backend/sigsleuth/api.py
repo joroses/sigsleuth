@@ -897,7 +897,7 @@ def create_app(
     ) -> RelayCheckList:
         """Every relayed reception whose own traceroute route names its relay,
         in the `count` newest traceroute packets before packet row `before_id`,
-        with the relay packet pages name and what the rules alone name."""
+        with the relay packet pages name and what a survey receiver there names."""
         return relay_checks(connection, before_id=before_id, count=count)
 
     @app.get("/api/v1/diagnostics/relay-checks/{reception_id}", dependencies=[Admin])

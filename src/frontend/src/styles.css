@@ -5662,6 +5662,24 @@ tr.step-pick-row > th {
   margin: 0;
 }
 
+.relay-score-figures {
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.relay-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.relay-terms .for {
+  color: var(--accent);
+}
+
+.relay-terms .against {
+  color: var(--error);
+}
+
 .relay-steps-link {
   color: var(--muted);
   font-family: var(--font-sans);

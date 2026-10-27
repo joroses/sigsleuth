@@ -29,10 +29,7 @@ from sigsleuth.opt_out import SHOWN_PACKET, opted_out
 from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
 from sigsleuth.relays import (
     COHEARER_WINDOW_MS,
-    NAMED_HOW,
-    CandidateCheck,
     DirectSignal,
-    NamingStep,
     Relayed,
     RelayEvidence,
     RelayScores,
@@ -40,10 +37,8 @@ from sigsleuth.relays import (
     channel_spreading_factor,
     direct_receptions,
     direct_signals,
-    naming_steps,
     node_km,
     relay_evidence,
-    rule_outs,
     score_relays,
 )
 from sigsleuth.reported import positions_when_heard
@@ -539,28 +534,11 @@ class ReceptionNaming:
     often its gateway heard each candidate directly within
     COHEARER_WINDOW_MS of the packet (those never heard left out), and the
     candidates' scores. relay is what the packet page names: the only
-    candidate heard directly, else the score's name. checks and steps are
-    the old rules' (relays.rule_outs, relays.naming_steps), for the relay
-    checks page."""
+    candidate heard directly, else the score's name."""
 
     copy: Relayed
     heard: Mapping[int, int]
     scores: RelayScores
-    checks: tuple[CandidateCheck, ...]
-    steps: tuple[NamingStep, ...]
-
-    @property
-    def left(self) -> list[int]:
-        return [check.node_id for check in self.checks if not check.ruled_out]
-
-    @property
-    def deciding_step(self) -> NamingStep | None:
-        return next((step for step in self.steps if step.named is not None), None)
-
-    @property
-    def rules_relay(self) -> tuple[int, RelayNodeHow] | None:
-        step = self.deciding_step
-        return None if step is None or step.named is None else (step.named, NAMED_HOW[step.rule])
 
     @property
     def relay(self) -> tuple[int, RelayNodeHow] | None:
@@ -669,20 +647,12 @@ def name_copy(
 ) -> ReceptionNaming:
     """The ReceptionNaming of one copy, from how often its receiver heard
     each candidate directly (direct, by (node, receiver))."""
-    checks = rule_outs(evidence, copy)
     heard = {
         node: direct[node, copy.receiver]
         for node in evidence.candidates(copy)
         if direct.get((node, copy.receiver), 0) > 0
     }
-    left = [check.node_id for check in checks if not check.ruled_out]
-    return ReceptionNaming(
-        copy,
-        heard,
-        score_relays(evidence, copy, signals, set(heard)),
-        tuple(checks),
-        tuple(naming_steps(evidence, copy, left, signals)),
-    )
+    return ReceptionNaming(copy, heard, score_relays(evidence, copy, signals, set(heard)))
 
 
 def _with_relays(

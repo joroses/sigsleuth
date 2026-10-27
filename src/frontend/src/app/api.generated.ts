@@ -819,6 +819,50 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/diagnostics/relay-checks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Relay Checks Page
+     * @description Every relayed reception whose own traceroute route names its relay,
+     *     in the `count` newest traceroute packets before packet row `before_id`,
+     *     with the relay packet pages name and what the rules alone name.
+     */
+    get: operations["relay_checks_page_api_v1_diagnostics_relay_checks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/diagnostics/relay-checks/{reception_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Relay Check Page
+     * @description Name the relay for a survey receiver at the gateway's position,
+     *     or at latitude and longitude; receiver=gateway reproduces the
+     *     gateway's own inference.
+     */
+    get: operations["relay_check_page_api_v1_diagnostics_relay_checks__reception_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2021,6 +2065,234 @@ export interface components {
       recipient_name: string | null;
     };
     /**
+     * RelayCandidate
+     * @description A node sending the copy's relay byte, as the rules read it. key names
+     *     it in steps, signals and links: its node_id, or a negative number for
+     *     an opted-out node, which has no id, name or position here.
+     *
+     *     It is placed where pages draw it now (estimated when only its neighbours
+     *     place it). receiver_km and sender_km (one hop only) are its distances,
+     *     reach_km its own reach (0 when unknown); it is ruled out beyond
+     *     max(reach_km, RULE_OUT_KM) and named only within max(reach_km, NAME_KM)
+     *     (within_naming_reach).
+     *     heard_directly counts the gateway's direct receptions of it around the
+     *     packet. activity_hours is the hour it was last active nearest the
+     *     packet, in hours from it (negative before); None when none is within
+     *     ACTIVE_MS, or when it was not looked up after a rule-out that needs no
+     *     history. own_hop_limit is the hops left in its own report of the
+     *     packet.
+     */
+    RelayCandidate: {
+      key: number;
+      node_id: number | null;
+      name: string | null;
+      short_name: string | null;
+      role: string | null;
+      latitude: number | null;
+      longitude: number | null;
+      estimated: boolean;
+      channel_spreading_factor: number | null;
+      preset_spreading_factor: number | null;
+      firmware: number | null;
+      receiver_km: number | null;
+      sender_km: number | null;
+      reach_km: number;
+      within_naming_reach: boolean;
+      heard_directly: number;
+      activity_hours: number | null;
+      last_gateway_at: string | null;
+      own_hop_limit: number | null;
+      ruled_out: (
+        | "unplaced"
+        | "client_mute"
+        | "channel"
+        | "preset"
+        | "firmware"
+        | "receiver_far"
+        | "own_report"
+        | "silent"
+        | "sender_far"
+      )[];
+    };
+    /**
+     * RelayCheck
+     * @description One relayed traceroute reception and how its relay is named.
+     *
+     *     route_relay is the node before the gateway in the copy's own route, with
+     *     that hop's SNR; None when the route names none (route_relay below).
+     *     page_relay is what the packet page names (heard directly first);
+     *     rules_relay what the rules alone name, as for a survey measurement, each
+     *     with the step that named it. Each outcome compares one with route_relay,
+     *     None without one.
+     *     candidates counts the nodes sending the byte, left those no rule-out
+     *     removed. route_relay_ruled_out lists the rule-outs that removed the
+     *     route's relay: empty when it was left, None when it is no candidate.
+     *     mixed: another gateway heard the same rebroadcast (same byte and hops
+     *     left), but its route names another relay. steps sums up each naming
+     *     step.
+     */
+    RelayCheck: {
+      packet_row_id: number;
+      reception_id: number;
+      /** Format: date-time */
+      received_at: string;
+      sender: components["schemas"]["RelayCheckNode"];
+      gateway: components["schemas"]["RelayCheckNode"];
+      relay_byte: number;
+      hop_start: number | null;
+      hop_limit: number | null;
+      route_relay: components["schemas"]["RelayCheckNode"] | null;
+      route_snr_db: number | null;
+      page_relay: components["schemas"]["RelayCheckNode"] | null;
+      page_step:
+        | (
+            | "heard_directly"
+            | "signal"
+            | "gateway_link"
+            | "sender_link"
+            | "reported"
+            | "only_candidate"
+          )
+        | null;
+      page_outcome: ("right" | "wrong" | "undecided") | null;
+      rules_relay: components["schemas"]["RelayCheckNode"] | null;
+      rules_step:
+        | (
+            | "heard_directly"
+            | "signal"
+            | "gateway_link"
+            | "sender_link"
+            | "reported"
+            | "only_candidate"
+          )
+        | null;
+      rules_outcome: ("right" | "wrong" | "undecided") | null;
+      candidates: number;
+      left: number;
+      route_relay_ruled_out:
+        | (
+            | "unplaced"
+            | "client_mute"
+            | "channel"
+            | "preset"
+            | "firmware"
+            | "receiver_far"
+            | "own_report"
+            | "silent"
+            | "sender_far"
+          )[]
+        | null;
+      mixed: boolean;
+      steps: components["schemas"]["RelayStepSummary"][];
+    };
+    /**
+     * RelayCheckDetail
+     * @description One relayed reception's naming, step by step: what each candidate's
+     *     rule-outs found, the heard-directly step, then each naming step in
+     *     order, with what they read. route lists the nodes of the copy's route
+     *     (None a gap) and route_snr_db each hop's SNR; route_places places them
+     *     as packet pages do. one_hop: the copy was heard after one hop, which the
+     *     sender_far and sender_link rules need.
+     *
+     *     The survey receiver has no direct links and starts at the gateway's
+     *     position. Gateway mode reproduces the gateway's own naming. moved
+     *     means the survey receiver was placed elsewhere on the page.
+     */
+    RelayCheckDetail: {
+      check: components["schemas"]["RelayCheck"];
+      /** @enum {string} */
+      receiver_mode: "survey" | "gateway";
+      moved: boolean;
+      channel: string;
+      spreading_factor: number | null;
+      one_hop: boolean;
+      receiver: components["schemas"]["RelayPlace"] | null;
+      sender: components["schemas"]["RelayPlace"] | null;
+      sender_when_heard: components["schemas"]["RelayPlace"] | null;
+      route: (components["schemas"]["RelayCheckNode"] | null)[];
+      route_snr_db: (number | null)[];
+      route_places: components["schemas"]["RelayPlace"][];
+      candidates: components["schemas"]["RelayCandidate"][];
+      reports: components["schemas"]["RelayCheckReport"][];
+      steps: components["schemas"]["RelayCheckStep"][];
+      signals: components["schemas"]["RelaySignal"][];
+      links: components["schemas"]["RelayLinks"][];
+      activity_from: string | null;
+      rules: components["schemas"]["RelayRules"];
+    };
+    /**
+     * RelayCheckList
+     * @description The checks of the traceroutes looked through, newest packet first:
+     *     `traceroutes` of them, received from oldest_at to newest_at.
+     *     next_before_id continues with older ones; None when none are left.
+     */
+    RelayCheckList: {
+      checks: components["schemas"]["RelayCheck"][];
+      traceroutes: number;
+      oldest_at: string | null;
+      newest_at: string | null;
+      next_before_id: number | null;
+    };
+    /**
+     * RelayCheckNode
+     * @description A node a check names; node_id and name are None for an opted-out one.
+     */
+    RelayCheckNode: {
+      node_id: number | null;
+      name: string | null;
+    };
+    /**
+     * RelayCheckReport
+     * @description One gateway's report of the packet. Kinds: receiver (the reception
+     *     checked), sender (its own upload), cohearer (same relay byte and hops
+     *     left), earlier (one more hop left), other. signal: the signal step reads
+     *     it (a co-hearer that does not send the byte). route_relay is the relay
+     *     its own route names.
+     */
+    RelayCheckReport: {
+      reception_id: number;
+      gateway: components["schemas"]["RelayCheckNode"];
+      latitude: number | null;
+      longitude: number | null;
+      hop_limit: number | null;
+      relay_byte: number | null;
+      snr_db: number | null;
+      direct: boolean;
+      /** @enum {string} */
+      kind: "receiver" | "sender" | "cohearer" | "earlier" | "other";
+      sends_byte: boolean;
+      signal: boolean;
+      route_relay: components["schemas"]["RelayCheckNode"] | null;
+    };
+    /**
+     * RelayCheckStep
+     * @description A naming step (relays.NamingStep), by candidate key.
+     */
+    RelayCheckStep: {
+      /** @enum {string} */
+      rule:
+        | "signal"
+        | "gateway_link"
+        | "sender_link"
+        | "reported"
+        | "only_candidate";
+      scores: components["schemas"]["RelayScore"][];
+      pick: number | null;
+      named: number | null;
+      baseline: number | null;
+    };
+    /**
+     * RelayLinks
+     * @description A candidate's radio links with a node (a co-hearer or the sender),
+     *     and its traceroute hops with the sender.
+     */
+    RelayLinks: {
+      key: number;
+      node_id: number;
+      radio: number;
+      traceroute: number;
+    };
+    /**
      * RelayMaybe
      * @description A node that may have relayed a reception no rule names: km from the
      *     gateway, None when either is unplaced.
@@ -2048,6 +2320,60 @@ export interface components {
         | "sender_link"
         | "reported"
         | "only_candidate";
+    };
+    /** RelayPlace */
+    RelayPlace: {
+      node_id: number;
+      latitude: number;
+      longitude: number;
+      /** @enum {string} */
+      placed_by: "when_heard" | "now" | "estimated" | "chosen";
+    };
+    /**
+     * RelayRules
+     * @description The rules' thresholds: km, hours, days and score margin.
+     */
+    RelayRules: {
+      rule_out_km: number;
+      name_km: number;
+      active_hours: number;
+      heard_days: number;
+      score_margin: number;
+    };
+    /** RelayScore */
+    RelayScore: {
+      key: number;
+      score: number;
+    };
+    /**
+     * RelaySignal
+     * @description A candidate's direct signal at a gateway over the seven days before
+     *     the packet: SNR samples and their mean.
+     */
+    RelaySignal: {
+      key: number;
+      gateway_node_id: number;
+      snr_count: number;
+      snr_mean_db: number | null;
+    };
+    /**
+     * RelayStepSummary
+     * @description What one naming step found: evidence when it had something to rank
+     *     by (co-hearer copies for the signal step, a link or a report for the
+     *     others), the candidate it points to, and whether it names that one
+     *     (within its naming reach).
+     */
+    RelayStepSummary: {
+      /** @enum {string} */
+      rule:
+        | "signal"
+        | "gateway_link"
+        | "sender_link"
+        | "reported"
+        | "only_candidate";
+      evidence: boolean;
+      pick: components["schemas"]["RelayCheckNode"] | null;
+      named: boolean;
     };
     /**
      * ReplyRoute
@@ -3619,6 +3945,73 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DoubtfulNodeList"];
+        };
+      };
+    };
+  };
+  relay_checks_page_api_v1_diagnostics_relay_checks_get: {
+    parameters: {
+      query?: {
+        before_id?: number | null;
+        count?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RelayCheckList"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  relay_check_page_api_v1_diagnostics_relay_checks__reception_id__get: {
+    parameters: {
+      query?: {
+        latitude?: number | null;
+        longitude?: number | null;
+        receiver?: "survey" | "gateway";
+      };
+      header?: never;
+      path: {
+        reception_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RelayCheckDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

@@ -150,6 +150,14 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
         (request,) = connection.execute(
             "SELECT min(packet_row_id) FROM traceroute_packet WHERE NOT is_reply"
         ).fetchone()
+        (relayed_reception,) = connection.execute(
+            """
+            SELECT min(r.id) FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+            WHERE r.packet_row_id = ? AND r.relay_byte > 0 AND r.hop_start > r.hop_limit
+              AND r.relay_byte NOT IN (r.gateway_node_id & 255, t.sender_node_id & 255)
+            """,
+            (relayed_text,),
+        ).fetchone()
 
     settings = Settings(path, default_preset="LongFast", upload_password="survey")
     client = TestClient(create_app(settings), headers={"Authorization": "Basic cGhvbmU6c3VydmV5"})
@@ -164,6 +172,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
         text_sender=REQUESTER,
         flood_packet=relayed_text,
         traceroute_packet=request,
+        relayed_reception=relayed_reception,
     )
     pages = page_requests(now, subjects)
     for url in chain(pages, coverage_requests(client, now)):

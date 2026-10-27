@@ -187,13 +187,13 @@ packets.packet_ports
 
 ## GET /api/v1/packets/1
 
-packets.packet_detail
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
-packets.packet_detail
+packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
 reported.positions_when_heard
@@ -207,13 +207,13 @@ packets.packet_detail
 
 ## GET /api/v1/packets/11
 
-packets.packet_detail
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
-packets.packet_detail
+packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
 reported.positions_when_heard
@@ -238,13 +238,13 @@ links.pinned_hops
 
 ## GET /api/v1/packets/16/flood-routes
 
-packets.packet_detail
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-opt_out.opted_out
-  SCAN node_opt_out
-packets.packet_detail
+packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
 reported.positions_when_heard
@@ -1379,6 +1379,220 @@ diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
   SEARCH long_link USING PRIMARY KEY
+
+## GET /api/v1/diagnostics/relay-checks?count=25
+
+relay_checks.relay_checks
+  SEARCH packet USING INDEX packet_port
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+packets._receptions
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.direct_receptions
+  SEARCH link_hour USING INDEX link_hour_pair
+relays.direct_signals
+  SEARCH link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/relay-checks/30
+
+relay_checks.relay_check
+  SEARCH reception USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+packets._receptions
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH link_hour USING PRIMARY KEY
+relays.direct_receptions
+  SEARCH link_hour USING INDEX link_hour_pair
+relays.direct_signals
+  SEARCH link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/relay-checks/30?receiver=gateway
+
+relay_checks.relay_check
+  SEARCH reception USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+packets._receptions
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH link_hour USING PRIMARY KEY
+relays.direct_receptions
+  SEARCH link_hour USING INDEX link_hour_pair
+relays.direct_signals
+  SEARCH link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/relay-checks/30?latitude=52.0&longitude=19.0
+
+relay_checks.relay_check
+  SEARCH reception USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+packets._shown_packet
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+packets._receptions
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+positions.own_reach
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH link_hour USING PRIMARY KEY
+relays.direct_receptions
+  SEARCH link_hour USING INDEX link_hour_pair
+relays.direct_signals
+  SEARCH link_hour USING INDEX link_hour_pair
 
 ## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12
 

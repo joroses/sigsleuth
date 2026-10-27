@@ -4936,3 +4936,829 @@ looked_through: 25
 lowest_km: 0.9
 oldest_hour_at: null
 next_offset: null
+
+## GET /api/v1/diagnostics/relay-checks?count=25
+
+checks: 46 items
+  - packet_row_id: 31074
+    reception_id: 106194
+    received_at: "2026-10-11T16:21:06.845000Z"
+    sender:
+      node_id: 2933499666
+      name: "Node a712"
+    gateway:
+      node_id: 1770149960
+      name: "Node 5848"
+    relay_byte: 155
+    hop_start: 4
+    hop_limit: 3
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    route_snr_db: -1.75
+    page_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    page_step: "heard_directly"
+    page_outcome: "right"
+    rules_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    rules_step: "signal"
+    rules_outcome: "right"
+    candidates: 1
+    left: 1
+    route_relay_ruled_out: []
+    mixed: false
+    steps: 5 items
+      - rule: "signal"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "gateway_link"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "sender_link"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+  - packet_row_id: 31074
+    reception_id: 106196
+    received_at: "2026-10-11T16:21:06.886000Z"
+    sender:
+      node_id: 2933499666
+      name: "Node a712"
+    gateway:
+      node_id: 2658555076
+      name: "Node 54c4"
+    relay_byte: 155
+    hop_start: 4
+    hop_limit: 3
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    route_snr_db: 12.5
+    page_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    page_step: "heard_directly"
+    page_outcome: "right"
+    rules_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    rules_step: "signal"
+    rules_outcome: "right"
+    candidates: 1
+    left: 1
+    route_relay_ruled_out: []
+    mixed: false
+    steps: 5 items
+      - rule: "signal"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "gateway_link"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "sender_link"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+  - packet_row_id: 30914
+    reception_id: 105620
+    received_at: "2026-10-11T15:55:55.948000Z"
+    sender:
+      node_id: 4269814177
+      name: "Node 31a1"
+    gateway:
+      node_id: 2658555076
+      name: "Node 54c4"
+    relay_byte: 155
+    hop_start: 7
+    hop_limit: 2
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    route_snr_db: 12.25
+    page_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    page_step: "heard_directly"
+    page_outcome: "right"
+    rules_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+    rules_step: "signal"
+    rules_outcome: "right"
+    candidates: 1
+    left: 1
+    route_relay_ruled_out: []
+    mixed: false
+    steps: 5 items
+      - rule: "signal"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "gateway_link"
+        evidence: true
+        pick:
+          node_id: 3655149723
+          name: "Node 289b"
+        named: true
+      - rule: "sender_link"
+        evidence: false
+        pick: null
+        named: false
+traceroutes: 25
+oldest_at: "2026-10-11T15:36:04.640000Z"
+newest_at: "2026-10-11T16:21:06.845000Z"
+next_before_id: 30754
+
+## GET /api/v1/diagnostics/relay-checks/90660
+
+check:
+  packet_row_id: 26709
+  reception_id: 90660
+  received_at: "2026-10-11T06:09:12.404000Z"
+  sender:
+    node_id: 3556855606
+    name: "Node 4f36"
+  gateway:
+    node_id: 2658512488
+    name: "Node ae68"
+  relay_byte: 176
+  hop_start: 7
+  hop_limit: 2
+  route_relay: null
+  route_snr_db: null
+  page_relay:
+    node_id: 2224775088
+    name: "Node 5fb0"
+  page_step: "heard_directly"
+  page_outcome: null
+  rules_relay:
+    node_id: 2224775088
+    name: "Node 5fb0"
+  rules_step: "signal"
+  rules_outcome: null
+  candidates: 11
+  left: 5
+  route_relay_ruled_out: null
+  mixed: false
+  steps: 5 items
+    - rule: "signal"
+      evidence: true
+      pick:
+        node_id: 2224775088
+        name: "Node 5fb0"
+      named: true
+    - rule: "gateway_link"
+      evidence: true
+      pick:
+        node_id: 2224775088
+        name: "Node 5fb0"
+      named: true
+    - rule: "sender_link"
+      evidence: false
+      pick: null
+      named: false
+receiver_mode: "survey"
+moved: false
+channel: "ShortFast"
+spreading_factor: 7
+one_hop: false
+receiver:
+  node_id: 0
+  latitude: 51.7669
+  longitude: 19.5232
+  placed_by: "when_heard"
+sender: null
+sender_when_heard: null
+route: 8 items
+  - node_id: 3556855606
+    name: "Node 4f36"
+  - node_id: 522999951
+    name: null
+  - node_id: 2749076957
+    name: null
+route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
+route_places: 7 items
+  - node_id: 522999951
+    latitude: 50.7584
+    longitude: 18.8785
+    placed_by: "estimated"
+  - node_id: 2749076957
+    latitude: 50.6003
+    longitude: 18.9858
+    placed_by: "when_heard"
+  - node_id: 1128130340
+    latitude: 50.7576
+    longitude: 19.3004
+    placed_by: "when_heard"
+candidates: 11 items
+  - key: 799423920
+    node_id: 799423920
+    name: null
+    short_name: null
+    role: null
+    latitude: 50.2857
+    longitude: 19.012
+    estimated: true
+    channel_spreading_factor: null
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 168.5
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 799443888
+    node_id: 799443888
+    name: "Node 8bb0"
+    short_name: "8bb0"
+    role: "CLIENT"
+    latitude: 50.0498
+    longitude: 19.9819
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 193.6
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 1116113328
+    node_id: 1116113328
+    name: "Node 89b0"
+    short_name: "89b0"
+    role: "CLIENT_BASE"
+    latitude: 51.3737
+    longitude: 19.3528
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 45.3
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: -0.2
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: []
+reports: 4 items
+  - reception_id: 90660
+    gateway:
+      node_id: 2658512488
+      name: "Node ae68"
+    latitude: 51.7669
+    longitude: 19.5232
+    hop_limit: 2
+    relay_byte: 176
+    snr_db: 2.75
+    direct: false
+    kind: "cohearer"
+    sends_byte: false
+    signal: true
+    route_relay: null
+  - reception_id: 90664
+    gateway:
+      node_id: 1770149960
+      name: "Node 5848"
+    latitude: 51.7734
+    longitude: 19.4773
+    hop_limit: 1
+    relay_byte: 155
+    snr_db: -1.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+  - reception_id: 90666
+    gateway:
+      node_id: 1128130436
+      name: "Node e784"
+    latitude: 51.7669
+    longitude: 19.4183
+    hop_limit: 1
+    relay_byte: 172
+    snr_db: -8.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay: null
+steps: 5 items
+  - rule: "signal"
+    scores: 5 items
+      - key: 1116113328
+        score: -6.43
+      - key: 1244080816
+        score: -6.43
+      - key: 1770343088
+        score: -6.43
+    pick: 2224775088
+    named: 2224775088
+    baseline: -6.43
+  - rule: "gateway_link"
+    scores: 5 items
+      - key: 1116113328
+        score: 0
+      - key: 1244080816
+        score: 0
+      - key: 1770343088
+        score: 0
+    pick: 2224775088
+    named: 2224775088
+    baseline: null
+  - rule: "sender_link"
+    scores: []
+    pick: null
+    named: null
+    baseline: null
+signals: 1 items
+  - key: 2224775088
+    gateway_node_id: 2658512488
+    snr_count: 31
+    snr_mean_db: 2.20161
+links: 1 items
+  - key: 2224775088
+    node_id: 2658512488
+    radio: 18
+    traceroute: 0
+activity_from: "2026-10-08T15:00:00Z"
+rules:
+  rule_out_km: 50
+  name_km: 20
+  active_hours: 24
+  heard_days: 7
+  score_margin: 3
+
+## GET /api/v1/diagnostics/relay-checks/90660?receiver=gateway
+
+check:
+  packet_row_id: 26709
+  reception_id: 90660
+  received_at: "2026-10-11T06:09:12.404000Z"
+  sender:
+    node_id: 3556855606
+    name: "Node 4f36"
+  gateway:
+    node_id: 2658512488
+    name: "Node ae68"
+  relay_byte: 176
+  hop_start: 7
+  hop_limit: 2
+  route_relay: null
+  route_snr_db: null
+  page_relay:
+    node_id: 2224775088
+    name: "Node 5fb0"
+  page_step: "heard_directly"
+  page_outcome: null
+  rules_relay: null
+  rules_step: null
+  rules_outcome: null
+  candidates: 11
+  left: 5
+  route_relay_ruled_out: null
+  mixed: false
+  steps: 5 items
+    - rule: "signal"
+      evidence: false
+      pick: null
+      named: false
+    - rule: "gateway_link"
+      evidence: false
+      pick: null
+      named: false
+    - rule: "sender_link"
+      evidence: false
+      pick: null
+      named: false
+receiver_mode: "gateway"
+moved: false
+channel: "ShortFast"
+spreading_factor: 7
+one_hop: false
+receiver:
+  node_id: 2658512488
+  latitude: 51.7669
+  longitude: 19.5232
+  placed_by: "when_heard"
+sender: null
+sender_when_heard: null
+route: 8 items
+  - node_id: 3556855606
+    name: "Node 4f36"
+  - node_id: 522999951
+    name: null
+  - node_id: 2749076957
+    name: null
+route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
+route_places: 7 items
+  - node_id: 522999951
+    latitude: 50.7584
+    longitude: 18.8785
+    placed_by: "estimated"
+  - node_id: 2749076957
+    latitude: 50.6003
+    longitude: 18.9858
+    placed_by: "when_heard"
+  - node_id: 1128130340
+    latitude: 50.7576
+    longitude: 19.3004
+    placed_by: "when_heard"
+candidates: 11 items
+  - key: 799423920
+    node_id: 799423920
+    name: null
+    short_name: null
+    role: null
+    latitude: 50.2857
+    longitude: 19.012
+    estimated: true
+    channel_spreading_factor: null
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 168.5
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 799443888
+    node_id: 799443888
+    name: "Node 8bb0"
+    short_name: "8bb0"
+    role: "CLIENT"
+    latitude: 50.0498
+    longitude: 19.9819
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 193.6
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 1116113328
+    node_id: 1116113328
+    name: "Node 89b0"
+    short_name: "89b0"
+    role: "CLIENT_BASE"
+    latitude: 51.3737
+    longitude: 19.3528
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 45.3
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: -0.2
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: []
+reports: 4 items
+  - reception_id: 90660
+    gateway:
+      node_id: 2658512488
+      name: "Node ae68"
+    latitude: 51.7669
+    longitude: 19.5232
+    hop_limit: 2
+    relay_byte: 176
+    snr_db: 2.75
+    direct: false
+    kind: "receiver"
+    sends_byte: false
+    signal: false
+    route_relay: null
+  - reception_id: 90664
+    gateway:
+      node_id: 1770149960
+      name: "Node 5848"
+    latitude: 51.7734
+    longitude: 19.4773
+    hop_limit: 1
+    relay_byte: 155
+    snr_db: -1.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+  - reception_id: 90666
+    gateway:
+      node_id: 1128130436
+      name: "Node e784"
+    latitude: 51.7669
+    longitude: 19.4183
+    hop_limit: 1
+    relay_byte: 172
+    snr_db: -8.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay: null
+steps: 5 items
+  - rule: "signal"
+    scores: []
+    pick: null
+    named: null
+    baseline: null
+  - rule: "gateway_link"
+    scores: []
+    pick: null
+    named: null
+    baseline: null
+  - rule: "sender_link"
+    scores: []
+    pick: null
+    named: null
+    baseline: null
+signals: []
+links: []
+activity_from: "2026-10-08T15:00:00Z"
+rules:
+  rule_out_km: 50
+  name_km: 20
+  active_hours: 24
+  heard_days: 7
+  score_margin: 3
+
+## GET /api/v1/diagnostics/relay-checks/90660?latitude=52.0&longitude=19.0
+
+check:
+  packet_row_id: 26709
+  reception_id: 90660
+  received_at: "2026-10-11T06:09:12.404000Z"
+  sender:
+    node_id: 3556855606
+    name: "Node 4f36"
+  gateway:
+    node_id: 2658512488
+    name: "Node ae68"
+  relay_byte: 176
+  hop_start: 7
+  hop_limit: 2
+  route_relay: null
+  route_snr_db: null
+  page_relay:
+    node_id: 2224775088
+    name: "Node 5fb0"
+  page_step: "heard_directly"
+  page_outcome: null
+  rules_relay:
+    node_id: 2224775088
+    name: "Node 5fb0"
+  rules_step: "signal"
+  rules_outcome: null
+  candidates: 11
+  left: 3
+  route_relay_ruled_out: null
+  mixed: false
+  steps: 5 items
+    - rule: "signal"
+      evidence: true
+      pick:
+        node_id: 2224775088
+        name: "Node 5fb0"
+      named: true
+    - rule: "gateway_link"
+      evidence: true
+      pick:
+        node_id: 2224775088
+        name: "Node 5fb0"
+      named: false
+    - rule: "sender_link"
+      evidence: false
+      pick: null
+      named: false
+receiver_mode: "survey"
+moved: true
+channel: "ShortFast"
+spreading_factor: 7
+one_hop: false
+receiver:
+  node_id: 0
+  latitude: 52
+  longitude: 19
+  placed_by: "chosen"
+sender: null
+sender_when_heard: null
+route: 8 items
+  - node_id: 3556855606
+    name: "Node 4f36"
+  - node_id: 522999951
+    name: null
+  - node_id: 2749076957
+    name: null
+route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
+route_places: 7 items
+  - node_id: 522999951
+    latitude: 50.7584
+    longitude: 18.8785
+    placed_by: "estimated"
+  - node_id: 2749076957
+    latitude: 50.6003
+    longitude: 18.9858
+    placed_by: "when_heard"
+  - node_id: 1128130340
+    latitude: 50.7576
+    longitude: 19.3004
+    placed_by: "when_heard"
+candidates: 11 items
+  - key: 799423920
+    node_id: 799423920
+    name: null
+    short_name: null
+    role: null
+    latitude: 50.2857
+    longitude: 19.012
+    estimated: true
+    channel_spreading_factor: null
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 190.6
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 799443888
+    node_id: 799443888
+    name: "Node 8bb0"
+    short_name: "8bb0"
+    role: "CLIENT"
+    latitude: 50.0498
+    longitude: 19.9819
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 227.5
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: null
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far", "silent"]
+  - key: 1116113328
+    node_id: 1116113328
+    name: "Node 89b0"
+    short_name: "89b0"
+    role: "CLIENT_BASE"
+    latitude: 51.3737
+    longitude: 19.3528
+    estimated: false
+    channel_spreading_factor: 7
+    preset_spreading_factor: null
+    firmware: null
+    receiver_km: 73.8
+    sender_km: null
+    reach_km: 0
+    within_naming_reach: false
+    heard_directly: 0
+    activity_hours: -0.2
+    last_gateway_at: null
+    own_hop_limit: null
+    ruled_out: ["receiver_far"]
+reports: 4 items
+  - reception_id: 90660
+    gateway:
+      node_id: 2658512488
+      name: "Node ae68"
+    latitude: 51.7669
+    longitude: 19.5232
+    hop_limit: 2
+    relay_byte: 176
+    snr_db: 2.75
+    direct: false
+    kind: "cohearer"
+    sends_byte: false
+    signal: true
+    route_relay: null
+  - reception_id: 90664
+    gateway:
+      node_id: 1770149960
+      name: "Node 5848"
+    latitude: 51.7734
+    longitude: 19.4773
+    hop_limit: 1
+    relay_byte: 155
+    snr_db: -1.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay:
+      node_id: 3655149723
+      name: "Node 289b"
+  - reception_id: 90666
+    gateway:
+      node_id: 1128130436
+      name: "Node e784"
+    latitude: 51.7669
+    longitude: 19.4183
+    hop_limit: 1
+    relay_byte: 172
+    snr_db: -8.5
+    direct: false
+    kind: "other"
+    sends_byte: false
+    signal: false
+    route_relay: null
+steps: 5 items
+  - rule: "signal"
+    scores: 3 items
+      - key: 1244080816
+        score: -6.43
+      - key: 1770343088
+        score: -6.43
+      - key: 2224775088
+        score: -1.91
+    pick: 2224775088
+    named: 2224775088
+    baseline: -6.43
+  - rule: "gateway_link"
+    scores: 3 items
+      - key: 1244080816
+        score: 0
+      - key: 1770343088
+        score: 0
+      - key: 2224775088
+        score: 18
+    pick: 2224775088
+    named: null
+    baseline: null
+  - rule: "sender_link"
+    scores: []
+    pick: null
+    named: null
+    baseline: null
+signals: 1 items
+  - key: 2224775088
+    gateway_node_id: 2658512488
+    snr_count: 31
+    snr_mean_db: 2.20161
+links: 1 items
+  - key: 2224775088
+    node_id: 2658512488
+    radio: 18
+    traceroute: 0
+activity_from: "2026-10-08T15:00:00Z"
+rules:
+  rule_out_km: 50
+  name_km: 20
+  active_hours: 24
+  heard_days: 7
+  score_margin: 3

@@ -23,6 +23,9 @@ const LazyLinks = lazy(() =>
 const LazyDiagnostics = lazy(() =>
   import("./Diagnostics").then((module) => ({ default: module.Diagnostics })),
 );
+const LazyRelayChecks = lazy(() =>
+  import("./RelayChecks").then((module) => ({ default: module.RelayChecks })),
+);
 const LazyPacketDetail = lazy(() =>
   import("./PacketDetailView").then((module) => ({
     default: module.PacketDetailView,
@@ -85,7 +88,9 @@ export function App() {
             ? "nodes"
             : route.page === "packet"
               ? null
-              : route.page
+              : route.page === "relayChecks"
+                ? "diagnostics"
+                : route.page
         }
       />
       <main
@@ -136,6 +141,8 @@ export function App() {
               linkView={route.view}
               openedFrom={openedFrom === null ? null : pageLabel(openedFrom)}
             />
+          ) : route.page === "relayChecks" ? (
+            <LazyRelayChecks receptionId={route.receptionId} />
           ) : route.page === "node" ? (
             <LazyNodeDetail
               key={JSON.stringify([route.id, route.view])}

@@ -645,17 +645,28 @@ def relay_namings(
             relay_byte=int(reception.relay_byte or 0),
             reports=reports,
         )
-        checks = rule_outs(evidence, copy)
-        heard = {
-            check.node_id: direct[check.node_id, gateway]
-            for check in checks
-            if direct.get((check.node_id, gateway), 0) > 0
-        }
-        left = [check.node_id for check in checks if not check.ruled_out]
-        namings[reception.reception_id] = ReceptionNaming(
-            copy, heard, tuple(checks), tuple(naming_steps(evidence, copy, left, signals))
-        )
+        namings[reception.reception_id] = name_copy(evidence, copy, direct, signals)
     return PacketRelays(evidence, signals, namings)
+
+
+def name_copy(
+    evidence: RelayEvidence,
+    copy: Relayed,
+    direct: Mapping[tuple[int, int], int],
+    signals: Mapping[tuple[int, int], DirectSignal],
+) -> ReceptionNaming:
+    """The ReceptionNaming of one copy, from how often its receiver heard
+    each candidate directly (direct, by (node, receiver))."""
+    checks = rule_outs(evidence, copy)
+    heard = {
+        check.node_id: direct[check.node_id, copy.receiver]
+        for check in checks
+        if direct.get((check.node_id, copy.receiver), 0) > 0
+    }
+    left = [check.node_id for check in checks if not check.ruled_out]
+    return ReceptionNaming(
+        copy, heard, tuple(checks), tuple(naming_steps(evidence, copy, left, signals))
+    )
 
 
 def _with_relays(

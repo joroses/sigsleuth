@@ -5478,3 +5478,330 @@ div.zones-zone-end .link-end-name {
   flex: 1 1 auto;
   height: 100%;
 }
+
+/* Relay checks (#diagnostics/relays). */
+.diagnostics-page.relay-checks-page {
+  max-width: none;
+}
+
+.relay-check-counts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.relay-check-whys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.relay-why {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.relay-why[aria-pressed="true"] {
+  color: var(--canvas);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.relay-check-table :is(th, td),
+.relay-candidate-table :is(th, td),
+.relay-step-table :is(th, td),
+.relay-report-table :is(th, td) {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+:is(
+    .relay-check-table,
+    .relay-candidate-table,
+    .relay-step-table,
+    .relay-report-table
+  )
+  thead
+  th {
+  font-size: var(--text-sm);
+}
+
+.relay-check-table .number,
+.relay-candidate-table .number,
+.relay-step-table .number,
+.relay-report-table .number {
+  text-align: right;
+}
+
+.column-note {
+  display: block;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.relay-check-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.relay-check-step-through {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.relay-check-verdict {
+  margin-bottom: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.relay-check-verdict dl {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.relay-check-verdict dd {
+  margin: var(--space-1) 0 0;
+}
+
+.relay-route {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.relay-route-mark {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.relay-check-warning {
+  margin: var(--space-3) 0 0;
+}
+
+td.rule-hit {
+  color: var(--error);
+  background: var(--error-soft);
+  font-weight: 600;
+}
+
+.rule-miss {
+  color: var(--amber);
+}
+
+tr.route-relay-row > th,
+tr.route-relay-row > td {
+  box-shadow:
+    inset 0 1px 0 var(--blue),
+    inset 0 -1px 0 var(--blue);
+}
+
+tr.step-pick-row > th {
+  color: var(--accent);
+}
+
+.relay-more {
+  margin-top: var(--space-2);
+}
+
+.relay-steps {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding-left: var(--space-6);
+}
+
+.relay-step h4 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.relay-step-after {
+  opacity: 0.6;
+}
+
+.relay-step-rule {
+  margin: var(--space-1) 0 var(--space-2);
+  color: var(--muted);
+}
+
+.relay-step-result {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--border);
+}
+
+.relay-step-result.decides {
+  border-left-color: var(--accent);
+}
+
+.relay-step-list {
+  margin: 0;
+}
+
+.relay-steps-link {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+}
+
+.relay-check-map {
+  position: relative;
+  margin-bottom: var(--space-2);
+}
+
+.relay-check-map-canvas {
+  height: 26rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.relay-check-map-failure {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+}
+
+.relay-map-legend,
+.relay-map-move {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 2;
+}
+
+.relay-map-node,
+.relay-map-gateway,
+.relay-map-sender {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.3rem;
+  border: 2px solid var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+  color: var(--canvas);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+button.relay-map-node {
+  cursor: pointer;
+}
+
+.relay-map-node.left {
+  background: var(--accent);
+}
+
+.relay-map-node.out {
+  background: var(--muted);
+  opacity: 0.55;
+}
+
+.relay-map-node.named {
+  opacity: 1;
+  border-color: var(--accent-strong);
+}
+
+.relay-map-node.route {
+  opacity: 1;
+  border-color: var(--blue);
+  box-shadow:
+    0 0 0 2px var(--blue),
+    0 1px 3px rgb(0 0 0 / 35%);
+}
+
+.relay-map-node.estimated {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.relay-map-node.out.estimated {
+  border-color: var(--muted);
+}
+
+.relay-map-node.selected {
+  z-index: 2;
+  outline: 3px solid var(--marker-ring);
+  outline-offset: 1px;
+}
+
+.relay-map-gateway {
+  border-radius: var(--radius-sm);
+  background: var(--text);
+}
+
+.relay-map-gateway.receiver {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  background: var(--marker-ring);
+  cursor: grab;
+}
+
+.relay-map-gateway.receiver.chosen {
+  border-color: var(--marker-ring-edge);
+}
+
+.relay-map-gateway.cohearer {
+  background: var(--blue);
+}
+
+.relay-map-sender {
+  background: var(--amber);
+}
+
+.relay-map-sender.heard {
+  opacity: 0.5;
+}
+
+.relay-map-sender.estimated {
+  color: var(--amber);
+  background: var(--surface);
+  border-color: var(--amber);
+}
+
+.relay-map-legend .relay-map-node,
+.relay-map-legend .relay-map-gateway,
+.relay-map-legend .relay-map-sender {
+  vertical-align: middle;
+}
+
+tr.selectable-row {
+  cursor: pointer;
+}
+
+tr.selected-row > th,
+tr.selected-row > td:not(.rule-hit) {
+  background: var(--surface-subtle);
+}
+
+tr.selected-row > th:first-child {
+  box-shadow: inset 3px 0 0 var(--marker-ring);
+}

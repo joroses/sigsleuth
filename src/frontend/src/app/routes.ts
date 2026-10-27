@@ -28,6 +28,7 @@ export type Route =
       sender: number | null;
       heardDirectlyBy: number | null;
     }
+  | { page: "relayChecks"; receptionId: number | null }
   | {
       page: "packet";
       id: number;
@@ -145,6 +146,15 @@ export function routeFromHash(hash: string): Route {
         tab === "traceroutes" && Number.isSafeInteger(packet) && packet > 0
           ? { packet, node: query.get("node"), nextTo: query.get("next_to") }
           : null,
+    };
+  }
+  // Diagnostics' relay checks, optionally one reception's.
+  const relayChecks = hash.match(/^#diagnostics\/relays(?:\/([1-9]\d*))?$/);
+  if (relayChecks !== null) {
+    const id = relayChecks[1] === undefined ? null : Number(relayChecks[1]);
+    return {
+      page: "relayChecks",
+      receptionId: id !== null && Number.isSafeInteger(id) ? id : null,
     };
   }
   // Diagnostics, optionally listing the packets one node sent, optionally

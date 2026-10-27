@@ -279,7 +279,9 @@ def test_no_page_names_a_node_that_opted_out(
     linked: set[int] = set()
     for url in [*page_requests(from_epoch_ms(sample.now_ms), subjects), *extra]:
         response = client.get(url)
-        if response.status_code == 404 and url.startswith("/api/v1/packets/"):
+        if response.status_code == 404 and url.startswith(
+            ("/api/v1/packets/", "/api/v1/diagnostics/relay-checks/")
+        ):
             continue  # a hidden node's packet
         assert response.status_code == 200, (url, response.text)
         # A node's own requests repeat its number, as for a node never heard.

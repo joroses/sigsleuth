@@ -118,6 +118,14 @@ from sigsleuth.packets import (
     packet_ports,
 )
 from sigsleuth.positions import HeardPositionList, positions_at
+from sigsleuth.relay_checks import (
+    MAX_TRACEROUTES,
+    TRACEROUTES,
+    RelayCheckDetail,
+    RelayCheckList,
+    relay_check,
+    relay_checks,
+)
 from sigsleuth.retention import coverage_limit_days
 from sigsleuth.zones import NetworkZones, network_zones
 
@@ -880,6 +888,38 @@ def create_app(
         """Nodes with a doubtful position, and nodes in two or more links the
         terrain check finds unlikely, with their long-link counts."""
         return doubtful_node_list(connection)
+
+    @app.get("/api/v1/diagnostics/relay-checks", dependencies=[Admin])
+    def relay_checks_page(
+        connection: Connection,
+        before_id: Annotated[int | None, Query(gt=0)] = None,
+        count: Annotated[int, Query(ge=1, le=MAX_TRACEROUTES)] = TRACEROUTES,
+    ) -> RelayCheckList:
+        """Every relayed reception whose own traceroute route names its relay,
+        in the `count` newest traceroute packets before packet row `before_id`,
+        with the relay packet pages name and what the rules alone name."""
+        return relay_checks(connection, before_id=before_id, count=count)
+
+    @app.get("/api/v1/diagnostics/relay-checks/{reception_id}", dependencies=[Admin])
+    def relay_check_page(
+        connection: Connection,
+        reception_id: Annotated[int, ApiPath(gt=0)],
+        latitude: Annotated[float | None, Query(ge=-90, le=90)] = None,
+        longitude: Annotated[float | None, Query(ge=-180, le=180)] = None,
+        receiver: Literal["survey", "gateway"] = "survey",
+    ) -> RelayCheckDetail:
+        """Name the relay for a survey receiver at the gateway's position,
+        or at latitude and longitude; receiver=gateway reproduces the
+        gateway's own inference."""
+        if (latitude is None) != (longitude is None):
+            raise ApiError(400, "position_incomplete", "Give both latitude and longitude.")
+        receiver_at = None if latitude is None or longitude is None else (latitude, longitude)
+        if receiver == "gateway" and receiver_at is not None:
+            raise ApiError(400, "receiver_position", "Only a survey receiver can be moved.")
+        page = relay_check(connection, reception_id, receiver_at, receiver_mode=receiver)
+        if page is None:
+            raise ApiError(404, "relay_check_not_found", "No relay to name for this reception.")
+        return page
 
     @app.get("/{requested_path:path}", include_in_schema=False)
     def frontend(requested_path: str) -> Response:

@@ -65,6 +65,13 @@ export function diagnosticsPacketsHref(
     : `#diagnostics/packets/${sender}-${heardDirectlyBy}`;
 }
 
+/** Diagnostics' relay checks, or how one reception's relay is named. */
+export function relayChecksHref(receptionId: number | null = null): string {
+  return receptionId === null
+    ? "#diagnostics/relays"
+    : `#diagnostics/relays/${receptionId}`;
+}
+
 /** A packet's page showing its relays. */
 export function packetRelaysHref(packetRowId: number): string {
   return `#packets/${packetRowId}/relays`;
@@ -351,3 +358,11 @@ export function mapReportPositionText(precisionKm: number | null): string {
 export function shortFirmware(version: string): string {
   return /^\d+\.\d+\.\d+/.exec(version)?.[0] ?? version;
 }
+
+/** How a relay check placed a node (relay_checks.PlacedBy), in the page's words. */
+export const PLACED_BY = {
+  when_heard: "where it was when heard",
+  now: "where it is now",
+  estimated: "estimated from its neighbours",
+  chosen: "placed on this page",
+} as const;

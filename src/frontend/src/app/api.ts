@@ -39,6 +39,12 @@ export type LongLinkEnd = Schemas["LongLinkEnd"];
 export type LongLinkList = Schemas["LongLinkList"];
 export type DoubtfulNode = Schemas["DoubtfulNode"];
 export type DoubtfulNodeList = Schemas["DoubtfulNodeList"];
+export type RelayCheck = Schemas["RelayCheck"];
+export type RelayCheckList = Schemas["RelayCheckList"];
+export type RelayCheckDetail = Schemas["RelayCheckDetail"];
+export type RelayCandidate = Schemas["RelayCandidate"];
+export type RelayCheckReport = Schemas["RelayCheckReport"];
+export type RelayCheckStep = Schemas["RelayCheckStep"];
 export type ChatParent = Schemas["ChatParent"];
 export type ChatMessage = Schemas["ChatMessage"];
 export type ChatPage = Schemas["ChatPage"];
@@ -293,6 +299,24 @@ export function longestLinksUrl(request: {
 }
 
 export const doubtfulNodesUrl = "/api/v1/diagnostics/doubtful-nodes";
+
+/** The relay checks of the `count` newest traceroute packets. */
+export function relayChecksUrl(count: number): string {
+  return `/api/v1/diagnostics/relay-checks?count=${count}`;
+}
+
+/** One reception's relay check, with its receiver moved to `at` when given. */
+export function relayCheckUrl(
+  receptionId: number,
+  at: [number, number] | null = null,
+  receiver: "survey" | "gateway" = "survey",
+): string {
+  const url = `/api/v1/diagnostics/relay-checks/${receptionId}`;
+  if (receiver === "gateway") return `${url}?receiver=gateway`;
+  return at === null
+    ? url
+    : `${url}?latitude=${at[0].toFixed(5)}&longitude=${at[1].toFixed(5)}`;
+}
 
 function setQuery(query: URLSearchParams, key: string, value?: string) {
   if (value !== undefined && value !== "") {

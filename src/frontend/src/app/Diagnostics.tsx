@@ -26,6 +26,7 @@ import {
   lineOfSightHref,
   nodeLabel,
   nodeName,
+  relayChecksHref,
   tracerouteHopHref,
 } from "./nodeDisplay";
 import { NodeSearch } from "./NodeSearch";
@@ -86,7 +87,11 @@ export function Diagnostics({
           <h2>Diagnostics</h2>
           <p className="diagnostic-lede">
             Service health, saved history, deliveries capture skipped, doubtful
-            nodes, long links and saved packets.
+            nodes, long links and saved packets.{" "}
+            <a className="text-button" href={relayChecksHref()}>
+              Relay checks
+            </a>{" "}
+            test relay names against traceroute routes.
           </p>
         </div>
       </div>

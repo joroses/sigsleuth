@@ -17,6 +17,7 @@ import {
   nodeHref,
   nodeName,
   relayByte,
+  relayChecksHref,
   relayMaybeTitle,
   relayNodeTitle,
   shortLabel,
@@ -899,6 +900,20 @@ export function RelayCell({ reception }: { reception: PacketReception }) {
           </a>
         </>
       )}
+      {/* For the operator: how the relay was named, in Diagnostics. */}
+      {(relay !== null || reception.relay_maybe.length > 0) &&
+      loadSetting(DIAGNOSTICS_LINKED) === true ? (
+        <>
+          {" "}
+          <a
+            className="relay-steps-link"
+            href={relayChecksHref(reception.reception_id)}
+            title="How this relay is named"
+          >
+            steps
+          </a>
+        </>
+      ) : null}
     </td>
   );
 }

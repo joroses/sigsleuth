@@ -33,7 +33,8 @@ FLOOD_PACKETS = 20_000
 class Subjects:
     """What the requests ask about: a node with a traceroute, a node next to it
     on a route, part of the first node's name, a channel, a busy text sender,
-    a packet, one relayed the most and a traceroute request."""
+    a packet, one relayed the most, a traceroute request and a relayed
+    reception of it."""
 
     node: int
     neighbour: int
@@ -43,6 +44,7 @@ class Subjects:
     packet: int = 1
     flood_packet: int = 1
     traceroute_packet: int = 1
+    relayed_reception: int = 1
 
 
 def pick_subjects(database_path: Path) -> Subjects:
@@ -50,9 +52,9 @@ def pick_subjects(database_path: Path) -> Subjects:
     its most frequent hop partner, its short name, the busiest channel,
     the busiest broadcast-text sender in the requests' 24-hour window, the
     oldest packet retention kept, of the newest FLOOD_PACKETS, the one
-    other than a traceroute with the most relayed receptions, and the
-    traceroute request with the most hops: chosen by rule, so a new sample
-    needs no edits."""
+    other than a traceroute with the most relayed receptions, the
+    traceroute request with the most hops and its first reception relayed
+    by another node: chosen by rule, so a new sample needs no edits."""
     with closing(open_current_database(database_path)) as connection:
         node, short_name = connection.execute(
             """
@@ -120,8 +122,26 @@ def pick_subjects(database_path: Path) -> Subjects:
             LIMIT 1
             """
         ).fetchone()
+        (relayed_reception,) = connection.execute(
+            """
+            SELECT r.id FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+            WHERE r.packet_row_id = ? AND r.relay_byte > 0 AND r.hop_start > r.hop_limit
+              AND r.relay_byte NOT IN (r.gateway_node_id & 255, t.sender_node_id & 255)
+            ORDER BY r.id
+            LIMIT 1
+            """,
+            (traceroute_packet,),
+        ).fetchone() or (1,)
     return Subjects(
-        node, neighbour, short_name, channel, text_sender, packet, flood_packet, traceroute_packet
+        node,
+        neighbour,
+        short_name,
+        channel,
+        text_sender,
+        packet,
+        flood_packet,
+        traceroute_packet,
+        relayed_reception,
     )
 
 
@@ -238,3 +258,13 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     # Looking further down builds the evidence of 300 links.
     yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely", 250
     yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}"
+    # An operator page over 25 traceroutes
+    # (perf.db 2026-10-27: 0.9 s warm, 2.5 s cold).
+    yield "/api/v1/diagnostics/relay-checks?count=25", 1500
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}?receiver=gateway"
+    # The same copy as if heard by a node with no direct links elsewhere.
+    yield (
+        f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
+        "?latitude=52.0&longitude=19.0"
+    )

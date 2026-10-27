@@ -9,6 +9,7 @@ import {
   packetViewHref,
   routeFromHash,
 } from "./routes";
+import { relayChecksHref } from "./nodeDisplay";
 
 describe("routeFromHash", () => {
   it("reads node IDs as numbers or as !hex", () => {
@@ -82,6 +83,23 @@ describe("routeFromHash", () => {
     });
     expect(routeFromHash("#packets/7?reception=0x15")).toMatchObject({
       receptionId: null,
+    });
+  });
+});
+
+describe("relay checks", () => {
+  it("open the list or one reception, and the old Diagnostics links still work", () => {
+    expect(routeFromHash(relayChecksHref())).toEqual({
+      page: "relayChecks",
+      receptionId: null,
+    });
+    expect(routeFromHash(relayChecksHref(21))).toEqual({
+      page: "relayChecks",
+      receptionId: 21,
+    });
+    expect(routeFromHash("#diagnostics/packets/!00000002")).toMatchObject({
+      page: "diagnostics",
+      sender: 2,
     });
   });
 });

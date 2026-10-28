@@ -132,3 +132,41 @@ def test_a_hidden_node_keeps_its_share_but_is_never_named() -> None:
     assert shown.named() == (hidden, "receiver_heard")
     assert shown.named(hidden={hidden}) is None
     assert shown.probabilities[other] < 1 - NAME_PROBABILITY
+
+
+def test_receiver_rssi_distinguishes_same_byte_candidates_and_missing_is_neutral() -> None:
+    from sigsleuth.relays import DirectSignal
+
+    a, b = 0x0101_003D, 0x0202_003D
+    found = evidence({a: node(a, 2), b: node(b, 2)})
+    profiles = {
+        (a, RECEIVER): DirectSignal(0, None, 10, -80),
+        (b, RECEIVER): DirectSignal(0, None, 10, -100),
+    }
+    received = replace(copy(), rssi=-80)
+    scored = score_relays(found, received, profiles)
+    assert scored.named() == (a, "receiver_heard")
+    assert scored.terms[a]["r_rssi"] > 0
+    assert -3 < scored.terms[b]["r_rssi"] < 0
+    neutral = score_relays(found, copy(), profiles)
+    assert neutral == score_relays(found, received, {})
+    assert score_relays(found, replace(received, receiver=0), profiles) == neutral
+    assert scored.named(hidden={a}) is None
+    assert scored.probabilities[b] < 1 - NAME_PROBABILITY
+
+
+def test_stronger_shortcut_falls_through_and_keeps_the_candidate() -> None:
+    from sigsleuth.packets import name_copy
+    from sigsleuth.relays import DirectSignal
+
+    a = 0x0101_003D
+    found = evidence({a: node(a, 1)})
+    profile = {(a, RECEIVER): DirectSignal(0, None, 1, -100)}
+    for rssi, skipped in ((None, False), (-120, False), (-85, False), (-84, True)):
+        named = name_copy(found, replace(copy(), rssi=rssi), {(a, RECEIVER): 1}, profile)
+        assert named.shortcut_skipped is skipped
+        assert named.heard == {a: 1}
+        assert named.scores.terms[a]["rheard"] == 1
+        assert named.relay == ((a, "receiver_heard") if skipped else (a, "heard_directly"))
+    missing = name_copy(found, replace(copy(), rssi=-50), {(a, RECEIVER): 1}, {})
+    assert missing.relay == (a, "heard_directly")

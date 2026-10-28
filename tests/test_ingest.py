@@ -339,10 +339,10 @@ def test_a_direct_reception_counts_once_from_the_sender_to_the_gateway(
     connection: sqlite3.Connection,
 ) -> None:
     first_seen = HOUR_START + 60_000
-    text_reception(connection, "!aaaaaaaa", first_seen, rx_snr=6.5, **DIRECT)
+    text_reception(connection, "!aaaaaaaa", first_seen, rx_snr=6.5, rx_rssi=-100, **DIRECT)
     # MQTT copies of the same report add nothing.
-    text_reception(connection, "!aaaaaaaa", first_seen + 500, rx_snr=6.5, **DIRECT)
-    text_reception(connection, "!aaaaaaaa", first_seen + 900, rx_snr=6.5, **DIRECT)
+    text_reception(connection, "!aaaaaaaa", first_seen + 500, rx_snr=6.5, rx_rssi=-100, **DIRECT)
+    text_reception(connection, "!aaaaaaaa", first_seen + 900, rx_snr=6.5, rx_rssi=-100, **DIRECT)
     # A second gateway without an SNR still counts, from the packet's hour.
     text_reception(connection, "!bbbbbbbb", first_seen + 2_000, rx_rssi=-120, **DIRECT)
 
@@ -351,6 +351,12 @@ def test_a_direct_reception_counts_once_from_the_sender_to_the_gateway(
         (HOUR_START, SENDER, 0xBBBBBBBB, 1, 0, 0.0, first_seen, "LongFast"),
     ]
     assert link_hours(connection) == []
+    assert [
+        tuple(row)
+        for row in connection.execute(
+            "SELECT to_node_id, rssi_count, rssi_sum FROM link_hour ORDER BY to_node_id"
+        )
+    ] == [(0xAAAAAAAA, 1, -100.0), (0xBBBBBBBB, 1, -120.0)]
 
 
 def test_a_packet_sent_with_no_hops_is_direct(connection: sqlite3.Connection) -> None:

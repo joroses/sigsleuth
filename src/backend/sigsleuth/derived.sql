@@ -198,6 +198,8 @@ CREATE TABLE link_hour (
     observations INTEGER NOT NULL CHECK (observations >= 1),
     snr_count INTEGER NOT NULL CHECK (snr_count BETWEEN 0 AND observations),
     snr_sum REAL NOT NULL,
+    rssi_count INTEGER NOT NULL CHECK (rssi_count BETWEEN 0 AND observations),
+    rssi_sum REAL NOT NULL,
     last_seen_at INTEGER NOT NULL,
     channel TEXT NOT NULL CHECK (length(CAST(channel AS BLOB)) BETWEEN 1 AND 1024),
     km REAL CHECK (km IS NULL OR km >= 0),

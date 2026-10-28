@@ -37,6 +37,8 @@ def link_hour(
         observations=observations,
         snr_count=len(snr),
         snr_sum=sum(snr),
+        rssi_count=0,
+        rssi_sum=0.0,
         last_seen_at=last_seen_at,
         channel=channel,
         km=km,

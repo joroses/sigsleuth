@@ -305,24 +305,28 @@ _BATCH_SQL = (
     # _count_link for direct receptions.
     f"""
     INSERT INTO link_hour (link_kind, hour_start, from_node_id, to_node_id, observations,
-        snr_count, snr_sum, last_seen_at, channel, km)
+        snr_count, snr_sum, rssi_count, rssi_sum, last_seen_at, channel, km)
     SELECT 'direct', hour_start, from_node_id, to_node_id, observations, snr_count, snr_sum,
-           last_seen_at, channel, {km_when_heard_sql("from_node_id", "to_node_id", "last_seen_at")}
+           rssi_count, rssi_sum, last_seen_at, channel,
+           {km_when_heard_sql("from_node_id", "to_node_id", "last_seen_at")}
     FROM (
         SELECT t.first_received_at - t.first_received_at % {HOUR_MS} AS hour_start,
                t.sender_node_id AS from_node_id, r.gateway_node_id AS to_node_id,
                count(*) AS observations, count(r.rx_snr) AS snr_count,
-               total(r.rx_snr) AS snr_sum, max(t.first_received_at) AS last_seen_at,
+               total(r.rx_snr) AS snr_sum, count(r.rx_rssi) AS rssi_count,
+               total(r.rx_rssi) AS rssi_sum, max(t.first_received_at) AS last_seen_at,
                t.channel AS channel
         FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
         WHERE r.id > :receptions_after AND r.id <= :last_reception
           AND {direct_reception_sql("r", "t")}
-        GROUP BY 1, 2, 3, 8
+        GROUP BY 1, 2, 3, t.channel
     ) WHERE true
     ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
         observations = observations + excluded.observations,
         snr_count = snr_count + excluded.snr_count,
         snr_sum = snr_sum + excluded.snr_sum,
+        rssi_count = rssi_count + excluded.rssi_count,
+        rssi_sum = rssi_sum + excluded.rssi_sum,
         last_seen_at = max(last_seen_at, excluded.last_seen_at),
         km = CASE WHEN excluded.last_seen_at >= last_seen_at
                   THEN coalesce(excluded.km, km) ELSE coalesce(km, excluded.km) END
@@ -702,7 +706,13 @@ def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
         raise_firmware(connection, gateway_node_id, "relay_byte")
     if is_direct_reception(sender_node_id, gateway_node_id, SavedHeader.of(row)):
         raise_firmware(connection, sender_node_id, "relay_byte")
-        _count_link(connection, "direct", row, Hop(sender_node_id, gateway_node_id, row["rx_snr"]))
+        _count_link(
+            connection,
+            "direct",
+            row,
+            Hop(sender_node_id, gateway_node_id, row["rx_snr"]),
+            rssi=row["rx_rssi"],
+        )
     _derive_route(connection, row, {})
 
 
@@ -1057,7 +1067,14 @@ def _mark_gateway(connection: sqlite3.Connection, node_id: int, reported_at: int
     )
 
 
-def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row, hop: Hop) -> None:
+def _count_link(
+    connection: sqlite3.Connection,
+    link_kind: str,
+    row: sqlite3.Row,
+    hop: Hop,
+    *,
+    rssi: int | None = None,
+) -> None:
     """Add one observation of a hop to its hourly link totals on its
     packet's channel.
 
@@ -1071,15 +1088,18 @@ def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row
         f"""
         INSERT INTO link_hour (
             link_kind, hour_start, from_node_id, to_node_id,
-            observations, snr_count, snr_sum, last_seen_at, channel, km
+            observations, snr_count, snr_sum, rssi_count, rssi_sum, last_seen_at, channel, km
         ) VALUES (
-            :link_kind, :hour_start, :from_node, :to_node, 1, :has_snr, :snr, :seen_at, :channel,
+            :link_kind, :hour_start, :from_node, :to_node, 1, :has_snr, :snr,
+            :has_rssi, :rssi, :seen_at, :channel,
             {km_when_heard_sql(":from_node", ":to_node", ":seen_at")}
         )
         ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
             observations = observations + 1,
             snr_count = snr_count + excluded.snr_count,
             snr_sum = snr_sum + excluded.snr_sum,
+            rssi_count = rssi_count + excluded.rssi_count,
+            rssi_sum = rssi_sum + excluded.rssi_sum,
             last_seen_at = max(last_seen_at, excluded.last_seen_at),
             km = CASE WHEN excluded.last_seen_at >= last_seen_at
                       THEN coalesce(excluded.km, km) ELSE coalesce(km, excluded.km) END
@@ -1091,6 +1111,8 @@ def _count_link(connection: sqlite3.Connection, link_kind: str, row: sqlite3.Row
             "to_node": hop.to_node_id,
             "has_snr": hop.snr_db is not None,
             "snr": hop.snr_db or 0.0,
+            "has_rssi": rssi is not None,
+            "rssi": rssi or 0,
             "seen_at": seen_at,
             "channel": row["channel"],
         },

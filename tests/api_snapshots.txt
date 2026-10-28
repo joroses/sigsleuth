@@ -5122,7 +5122,7 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.998
+    probability: 1
     route_probability: null
   survey:
     relay:
@@ -5145,6 +5145,7 @@ moved: false
 channel: "ShortFast"
 spreading_factor: 7
 one_hop: false
+shortcut_skipped: false
 receiver:
   node_id: 0
   latitude: 51.7669
@@ -5281,6 +5282,7 @@ reports: 4 items
     hop_limit: 2
     relay_byte: 176
     snr_db: 2.75
+    rssi_dbm: -106
     direct: false
     kind: "cohearer"
     sends_byte: false
@@ -5295,6 +5297,7 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 155
     snr_db: -1.5
+    rssi_dbm: -95
     direct: false
     kind: "other"
     sends_byte: false
@@ -5311,6 +5314,7 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 172
     snr_db: -8.5
+    rssi_dbm: -117
     direct: false
     kind: "other"
     sends_byte: false
@@ -5321,6 +5325,8 @@ signals: 1 items
     gateway_node_id: 2658512488
     snr_count: 31
     snr_mean_db: 2.20161
+    rssi_count: 31
+    rssi_mean_dbm: -106.452
 links: 1 items
   - key: 2224775088
     node_id: 2658512488
@@ -5362,7 +5368,7 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.998
+    probability: 1
     route_probability: null
   survey:
     relay:
@@ -5385,6 +5391,7 @@ moved: false
 channel: "ShortFast"
 spreading_factor: 7
 one_hop: false
+shortcut_skipped: false
 receiver:
   node_id: 2658512488
   latitude: 51.7669
@@ -5521,6 +5528,7 @@ reports: 4 items
     hop_limit: 2
     relay_byte: 176
     snr_db: 2.75
+    rssi_dbm: -106
     direct: false
     kind: "receiver"
     sends_byte: false
@@ -5535,6 +5543,7 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 155
     snr_db: -1.5
+    rssi_dbm: -95
     direct: false
     kind: "other"
     sends_byte: false
@@ -5551,12 +5560,19 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 172
     snr_db: -8.5
+    rssi_dbm: -117
     direct: false
     kind: "other"
     sends_byte: false
     signal: false
     route_relay: null
-signals: []
+signals: 1 items
+  - key: 2224775088
+    gateway_node_id: 2658512488
+    snr_count: 31
+    snr_mean_db: 2.20161
+    rssi_count: 31
+    rssi_mean_dbm: -106.452
 links: []
 activity_from: "2026-10-08T15:00:00Z"
 rules:
@@ -5594,7 +5610,7 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.998
+    probability: 1
     route_probability: null
   survey:
     relay:
@@ -5617,6 +5633,7 @@ moved: true
 channel: "ShortFast"
 spreading_factor: 7
 one_hop: false
+shortcut_skipped: false
 receiver:
   node_id: 0
   latitude: 52
@@ -5753,6 +5770,7 @@ reports: 4 items
     hop_limit: 2
     relay_byte: 176
     snr_db: 2.75
+    rssi_dbm: -106
     direct: false
     kind: "cohearer"
     sends_byte: false
@@ -5767,6 +5785,7 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 155
     snr_db: -1.5
+    rssi_dbm: -95
     direct: false
     kind: "other"
     sends_byte: false
@@ -5783,6 +5802,7 @@ reports: 4 items
     hop_limit: 1
     relay_byte: 172
     snr_db: -8.5
+    rssi_dbm: -117
     direct: false
     kind: "other"
     sends_byte: false
@@ -5793,6 +5813,8 @@ signals: 1 items
     gateway_node_id: 2658512488
     snr_count: 31
     snr_mean_db: 2.20161
+    rssi_count: 31
+    rssi_mean_dbm: -106.452
 links: 1 items
   - key: 2224775088
     node_id: 2658512488

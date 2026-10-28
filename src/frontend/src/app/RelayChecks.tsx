@@ -88,6 +88,7 @@ const TERM_LABELS: Record<Term, string> = {
   channel_other: "channel on another SF",
   inactive: "not active",
   rheard: "heard by the gateway",
+  r_rssi: "receiver RSSI match",
 };
 
 const OUTCOME_TONES = {
@@ -750,26 +751,29 @@ function CheckScores({
           <h3 id="relay-heard-heading">2. Heard directly (packet page only)</h3>
           <p>
             The packet page names the only candidate this gateway heard directly
-            within {detail.rules.heard_days} days of the packet. When it heard
-            more, each of them counts as heard by the gateway in its score.
-            Survey measurements skip this.
+            within {detail.rules.heard_days} days of the packet, unless this
+            copy is over 15 dB stronger than its usual RSSI. When it heard more,
+            each of them counts as heard by the gateway in its score. Survey
+            measurements skip this.
           </p>
         </div>
         <p
-          className={`relay-step-result ${heard.length === 1 ? "decides" : ""}`}
+          className={`relay-step-result ${given.why === "heard_directly" ? "decides" : ""}`}
         >
           {detail.receiver_mode === "survey"
             ? "The survey receiver has no direct links: nothing to read."
-            : heard.length === 0
-              ? "It heard none directly: the score decides."
-              : heard.length === 1
-                ? `It heard only ${candidateName(heard[0])} directly (${heard[0].heard_directly} times): the packet page names it.`
-                : `It heard ${heard.length} directly (${heard
-                    .map(
-                      (candidate) =>
-                        `${candidateName(candidate)} ${candidate.heard_directly}`,
-                    )
-                    .join(", ")}): not one, so the score decides.`}
+            : detail.shortcut_skipped
+              ? "The copy is over 15 dB stronger than the sole candidate’s usual RSSI: the score decides."
+              : heard.length === 0
+                ? "It heard none directly: the score decides."
+                : heard.length === 1
+                  ? `It heard only ${candidateName(heard[0])} directly (${heard[0].heard_directly} times): the packet page names it.`
+                  : `It heard ${heard.length} directly (${heard
+                      .map(
+                        (candidate) =>
+                          `${candidateName(candidate)} ${candidate.heard_directly}`,
+                      )
+                      .join(", ")}): not one, so the score decides.`}
         </p>
       </section>
 
@@ -1233,7 +1237,9 @@ function SignalTable({
   detail: RelayCheckDetail;
   routeKey: number | null;
 }) {
-  const copies = detail.reports.filter((report) => report.signal);
+  const copies = detail.reports.filter(
+    (report) => report.signal || report.kind === "receiver",
+  );
   if (copies.length === 0 || detail.signals.length === 0) return null;
   const profile = new Map(
     detail.signals.map((signal) => [
@@ -1247,7 +1253,7 @@ function SignalTable({
   );
   return (
     <>
-      <h4 className="relay-score-figures">Signal at the co-hearers</h4>
+      <h4 className="relay-score-figures">Direct signal profiles</h4>
       <WideTable>
         <table className="relay-step-table">
           <thead>
@@ -1256,7 +1262,10 @@ function SignalTable({
               {copies.map((report) => (
                 <th key={report.reception_id}>
                   {nodeText(report.gateway)}
-                  <span className="column-note">copy {report.snr_db} dB</span>
+                  <span className="column-note">
+                    copy {report.snr_db ?? "—"} dB · {report.rssi_dbm ?? "—"}{" "}
+                    dBm
+                  </span>
                 </th>
               ))}
             </tr>
@@ -1276,12 +1285,13 @@ function SignalTable({
                     <td key={report.reception_id}>
                       {signal === undefined ? (
                         <span className="muted">never heard</span>
-                      ) : signal.snr_mean_db === null ? (
-                        "heard, no SNR"
                       ) : (
                         <>
-                          {signal.snr_mean_db.toFixed(1)} dB
+                          {signal.snr_mean_db?.toFixed(1) ?? "—"} dB
                           <span className="muted"> ({signal.snr_count})</span>
+                          <br />
+                          {signal.rssi_mean_dbm?.toFixed(1) ?? "—"} dBm
+                          <span className="muted"> ({signal.rssi_count})</span>
                         </>
                       )}
                     </td>
@@ -1392,6 +1402,7 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
             <th className="number">Hops left</th>
             <th>Relay byte</th>
             <th className="number">SNR</th>
+            <th className="number">RSSI</th>
             <th>Its route&apos;s relay</th>
           </tr>
         </thead>
@@ -1436,6 +1447,9 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
                 </td>
                 <td className="number">
                   {report.snr_db === null ? "—" : `${report.snr_db} dB`}
+                </td>
+                <td className="number">
+                  {report.rssi_dbm === null ? "—" : `${report.rssi_dbm} dBm`}
                 </td>
                 <td className={differs ? "rule-hit" : undefined}>
                   <NodeRef node={report.route_relay} />

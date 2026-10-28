@@ -542,10 +542,11 @@ class ReceptionNaming:
     copy: Relayed
     heard: Mapping[int, int]
     scores: RelayScores
+    shortcut_skipped: bool = False
 
     @property
     def relay(self) -> tuple[int, RelayNodeHow] | None:
-        if len(self.heard) == 1:
+        if len(self.heard) == 1 and not self.shortcut_skipped:
             return next(iter(self.heard)), "heard_directly"
         return self.scored_relay
 
@@ -580,7 +581,7 @@ def relay_namings(
     in the survey node's place, where it was when heard:
 
     1. heard_directly: the only candidate the gateway heard directly within
-       COHEARER_WINDOW_MS of the packet, whatever else it shows;
+       COHEARER_WINDOW_MS of the packet, unless RSSI is over 15 dB stronger;
     2. else the likeliest candidate by relays.score_relays, when sure enough.
 
     None when no reception has such a byte. Links count either side of the
@@ -641,6 +642,7 @@ def relay_namings(
             hop_limit=reception.hop_limit,
             relay_byte=int(reception.relay_byte or 0),
             reports=reports,
+            rssi=reception.rx_rssi,
         )
         namings[reception.reception_id] = name_copy(evidence, copy, direct, signals)
     return PacketRelays(evidence, signals, namings)
@@ -659,7 +661,17 @@ def name_copy(
         for node in evidence.candidates(copy)
         if direct.get((node, copy.receiver), 0) > 0
     }
-    return ReceptionNaming(copy, heard, score_relays(evidence, copy, signals, set(heard)))
+    profile = signals.get((next(iter(heard)), copy.receiver)) if len(heard) == 1 else None
+    shortcut_skipped = (
+        copy.rssi is not None
+        and profile is not None
+        and profile.rssi_mean is not None
+        and profile.rssi_count > 0
+        and copy.rssi - profile.rssi_mean > 15
+    )
+    return ReceptionNaming(
+        copy, heard, score_relays(evidence, copy, signals, set(heard)), shortcut_skipped
+    )
 
 
 def _with_relays(

@@ -394,6 +394,7 @@ class RelayCheckReport:
     hop_limit: int | None
     relay_byte: int | None
     snr_db: float | None
+    rssi_dbm: float | None
     direct: bool
     kind: Literal["receiver", "sender", "cohearer", "earlier", "other"]
     sends_byte: bool
@@ -410,6 +411,8 @@ class RelaySignal:
     gateway_node_id: int
     snr_count: int
     snr_mean_db: float | None
+    rssi_count: int
+    rssi_mean_dbm: float | None
 
 
 @dataclass(frozen=True)
@@ -471,6 +474,7 @@ class RelayCheckDetail:
     channel: str
     spreading_factor: int | None
     one_hop: bool
+    shortcut_skipped: bool
     receiver: RelayPlace | None
     sender: RelayPlace | None
     sender_when_heard: RelayPlace | None
@@ -524,6 +528,7 @@ def relay_check(
         channel=found.packet.channel,
         spreading_factor=naming.copy.spreading_factor,
         one_hop=naming.copy.one_hop,
+        shortcut_skipped=naming.shortcut_skipped,
         **places,
         **_route(found, reception, hidden),
         **_explained(found, naming, checks, hidden),
@@ -723,6 +728,7 @@ def _explained(
                 hop_limit=reception.hop_limit,
                 relay_byte=reception.relay_byte,
                 snr_db=reception.rx_snr,
+                rssi_dbm=reception.rx_rssi,
                 direct=reception.direct,
                 kind=kind,
                 sends_byte=sends_byte,
@@ -733,9 +739,16 @@ def _explained(
 
     possible = list(scores.terms)
     signals = [
-        RelaySignal(keys[node], report.gateway.node_id, profile.snr_count, profile.snr_mean)
+        RelaySignal(
+            keys[node],
+            report.gateway.node_id,
+            profile.snr_count,
+            profile.snr_mean,
+            profile.rssi_count,
+            profile.rssi_mean,
+        )
         for report in reports
-        if report.signal and report.gateway.node_id is not None
+        if (report.signal or report.kind == "receiver") and report.gateway.node_id is not None
         for node in possible
         if (profile := found.relays.signals.get((node, report.gateway.node_id))) is not None
     ]

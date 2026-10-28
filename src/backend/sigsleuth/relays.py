@@ -77,6 +77,7 @@ RelayTerm = Literal[
     "channel_other",
     "inactive",
     "rheard",
+    "r_rssi",
 ]
 # A conditional logit over each copy's candidates and a node SigSleuth does
 # not know (UNKNOWN_SCORE), assuming 1% of relays are unknown. Fitted
@@ -111,6 +112,7 @@ WEIGHTS: dict[RelayTerm, float] = {
     "channel_other": -2.96,
     "inactive": -5.87,
     "rheard": 4.92,
+    "r_rssi": 1.0,
 }
 UNKNOWN_SCORE = -4.93
 NAME_PROBABILITY = 0.8
@@ -138,6 +140,7 @@ WORDING: dict[RelayTerm, "ScoredHow"] = {
     "in_reach": "only_candidate",
     "near5": "only_candidate",
     "rheard": "receiver_heard",
+    "r_rssi": "receiver_heard",
 }
 # How a score names a relay, by the evidence that adds most (wording):
 # receiver_heard, the receiver heard it directly (packet pages only), and
@@ -163,6 +166,7 @@ class Relayed:
     hop_limit: int | None
     relay_byte: int
     reports: Sequence[Report]
+    rssi: float | None = None
 
     @property
     def one_hop(self) -> bool:
@@ -417,6 +421,8 @@ def direct_receptions(
 class DirectSignal:
     snr_count: int
     snr_mean: float | None
+    rssi_count: int = 0
+    rssi_mean: float | None = None
 
 
 def direct_signals(
@@ -428,11 +434,12 @@ def direct_signals(
         return {}
     end = at - at % HOUR_MS
     return {
-        (int(node), int(gateway)): DirectSignal(int(count), mean)
-        for node, gateway, count, mean in connection.execute(
+        (int(node), int(gateway)): DirectSignal(int(count), mean, int(rssi_count), rssi_mean)
+        for node, gateway, count, mean, rssi_count, rssi_mean in connection.execute(
             """
             SELECT l.from_node_id, l.to_node_id, sum(l.snr_count),
-                   total(l.snr_sum) / nullif(sum(l.snr_count), 0)
+                   total(l.snr_sum) / nullif(sum(l.snr_count), 0),
+                   sum(l.rssi_count), total(l.rssi_sum) / nullif(sum(l.rssi_count), 0)
             FROM json_each(:pairs) AS p
             JOIN link_hour AS l INDEXED BY link_hour_pair
               ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
@@ -523,6 +530,19 @@ def relay_terms(
                     + math.log(SNR_WIDTH_DB)
                 )
         terms["snr_llr"] = snr_llr
+        profile = signals.get((node, relayed.receiver))
+        if (
+            relayed.receiver != 0
+            and relayed.rssi is not None
+            and profile is not None
+            and profile.rssi_mean is not None
+            and profile.rssi_count > 0
+        ):
+            # 2026-10-28 route-truth study: bounded receiver RSSI match.
+            variance = 3.0**2 * (1 + 1 / profile.rssi_count)
+            density = math.exp(-0.5 * (relayed.rssi - profile.rssi_mean) ** 2 / variance)
+            density /= math.sqrt(2 * math.pi * variance)
+            terms["r_rssi"] = math.log(0.95 * density * 80 + 0.05)
         hops = own.get(node)
         if hops is not None and relayed.hop_limit is not None:
             if hops == relayed.hop_limit + 1:
@@ -562,7 +582,11 @@ class RelayScores:
         """Whether an evidence term counts for a candidate (EVIDENCE_TERMS, or a
         signal that matches it better than an unknown node's)."""
         terms = self.terms.get(node, {})
-        return any(terms.get(term) for term in EVIDENCE_TERMS) or terms.get("snr_llr", 0) > 0
+        return (
+            any(terms.get(term) for term in EVIDENCE_TERMS)
+            or terms.get("snr_llr", 0) > 0
+            or terms.get("r_rssi", 0) > 0
+        )
 
     def hints(self) -> list[int]:
         """Candidates with evidence first, likeliest within each group."""

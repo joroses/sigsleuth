@@ -101,6 +101,7 @@ def capture_some_history(connection: sqlite3.Connection) -> None:
                 hop_limit=3,
                 relay_node=SENDER & 0xFF,
                 rx_snr=6.0,
+                rx_rssi=-105,
             ),
             gateway,
         )
@@ -115,6 +116,7 @@ def capture_some_history(connection: sqlite3.Connection) -> None:
                 recipient=TARGET,
                 packet_id=7,
                 gateway_id=gateway,
+                rx_rssi=-110,
             ),
             gateway,
         )
@@ -147,6 +149,7 @@ def capture_some_history(connection: sqlite3.Connection) -> None:
             neighbors.SerializeToString(),
             sender=RELAY,
             packet_id=11,
+            rx_rssi=-115,
         ),
         "!aaaaaaaa",
     )
@@ -187,6 +190,12 @@ def test_rederive_rebuilds_what_capture_derived(path: Path, connection: sqlite3.
     capture_some_history(connection)
     captured = derived(connection)
     assert all(captured.values())
+    assert [
+        tuple(row)
+        for row in connection.execute(
+            "SELECT link_kind, sum(rssi_count), total(rssi_sum) FROM link_hour GROUP BY link_kind"
+        )
+    ] == [("direct", 2, -210.0), ("neighbor", 0, 0.0), ("traceroute", 0, 0.0)]
 
     connection.execute("UPDATE derived_state SET version = 0")
     migrate_database(path)
@@ -196,6 +205,38 @@ def test_rederive_rebuilds_what_capture_derived(path: Path, connection: sqlite3.
     rederive_all(connection)
     assert derived(connection) == captured
     assert not rederive_pending(connection)
+
+
+@pytest.mark.parametrize("batch_size", [1, 100])
+def test_link_rssi_totals_skip_missing_measurements_and_rebuild(
+    path: Path, connection: sqlite3.Connection, batch_size: int
+) -> None:
+    for packet_id, (snr, rssi) in enumerate(((6.0, -100), (8.0, 0), (0.0, -120)), start=1):
+        payload = application_envelope(
+            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            b"hello",
+            packet_id=packet_id,
+            hop_start=3,
+            hop_limit=3,
+            relay_node=SENDER & 0xFF,
+            rx_snr=snr,
+            rx_rssi=rssi,
+        )
+        for seconds in (packet_id, packet_id + 10):
+            send(connection, seconds, payload, "!aaaaaaaa")
+
+    def totals() -> tuple[object, ...]:
+        return tuple(
+            connection.execute(
+                "SELECT observations, snr_count, snr_sum, rssi_count, rssi_sum FROM link_hour"
+            ).fetchone()
+        )
+
+    assert totals() == (3, 2, 14.0, 2, -220.0)
+    connection.execute("UPDATE derived_state SET version = 0")
+    migrate_database(path)
+    assert rederive(connection, lambda: False, batch_size=batch_size)
+    assert totals() == (3, 2, 14.0, 2, -220.0)
 
 
 def test_an_interrupted_rederive_starts_again(path: Path, connection: sqlite3.Connection) -> None:

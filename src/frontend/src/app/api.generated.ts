@@ -2195,6 +2195,7 @@ export interface components {
       channel: string;
       spreading_factor: number | null;
       one_hop: boolean;
+      shortcut_skipped: boolean;
       receiver: components["schemas"]["RelayPlace"] | null;
       sender: components["schemas"]["RelayPlace"] | null;
       sender_when_heard: components["schemas"]["RelayPlace"] | null;
@@ -2246,6 +2247,7 @@ export interface components {
       hop_limit: number | null;
       relay_byte: number | null;
       snr_db: number | null;
+      rssi_dbm: number | null;
       direct: boolean;
       /** @enum {string} */
       kind: "receiver" | "sender" | "cohearer" | "earlier" | "other";
@@ -2324,6 +2326,8 @@ export interface components {
       gateway_node_id: number;
       snr_count: number;
       snr_mean_db: number | null;
+      rssi_count: number;
+      rssi_mean_dbm: number | null;
     };
     /**
      * RelayTermScore
@@ -2357,7 +2361,8 @@ export interface components {
         | "channel_same"
         | "channel_other"
         | "inactive"
-        | "rheard";
+        | "rheard"
+        | "r_rssi";
       value: number;
       score: number;
     };

@@ -11,7 +11,8 @@ twice:
   hops from the packet's hour on are left out, so the copy's own route
   cannot name its relay;
 - page: as packet pages read it, with the gateway's direct receptions
-  (heard directly first when it heard exactly one candidate).
+  (heard directly first when it heard exactly one candidate, unless
+  packets.skips_shortcut).
 
 The fit is a conditional logit over each copy's possible candidates and a
 node SigSleuth does not know. Route truth never has an unknown relay, so
@@ -25,10 +26,10 @@ busy mesh with --every 8.
 """
 
 import argparse
-import json
 import sqlite3
 import time
-from collections import Counter, defaultdict
+from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -37,7 +38,6 @@ import numpy as np
 from sigsleuth import packets, positions, relays
 from sigsleuth.db import to_epoch_ms
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.links import LONG_LINK_KM, limited_nodes, trusted_sql
 from sigsleuth.opt_out import SHOWN_PACKET
 from sigsleuth.relay_checks import route_relay
 
@@ -51,8 +51,8 @@ MODES = ("survey", "page")
 @dataclass
 class Copy:
     """One copy in one mode: its candidates' terms and the route's relay.
-    heard_one is the one candidate the gateway heard directly (page mode),
-    heard_hidden the one left when the true relay is removed."""
+    heard_one is the candidate named for being the only one the gateway heard
+    directly (page mode), heard_hidden the one when the true relay is removed."""
 
     packet_at: int
     mode: str
@@ -62,52 +62,16 @@ class Copy:
     heard_hidden: int | None = None
 
 
-def reach_by_partner(
-    connection: sqlite3.Connection, nodes: set[int]
-) -> dict[int, dict[int, float]]:
-    """positions.own_reach (from NAME_KM) per partner, so that one partner's
-    links can be left out."""
-    limited = limited_nodes(connection, 0)
-    values = {"from_km": relays.NAME_KM, "long": LONG_LINK_KM, "since": 0}
-    longest = connection.execute(
-        """
-        SELECT from_node_id, to_node_id, max(km) FROM link_hour INDEXED BY link_hour_pair
-        WHERE from_node_id IN (SELECT value FROM json_each(:nodes)) AND km >= :from_km
-          AND (link_kind IN ('direct', 'neighbor')
-               OR (link_kind = 'traceroute' AND snr_count > 0))
-          AND (km < :long OR NOT EXISTS (
-              SELECT 1 FROM long_link
-              WHERE node_a = min(from_node_id, to_node_id)
-                AND node_b = max(from_node_id, to_node_id) AND unlikely))
-        GROUP BY 1, 2
-        """,
-        {**values, "nodes": json.dumps(sorted(nodes))},
-    ).fetchall()
-    # As own_reach: a moved or doubtful end's hours count only while trusted.
-    pairs = [[a, b] for a, b, _ in longest if a in limited or b in limited]
-    hours = connection.execute(
-        f"""
-        SELECT l.from_node_id, l.to_node_id, l.km
-        FROM json_each(:pairs) AS p
-        JOIN link_hour AS l INDEXED BY link_hour_pair
-          ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
-        WHERE l.km >= :from_km
-          AND (l.link_kind IN ('direct', 'neighbor')
-               OR (l.link_kind = 'traceroute' AND l.snr_count > 0))
-          AND (l.km < :long OR NOT EXISTS (
-              SELECT 1 FROM long_link
-              WHERE node_a = min(l.from_node_id, l.to_node_id)
-                AND node_b = max(l.from_node_id, l.to_node_id) AND unlikely))
-          AND {trusted_sql("l.from_node_id", "l.last_seen_at")}
-          AND {trusted_sql("l.to_node_id", "l.last_seen_at")}
-        """,
-        {**values, "pairs": json.dumps(pairs)},
-    ).fetchall()
-    found = [(a, b, km) for a, b, km in longest if a not in limited and b not in limited]
-    reach: dict[int, dict[int, float]] = defaultdict(dict)
-    for a, b, km in [*found, *hours]:
-        reach[int(a)][int(b)] = max(reach[int(a)].get(int(b), 0.0), float(km))
-    return reach
+def shortcut(
+    naming: packets.ReceptionNaming,
+    heard: list[int],
+    signals: Mapping[tuple[int, int], relays.DirectSignal],
+) -> int | None:
+    """The node packet pages name without scoring when the gateway heard
+    only `heard` directly."""
+    if len(heard) == 1 and not packets.skips_shortcut(naming.copy, heard[0], signals):
+        return heard[0]
+    return None
 
 
 def collect(connection: sqlite3.Connection, every: int) -> list[Copy]:
@@ -142,7 +106,7 @@ def collect(connection: sqlite3.Connection, every: int) -> list[Copy]:
         hour = at - at % HOUR_MS
         sender = found.packet.sender_node_id
         candidates = {node for nodes in evidence.by_byte.values() for node in nodes}
-        partners = reach_by_partner(connection, candidates)
+        partners = positions.reach_by_partner(connection, candidates, from_km=relays.NAME_KM)
         hops_before = positions.traceroute_hops(
             connection,
             {sender},
@@ -153,15 +117,14 @@ def collect(connection: sqlite3.Connection, every: int) -> list[Copy]:
             naming = found.relays.namings[reception_id]
             gateway = naming.copy.receiver
             heard = sorted(naming.heard)
-            hidden = [node for node in heard if node != truth]
             copies.append(
                 Copy(
                     at,
                     "page",
                     truth,
                     {node: dict(terms) for node, terms in naming.scores.terms.items()},
-                    heard[0] if len(heard) == 1 else None,
-                    hidden[0] if len(hidden) == 1 else None,
+                    shortcut(naming, heard, signals),
+                    shortcut(naming, [node for node in heard if node != truth], signals),
                 )
             )
             survey_evidence = replace(

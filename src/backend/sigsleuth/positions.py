@@ -271,6 +271,16 @@ def own_reach(
     link, or traceroute hop with SNR, over the history kept, in km.
     Nodes with no such link from from_km up are left out: a caller that
     floors reach at from_km needs no shorter one, and reads far fewer rows."""
+    return {
+        node: max(partners.values())
+        for node, partners in reach_by_partner(connection, node_ids, from_km=from_km).items()
+    }
+
+
+def reach_by_partner(
+    connection: sqlite3.Connection, node_ids: Collection[int], *, from_km: float = 0
+) -> dict[int, dict[int, float]]:
+    """own_reach per partner, so a caller can leave a partner out."""
     limited = limited_nodes(connection, 0)
     # Revisit hours only for moved or doubtful ends, or a suspect maximum:
     # looking up every hour took 15 times as long (2026-10-18, live copy).
@@ -294,7 +304,7 @@ def own_reach(
     ]
     hours = connection.execute(
         f"""
-        SELECT l.from_node_id, l.km
+        SELECT l.from_node_id, l.to_node_id, l.km
         FROM json_each(:pairs) AS p
         JOIN link_hour AS l INDEXED BY link_hour_pair
           ON l.from_node_id = p.value ->> 0 AND l.to_node_id = p.value ->> 1
@@ -312,15 +322,15 @@ def own_reach(
         {"pairs": json.dumps(limited_pairs), "from_km": from_km, "long": LONG_LINK_KM, "since": 0},
     ).fetchall()
     found = [
-        (a, km)
+        (a, b, km)
         for a, b, km, suspect in longest
         if a not in limited and b not in limited and not suspect
     ]
-    found += [(a, km) for a, km in hours]
-    reach: dict[int, float] = {}
-    for node, km in found:
-        reach[int(node)] = max(reach.get(int(node), 0.0), float(km))
-    return reach
+    reach: dict[int, dict[int, float]] = defaultdict(dict)
+    for node, partner, km in [*found, *hours]:
+        partners = reach[int(node)]
+        partners[int(partner)] = max(partners.get(int(partner), 0.0), float(km))
+    return dict(reach)
 
 
 def _estimates(connection: sqlite3.Connection, since_ms: int) -> list[EstimatedPosition]:

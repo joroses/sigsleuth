@@ -661,16 +661,22 @@ def name_copy(
         for node in evidence.candidates(copy)
         if direct.get((node, copy.receiver), 0) > 0
     }
-    profile = signals.get((next(iter(heard)), copy.receiver)) if len(heard) == 1 else None
-    shortcut_skipped = (
+    skipped = len(heard) == 1 and skips_shortcut(copy, next(iter(heard)), signals)
+    return ReceptionNaming(copy, heard, score_relays(evidence, copy, signals, set(heard)), skipped)
+
+
+def skips_shortcut(
+    copy: Relayed, node: int, signals: Mapping[tuple[int, int], DirectSignal]
+) -> bool:
+    """Whether the only candidate the receiver heard directly is scored
+    instead of named: the copy's RSSI is over 15 dB stronger than usual."""
+    profile = signals.get((node, copy.receiver))
+    return (
         copy.rssi is not None
         and profile is not None
         and profile.rssi_mean is not None
         and profile.rssi_count > 0
         and copy.rssi - profile.rssi_mean > 15
-    )
-    return ReceptionNaming(
-        copy, heard, score_relays(evidence, copy, signals, set(heard)), shortcut_skipped
     )
 
 

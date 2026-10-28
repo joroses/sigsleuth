@@ -41,8 +41,18 @@ const link = {
   last_seen_at: "2026-09-25T09:00:00Z",
   channel: "LongFast",
   spreading_factor: 11,
-  a_to_b: { observations: 2, snr_samples: 2, average_snr: 4 },
-  b_to_a: { observations: 0, snr_samples: 0, average_snr: null },
+  a_to_b: {
+    observations: 2,
+    snr_samples: 2,
+    average_snr: 4,
+    average_rssi: null,
+  },
+  b_to_a: {
+    observations: 0,
+    snr_samples: 0,
+    average_snr: null,
+    average_rssi: null,
+  },
 };
 
 describe("A selected traceroute link", () => {

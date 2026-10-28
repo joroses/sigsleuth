@@ -718,7 +718,12 @@ describe("Node detail", () => {
   });
 
   it("searches a node's links by their other end, ten at a time", async () => {
-    const direction = { observations: 3, snr_samples: 0, average_snr: null };
+    const direction = {
+      observations: 3,
+      snr_samples: 0,
+      average_snr: null,
+      average_rssi: null,
+    };
     // Twelve direct links, each to a node above this one, the last named.
     const others = Array.from({ length: 12 }, (_, index) => 0x20000000 + index);
     const table = {
@@ -769,7 +774,12 @@ describe("Node detail", () => {
   });
 
   it("tags a node's traceroute link 0-cost its free way, only on the hop's partner and channel", async () => {
-    const direction = { observations: 3, snr_samples: 0, average_snr: null };
+    const direction = {
+      observations: 3,
+      snr_samples: 0,
+      average_snr: null,
+      average_rssi: null,
+    };
     const row = (other: number, kind: string, channel: string) => ({
       node_a: 0x11111111,
       node_b: other,
@@ -1563,8 +1573,18 @@ describe("Map text reach", () => {
       channel,
       last_seen_at: "2026-09-25T09:00:00Z",
       spreading_factor: 11,
-      a_to_b: { observations: out, snr_samples: out, average_snr: 2 },
-      b_to_a: { observations: into, snr_samples: into, average_snr: 1 },
+      a_to_b: {
+        observations: out,
+        snr_samples: out,
+        average_snr: 2,
+        average_rssi: null,
+      },
+      b_to_a: {
+        observations: into,
+        snr_samples: into,
+        average_snr: 1,
+        average_rssi: null,
+      },
     });
     const fetchMock = vi.fn((url: string) => {
       const body = url.startsWith("/api/v1/map/nodes")
@@ -1849,7 +1869,12 @@ describe("Map text reach", () => {
 
 describe("Links", () => {
   it("opens a traceroute link's details from its row and links the explorer", async () => {
-    const direction = { observations: 3, snr_samples: 3, average_snr: 2 };
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
         jsonResponse(
@@ -1950,7 +1975,12 @@ describe("Links", () => {
   });
 
   it("opens on a node's links from the hash, over 7 days and without the kept filters", async () => {
-    const direction = { observations: 3, snr_samples: 3, average_snr: 2 };
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
     const link = (node_a: number, node_b: number) => ({
       node_a,
       node_b,
@@ -2020,7 +2050,12 @@ describe("Links", () => {
 
   it("shows a node's links again on Back and on a visit soon after without loading them, and afresh later or on Refresh", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const direction = { observations: 3, snr_samples: 3, average_snr: 2 };
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
     const link = (node_a: number, node_b: number) => ({
       node_a,
       node_b,
@@ -2079,8 +2114,18 @@ describe("Links", () => {
       last_seen_at: "2026-09-25T09:00:00Z",
       channel: "LongFast",
       spreading_factor: 11,
-      a_to_b: { observations: ab, snr_samples: ab, average_snr: 2 },
-      b_to_a: { observations: ba, snr_samples: ba, average_snr: 2 },
+      a_to_b: {
+        observations: ab,
+        snr_samples: ab,
+        average_snr: 2,
+        average_rssi: null,
+      },
+      b_to_a: {
+        observations: ba,
+        snr_samples: ba,
+        average_snr: 2,
+        average_rssi: null,
+      },
       distance_km: null,
       doubts: [],
     });
@@ -2126,7 +2171,12 @@ describe("Links", () => {
   });
 
   it("ranks flagged links by distance apart from measured ones, and unmeasured last", async () => {
-    const direction = { observations: 3, snr_samples: 3, average_snr: 2 };
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
     const link = (
       node_a: number,
       node_b: number,
@@ -3318,8 +3368,18 @@ function sampleZones() {
             solid: false,
             last_seen_at: "2026-09-25T08:00:00Z",
             spreading_factor: 9,
-            a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
-            b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
+            a_to_b: {
+              observations: 6,
+              snr_samples: 6,
+              average_snr: 2,
+              average_rssi: null,
+            },
+            b_to_a: {
+              observations: 6,
+              snr_samples: 6,
+              average_snr: 1,
+              average_rssi: null,
+            },
           },
         ],
       }),
@@ -3336,8 +3396,18 @@ function sampleZones() {
             solid: true,
             last_seen_at: "2026-09-25T08:00:00Z",
             spreading_factor: 9,
-            a_to_b: { observations: 6, snr_samples: 6, average_snr: 2 },
-            b_to_a: { observations: 6, snr_samples: 6, average_snr: 1 },
+            a_to_b: {
+              observations: 6,
+              snr_samples: 6,
+              average_snr: 2,
+              average_rssi: null,
+            },
+            b_to_a: {
+              observations: 6,
+              snr_samples: 6,
+              average_snr: 1,
+              average_rssi: null,
+            },
           },
           {
             node_a: 1,
@@ -3348,8 +3418,18 @@ function sampleZones() {
             solid: false,
             last_seen_at: "2026-09-25T08:00:00Z",
             spreading_factor: 9,
-            a_to_b: { observations: 20, snr_samples: 20, average_snr: -4 },
-            b_to_a: { observations: 20, snr_samples: 20, average_snr: -5 },
+            a_to_b: {
+              observations: 20,
+              snr_samples: 20,
+              average_snr: -4,
+              average_rssi: null,
+            },
+            b_to_a: {
+              observations: 20,
+              snr_samples: 20,
+              average_snr: -5,
+              average_rssi: null,
+            },
           },
         ],
       }),

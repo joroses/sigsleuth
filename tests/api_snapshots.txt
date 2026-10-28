@@ -1500,10 +1500,12 @@ items: 46 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 440
       snr_samples: 440
       average_snr: -3.03
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
@@ -1516,10 +1518,12 @@ items: 46 items
       observations: 1
       snr_samples: 1
       average_snr: 11
+      average_rssi: null
     b_to_a:
       observations: 1048
       snr_samples: 1048
       average_snr: 12.25
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
@@ -1532,10 +1536,12 @@ items: 46 items
       observations: 609
       snr_samples: 609
       average_snr: -3
+      average_rssi: null
     b_to_a:
       observations: 3
       snr_samples: 3
       average_snr: -6.5
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 64.4
     doubts: []
@@ -1800,10 +1806,12 @@ items: 932 items
       observations: 4
       snr_samples: 4
       average_snr: -4.94
+      average_rssi: null
     b_to_a:
       observations: 642
       snr_samples: 642
       average_snr: 1.72
+      average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1813,10 +1821,12 @@ items: 932 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 440
       snr_samples: 440
       average_snr: -3.03
+      average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1826,10 +1836,12 @@ items: 932 items
       observations: 1
       snr_samples: 1
       average_snr: 11
+      average_rssi: null
     b_to_a:
       observations: 1048
       snr_samples: 1048
       average_snr: 12.25
+      average_rssi: null
 truncated: false
 zero_cost_hops: 5 items
   - from_node_id: 96879053
@@ -1883,10 +1895,12 @@ items: 499 items
       observations: 2
       snr_samples: 2
       average_snr: -3.62
+      average_rssi: null
     b_to_a:
       observations: 303
       snr_samples: 303
       average_snr: 3.16
+      average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1896,10 +1910,12 @@ items: 499 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 217
       snr_samples: 217
       average_snr: -2.51
+      average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1909,10 +1925,12 @@ items: 499 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 425
       snr_samples: 425
       average_snr: 12.16
+      average_rssi: null
 truncated: false
 zero_cost_hops: 3 items
   - from_node_id: 96879053
@@ -1943,10 +1961,12 @@ items: 501 items
       observations: 2
       snr_samples: 2
       average_snr: -3.62
+      average_rssi: null
     b_to_a:
       observations: 303
       snr_samples: 303
       average_snr: 3.16
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 39.7
     doubts: []
@@ -1959,10 +1979,12 @@ items: 501 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 217
       snr_samples: 217
       average_snr: -2.51
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
@@ -1975,10 +1997,12 @@ items: 501 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 425
       snr_samples: 425
       average_snr: 12.16
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
@@ -2020,10 +2044,12 @@ items: 946 items
       observations: 4
       snr_samples: 4
       average_snr: -4.94
+      average_rssi: null
     b_to_a:
       observations: 642
       snr_samples: 642
       average_snr: 1.72
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 39.7
     doubts: []
@@ -2036,10 +2062,12 @@ items: 946 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 440
       snr_samples: 440
       average_snr: -3.03
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
@@ -2052,10 +2080,12 @@ items: 946 items
       observations: 1
       snr_samples: 1
       average_snr: 11
+      average_rssi: null
     b_to_a:
       observations: 1048
       snr_samples: 1048
       average_snr: 12.25
+      average_rssi: null
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
@@ -2097,10 +2127,12 @@ items: 24 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 10
       snr_samples: 10
       average_snr: -6.3
+      average_rssi: -100
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -2110,10 +2142,12 @@ items: 24 items
       observations: 16
       snr_samples: 16
       average_snr: 2.98
+      average_rssi: -106.38
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
   - node_a: 1550505660
     node_b: 1770149960
     last_seen_at: "2026-10-11T16:05:23.256000Z"
@@ -2123,10 +2157,12 @@ items: 24 items
       observations: 50
       snr_samples: 50
       average_snr: 4.8
+      average_rssi: -87.42
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
 truncated: false
 zero_cost_hops: []
 
@@ -2142,10 +2178,12 @@ items: 24 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 10
       snr_samples: 10
       average_snr: -6.3
+      average_rssi: -100
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
@@ -2158,10 +2196,12 @@ items: 24 items
       observations: 16
       snr_samples: 16
       average_snr: 2.98
+      average_rssi: -106.38
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "direct"
     distance_km: 15.3
     doubts: []
@@ -2174,10 +2214,12 @@ items: 24 items
       observations: 50
       snr_samples: 50
       average_snr: 4.8
+      average_rssi: -87.42
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "direct"
     distance_km: 1.5
     doubts: []
@@ -2219,10 +2261,12 @@ items: 35 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 16
       snr_samples: 16
       average_snr: -6.42
+      average_rssi: -100.19
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
@@ -2235,10 +2279,12 @@ items: 35 items
       observations: 35
       snr_samples: 35
       average_snr: 2.69
+      average_rssi: -106.37
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "direct"
     distance_km: 15.3
     doubts: []
@@ -2251,10 +2297,12 @@ items: 35 items
       observations: 125
       snr_samples: 124
       average_snr: 5.03
+      average_rssi: -85.85
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "direct"
     distance_km: 1.5
     doubts: []
@@ -2296,10 +2344,12 @@ items: 242 items
       observations: 3
       snr_samples: 3
       average_snr: 11.92
+      average_rssi: null
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
   - node_a: 173442116
     node_b: 423423344
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2309,10 +2359,12 @@ items: 242 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 3
       snr_samples: 3
       average_snr: 6.92
+      average_rssi: null
   - node_a: 173442116
     node_b: 463896892
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2322,10 +2374,12 @@ items: 242 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 3
       snr_samples: 3
       average_snr: -4.83
+      average_rssi: null
 truncated: false
 zero_cost_hops: []
 
@@ -2341,10 +2395,12 @@ items: 242 items
       observations: 3
       snr_samples: 3
       average_snr: 11.92
+      average_rssi: null
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 1.5
     doubts: []
@@ -2357,10 +2413,12 @@ items: 242 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 3
       snr_samples: 3
       average_snr: 6.92
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 2.3
     doubts: []
@@ -2373,10 +2431,12 @@ items: 242 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 3
       snr_samples: 3
       average_snr: -4.83
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 5.2
     doubts: []
@@ -2418,10 +2478,12 @@ items: 405 items
       observations: 9
       snr_samples: 9
       average_snr: 11.81
+      average_rssi: null
     b_to_a:
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 1.5
     doubts: []
@@ -2434,10 +2496,12 @@ items: 405 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 11
       snr_samples: 11
       average_snr: 6.7
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 2.3
     doubts: []
@@ -2450,10 +2514,12 @@ items: 405 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 9
       snr_samples: 9
       average_snr: -3.53
+      average_rssi: null
     link_kind: "neighbor"
     distance_km: 5.2
     doubts: []
@@ -2495,10 +2561,12 @@ items: 932 items
       observations: 4
       snr_samples: 4
       average_snr: -4.94
+      average_rssi: null
     b_to_a:
       observations: 642
       snr_samples: 642
       average_snr: 1.72
+      average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -2508,10 +2576,12 @@ items: 932 items
       observations: 0
       snr_samples: 0
       average_snr: null
+      average_rssi: null
     b_to_a:
       observations: 440
       snr_samples: 440
       average_snr: -3.03
+      average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -2521,10 +2591,12 @@ items: 932 items
       observations: 1
       snr_samples: 1
       average_snr: 11
+      average_rssi: null
     b_to_a:
       observations: 1048
       snr_samples: 1048
       average_snr: 12.25
+      average_rssi: null
 truncated: false
 zero_cost_hops: 5 items
   - from_node_id: 96879053
@@ -4081,19 +4153,23 @@ a_to_b: 1 items
   - hour_start: "2026-10-09T21:00:00Z"
     observations: 1
     average_snr: 11
+    average_rssi: null
     suspect_distance: false
 b_to_a: 63 items
   - hour_start: "2026-10-08T16:00:00Z"
     observations: 11
     average_snr: 12.27
+    average_rssi: null
     suspect_distance: false
   - hour_start: "2026-10-08T17:00:00Z"
     observations: 12
     average_snr: 11.96
+    average_rssi: null
     suspect_distance: false
   - hour_start: "2026-10-08T18:00:00Z"
     observations: 11
     average_snr: 12.14
+    average_rssi: null
     suspect_distance: false
 
 ## GET /api/v1/traceroutes/busiest?since=2026-10-10T16:25:30.812000Z
@@ -4293,10 +4369,12 @@ zone_pairs: 21 items
           observations: 642
           snr_samples: 642
           average_snr: 1.72
+          average_rssi: null
         b_to_a:
           observations: 4
           snr_samples: 4
           average_snr: -4.94
+          average_rssi: null
       - node_a: 2933499666
         node_b: 3655149723
         observations: 612
@@ -4309,10 +4387,12 @@ zone_pairs: 21 items
           observations: 609
           snr_samples: 609
           average_snr: -3
+          average_rssi: null
         b_to_a:
           observations: 3
           snr_samples: 3
           average_snr: -6.5
+          average_rssi: null
       - node_a: 96879053
         node_b: 3655149723
         observations: 3
@@ -4325,10 +4405,12 @@ zone_pairs: 21 items
           observations: 3
           snr_samples: 3
           average_snr: -3.25
+          average_rssi: null
         b_to_a:
           observations: 0
           snr_samples: 0
           average_snr: null
+          average_rssi: null
   - zone_a: 1
     zone_b: 3
     observations: 53
@@ -4357,10 +4439,12 @@ zone_pairs: 21 items
           observations: 2
           snr_samples: 2
           average_snr: 1.5
+          average_rssi: null
         b_to_a:
           observations: 40
           snr_samples: 40
           average_snr: -0.36
+          average_rssi: null
       - node_a: 740093392
         node_b: 3806451940
         observations: 11
@@ -4373,10 +4457,12 @@ zone_pairs: 21 items
           observations: 3
           snr_samples: 3
           average_snr: 3.83
+          average_rssi: null
         b_to_a:
           observations: 8
           snr_samples: 8
           average_snr: 6.03
+          average_rssi: null
   - zone_a: 1
     zone_b: 4
     observations: 842
@@ -4405,10 +4491,12 @@ zone_pairs: 21 items
           observations: 1
           snr_samples: 1
           average_snr: -10.25
+          average_rssi: null
         b_to_a:
           observations: 126
           snr_samples: 125
           average_snr: -5.02
+          average_rssi: null
       - node_a: 96879053
         node_b: 2483997066
         observations: 119
@@ -4421,10 +4509,12 @@ zone_pairs: 21 items
           observations: 1
           snr_samples: 1
           average_snr: -4
+          average_rssi: null
         b_to_a:
           observations: 118
           snr_samples: 118
           average_snr: -2.88
+          average_rssi: null
       - node_a: 3472072206
         node_b: 2483997066
         observations: 104
@@ -4437,10 +4527,12 @@ zone_pairs: 21 items
           observations: 0
           snr_samples: 0
           average_snr: null
+          average_rssi: null
         b_to_a:
           observations: 104
           snr_samples: 104
           average_snr: -3.52
+          average_rssi: null
 rules:
   weak_margin_db: 4
   long_route_hops: 4

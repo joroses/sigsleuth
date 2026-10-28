@@ -32,12 +32,14 @@ export function LinkHeadings({
   onSort,
   ways,
   waysTitle,
+  showRssi,
 }: {
   sort: LinkSort;
   ascending: boolean;
   onSort: (sort: LinkSort) => void;
   ways: string;
   waysTitle: string;
+  showRssi: boolean;
 }) {
   const heading = { active: sort, descending: !ascending, onSort };
   return (
@@ -54,6 +56,11 @@ export function LinkHeadings({
       <th scope="col" title={`Average SNR each way: ${waysTitle}`}>
         SNR<span className="heading-note">avg dB, {ways}</span>
       </th>
+      {showRssi ? (
+        <th scope="col">
+          RSSI<span className="heading-note">avg dBm, {ways}</span>
+        </th>
+      ) : null}
       <SortHeading
         label="Margin"
         note="lowest"
@@ -72,10 +79,12 @@ export function LinkCells({
   link,
   nodes,
   doubtful,
+  showRssi,
 }: {
   link: LinkRow;
   nodes: ReadonlyMap<number, NodeSummary>;
   doubtful: ReadonlySet<number>;
+  showRssi: boolean;
 }) {
   const margin = weakerMargin(link);
   return (
@@ -130,6 +139,14 @@ export function LinkCells({
           }
         />
       </td>
+      {showRssi ? (
+        <td className="number">
+          <BothWays
+            left={formatDb(link.a_to_b.average_rssi)}
+            right={formatDb(link.b_to_a.average_rssi)}
+          />
+        </td>
+      ) : null}
       <td className="number">
         {margin === null ? "—" : <MarginValue value={margin} />}
       </td>

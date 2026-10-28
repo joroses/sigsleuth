@@ -33,8 +33,18 @@ function link(node_a: number, node_b: number) {
     solid: true,
     last_seen_at: "2026-09-25T08:00:00Z",
     spreading_factor: 11,
-    a_to_b: { observations: 3, snr_samples: 3, average_snr: 2 },
-    b_to_a: { observations: 2, snr_samples: 2, average_snr: -1 },
+    a_to_b: {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    },
+    b_to_a: {
+      observations: 2,
+      snr_samples: 2,
+      average_snr: -1,
+      average_rssi: null,
+    },
   };
 }
 

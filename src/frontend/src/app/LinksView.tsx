@@ -521,6 +521,7 @@ function LinkRanking({
                     </th>
                   ) : null}
                   <LinkHeadings
+                    showRssi={linkKind === "direct"}
                     sort={sort}
                     ascending={ascending}
                     onSort={chooseSort}
@@ -570,6 +571,7 @@ function LinkRanking({
                         </td>
                         {traceroutes ? <ExplorerCell link={link} /> : null}
                         <LinkCells
+                          showRssi={linkKind === "direct"}
                           link={link}
                           nodes={nodes}
                           doubtful={doubtful}
@@ -577,7 +579,11 @@ function LinkRanking({
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">
-                          <td colSpan={11}>
+                          <td
+                            colSpan={
+                              10 + Number(traceroutes || linkKind === "direct")
+                            }
+                          >
                             <LinkDetails
                               link={link}
                               linkKind={linkKind}

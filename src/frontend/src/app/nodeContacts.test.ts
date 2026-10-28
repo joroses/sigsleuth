@@ -25,8 +25,18 @@ function row(
     channel,
     spreading_factor: 11,
     // What the node hears from the other.
-    a_to_b: { observations: 3, snr_samples: 3, average_snr: 5 },
-    b_to_a: { observations: 0, snr_samples: 0, average_snr: null },
+    a_to_b: {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 5,
+      average_rssi: null,
+    },
+    b_to_a: {
+      observations: 0,
+      snr_samples: 0,
+      average_snr: null,
+      average_rssi: null,
+    },
     link_kind: kind,
     distance_km: null,
     doubts: [],

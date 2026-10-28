@@ -1298,13 +1298,14 @@ export interface components {
     };
     /**
      * HeardHour
-     * @description One hour a direction of a link was heard, with its SNR when recorded.
+     * @description One hour a direction was heard, with its recorded signal measurements.
      */
     HeardHour: {
       /** Format: date-time */
       hour_start: string;
       observations: number;
       average_snr: number | null;
+      average_rssi: number | null;
       suspect_distance: boolean;
     };
     /**
@@ -1419,13 +1420,13 @@ export interface components {
     };
     /**
      * LinkDirection
-     * @description One direction of a link: how often the receiving node was reported hearing
-     *     the other, and its average SNR in dB over the observations that had one.
+     * @description One direction's observations and average signal measurements.
      */
     LinkDirection: {
       observations: number;
       snr_samples: number;
       average_snr: number | null;
+      average_rssi: number | null;
     };
     /**
      * LinkHours

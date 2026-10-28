@@ -137,12 +137,12 @@ LINK_KINDS: tuple[LinkKind, ...] = ("traceroute", "direct", "neighbor")
 
 @dataclass(frozen=True)
 class LinkDirection:
-    """One direction of a link: how often the receiving node was reported hearing
-    the other, and its average SNR in dB over the observations that had one."""
+    """One direction's observations and average signal measurements."""
 
     observations: int
     snr_samples: int
     average_snr: float | None
+    average_rssi: float | None
 
 
 @dataclass(frozen=True)
@@ -374,14 +374,21 @@ def _hourly_links(
                total(observations * (from_node_id < to_node_id)) AS ab_observations,
                total(snr_count * (from_node_id < to_node_id)) AS ab_snr_count,
                total(snr_sum * (from_node_id < to_node_id)) AS ab_snr_sum,
+               total(rssi_count * (from_node_id < to_node_id)) AS ab_rssi_count,
+               total(rssi_sum * (from_node_id < to_node_id)) AS ab_rssi_sum,
                total(observations * (from_node_id > to_node_id)) AS ba_observations,
                total(snr_count * (from_node_id > to_node_id)) AS ba_snr_count,
                total(snr_sum * (from_node_id > to_node_id)) AS ba_snr_sum,
+               total(rssi_count * (from_node_id > to_node_id)) AS ba_rssi_count,
+               total(rssi_sum * (from_node_id > to_node_id)) AS ba_rssi_sum,
                km, suspect_distance, total(confirmed_hours) AS confirmed_hours
         FROM (
             SELECT from_node_id, to_node_id, channel,
                    sum(observations) AS observations, sum(snr_count) AS snr_count,
-                   total(snr_sum) AS snr_sum, max(last_seen_at) AS last_seen_at, km,
+                   total(snr_sum) AS snr_sum,
+                   {"sum(rssi_count)" if direct else "0"} AS rssi_count,
+                   {"total(rssi_sum)" if direct else "0"} AS rssi_sum,
+                   max(last_seen_at) AS last_seen_at, km,
                    {confirmed_hours} AS confirmed_hours, {suspect} AS suspect_distance
             FROM link_hour
             WHERE link_kind = :kind AND hour_start >= :since
@@ -411,26 +418,42 @@ def _map_link(row: sqlite3.Row, default_preset: str) -> MapLink:
         last_seen_at=from_epoch_ms(row["last_seen_at"]),
         channel=str(row["channel"]),
         spreading_factor=spreading_factor(str(row["channel"]), default_preset),
-        a_to_b=_link_direction(row["ab_observations"], row["ab_snr_count"], row["ab_snr_sum"]),
-        b_to_a=_link_direction(row["ba_observations"], row["ba_snr_count"], row["ba_snr_sum"]),
+        a_to_b=_link_direction(
+            row["ab_observations"],
+            row["ab_snr_count"],
+            row["ab_snr_sum"],
+            row["ab_rssi_count"],
+            row["ab_rssi_sum"],
+        ),
+        b_to_a=_link_direction(
+            row["ba_observations"],
+            row["ba_snr_count"],
+            row["ba_snr_sum"],
+            row["ba_rssi_count"],
+            row["ba_rssi_sum"],
+        ),
     )
 
 
-def _link_direction(observations: float, snr_count: float, snr_sum: float) -> LinkDirection:
+def _link_direction(
+    observations: float, snr_count: float, snr_sum: float, rssi_count: float, rssi_sum: float
+) -> LinkDirection:
     return LinkDirection(
         observations=int(observations),
         snr_samples=int(snr_count),
         average_snr=round(snr_sum / snr_count, 2) if snr_count else None,
+        average_rssi=round(rssi_sum / rssi_count, 2) if rssi_count else None,
     )
 
 
 @dataclass(frozen=True)
 class HeardHour:
-    """One hour a direction of a link was heard, with its SNR when recorded."""
+    """One hour a direction was heard, with its recorded signal measurements."""
 
     hour_start: datetime
     observations: int
     average_snr: float | None
+    average_rssi: float | None
     suspect_distance: bool
 
 
@@ -467,11 +490,21 @@ def link_hours(
                 from_epoch_ms(hour_start),
                 observations,
                 round(snr_sum / snr_count, 2) if snr_count else None,
+                round(rssi_sum / rssi_count, 2) if rssi_count else None,
                 bool(suspect),
             )
-            for hour_start, observations, snr_count, snr_sum, suspect in connection.execute(
+            for (
+                hour_start,
+                observations,
+                snr_count,
+                snr_sum,
+                rssi_count,
+                rssi_sum,
+                suspect,
+            ) in connection.execute(
                 f"""
-                SELECT hour_start, observations, snr_count, snr_sum, {SUSPECT_DISTANCE}
+                SELECT hour_start, observations, snr_count, snr_sum,
+                       rssi_count, rssi_sum, {SUSPECT_DISTANCE}
                 FROM link_hour INDEXED BY link_hour_pair
                 WHERE from_node_id = :from_node AND to_node_id = :to_node
                   AND link_kind = :kind AND channel = :channel AND hour_start >= :since

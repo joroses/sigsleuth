@@ -48,6 +48,8 @@ export function NodeLinks({
 }) {
   const [search, setSearch] = useViewState("node.links.search", "");
   const [kind, setKind] = useViewState<LinkKind | "">("node.links.kind", "");
+  const showActions = kind === "" || kind === "traceroute";
+  const showRssi = kind === "direct";
   // Most heard first: by distance, links with no position would come last.
   const [sort, setSort] = useSetting<LinkSort>(
     "node.links.sort",
@@ -168,10 +170,13 @@ export function NodeLinks({
                     ID
                   </th>
                   <th scope="col">Link kind</th>
-                  <th scope="col" className="link-actions-cell">
-                    Actions
-                  </th>
+                  {showActions ? (
+                    <th scope="col" className="link-actions-cell">
+                      Actions
+                    </th>
+                  ) : null}
                   <LinkHeadings
+                    showRssi={showRssi}
                     sort={sort}
                     ascending={ascending}
                     onSort={chooseSort}
@@ -232,8 +237,9 @@ export function NodeLinks({
                             </>
                           )}
                         </td>
-                        <ExplorerCell link={link} />
+                        {showActions ? <ExplorerCell link={link} /> : null}
                         <LinkCells
+                          showRssi={showRssi}
                           link={link}
                           nodes={nodes}
                           doubtful={doubtful}
@@ -241,7 +247,7 @@ export function NodeLinks({
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">
-                          <td colSpan={12}>
+                          <td colSpan={11 + Number(showActions || showRssi)}>
                             <LinkDetails
                               link={link}
                               linkKind={link.link_kind}

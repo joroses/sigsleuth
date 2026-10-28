@@ -114,6 +114,7 @@ export function LinkDetails({
                 start={start}
                 end={end}
                 spreadingFactor={link.spreading_factor}
+                showRssi={linkKind === "direct"}
               />
             )}
             {hours.data?.[direction].some((hour) => hour.suspect_distance) ? (
@@ -214,11 +215,13 @@ function HourStrip({
   start,
   end,
   spreadingFactor,
+  showRssi,
 }: {
   hours: readonly HeardHour[];
   start: number;
   end: number;
   spreadingFactor: number;
+  showRssi: boolean;
 }) {
   const count = Math.max(1, (end - start) / HOUR_MS + 1);
   return (
@@ -236,6 +239,10 @@ function HourStrip({
             hour.average_snr === null
               ? "no SNR"
               : `${hour.average_snr.toFixed(1)} dB`;
+          const rssi =
+            showRssi && hour.average_rssi !== null
+              ? `, ${hour.average_rssi.toFixed(1)} dBm`
+              : "";
           return (
             <rect
               key={hour.hour_start}
@@ -247,7 +254,7 @@ function HourStrip({
               strokeWidth={0.15}
             >
               <title>
-                {`${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}: ${hour.observations} heard, ${snr}`}
+                {`${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}: ${hour.observations} heard, ${snr}${rssi}`}
               </title>
             </rect>
           );

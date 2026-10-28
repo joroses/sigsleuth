@@ -75,8 +75,18 @@ def test_both_directions_of_a_pair_are_one_link_named_by_the_receiver(path: Path
     [link] = links(path)["items"]
 
     assert (link["node_a"], link["node_b"]) == (A, B)
-    assert link["a_to_b"] == {"observations": 3, "snr_samples": 3, "average_snr": -4.0}
-    assert link["b_to_a"] == {"observations": 1, "snr_samples": 0, "average_snr": None}
+    assert link["a_to_b"] == {
+        "observations": 3,
+        "snr_samples": 3,
+        "average_snr": -4.0,
+        "average_rssi": None,
+    }
+    assert link["b_to_a"] == {
+        "observations": 1,
+        "snr_samples": 0,
+        "average_snr": None,
+        "average_rssi": None,
+    }
     assert link["last_seen_at"] == "2026-09-27T09:01:00Z"
     assert (link["channel"], link["spreading_factor"]) == ("LongFast", 11)
 
@@ -90,7 +100,12 @@ def test_a_pair_heard_on_two_channels_is_a_link_on_each(path: Path) -> None:
 
     # A later observation on another channel leaves LongFast's average and radio settings alone.
     assert (long_fast["channel"], long_fast["spreading_factor"]) == ("LongFast", 11)
-    assert long_fast["a_to_b"] == {"observations": 2, "snr_samples": 2, "average_snr": -4.0}
+    assert long_fast["a_to_b"] == {
+        "observations": 2,
+        "snr_samples": 2,
+        "average_snr": -4.0,
+        "average_rssi": None,
+    }
     assert long_fast["b_to_a"]["observations"] == 0
     assert (narrow["channel"], narrow["spreading_factor"]) == ("SFNarrow", 7)
     assert narrow["a_to_b"]["average_snr"] == -6.0
@@ -105,8 +120,18 @@ def test_direct_links_are_read_without_traceroute_links(path: Path) -> None:
     page = links(path, link_kind="direct")
 
     assert [(item["node_a"], item["node_b"]) for item in page["items"]] == [(A, B), (B, C)]
-    assert page["items"][0]["a_to_b"] == {"observations": 5, "snr_samples": 1, "average_snr": 9.0}
-    assert page["items"][1]["b_to_a"] == {"observations": 1, "snr_samples": 0, "average_snr": None}
+    assert page["items"][0]["a_to_b"] == {
+        "observations": 5,
+        "snr_samples": 1,
+        "average_snr": 9.0,
+        "average_rssi": None,
+    }
+    assert page["items"][1]["b_to_a"] == {
+        "observations": 1,
+        "snr_samples": 0,
+        "average_snr": None,
+        "average_rssi": None,
+    }
 
 
 def test_channel_not_named_after_a_preset_uses_the_default_preset(path: Path) -> None:
@@ -159,6 +184,7 @@ def test_link_hours_lists_each_direction_on_its_channel_from_the_hour_of_since(
                 "hour_start": "2026-09-27T08:00:00Z",
                 "observations": 2,
                 "average_snr": -5.0,
+                "average_rssi": None,
                 "suspect_distance": False,
             }
         ],
@@ -167,6 +193,7 @@ def test_link_hours_lists_each_direction_on_its_channel_from_the_hour_of_since(
                 "hour_start": "2026-09-27T09:00:00Z",
                 "observations": 1,
                 "average_snr": None,
+                "average_rssi": None,
                 "suspect_distance": False,
             }
         ],

@@ -56,7 +56,7 @@ Docs only for what code cannot say: the README (one screen), `docs/setup.md`, `d
 
 1. Read the relevant code; implement the smallest useful version.
 2. Test the main behaviour and likely failures. Prefer the recorded sample ([testing](docs/testing.md)) to hand-built fixtures, which are for shared interpretations and cases the sample lacks. Add new page requests to `tests/page_requests.py`.
-3. While working, run only touched tests (`uv run --locked pytest tests/<file>`, or `corepack pnpm exec vitest run <file>` in `src/frontend`). Run `./scripts/verify.sh` once at the end. When a change intentionally moves a snapshot or query plan, rerun with `UPDATE_API_SNAPSHOTS=1` or `UPDATE_QUERY_PLANS=1`, read the diff, commit it with the change.
+3. While working, run only touched tests (`uv run --locked pytest tests/<file>`, or `corepack pnpm exec vitest run <file>` in `src/frontend`). Run `./scripts/verify.sh` only when the task's plan explicitly calls for it or the user asks for it. When a change intentionally moves a snapshot or query plan, rerun with `UPDATE_API_SNAPSHOTS=1` or `UPDATE_QUERY_PLANS=1`, read the diff, commit it with the change.
 4. To try a change in the browser without capture: `uv run --locked python -m sigsleuth api`.
 
 ## Tests to avoid

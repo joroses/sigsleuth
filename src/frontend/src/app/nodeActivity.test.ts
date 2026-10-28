@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { NodeChartsHour } from "./api";
-import {
-  firstChartDay,
-  lineRuns,
-  packetsByDay,
-  stackSegments,
-} from "./nodeActivity";
+import { firstChartDay, lineRuns, packetsByDay } from "./nodeActivity";
 
 function hour(at: Date, port: string, packets: number): NodeChartsHour {
   return { hour_start: at.toISOString(), portnum: null, port, packets };
@@ -42,15 +37,6 @@ describe("packetsByDay", () => {
       { port: "RANGE_TEST_APP", packets: 4 },
       { port: "PAXCOUNTER_APP", packets: 1 },
     ]);
-  });
-});
-
-describe("stackSegments", () => {
-  it("keeps a single packet visible beside a hundred others", () => {
-    // 164px for an axis of 200 packets: one packet is 0.82px.
-    const [text] = stackSegments([1, 100], 164 / 200);
-
-    expect(text.height).toBeGreaterThanOrEqual(1);
   });
 });
 

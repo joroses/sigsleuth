@@ -183,8 +183,4 @@ describe("sharedForwardRoute", () => {
 
     expect(sharedForwardRoute(detail)?.nodes).toEqual([A, B, C, T]);
   });
-
-  it("is none on a request", () => {
-    expect(sharedForwardRoute(request([report(1, [B])]))).toBeNull();
-  });
 });

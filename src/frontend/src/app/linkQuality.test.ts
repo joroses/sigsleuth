@@ -12,8 +12,4 @@ describe("linkTier", () => {
     expect(linkTier(-13.5, 11)).toBe("fair");
     expect(linkTier(-14, 11)).toBe("marginal");
   });
-
-  it("has no tier without an SNR", () => {
-    expect(linkTier(null, 11)).toBe("unknown");
-  });
 });

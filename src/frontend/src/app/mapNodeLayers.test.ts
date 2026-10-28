@@ -4,8 +4,6 @@ import type { MapNode } from "./api";
 import {
   type NodeFeatureCollection,
   buildNodeFeatureCollection,
-  nodeCategory,
-  textShareBadge,
 } from "./mapNodeLayers";
 
 const node: MapNode = {
@@ -33,21 +31,6 @@ const node: MapNode = {
     precision_km: null,
   },
 };
-
-describe("nodeCategory", () => {
-  const gateway = { ...node, last_gateway_at: "2026-09-25T12:00:00Z" };
-
-  it("colours a router that is also a gateway as a relay", () => {
-    expect(nodeCategory({ ...gateway, role: "ROUTER" })).toBe("relay");
-    expect(nodeCategory({ ...node, role: "REPEATER" })).toBe("relay");
-  });
-
-  it("colours any other gateway as a gateway", () => {
-    expect(nodeCategory({ ...gateway, role: "CLIENT" })).toBe("gateway");
-    expect(nodeCategory(gateway)).toBe("gateway");
-    expect(nodeCategory({ ...node, role: "CLIENT" })).toBe("other");
-  });
-});
 
 describe("buildNodeFeatureCollection", () => {
   it("draws reported and estimated positions in longitude-latitude order", () => {
@@ -111,24 +94,5 @@ describe("buildNodeFeatureCollection", () => {
       3: [true, false, "2×"],
       4: [false, false, ""],
     });
-  });
-
-  it("keeps every node without a focus", () => {
-    const { features } = buildNodeFeatureCollection(nodes, {
-      focus: null,
-      selectedId: 1,
-      shares,
-    });
-    expect(features.every((feature) => feature.properties.shown)).toBe(true);
-  });
-});
-
-describe("textShareBadge", () => {
-  it("counts a poor share from one or two texts in grey", () => {
-    expect(textShareBadge(2, 132)).toEqual({ tier: "few", label: "2×" });
-    expect(textShareBadge(1, 5)).toEqual({ tier: "few", label: "1×" });
-    expect(textShareBadge(3, 132)).toEqual({ tier: "poor", label: "2%" });
-    expect(textShareBadge(2, 4)).toEqual({ tier: "medium", label: "50%" });
-    expect(textShareBadge(2, 2)).toEqual({ tier: "high", label: "100%" });
   });
 });

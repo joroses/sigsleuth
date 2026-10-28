@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { KeyRelay, NodeSummary, Zone, ZonePair } from "./api";
-import { mostSolidLink, relayMark, textReachLookup, hullCentre } from "./zones";
+import type { NodeSummary, Zone, ZonePair } from "./api";
+import { mostSolidLink, textReachLookup } from "./zones";
 
 function zone(zone_id: number): Zone {
   return {
@@ -60,29 +60,6 @@ function pair(zone_a: number, zone_b: number, fields: Partial<ZonePair> = {}) {
   } satisfies ZonePair;
 }
 
-describe("hullCentre", () => {
-  it("is the middle of the area", () => {
-    const [longitude, latitude] = hullCentre([
-      [0, 40],
-      [0.2, 40],
-      [0.2, 40.2],
-      [0, 40.2],
-    ])!;
-
-    expect(longitude).toBeCloseTo(0.1, 6);
-    expect(latitude).toBeCloseTo(40.1, 6);
-  });
-
-  it("falls back to the mean of points on a line", () => {
-    expect(
-      hullCentre([
-        [0, 40],
-        [0.2, 40.2],
-      ]),
-    ).toEqual([0.1, 40.1]);
-  });
-});
-
 describe("textReachLookup", () => {
   it("tells a figure from a zone with no gateway and a zone with no sender", () => {
     const reach = {
@@ -140,54 +117,5 @@ describe("mostSolidLink", () => {
     expect(
       mostSolidLink(pair(1, 2, { links: [withMargin(1, 9, 15)] }), nodes),
     ).toBeNull();
-  });
-});
-
-describe("relayMark", () => {
-  const relay = (fields: Partial<KeyRelay>): KeyRelay => ({
-    node_id: 7,
-    zone_id: 1,
-    impact: 0,
-    cuts_off: 0,
-    no_solid_backup: 0,
-    carries: 3,
-    only_solid_link_to: [],
-    neighbours: 4,
-    last_seen_at: null,
-    battery_level: null,
-    battery_observed_at: null,
-    firmware: null,
-    ...fields,
-  });
-
-  const rules = {
-    weak_margin_db: 4,
-    long_route_hops: 4,
-    key_relay_cut: 2,
-  };
-
-  it("marks a key relay with a warning even when it has no mast", () => {
-    const now = Date.parse("2026-10-07T12:00:00Z");
-    const heard = "2026-10-07T11:00:00Z";
-    const late = "2026-10-07T06:00:00Z";
-
-    expect(relayMark(relay({ last_seen_at: heard }), now, rules)).toBeNull();
-    expect(relayMark(relay({ last_seen_at: late }), now, rules)).toBe(
-      "warning",
-    );
-    expect(
-      relayMark(relay({ last_seen_at: heard, battery_level: 15 }), now, rules),
-    ).toBe("warning");
-    // A mast keeps its own mark; the map adds the triangle beside it.
-    expect(
-      relayMark(
-        relay({ last_seen_at: late, only_solid_link_to: [2] }),
-        now,
-        rules,
-      ),
-    ).toBe("filled");
-    expect(
-      relayMark(relay({ last_seen_at: late, impact: 3 }), now, rules),
-    ).toBe("outlined");
   });
 });

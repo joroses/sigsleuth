@@ -143,11 +143,13 @@ export function coverageCellsUrl(
   view: CoverageView,
   node: number | null,
   channel: string | null,
+  unknown = false,
 ): string {
   const query = areaQuery(view);
   query.set("zoom", view.zoom.toFixed(1));
   if (node !== null) query.set("node", String(node));
   if (channel !== null) query.set("channel", channel);
+  if (unknown) query.set("unknown", "true");
   return `/api/v1/coverage/cells?${query}`;
 }
 
@@ -176,10 +178,12 @@ export function coverageCellUrl(
   cell: CellAddress,
   node: number | null,
   channel: string | null,
+  unknown = false,
 ): string {
   const query = new URLSearchParams();
   if (node !== null) query.set("node", String(node));
   if (channel !== null) query.set("channel", channel);
+  if (unknown) query.set("unknown", "true");
   const url = `/api/v1/coverage/cells/${cell.level}/${cell.x}/${cell.y}`;
   return `${query}` === "" ? url : `${url}?${query}`;
 }

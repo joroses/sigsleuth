@@ -327,7 +327,7 @@ def heard(client: TestClient, connection: sqlite3.Connection, **fields: Any) -> 
 
 def suggested(client: TestClient, connection: sqlite3.Connection, **fields: Any) -> list[int]:
     """Upload one measurement as heard() does, named by none, and return the
-    relays its reply suggests, likeliest first."""
+    relay hints in its reply."""
     values = {"sender_node_id": SENDER, "packet_id": 77, "latitude": PHONE[0], **fields}
     values.setdefault("hop_start", 4)
     values.setdefault("hop_limit", 1)
@@ -590,9 +590,12 @@ def test_far_candidates_within_their_reach_are_suggested_not_named(
         "unknown",
         3,
     )
-    # Both are within their reach; the unplaced node has nothing for it.
     mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x4F)
-    assert packet_relays(client, connection)[RECEIVER] == [(relay, 77.8), (other, 89.0)]
+    assert packet_relays(client, connection)[RECEIVER] == [
+        (relay, 77.8),
+        (other, 89.0),
+        (unplaced, None),
+    ]
     candidates = fine_cell_detail(client, latitude, PHONE[1])["unknown_relays"][0]["candidates"]
     assert [candidate["node_id"] for candidate in candidates] == [relay, other]
 
@@ -751,10 +754,9 @@ def test_a_packet_page_never_names_a_relay_that_opted_out(
     connection.executemany(
         "INSERT INTO node_opt_out (node_id) VALUES (?)", [(NEAR,), (LINKED_TO_GATEWAY,)]
     )
-    # 44 km from GATEWAY, nothing ties LINKED_TO_SENDER to its copy.
     relays = packet_relays(client, connection)
     assert relays[RECEIVER] == [(LINKED_TO_SENDER, 11.1)]
-    assert relays[GATEWAY] == []
+    assert relays[GATEWAY] == [(LINKED_TO_SENDER, 44.5)]
 
 
 def test_a_gateway_uploading_its_own_rebroadcast_names_no_relay(
@@ -1216,6 +1218,40 @@ def test_a_cells_unknown_relay_lists_the_nodes_that_could_have_relayed_it(
     ]
 
 
+def test_relay_hints_fill_three_without_evidence_and_skip_hidden_or_impossible_nodes(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    candidates = [0x0100004F + (index << 24) for index in range(7)]
+    hidden, old_firmware, unplaced, *fallbacks = candidates
+    for candidate in candidates:
+        node(connection, candidate, None if candidate == unplaced else PHONE[0] + 1)
+    connection.execute("UPDATE node_current SET role = 'ROUTER' WHERE node_id = ?", (unplaced,))
+    node(connection, RECEIVER, PHONE[0])
+    connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (hidden,))
+    connection.execute(
+        """INSERT INTO map_report (node_id, received_at, role, firmware_number,
+               modem_preset, has_default_channel, nodes_online_local, position_precision)
+           VALUES (?, ?, 'CLIENT', 20500, 'SHORT_FAST', 1, 1, 32)""",
+        (old_firmware, now_ms()),
+    )
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x4F)
+
+    reply = upload(
+        client,
+        measurement(1, sender_node_id=SENDER, packet_id=77, relay_byte=0x4F),
+        session={**SESSION, "receiver_node_id": RECEIVER},
+    )
+
+    assert heard_in(reply) == [(1, None, "unknown")]
+    assert [c["node_id"] for c in reply["heard"][0]["candidates"]] == fallbacks[:3]
+    assert [node_id for node_id, _ in packet_relays(client, connection)[RECEIVER]] == [
+        unplaced,
+        *fallbacks[:2],
+    ]
+    relays = fine_cell_detail(client, *PHONE)["unknown_relays"]
+    assert [[c["node_id"] for c in relay["candidates"]] for relay in relays] == [fallbacks[:3]]
+
+
 @pytest.mark.usefixtures("known_nodes")
 def test_upload_replies_suggest_relays_at_each_saved_position(
     client: TestClient, connection: sqlite3.Connection
@@ -1241,7 +1277,12 @@ def test_upload_replies_suggest_relays_at_each_saved_position(
     assert [c["node_id"] for c in candidates] == [NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY]
     assert candidates[0]["short_name"] == "Near"
     assert [c["km"] for c in candidates] == [10.9, 11.1, 11.3]
-    assert [h["candidates"] for h in reply["heard"][1:]] == [[], [], []]
+    assert [c["node_id"] for c in reply["heard"][1]["candidates"]] == [
+        NEAR,
+        LINKED_TO_SENDER,
+        LINKED_TO_GATEWAY,
+    ]
+    assert [h["candidates"] for h in reply["heard"][2:]] == [[], []]
     assert reply["nodes"] == []
 
     # A retry reads the saved fix even if the phone now sends another one.
@@ -1676,7 +1717,7 @@ def test_the_nodes_heard_in_view_most_cells_first(
     for _ in range(2):
         heard(client, connection, hop_start=3, hop_limit=3, relay_byte=SENDER & 0xFF)
     heard(client, connection, hop_start=3, hop_limit=3, relay_byte=SENDER & 0xFF, latitude=42.2)
-    # Two unknown: no relay byte, and a node that turned OK to MQTT off.
+    # A missing byte cannot suggest a relay; an opted-out node reads as unknown.
     heard(client, connection, relay_byte=None)
     upload(client, direct(7, UNDECODED), direct(8, OPTED_OUT, ok_to_mqtt=False))
     view = {**AREA, "north": 42.0}
@@ -1691,12 +1732,49 @@ def test_the_nodes_heard_in_view_most_cells_first(
         (SENDER, None, 1, 2, 20.2),
         (UNDECODED, None, 1, 1, 20.2),
     ]
-    assert (found["unknown"], found["truncated"]) == (2, False)
+    assert (found["unknown"], found["truncated"]) == (1, False)
+    assert found["unknown_extent"]["south"] <= PHONE[0] <= found["unknown_extent"]["north"]
     assert OPTED_OUT not in {n["node_id"] for n in found["nodes"]}
     # The channel filter applies as for cells; SF7 surveys are not LongFast.
     assert client.get("/api/v1/coverage/nodes", params={**view, "channel": "LongFast"}).json() == {
         "nodes": [],
         "unknown": 0,
+        "unknown_extent": None,
         "truncated": False,
     }
     assert client.get("/api/v1/coverage/nodes", params={**view, "west": 3}).status_code == 400
+
+
+def test_unknown_relay_extent_matches_the_count_in_view(client: TestClient) -> None:
+    upload(
+        client,
+        measurement(1, latitude=41.8, longitude=1.4, relay_byte=0x91),
+        measurement(2, latitude=41.95, longitude=1.8, relay_byte=0x92),
+        measurement(3, latitude=41.6, longitude=1.1, relay_byte=None),
+        measurement(4, latitude=41.99, longitude=1.95, relay_byte=0),
+        measurement(5, latitude=42.2, longitude=1.9, relay_byte=0x93),
+        direct(6, SENDER, latitude=41.7, longitude=1.2),
+        direct(7, SENDER, latitude=41.8, longitude=1.4),
+    )
+
+    result = client.get("/api/v1/coverage/nodes", params={**AREA, "north": 42}).json()
+
+    assert result["unknown"] == 2
+    extent = result["unknown_extent"]
+    assert 1.39 < extent["west"] <= 1.4
+    assert 1.8 < extent["east"] < 1.81
+    assert 41.79 < extent["south"] <= 41.8
+    assert 41.95 < extent["north"] < 41.96
+
+    filtered = client.get(
+        "/api/v1/coverage/cells", params={**AREA, "north": 42, "zoom": 12, "unknown": True}
+    ).json()
+    assert len(filtered["cells"]) == 2
+    assert sum(cell["measurements"] for cell in filtered["cells"]) == 2
+    assert all(cell["nodes"] == 0 for cell in filtered["cells"])
+    x, y = fine_cell(41.8, 1.4)
+    detail = client.get(f"/api/v1/coverage/cells/17/{x}/{y}?unknown=true").json()
+    assert detail["measurements"] == 1
+    assert detail["heard_nodes"] == []
+    assert unknown_relays(detail) == [(0x91, 1)]
+    assert len(detail["newest"]) == 1

@@ -444,6 +444,8 @@ def saved_heard(
                 candidates.append(
                     CoverageCandidate(node, place.long_name, place.short_name, round(km, 1))
                 )
+                if len(candidates) == CELL_CANDIDATES:
+                    break
         heard.append(UploadHeard(int(row["seq"]), row["node_id"], row["how"], tuple(candidates)))
     return heard
 
@@ -453,7 +455,7 @@ class HeardNode:
     """Which node's transmission the survey node received, and how upload
     decided that (SavedHow). node_id is None when unknown. candidates counts
     the possible candidates (heard_node); 1 when heard directly. maybe holds
-    the likeliest candidates with some evidence, for the upload's reply when
+    the candidates with evidence first, for the upload's reply when
     the saved measurement is unknown: a resent one keeps its first name."""
 
     node_id: int | None
@@ -633,7 +635,7 @@ def heard_node(
     }
     scores = RelayScores(terms, relay_probabilities(terms))
     named = scores.named()
-    maybe = tuple([node for node in scores.ranked() if scores.evidenced(node)][:CELL_CANDIDATES])
+    maybe = tuple(scores.hints())
     # A survey receiver hears no candidate in relay_terms' heard.
     if named is None or named[1] == "receiver_heard":
         return HeardNode(None, "unknown", len(left), maybe)
@@ -936,7 +938,7 @@ _SHOWN_HOW = f"CASE WHEN {_HEARD_OPTED_OUT} THEN 'unknown' ELSE {_HOW} END"
 _SHOWN_GUESSED = f"({_SHOWN_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
 
 
-def _point_filters(node: int | None, channel: str | None) -> str:
+def _point_filters(node: int | None, channel: str | None, *, unknown: bool = False) -> str:
     """SQL conditions on _MEASUREMENTS for the map's filters and _ALIVE_SQL,
     shared by the cell list, one cell and a node's extent so they agree."""
     filters = _ALIVE_SQL
@@ -944,6 +946,8 @@ def _point_filters(node: int | None, channel: str | None) -> str:
         filters += f"{_NODE_SQL} AND NOT {_HEARD_OPTED_OUT}"
     if channel is not None:
         filters += _CHANNEL_SQL
+    if unknown:
+        filters += f" AND {_SHOWN} IS NULL AND m.relay_byte > 0"
     return filters
 
 
@@ -1006,6 +1010,7 @@ def coverage_cells(
     since: datetime | None,
     node: int | None,
     channel: str | None = None,
+    unknown: bool = False,
     alive_days: int,
 ) -> CoverageCellList:
     """Coverage cells in an area for the map, from the measurements still
@@ -1019,7 +1024,7 @@ def coverage_cells(
     # the view counts all its measurements, as its detail does.
     x0, y0 = ((value >> shift) << shift for value in fine_cell(north, west))
     x1, y1 = ((((value >> shift) + 1) << shift) - 1 for value in fine_cell(south, east))
-    filters = _point_filters(node, channel)
+    filters = _point_filters(node, channel, unknown=unknown)
     # Consider aggregated cells if coverage_measurement grows past about 500k
     # rows: 200k synthetic points over a whole region took 270 ms, 420 ms
     # with _ALIVE_SQL and survey links (2026-10-16).
@@ -1122,10 +1127,12 @@ class CoverageViewNode:
 class CoverageNodeList:
     """The nodes heard in an area, in most cells first, at most
     MAX_VIEW_NODES (truncated when more were); unknown counts the
-    measurements with no heard node shown."""
+    measurements with a relay byte and no heard node shown.
+    unknown_extent bounds their fine cells."""
 
     nodes: tuple[CoverageViewNode, ...]
     unknown: int
+    unknown_extent: CoverageExtent | None
     truncated: bool
 
 
@@ -1147,9 +1154,12 @@ def coverage_nodes(
     rows = connection.execute(
         f"""
         SELECT {_SHOWN} AS shown, count(DISTINCT (m.cell_x << {FINE_LEVEL}) | m.cell_y) AS cells,
-               count(*) AS measurements, avg(m.margin_db) AS average_margin
+               count(*) AS measurements, avg(m.margin_db) AS average_margin,
+               min(m.cell_x) AS x0, max(m.cell_x) AS x1,
+               min(m.cell_y) AS y0, max(m.cell_y) AS y1
         FROM {_MEASUREMENTS}
         WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
+          AND ({_SHOWN} IS NOT NULL OR m.relay_byte > 0)
           {_point_filters(None, channel)}
         GROUP BY 1
         ORDER BY shown IS NOT NULL, cells DESC, measurements DESC, shown
@@ -1165,6 +1175,12 @@ def coverage_nodes(
         },
     ).fetchall()
     unknown = int(rows[0]["measurements"]) if rows and rows[0]["shown"] is None else 0
+    unknown_extent = None
+    if unknown:
+        row = rows[0]
+        north, west = tile_point(FINE_LEVEL, row["x0"], row["y0"])
+        south, east = tile_point(FINE_LEVEL, row["x1"] + 1, row["y1"] + 1)
+        unknown_extent = CoverageExtent(west=west, south=south, east=east, north=north)
     heard = [row for row in rows if row["shown"] is not None]
     names = nodes_by_id(connection, {int(row["shown"]) for row in heard[:MAX_VIEW_NODES]})
     nodes = []
@@ -1181,7 +1197,10 @@ def coverage_nodes(
             )
         )
     return CoverageNodeList(
-        nodes=tuple(nodes), unknown=unknown, truncated=len(heard) > MAX_VIEW_NODES
+        nodes=tuple(nodes),
+        unknown=unknown,
+        unknown_extent=unknown_extent,
+        truncated=len(heard) > MAX_VIEW_NODES,
     )
 
 
@@ -1288,6 +1307,7 @@ def coverage_cell(
     since: datetime | None,
     node: int | None = None,
     channel: str | None = None,
+    unknown: bool = False,
     alive_days: int,
 ) -> CoverageCellDetail:
     """One cell's totals, heard nodes, unknown relays and newest measurements,
@@ -1296,7 +1316,7 @@ def coverage_cell(
     shift = FINE_LEVEL - level
     where = """
         m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1 AND m.heard_at >= :since
-    """ + _point_filters(node, channel)
+    """ + _point_filters(node, channel, unknown=unknown)
     values = {
         "x0": x << shift,
         "x1": ((x + 1) << shift) - 1,
@@ -1342,7 +1362,7 @@ def coverage_cell(
         """,
         values,
     ).fetchall()
-    unknown = connection.execute(
+    unknown_rows = connection.execute(
         f"""
         SELECT m.relay_byte, count(*) AS measurements, max(m.heard_at) AS last_heard_at
         FROM {_MEASUREMENTS}
@@ -1369,7 +1389,7 @@ def coverage_cell(
         | {int(row["heard_node_id"]) for row in newest if row["heard_node_id"] is not None},
     )
     latitude, longitude = tile_centre(level, x, y)
-    relayed = [row for row in unknown[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]]
+    relayed = [row for row in unknown_rows[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]]
     spreading_factors = {
         int(row["spreading_factor"]) for row in networks if row["spreading_factor"]
     }
@@ -1415,7 +1435,7 @@ def coverage_cell(
                 int(row["measurements"]),
                 candidates.get(row["relay_byte"], ()),
             )
-            for row in unknown
+            for row in unknown_rows
         ),
         newest=tuple(_measurement_row(connection, row, names) for row in newest),
     )
@@ -1427,9 +1447,8 @@ def relay_candidates(
     place: tuple[float, float],
     spreading_factors: set[int],
 ) -> list[tuple[CoverageCandidate, ...]]:
-    """Up to CELL_CANDIDATES likeliest relays with some evidence for each
-    (byte, heard_at) heard at place, as relays.score_relays ranks them for
-    a copy there with nothing else known. Hints only; nodes that turned
+    """Up to CELL_CANDIDATES placed relays for each (byte, heard_at) at place,
+    evidence first and then likeliest within each group. Nodes that turned
     OK to MQTT off are never suggested."""
     if not copies:
         return []
@@ -1460,10 +1479,10 @@ def relay_candidates(
             {},
         )
         near = []
-        for node in scores.ranked():
+        for node in scores.hints():
             summary = evidence.placed.get(node)
             km = None if summary is None else node_km(summary, place)
-            if node in hidden or not scores.evidenced(node) or summary is None or km is None:
+            if node in hidden or summary is None or km is None:
                 continue
             # The score saw one spreading factor at most; a cell may have several.
             if cannot_relay(evidence.radios.get(node), spreading_factors):

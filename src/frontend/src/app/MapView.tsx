@@ -566,6 +566,7 @@ export function MapView({
   // The map's view and the area cells are fetched for, set when the map stops.
   const [coverageArea, setCoverageArea] = useState<CoverageArea | null>(null);
   const [selectedCell, setSelectedCell] = useState<CellAddress | null>(null);
+  const [unknownCoverage, setUnknownCoverage] = useState(false);
   // The coverage layers' latest data, for the next style load.
   const coverageData = useRef<{
     cells: CoverageFeatureCollection;
@@ -700,11 +701,13 @@ export function MapView({
   // The only ways the node selection changes. The sidebar shows the latest
   // choice, so a node replaces a chosen link or cell.
   const select = useCallback((node: MapNode) => {
+    setUnknownCoverage(false);
     setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
     setChosenLinkKey(null);
     setSelectedCell(null);
   }, []);
   const clearSelection = useCallback(() => {
+    setUnknownCoverage(false);
     setSelection(null);
     setChosenLinkKey(null);
   }, []);
@@ -867,6 +870,7 @@ export function MapView({
   // heard. The cells shown stay until the next ones arrive. They ignore the
   // time window: surveys are rare drives, kept for months.
   const coverageNode = focusNodeId;
+  const coverageUnknown = unknownCoverage && coverageNode === null;
   // Measurements follow their sender's channel; "not reported" keeps them
   // all, as it does for links.
   const coverageChannel =
@@ -874,7 +878,7 @@ export function MapView({
       ? null
       : nodeFilter.channel;
   const cellsUrl = (view: CoverageView) =>
-    coverageCellsUrl(view, coverageNode, coverageChannel);
+    coverageCellsUrl(view, coverageNode, coverageChannel, coverageUnknown);
   const coverage = useApi<CoverageCellList>(
     showCoverage && coverageArea !== null
       ? cellsUrl(coverageArea.fetched)
@@ -889,7 +893,12 @@ export function MapView({
   );
   const cellDetail = useApi<CoverageCellDetail>(
     showCoverage && selectedCell !== null
-      ? coverageCellUrl(selectedCell, coverageNode, coverageChannel)
+      ? coverageCellUrl(
+          selectedCell,
+          coverageNode,
+          coverageChannel,
+          coverageUnknown,
+        )
       : null,
   );
   // The nodes heard in view, of every node whatever is selected. The last
@@ -929,15 +938,22 @@ export function MapView({
   useEffect(() => {
     coverageShown.current = showCoverage;
   }, [showCoverage]);
+  const drawnCoverageUnknown = useRef(coverageUnknown);
   useEffect(() => {
-    if (showCoverage && coverageCells === null) return;
+    if (
+      showCoverage &&
+      coverageCells === null &&
+      drawnCoverageUnknown.current === coverageUnknown
+    )
+      return;
+    drawnCoverageUnknown.current = coverageUnknown;
     const cells = buildCoverageFeatureCollection(
       showCoverage ? coverageCells : null,
     );
     coverageData.current.cells = cells;
     forgetCellHover.current();
     setSourceData(map.current, COVERAGE_SOURCE, cells);
-  }, [showCoverage, coverageCells]);
+  }, [showCoverage, coverageCells, coverageUnknown]);
   const shownCell = showCoverage ? cellDetail.data : null;
   useEffect(() => {
     const lines = buildCoverageLines(
@@ -1574,6 +1590,7 @@ export function MapView({
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
+    setUnknownCoverage(false);
     setShowTextReach(true);
     const node = nodeMap.get(sender.node_id);
     if (node !== undefined) {
@@ -1586,6 +1603,7 @@ export function MapView({
   }
 
   function chooseCoverageNode(heard: CoverageViewNode) {
+    setUnknownCoverage(false);
     setShowCoverage(true);
     const node = nodeMap.get(heard.node_id);
     if (node !== undefined) {
@@ -1600,6 +1618,20 @@ export function MapView({
     });
     setChosenLinkKey(null);
     setSelectedCell(null);
+  }
+
+  function chooseUnknownCoverage(extent: CoverageExtent | null) {
+    if (unknownCoverage) {
+      setUnknownCoverage(false);
+      setSelectedCell(null);
+      return;
+    }
+    if (extent === null) return;
+    clearSelection();
+    setSelectedCell(null);
+    setShowCoverage(true);
+    setUnknownCoverage(true);
+    if (readyMap !== null) focusCoverage(readyMap, null, extent, true);
   }
 
   function chooseSeenWindow(window: SeenWindow) {
@@ -1950,6 +1982,8 @@ export function MapView({
                 drawn={nodeMap}
                 loadedIds={loadedIds}
                 onChoose={chooseCoverageNode}
+                onChooseUnknown={chooseUnknownCoverage}
+                unknownSelected={coverageUnknown}
               />
             ) : (
               <ChattyNodes

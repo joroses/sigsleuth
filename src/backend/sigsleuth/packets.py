@@ -672,8 +672,8 @@ def _with_relays(
     hidden: set[int],
 ) -> list[PacketReception]:
     """The receptions with relay_node filled in by relay_namings, else
-    relay_maybe: up to RELAY_MAYBE of the candidates with some evidence,
-    likeliest first. A hidden node (opted out) is never named or listed: a
+    relay_maybe: up to RELAY_MAYBE candidates, evidence first and then
+    likeliest within each group. A hidden node is never named or listed: a
     copy it is named for reads as undecided, as any other."""
     found = relay_namings(connection, receptions, sender, at=at, spreading_factor=spreading_factor)
     if found is None:
@@ -696,8 +696,8 @@ def _with_relays(
             continue
         position = naming.copy.position
         maybe = []
-        for node in naming.scores.ranked():
-            if node in hidden or not naming.scores.evidenced(node):
+        for node in naming.scores.hints():
+            if node in hidden:
                 continue
             km = None if position is None else node_km(found.evidence.placed.get(node), position)
             maybe.append(RelayMaybe(node, name(node), None if km is None else round(km, 1)))

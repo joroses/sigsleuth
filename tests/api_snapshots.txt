@@ -2570,7 +2570,30 @@ truncated: false
 
 nodes: []
 unknown: 0
+unknown_extent: null
 truncated: false
+
+## GET /api/v1/coverage/cells?west=-180&south=-85&east=180&north=85&zoom=6&unknown=true
+
+level: 12
+cells: []
+truncated: false
+
+## GET /api/v1/coverage/cells/8/143/83?unknown=true
+
+level: 8
+x: 143
+y: 83
+latitude: 52.9089
+longitude: 21.7969
+size_m: 94409
+measurements: 0
+networks: []
+first_heard_at: null
+last_heard_at: null
+heard_nodes: []
+unknown_relays: []
+newest: []
 
 ## GET /api/v1/map/text-reach/1128132236?since=2026-10-10T16:25:30.812000Z
 

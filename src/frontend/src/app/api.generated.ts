@@ -677,7 +677,7 @@ export interface paths {
      *     node, only the measurements where that node was the heard node,
      *     including its own packets heard directly. channel keeps packets whose
      *     sender last sent on that channel, as the map's channel filter does for
-     *     nodes.
+     *     nodes. unknown keeps only measurements with an unidentified relay byte.
      */
     get: operations["coverage_cell_page_api_v1_coverage_cells_get"];
     put?: never;
@@ -744,7 +744,7 @@ export interface paths {
      * Coverage Cell Detail Page
      * @description One coverage cell's totals, the nodes heard there with how each
      *     was identified, unknown relay bytes and the newest 20 measurements,
-     *     filtered by since, node and channel as in the cell list.
+     *     filtered by since, node, channel and unknown as in the cell list.
      */
     get: operations["coverage_cell_detail_page_api_v1_coverage_cells__level___x___y__get"];
     put?: never;
@@ -1149,11 +1149,13 @@ export interface components {
      * CoverageNodeList
      * @description The nodes heard in an area, in most cells first, at most
      *     MAX_VIEW_NODES (truncated when more were); unknown counts the
-     *     measurements with no heard node shown.
+     *     measurements with a relay byte and no heard node shown.
+     *     unknown_extent bounds their fine cells.
      */
     CoverageNodeList: {
       nodes: components["schemas"]["CoverageViewNode"][];
       unknown: number;
+      unknown_extent: components["schemas"]["CoverageExtent"] | null;
       truncated: boolean;
     };
     /**
@@ -3717,6 +3719,7 @@ export interface operations {
         since?: string | null;
         node?: number | null;
         channel?: string | null;
+        unknown?: boolean;
       };
       header?: never;
       path?: never;
@@ -3817,6 +3820,7 @@ export interface operations {
         since?: string | null;
         node?: number | null;
         channel?: string | null;
+        unknown?: boolean;
       };
       header?: never;
       path: {

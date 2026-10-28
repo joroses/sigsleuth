@@ -59,6 +59,35 @@ const cell: CoverageCellDetail = {
 };
 
 describe("Coverage here", () => {
+  it("links each unknown relay hint to its node page", () => {
+    const candidates = [
+      { node_id: 0x0200001a, long_name: "Relay A", short_name: "A", km: 12 },
+      { node_id: 0x0300001a, long_name: "Relay B", short_name: "B", km: 20 },
+    ];
+    render(
+      <CoverageCellDetails
+        detail={{
+          data: {
+            ...cell,
+            heard_nodes: [],
+            unknown_relays: [{ relay_byte: 0x1a, measurements: 3, candidates }],
+          },
+          error: null,
+          loading: false,
+        }}
+        isDrawn={() => true}
+        onChooseNode={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Relay A" }).getAttribute("href"),
+    ).toBe(`#nodes/${0x0200001a}`);
+    expect(
+      screen.getByRole("link", { name: "Relay B" }).getAttribute("href"),
+    ).toBe(`#nodes/${0x0300001a}`);
+  });
+
   it("chooses a heard node drawn on the map and links to one that isn't", () => {
     const choose = vi.fn();
     render(

@@ -757,6 +757,7 @@ def create_app(
         since: datetime | None = None,
         node: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
         channel: str | None = None,
+        unknown: bool = False,
     ) -> CoverageCellList:
         """Signal survey coverage cells in the visible area, busiest first, at
         the level for the map's zoom (zoom + 6, from 8 to 17), with at most
@@ -767,7 +768,7 @@ def create_app(
         node, only the measurements where that node was the heard node,
         including its own packets heard directly. channel keeps packets whose
         sender last sent on that channel, as the map's channel filter does for
-        nodes."""
+        nodes. unknown keeps only measurements with an unidentified relay byte."""
         if west > east or south > north:
             raise _invalid_parameters()
         query_start = time.perf_counter()
@@ -781,6 +782,7 @@ def create_app(
             since=_utc(since),
             node=node,
             channel=channel,
+            unknown=unknown,
             alive_days=settings.retention_days,
         )
         request.state.map_query_ms = (time.perf_counter() - query_start) * 1000
@@ -834,10 +836,11 @@ def create_app(
         since: datetime | None = None,
         node: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
         channel: str | None = None,
+        unknown: bool = False,
     ) -> CoverageCellDetail:
         """One coverage cell's totals, the nodes heard there with how each
         was identified, unknown relay bytes and the newest 20 measurements,
-        filtered by since, node and channel as in the cell list."""
+        filtered by since, node, channel and unknown as in the cell list."""
         if x >= 1 << level or y >= 1 << level:
             raise _invalid_parameters()
         query_start = time.perf_counter()
@@ -849,6 +852,7 @@ def create_app(
             since=_utc(since),
             node=node,
             channel=channel,
+            unknown=unknown,
             alive_days=settings.retention_days,
         )
         request.state.map_query_ms = (time.perf_counter() - query_start) * 1000

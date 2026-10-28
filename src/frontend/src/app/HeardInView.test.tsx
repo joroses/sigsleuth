@@ -29,6 +29,7 @@ const page: CoverageNodeList = {
     heard(4, "Filtered"),
   ],
   unknown: 4,
+  unknown_extent: { west: 1, south: 41, east: 2, north: 42 },
   truncated: false,
 };
 
@@ -45,6 +46,8 @@ describe("HeardInView", () => {
         drawn={new Map([1, 3].map((id) => [id, mapNode(id)]))}
         loadedIds={new Set([1, 3, 4])}
         onChoose={onChoose}
+        onChooseUnknown={vi.fn()}
+        unknownSelected={false}
       />,
     );
     const list = screen.getByRole("region", { name: "Coverage" });

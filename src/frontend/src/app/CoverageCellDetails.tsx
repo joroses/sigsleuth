@@ -1,3 +1,5 @@
+import { Fragment } from "react";
+
 import type {
   CoverageCellDetail,
   CoverageCellNetwork,
@@ -5,7 +7,12 @@ import type {
   CoverageMeasurementRow,
 } from "./api";
 import { heardHowText, isCertain, marginColor } from "./coverageLayer";
-import { formatNodeId, nodeLabel, relayByteText } from "./nodeDisplay";
+import {
+  formatNodeId,
+  nodeHref,
+  nodeLabel,
+  relayByteText,
+} from "./nodeDisplay";
 import { DataItem, LegendLine, ShortTime } from "./ui";
 import type { ApiState } from "./useApi";
 
@@ -117,9 +124,18 @@ export function CoverageCellDetails({
                   {relay.candidates.length === 0 ? null : (
                     <span className="muted coverage-how">
                       Maybe{" "}
-                      {relay.candidates
-                        .map((node) => `${nodeLabel(node)} (${node.km} km)`)
-                        .join(", ")}
+                      {relay.candidates.map((node, index) => (
+                        <Fragment key={node.node_id}>
+                          {index === 0 ? null : ", "}
+                          <a
+                            className="text-button"
+                            href={nodeHref(node.node_id)}
+                          >
+                            {nodeLabel(node)}
+                          </a>{" "}
+                          ({node.km} km)
+                        </Fragment>
+                      ))}
                     </span>
                   )}
                 </li>

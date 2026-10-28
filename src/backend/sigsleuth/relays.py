@@ -564,6 +564,10 @@ class RelayScores:
         terms = self.terms.get(node, {})
         return any(terms.get(term) for term in EVIDENCE_TERMS) or terms.get("snr_llr", 0) > 0
 
+    def hints(self) -> list[int]:
+        """Candidates with evidence first, likeliest within each group."""
+        return sorted(self.ranked(), key=lambda node: not self.evidenced(node))
+
     def named(self, hidden: Collection[int] = ()) -> tuple[int, ScoredHow] | None:
         """The likeliest candidate when it reaches NAME_PROBABILITY with
         evidence, and how; None otherwise, or when it is hidden."""

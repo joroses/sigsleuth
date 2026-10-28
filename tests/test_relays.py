@@ -113,6 +113,18 @@ def test_no_candidates_leave_only_an_unknown_node() -> None:
     assert scores.named() is None
 
 
+def test_hints_keep_evidence_ahead_of_likelier_unsupported_candidates() -> None:
+    nearby, router, client = 0x0101_003D, 0x0202_003D, 0x0303_003D
+    found = evidence(
+        {nearby: node(nearby, 19), router: node(router, None, role="ROUTER"), client: None}
+    )
+    found = replace(found, radios={router: NodeRadio(11, None, None, AT)})
+    scores = score_relays(found, copy(), {})
+
+    assert scores.ranked()[0] == router
+    assert scores.hints() == [nearby, router, client]
+
+
 def test_a_hidden_node_keeps_its_share_but_is_never_named() -> None:
     hidden, other = 0x0101_003D, 0x0202_003D
     places = {hidden: node(hidden, 1), other: node(other, 3)}

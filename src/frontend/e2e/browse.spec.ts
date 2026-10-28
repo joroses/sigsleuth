@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { GeoJSONSource } from "maplibre-gl";
 import type { MapLink, MapNode } from "../src/app/api";
 
 // The API serves the recorded sample (tests/serve_sample.py) with its clock
@@ -67,6 +68,100 @@ test("the map records the timings perf-map.sh waits for", async ({ page }) => {
         "map: node layers idle",
       ]),
     );
+});
+
+test("unknown relays fit and filter coverage, and toggle back to all cells", async ({
+  page,
+}) => {
+  const extent = { west: 1.55, south: 41.9, east: 1.59, north: 41.94 };
+  const cell = {
+    x: 66107,
+    y: 48695,
+    measurements: 1,
+    average_margin: 10,
+    best_margin: 10,
+    average_snr: 2.5,
+    spreading_factor: 7,
+    nodes: 0,
+    guessed: 0,
+  };
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route("**/api/v1/coverage/nodes?*", (route) =>
+    route.fulfill({
+      json: {
+        nodes: [],
+        unknown: 477,
+        unknown_extent: extent,
+        truncated: false,
+      },
+    }),
+  );
+  await page.route("**/api/v1/coverage/cells?*", (route) =>
+    route.fulfill({
+      json: {
+        level: 17,
+        cells:
+          new URL(route.request().url()).searchParams.get("unknown") === "true"
+            ? [cell]
+            : [cell, { ...cell, x: 66108, nodes: 1 }],
+        truncated: false,
+      },
+    }),
+  );
+  await page.addInitScript(() => {
+    localStorage.setItem("sigsleuth.map.listTab", JSON.stringify("heard"));
+    localStorage.setItem("sigsleuth.coverage", "false");
+    localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
+    localStorage.setItem(
+      "sigsleuth.map.camera",
+      JSON.stringify({ center: [0, 40], zoom: 3 }),
+    );
+  });
+  await page.goto("/#map");
+
+  await page
+    .getByRole("button", { name: "Unknown relays 477 measurements" })
+    .click();
+
+  await expect(page.getByRole("checkbox", { name: /Coverage/ })).toBeChecked();
+  const shownCells = () =>
+    page.evaluate(async () => {
+      const source = window.sigsleuthMap?.getSource("coverage-cells") as
+        GeoJSONSource | undefined;
+      const data = await source?.getData();
+      return data?.type === "FeatureCollection"
+        ? data.features.map((feature) => feature.properties?.x).sort()
+        : [];
+    });
+  await expect.poll(shownCells).toEqual([66107]);
+  await expect(
+    page.getByRole("button", { name: "Unknown relays 477 measurements" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect
+    .poll(() =>
+      page.evaluate((extent) => {
+        const map = window.sigsleuthMap;
+        if (map === undefined) return false;
+        const bounds = map.getBounds();
+        const center = map.getCenter();
+        return (
+          map.getZoom() > 8 &&
+          Math.abs(center.lng - 1.57) < 0.01 &&
+          Math.abs(center.lat - 41.92) < 0.01 &&
+          bounds.contains([extent.west, extent.south]) &&
+          bounds.contains([extent.east, extent.north])
+        );
+      }, extent),
+    )
+    .toBe(true);
+
+  await page
+    .getByRole("button", { name: "Unknown relays 477 measurements" })
+    .click();
+  await expect.poll(shownCells).toEqual([66107, 66108]);
+  await expect(
+    page.getByRole("button", { name: "Unknown relays 477 measurements" }),
+  ).toHaveAttribute("aria-pressed", "false");
 });
 
 for (const inWindow of [true, false]) {
@@ -471,6 +566,7 @@ for (const { width, late, failed, kind, entry, show } of [
         json: {
           nodes: [{ ...node, cells: 1, average_margin: 10 }],
           unknown: 0,
+          unknown_extent: null,
           truncated: false,
         },
       }),

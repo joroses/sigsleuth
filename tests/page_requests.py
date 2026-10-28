@@ -216,6 +216,8 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/map/text-senders?since={day}"
     # The coverage layer's heard nodes, over the whole world.
     yield f"/api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel={channel}"
+    yield "/api/v1/coverage/cells?west=-180&south=-85&east=180&north=85&zoom=6&unknown=true"
+    yield "/api/v1/coverage/cells/8/143/83?unknown=true"
     yield f"/api/v1/map/text-reach/{subjects.text_sender}?since={day}"
     yield "/api/v1/chat"
     yield f"/api/v1/chat?channel={channel}"

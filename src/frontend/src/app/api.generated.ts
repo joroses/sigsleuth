@@ -1305,6 +1305,7 @@ export interface components {
       hour_start: string;
       observations: number;
       average_snr: number | null;
+      suspect_distance: boolean;
     };
     /**
      * HeardPosition
@@ -1456,7 +1457,7 @@ export interface components {
       /** @enum {string} */
       link_kind: "traceroute" | "direct" | "neighbor";
       distance_km: number | null;
-      doubts: ("doubtful" | "terrain" | "pending")[];
+      doubts: ("doubtful" | "terrain" | "pending" | "signal")[];
     };
     /**
      * LinkTable
@@ -1531,7 +1532,8 @@ export interface components {
      * LongLinkDoubt
      * @description Why the Links page badges a long link and ranks it apart: 'position'
      *     when an end has a doubtful position, else 'terrain' when its newest km is
-     *     LONG_LINK_KM or more on a pair the terrain check finds unlikely. suspects
+     *     LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
+     *     'signal' for a suspect signal distance. suspects
      *     are the ends to blame: the doubtful ones. The terrain check judges the pair,
      *     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
      *     when that is at least two, since one wrong position makes many; none when
@@ -1539,7 +1541,7 @@ export interface components {
      */
     LongLinkDoubt: {
       /** @enum {string} */
-      reason: "position" | "terrain";
+      reason: "position" | "terrain" | "signal";
       suspects: number[];
     };
     /**
@@ -2318,8 +2320,7 @@ export interface components {
     };
     /**
      * RelaySignal
-     * @description A candidate's direct signal at a gateway over the seven days before
-     *     the packet: SNR samples and their mean.
+     * @description A candidate's direct SNR and RSSI over seven completed days.
      */
     RelaySignal: {
       key: number;
@@ -2558,7 +2559,7 @@ export interface components {
       reply_packet_row_id: number | null;
       reply_receptions: number | null;
       distance_km: number | null;
-      doubts: ("doubtful" | "terrain" | "pending")[];
+      doubts: ("doubtful" | "terrain" | "pending" | "signal")[];
       route: components["schemas"]["TracerouteRoute"];
       positions: components["schemas"]["HeardPosition"][];
     };

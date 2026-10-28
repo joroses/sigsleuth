@@ -9,14 +9,16 @@ Two views of where a link's nodes are, each decided here once:
 - The map and Zones draw nodes where they are now (reported, else
   estimated). They count only the hours that still match where the nodes
   are (trusted_sql, TRUSTED_HOUR): heard after both ends last moved, neither
-  end doubtful. Estimates, own reach and chat read the same condition. Then
+  end doubtful, and no suspect signal distance. Estimates and own reach read
+  the same hours. Then
   map_misfit leaves out links that do not fit where the nodes are drawn
   (Misfit), more often MQTT bridges or stale positions than radio; Zones adds
   its ZONE_MAX_LINK_KM.
 - The Links page, a node's links, the Traceroute explorer and packet pages
   keep every link and show only the km saved when it was heard, never one
   from current positions, which would mix two moments. link_doubts says why
-  such a distance is doubted (Doubt): a doubtful end, unlikely by terrain,
+  such a distance is doubted (Doubt): a suspect signal distance, a doubtful end,
+  unlikely by terrain,
   or pending until both ends have reported a position since it was heard,
   without moving (confirmed_sql). Pages badge those and rank them apart from
   measured links; links with no distance come last.
@@ -29,6 +31,7 @@ No page shows a link with an end that turned OK to MQTT off (opt_out.py).
 """
 
 import json
+import math
 import sqlite3
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -95,10 +98,30 @@ def trusted_sql(node: str, at: str) -> str:
             AND {at} >= (SELECT moved_at FROM node_current WHERE node_id = {node})))"""
 
 
-# Whether a link_hour row (unaliased) counts for the map.
-TRUSTED_HOUR = (
+# 2026-10-28 signal study: a conservative heuristic, not a physical bound.
+# Skip coordinate changes, including the transition from before the hour:
+# hourly signal means can otherwise mix a nearby reading with a distant one.
+SUSPECT_DISTANCE = f"""CASE WHEN link_kind = 'direct' AND km >= 10 AND rssi_count > 0
+    AND rssi_sum / rssi_count + min(coalesce(snr_sum / nullif(snr_count, 0), 0), 0)
+        + {32.45 + 20 * math.log10(869.5)} + 20 * log10(km) > 80
+    THEN NOT EXISTS (
+        SELECT 1 FROM node_position AS signal_position
+        JOIN node_position AS previous_position
+          ON previous_position.node_id = signal_position.node_id AND previous_position.at = (
+              SELECT max(at) FROM node_position
+              WHERE node_id = signal_position.node_id AND at < signal_position.at)
+        WHERE signal_position.node_id IN (from_node_id, to_node_id)
+          AND signal_position.at >= hour_start AND signal_position.at < hour_start + {HOUR_MS}
+          AND (signal_position.latitude, signal_position.longitude)
+              != (previous_position.latitude, previous_position.longitude)
+    ) ELSE 0 END"""
+
+# Whether a link_hour row's (unaliased) ends were where pages draw them.
+_TRUSTED_ENDS = (
     f"{trusted_sql('from_node_id', 'last_seen_at')} AND {trusted_sql('to_node_id', 'last_seen_at')}"
 )
+# Whether a link_hour row (unaliased) counts for the map.
+TRUSTED_HOUR = f"{_TRUSTED_ENDS} AND NOT ({SUSPECT_DISTANCE})"
 
 
 def limited_nodes(connection: sqlite3.Connection, since_ms: int) -> set[int]:
@@ -247,9 +270,8 @@ def _fits_now(
 # over MOVED_KM nearer or farther than when heard.
 Misfit = Literal["terrain", "unmeasured", "estimated_far", "too_far", "drifted"]
 # Why link pages badge a distance when heard and rank it apart (link_doubts):
-# an end has a doubtful position, the terrain check finds it unlikely, or it
-# is pending.
-Doubt = Literal["doubtful", "terrain", "pending"]
+# a suspect signal distance, a doubtful end, unlikely terrain, or pending.
+Doubt = Literal["doubtful", "terrain", "pending", "signal"]
 
 
 def _unlikely_far(heard_km: float | None, unlikely: bool) -> bool:
@@ -290,15 +312,18 @@ def map_misfit(
 
 
 def link_doubts(
-    doubtful: bool, heard_km: float | None, unlikely: bool, confirmed: bool
+    doubtful: bool,
+    heard_km: float | None,
+    unlikely: bool,
+    confirmed: bool,
+    suspect_distance: bool = False,
 ) -> tuple[Doubt, ...]:
-    """Why link pages doubt a distance heard heard_km apart: an end is
-    doubtful, the pair is unlikely by terrain, or it is PENDING_KM or more and
-    not confirmed (confirmed_sql). None for a link with no distance, which
-    ranks last anyway."""
+    """Why a measured distance ranks apart; unmeasured links rank last."""
     if heard_km is None:
         return ()
     doubts: list[Doubt] = []
+    if suspect_distance:
+        doubts.append("signal")
     if doubtful:
         doubts.append("doubtful")
     if _unlikely_far(heard_km, unlikely):
@@ -328,7 +353,11 @@ def _hourly_links(
     # look again. Each direction's hours are added up before the two directions
     # are paired, which is faster than grouping by pair. km is a bare column, so
     # SQLite takes it from the row with the max(last_seen_at): the newest hour's.
-    only_trusted = f"AND {TRUSTED_HOUR}" if trusted else ""
+    # Only direct hours can be suspect; evaluating the guard anyway made all
+    # traceroute history 257 -> 306 ms (perf.db, 2026-10-28).
+    direct = link_kind == "direct"
+    suspect = SUSPECT_DISTANCE if direct else "0"
+    only_trusted = f"AND {TRUSTED_HOUR if direct else _TRUSTED_ENDS}" if trusted else ""
     # Still the window's primary key range: no index finds a node's links
     # into it, and that read is 60-105 ms on live (2026-10-18, 7 days).
     of_node = "" if node is None else "AND :node IN (from_node_id, to_node_id)"
@@ -348,12 +377,12 @@ def _hourly_links(
                total(observations * (from_node_id > to_node_id)) AS ba_observations,
                total(snr_count * (from_node_id > to_node_id)) AS ba_snr_count,
                total(snr_sum * (from_node_id > to_node_id)) AS ba_snr_sum,
-               km, total(confirmed_hours) AS confirmed_hours
+               km, suspect_distance, total(confirmed_hours) AS confirmed_hours
         FROM (
             SELECT from_node_id, to_node_id, channel,
                    sum(observations) AS observations, sum(snr_count) AS snr_count,
                    total(snr_sum) AS snr_sum, max(last_seen_at) AS last_seen_at, km,
-                   {confirmed_hours} AS confirmed_hours
+                   {confirmed_hours} AS confirmed_hours, {suspect} AS suspect_distance
             FROM link_hour
             WHERE link_kind = :kind AND hour_start >= :since
               AND (:channel IS NULL OR channel = :channel) {only_trusted} {of_node}
@@ -402,6 +431,7 @@ class HeardHour:
     hour_start: datetime
     observations: int
     average_snr: float | None
+    suspect_distance: bool
 
 
 @dataclass(frozen=True)
@@ -437,10 +467,11 @@ def link_hours(
                 from_epoch_ms(hour_start),
                 observations,
                 round(snr_sum / snr_count, 2) if snr_count else None,
+                bool(suspect),
             )
-            for hour_start, observations, snr_count, snr_sum in connection.execute(
-                """
-                SELECT hour_start, observations, snr_count, snr_sum
+            for hour_start, observations, snr_count, snr_sum, suspect in connection.execute(
+                f"""
+                SELECT hour_start, observations, snr_count, snr_sum, {SUSPECT_DISTANCE}
                 FROM link_hour INDEXED BY link_hour_pair
                 WHERE from_node_id = :from_node AND to_node_id = :to_node
                   AND link_kind = :kind AND channel = :channel AND hour_start >= :since
@@ -535,6 +566,7 @@ def link_table(
                         km,
                         (link.node_a, link.node_b) in unlikely,
                         bool(row["confirmed_hours"]),
+                        bool(row["suspect_distance"]),
                     ),
                 )
             )

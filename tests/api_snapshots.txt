@@ -4081,16 +4081,20 @@ a_to_b: 1 items
   - hour_start: "2026-10-09T21:00:00Z"
     observations: 1
     average_snr: 11
+    suspect_distance: false
 b_to_a: 63 items
   - hour_start: "2026-10-08T16:00:00Z"
     observations: 11
     average_snr: 12.27
+    suspect_distance: false
   - hour_start: "2026-10-08T17:00:00Z"
     observations: 12
     average_snr: 11.96
+    suspect_distance: false
   - hour_start: "2026-10-08T18:00:00Z"
     observations: 11
     average_snr: 12.14
+    suspect_distance: false
 
 ## GET /api/v1/traceroutes/busiest?since=2026-10-10T16:25:30.812000Z
 

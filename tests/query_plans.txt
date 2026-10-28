@@ -101,8 +101,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -273,8 +279,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -548,6 +560,13 @@ links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -626,6 +645,12 @@ links._hourly_links
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -642,6 +667,9 @@ links._hourly_links
   SEARCH link_hour USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -1244,6 +1272,9 @@ opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
 links.link_hours.<locals>.heard
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes/busiest?since=<time>
 
@@ -1339,6 +1370,12 @@ diagnostics._long_links
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH link_hour USING INDEX link_hour_pair
@@ -1348,6 +1385,12 @@ diagnostics._long_links
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
@@ -1387,6 +1430,12 @@ diagnostics._long_links
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH link_hour USING INDEX link_hour_pair
@@ -1396,6 +1445,12 @@ diagnostics._long_links
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
@@ -1468,8 +1523,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -1522,8 +1583,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -1576,8 +1643,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -1667,8 +1740,14 @@ links.limited_nodes
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
   SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 positions.own_reach
   SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
   SEARCH long_link USING PRIMARY KEY
   SCAN node_current
   SCAN node_doubtful
@@ -1800,3 +1879,6 @@ positions._estimates
   SCAN node_current
   SCAN node_doubtful
   SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY

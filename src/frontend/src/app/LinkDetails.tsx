@@ -17,7 +17,7 @@ import { HopCostLine, HopObservationList } from "./HopObservations";
 import { type LatLon } from "./lineOfSight";
 import { linkTier, linkTierColor } from "./linkQuality";
 import { formatNodeId, nodeName, tracerouteHopHref } from "./nodeDisplay";
-import { Icon, LinkArrow, ShortTime } from "./ui";
+import { Badge, Icon, LinkArrow, ShortTime } from "./ui";
 import { useApi } from "./useApi";
 
 // The map brings in MapLibre, so it loads when a row is first opened.
@@ -116,6 +116,11 @@ export function LinkDetails({
                 spreadingFactor={link.spreading_factor}
               />
             )}
+            {hours.data?.[direction].some((hour) => hour.suspect_distance) ? (
+              <Badge tone="amber" title="Signal suggests a suspect distance">
+                suspect distance
+              </Badge>
+            ) : null}
             {traceroutes && hops.data !== null ? (
               <p className="hop-cost">
                 <HopCostLine
@@ -238,6 +243,8 @@ function HourStrip({
               width={1}
               height={1}
               fill={linkTierColor(linkTier(hour.average_snr, spreadingFactor))}
+              stroke={hour.suspect_distance ? "#d97706" : undefined}
+              strokeWidth={0.15}
             >
               <title>
                 {`${new Date(at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}: ${hour.observations} heard, ${snr}`}

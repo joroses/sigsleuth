@@ -339,3 +339,47 @@ def test_hop_costs_count_once_per_packet_on_its_channel(connection: sqlite3.Conn
         (SENDER, RELAY, "LongFast", 1, 1),
         (SENDER, RELAY, "MediumFast", 1, 0),
     ]
+
+
+@pytest.mark.parametrize("batch_size", [1, 100])
+def test_signal_distance_guard_agrees_after_capture_and_rebuild(
+    path: Path, connection: sqlite3.Connection, batch_size: int
+) -> None:
+    from derived_rows import node_position
+    from sigsleuth.links import LinkHours, link_hours
+
+    gateway = 0xAAAAAAAA
+    node_position(connection, SENDER, SENT_AT - 3_600_000, 1.0, 1.0)
+    node_position(connection, gateway, SENT_AT - 3_600_000, 1.5, 1.0)
+    send(
+        connection,
+        1,
+        application_envelope(
+            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            b"hello",
+            packet_id=1,
+            hop_start=3,
+            hop_limit=3,
+            relay_node=SENDER & 0xFF,
+            rx_snr=8,
+            rx_rssi=-20,
+        ),
+        "!aaaaaaaa",
+    )
+
+    def history() -> LinkHours:
+        return link_hours(
+            connection,
+            link_kind="direct",
+            node_a=SENDER,
+            node_b=gateway,
+            channel="LongFast",
+            since=None,
+        )
+
+    captured = history()
+    assert captured.a_to_b[0].suspect_distance
+    connection.execute("UPDATE derived_state SET version = 0")
+    migrate_database(path)
+    assert rederive(connection, lambda: False, batch_size=batch_size)
+    assert history() == captured

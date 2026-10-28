@@ -1193,6 +1193,13 @@ function DoubtBadge({ link }: { link: LongLink }) {
     endName(ends.find((end) => end.node.node_id === nodeId)!),
   );
   const named = suspects.join(" and ");
+  if (doubt.reason === "signal") {
+    return (
+      <Badge tone="amber" title="Signal suggests a suspect distance">
+        suspect distance
+      </Badge>
+    );
+  }
   if (doubt.reason === "position") {
     return (
       <Badge

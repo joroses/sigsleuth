@@ -27,7 +27,7 @@ from datetime import datetime
 from sigsleuth.db import now_ms, to_epoch_ms, transaction
 from sigsleuth.decode import UNKNOWN_NODE
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.links import LONG_LINK_KM, TRUSTED_HOUR, limited_nodes, trusted_sql
+from sigsleuth.links import LONG_LINK_KM, SUSPECT_DISTANCE, TRUSTED_HOUR, limited_nodes, trusted_sql
 from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
 from sigsleuth.reported import HeardPosition, positions_when_heard
@@ -272,11 +272,12 @@ def own_reach(
     Nodes with no such link from from_km up are left out: a caller that
     floors reach at from_km needs no shorter one, and reads far fewer rows."""
     limited = limited_nodes(connection, 0)
-    # Read individual hours only for moved or doubtful ends: looking up every
-    # hour's last_seen_at took 15 times as long (2026-10-18, live copy).
+    # Revisit hours only for moved or doubtful ends, or a suspect maximum:
+    # looking up every hour took 15 times as long (2026-10-18, live copy).
     longest = connection.execute(
-        """
-        SELECT from_node_id, to_node_id, max(km) FROM link_hour INDEXED BY link_hour_pair
+        f"""
+        SELECT from_node_id, to_node_id, max(km), {SUSPECT_DISTANCE}
+        FROM link_hour INDEXED BY link_hour_pair
         WHERE from_node_id IN (SELECT value FROM json_each(:nodes)) AND km >= :from_km
           AND (link_kind IN ('direct', 'neighbor')
                OR (link_kind = 'traceroute' AND snr_count > 0))
@@ -288,7 +289,9 @@ def own_reach(
         """,
         {"nodes": json.dumps(sorted(node_ids)), "from_km": from_km, "long": LONG_LINK_KM},
     ).fetchall()
-    limited_pairs = [[a, b] for a, b, _ in longest if a in limited or b in limited]
+    limited_pairs = [
+        [a, b] for a, b, _, suspect in longest if a in limited or b in limited or suspect
+    ]
     hours = connection.execute(
         f"""
         SELECT l.from_node_id, l.km
@@ -298,6 +301,7 @@ def own_reach(
         WHERE l.km >= :from_km
           AND (l.link_kind IN ('direct', 'neighbor')
                OR (l.link_kind = 'traceroute' AND l.snr_count > 0))
+          AND NOT ({SUSPECT_DISTANCE})
           AND (l.km < :long OR NOT EXISTS (
               SELECT 1 FROM long_link
               WHERE node_a = min(l.from_node_id, l.to_node_id)
@@ -307,7 +311,11 @@ def own_reach(
         """,
         {"pairs": json.dumps(limited_pairs), "from_km": from_km, "long": LONG_LINK_KM, "since": 0},
     ).fetchall()
-    found = [(a, km) for a, b, km in longest if a not in limited and b not in limited]
+    found = [
+        (a, km)
+        for a, b, km, suspect in longest
+        if a not in limited and b not in limited and not suspect
+    ]
     found += [(a, km) for a, km in hours]
     reach: dict[int, float] = {}
     for node, km in found:

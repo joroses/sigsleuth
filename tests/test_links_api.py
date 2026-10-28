@@ -154,8 +154,22 @@ def test_link_hours_lists_each_direction_on_its_channel_from_the_hour_of_since(
     )
 
     assert hours == {
-        "a_to_b": [{"hour_start": "2026-09-27T08:00:00Z", "observations": 2, "average_snr": -5.0}],
-        "b_to_a": [{"hour_start": "2026-09-27T09:00:00Z", "observations": 1, "average_snr": None}],
+        "a_to_b": [
+            {
+                "hour_start": "2026-09-27T08:00:00Z",
+                "observations": 2,
+                "average_snr": -5.0,
+                "suspect_distance": False,
+            }
+        ],
+        "b_to_a": [
+            {
+                "hour_start": "2026-09-27T09:00:00Z",
+                "observations": 1,
+                "average_snr": None,
+                "suspect_distance": False,
+            }
+        ],
     }
 
 
@@ -829,3 +843,78 @@ def test_every_page_applies_its_trust_rules_to_a_link(
     build(path, SCENARIOS[name])
 
     assert what_pages_say(path) == EXPECTED[name]
+
+
+@pytest.mark.parametrize("movement", ["stable", "repeat", "during", "transition", "receiver"])
+def test_suspect_signal_distance_keeps_history_and_other_evidence(
+    path: Path, movement: str
+) -> None:
+    from sigsleuth.links import link_hours, link_table, map_links
+    from sigsleuth.positions import own_reach
+
+    at = to_epoch_ms(HOUR)
+    with closing(open_current_database(path)) as connection:
+        for n, latitude in ((A, 1.0), (B, 1.5)):
+            insert_row(
+                connection,
+                "node_current",
+                node_id=n,
+                last_seen_at=at,
+                latitude=latitude,
+                longitude=1.0,
+                position_observed_at=at,
+            )
+            node_position(connection, n, at - HOUR_MS, latitude, 1.0)
+        if movement == "repeat":
+            node_position(connection, A, at + 1_000, 1.0, 1.0)
+        elif movement in ("during", "transition", "receiver"):
+            n = B if movement == "receiver" else A
+            node_position(connection, n, at if movement == "transition" else at + 1_000, 1.1, 1.0)
+        link_hour(connection, A, B, at + 60_000, snr=[8], km=55.6)
+        connection.execute("UPDATE link_hour SET rssi_count=1, rssi_sum=-20")
+        suspect = movement in ("stable", "repeat")
+        assert own_reach(connection, {A}) == ({} if suspect else {A: 55.6})
+        # Exercise reach's moved-node path as well as its fast path.
+        connection.execute("UPDATE node_current SET moved_at=?", (at - HOUR_MS,))
+        assert own_reach(connection, {A}) == ({} if suspect else {A: 55.6})
+        args: dict[str, Any] = dict(
+            link_kind="direct", since=None, limit=100, default_preset="LongFast"
+        )
+        assert bool(map_links(connection, **args, trusted=True).items) is not suspect
+        table = link_table(connection, link_kinds=["direct"], since=None, default_preset="LongFast")
+        assert table.items[0].a_to_b.observations == 1
+        assert ("signal" in table.items[0].doubts) is suspect
+        history = link_hours(
+            connection, link_kind="direct", node_a=A, node_b=B, channel="LongFast", since=None
+        )
+        assert history.a_to_b[0].suspect_distance is suspect
+        assert not connection.execute("SELECT * FROM node_doubtful").fetchall()
+        # Reverse and independent route evidence remain available.
+        link_hour(connection, B, A, at + 60_001, snr=[5], km=55.6)
+        link_hour(connection, A, B, at + 60_002, link_kind="traceroute", snr=[5], km=55.6)
+        assert own_reach(connection, {A, B}) == {A: 55.6, B: 55.6}
+        assert map_links(connection, **args, trusted=True).items[0].b_to_a.observations == 1
+
+
+@pytest.mark.parametrize("rssi,snr,km", [(-80, 8, 55.6), (-20, -30, 10), (-20, 8, 9.9)])
+def test_sound_signal_distances_are_trusted(path: Path, rssi: float, snr: float, km: float) -> None:
+    from sigsleuth.positions import own_reach
+
+    with closing(open_current_database(path)) as connection:
+        link_hour(connection, A, B, to_epoch_ms(HOUR), snr=[snr], km=km)
+        connection.execute("UPDATE link_hour SET rssi_count=1, rssi_sum=?", (rssi,))
+        assert own_reach(connection, {A}) == {A: km}
+
+
+def test_reach_falls_back_to_a_sound_hour_of_the_same_direction(path: Path) -> None:
+    from sigsleuth.positions import own_reach
+
+    at = to_epoch_ms(HOUR)
+    with closing(open_current_database(path)) as connection:
+        link_hour(connection, A, B, at + 60_000, snr=[8], km=55.6)
+        connection.execute("UPDATE link_hour SET rssi_count=1, rssi_sum=-20")
+        link_hour(connection, A, B, at - HOUR_MS, snr=[5], km=20)
+        assert own_reach(connection, {A}) == {A: 20}
+        # Equal distances can come from both suspect and sound hours.
+        connection.execute("UPDATE link_hour SET km=55.6 WHERE rssi_count=0")
+        assert own_reach(connection, {A}) == {A: 55.6}

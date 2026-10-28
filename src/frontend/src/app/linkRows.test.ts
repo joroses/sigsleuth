@@ -59,3 +59,12 @@ describe("a node page's links", () => {
     expect(oldest.map((item) => item.node_b)).toEqual([4, 2, 3]);
   });
 });
+
+it("ranks suspect signal distances after trusted measured distances", () => {
+  const suspect = { ...link(2, 5, 100), doubts: ["signal"] } satisfies LinkRow;
+  const sound = link(3, 5, 20);
+  expect(sortLinks([suspect, sound], "distance", false)).toEqual([
+    sound,
+    suspect,
+  ]);
+});

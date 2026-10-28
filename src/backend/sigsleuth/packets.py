@@ -536,8 +536,8 @@ class ReceptionNaming:
     """How _with_relays names one relayed reception's relay: the copy, how
     often its gateway heard each candidate directly within
     COHEARER_WINDOW_MS of the packet (those never heard left out), and the
-    candidates' scores. relay is what the packet page names: the only
-    candidate heard directly, else the score's name."""
+    candidates' scores. The sole heard candidate is named unless its RSSI
+    skips the shortcut; then the score decides."""
 
     copy: Relayed
     heard: Mapping[int, int]

@@ -404,8 +404,7 @@ class RelayCheckReport:
 
 @dataclass(frozen=True)
 class RelaySignal:
-    """A candidate's direct signal at a gateway over the seven days before
-    the packet: SNR samples and their mean."""
+    """A candidate's direct SNR and RSSI over seven completed days."""
 
     key: int
     gateway_node_id: int

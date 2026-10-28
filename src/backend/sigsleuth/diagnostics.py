@@ -26,6 +26,7 @@ from sigsleuth.links import (
     LONG_LINK_KM,
     MAX_ESTIMATED_LINK_KM,
     PENDING_KM,
+    SUSPECT_DISTANCE,
     TRUSTED_HOUR,
     Doubt,
     LinkKind,
@@ -240,13 +241,14 @@ class LongLinkEvidence:
 class LongLinkDoubt:
     """Why the Links page badges a long link and ranks it apart: 'position'
     when an end has a doubtful position, else 'terrain' when its newest km is
-    LONG_LINK_KM or more on a pair the terrain check finds unlikely. suspects
+    LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
+    'signal' for a suspect signal distance. suspects
     are the ends to blame: the doubtful ones. The terrain check judges the pair,
     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
     when that is at least two, since one wrong position makes many; none when
     the ends are in as many."""
 
-    reason: Literal["position", "terrain"]
+    reason: Literal["position", "terrain", "signal"]
     suspects: tuple[int, ...]
 
 
@@ -394,6 +396,7 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
             UNION ALL SELECT value ->> 1, value ->> 0 FROM json_each(:pairs)
         )
         SELECT link_hour.*, {TRUSTED_HOUR} AS trusted,
+               {SUSPECT_DISTANCE} AS suspect_distance,
                km >= :pending_km AND {CONFIRMED_HOUR} AS confirmed
         FROM heard JOIN link_hour USING (from_node_id, to_node_id)
         """,
@@ -564,6 +567,7 @@ def _long_link(
         newest["km"],
         unlikely,
         any(row["confirmed"] for row in rows),
+        bool(newest["suspect_distance"]),
     )
     doubt = _doubt(a, b, doubts, unlikely_pairs)
     pending = "pending" in doubts
@@ -607,6 +611,8 @@ def _doubt(
     ends = (a, b)
     if "doubtful" in doubts:
         return LongLinkDoubt("position", tuple(end.node.node_id for end in ends if end.doubtful))
+    if "signal" in doubts:
+        return LongLinkDoubt("signal", ())
     if "terrain" not in doubts:
         return None
     more, fewer = sorted((end.node.node_id for end in ends), key=lambda node: -unlikely_pairs[node])
@@ -654,7 +660,10 @@ def _map_hidden_because(
         heard = [row for row in rows if row["channel"] == channel]
         trusted = [row for row in heard if row["trusted"]]
         if not trusted:
-            reasons.append(_distrusted_because(a, b, max(row["last_seen_at"] for row in heard)))
+            if all(row["suspect_distance"] for row in heard):
+                reasons.append("the signal suggests a suspect distance")
+            else:
+                reasons.append(_distrusted_because(a, b, max(row["last_seen_at"] for row in heard)))
             continue
         newest = max(trusted, key=lambda row: row["last_seen_at"])
         misfit = map_misfit(a.node, b.node, newest["km"], unlikely)

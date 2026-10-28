@@ -9,7 +9,11 @@ import {
   packetViewHref,
   routeFromHash,
 } from "./routes";
-import { relayChecksHref } from "./nodeDisplay";
+import {
+  diagnosticsLinksHref,
+  diagnosticsPacketsHref,
+  relayChecksHref,
+} from "./nodeDisplay";
 
 describe("routeFromHash", () => {
   it("reads node IDs as numbers or as !hex", () => {
@@ -87,19 +91,32 @@ describe("routeFromHash", () => {
   });
 });
 
-describe("relay checks", () => {
-  it("open the list or one reception, and the old Diagnostics links still work", () => {
-    expect(routeFromHash(relayChecksHref())).toEqual({
-      page: "relayChecks",
+describe("diagnostics tabs", () => {
+  it("open each tab, with its node or reception, and the old links still work", () => {
+    const tab = (hash: string) => routeFromHash(hash);
+    expect(tab("#diagnostics")).toMatchObject({ tab: "overview" });
+    expect(tab("#diagnostics/doubtful")).toMatchObject({ tab: "doubtful" });
+    expect(tab(diagnosticsLinksHref(7))).toMatchObject({
+      tab: "links",
+      node: 7,
+    });
+    expect(tab(relayChecksHref())).toMatchObject({
+      tab: "relays",
       receptionId: null,
     });
-    expect(routeFromHash(relayChecksHref(21))).toEqual({
-      page: "relayChecks",
+    expect(tab(relayChecksHref(21))).toMatchObject({
+      tab: "relays",
       receptionId: 21,
     });
-    expect(routeFromHash("#diagnostics/packets/!00000002")).toMatchObject({
+    expect(tab(diagnosticsPacketsHref(null))).toMatchObject({
+      tab: "packets",
+      sender: null,
+    });
+    expect(tab("#diagnostics/packets/!00000002-3")).toMatchObject({
       page: "diagnostics",
+      tab: "packets",
       sender: 2,
+      heardDirectlyBy: 3,
     });
   });
 });

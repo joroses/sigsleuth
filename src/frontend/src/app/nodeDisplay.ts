@@ -53,16 +53,23 @@ export function tracerouteHopHref(nodeA: number, nodeB: number): string {
 }
 
 /**
- * Diagnostics' packets that sender sent, only those heardDirectlyBy heard
- * with no relay when it is given.
+ * Diagnostics' packets: all of them, or those sender sent, only those
+ * heardDirectlyBy heard with no relay when it is given.
  */
 export function diagnosticsPacketsHref(
-  sender: number,
+  sender: number | null,
   heardDirectlyBy: number | null = null,
 ): string {
-  return heardDirectlyBy === null
-    ? `#diagnostics/packets/${sender}`
-    : `#diagnostics/packets/${sender}-${heardDirectlyBy}`;
+  return sender === null
+    ? "#diagnostics/packets"
+    : heardDirectlyBy === null
+      ? `#diagnostics/packets/${sender}`
+      : `#diagnostics/packets/${sender}-${heardDirectlyBy}`;
+}
+
+/** Diagnostics' long links, or only one node's. */
+export function diagnosticsLinksHref(node: number | null = null): string {
+  return node === null ? "#diagnostics/links" : `#diagnostics/links/${node}`;
 }
 
 /** Diagnostics' relay checks, or how one reception's relay is named. */

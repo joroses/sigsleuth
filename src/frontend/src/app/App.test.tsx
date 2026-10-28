@@ -1250,7 +1250,7 @@ describe("Diagnostics", () => {
       ),
     );
 
-    window.location.hash = "#diagnostics";
+    window.location.hash = "#diagnostics/packets";
     render(<App />);
     expect(await screen.findByText("9001")).not.toBeNull();
 
@@ -1289,7 +1289,7 @@ describe("Diagnostics", () => {
     );
     vi.stubGlobal("fetch", fetch);
 
-    window.location.hash = "#diagnostics";
+    window.location.hash = "#diagnostics/links";
     render(<App />);
 
     fireEvent.change(await screen.findByRole("combobox", { name: "Order" }), {
@@ -1301,6 +1301,42 @@ describe("Diagnostics", () => {
         expect.anything(),
       ),
     );
+  });
+
+  it("loads a tab once opened, and a hidden tab keeps its filter", async () => {
+    const pages: Record<string, object> = {
+      "/api/v1/packets/ports": { ports: [] },
+      "/api/v1/packets?sender=2": packets,
+      "/api/v1/map/nodes": { items: [], truncated: false },
+      "/api/v1/diagnostics/longest-links?offset=0&count=30": {
+        items: [],
+        looked_through: 0,
+        lowest_km: null,
+        oldest_hour_at: null,
+        next_offset: null,
+      },
+    };
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(jsonResponse(pages[url] ?? summary)),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const asked = () => fetch.mock.calls.map(([url]) => url);
+
+    window.location.hash = "#diagnostics/packets/2";
+    render(<App />);
+    expect(await screen.findByText("1234")).not.toBeNull();
+    expect(asked()).not.toContain(
+      "/api/v1/diagnostics/longest-links?offset=0&count=30",
+    );
+
+    window.location.hash = "#diagnostics/links";
+    await waitFor(() =>
+      expect(asked()).toContain(
+        "/api/v1/diagnostics/longest-links?offset=0&count=30",
+      ),
+    );
+    expect(asked()).not.toContain("/api/v1/packets");
+    expect(asked()).not.toContain("/api/v1/diagnostics/doubtful-nodes");
   });
 
   const diagnosticsTab = () =>

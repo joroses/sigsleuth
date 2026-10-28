@@ -1,4 +1,5 @@
 import type { LinkKind } from "./api";
+import type { DiagnosticsTab } from "./Diagnostics";
 import type { LinksTab } from "./LinksView";
 import {
   DEFAULT_SEEN_WINDOW,
@@ -25,10 +26,16 @@ export type Route =
     }
   | {
       page: "diagnostics";
+      tab: DiagnosticsTab;
+      /** On long links, only this node's. */
+      node: number | null;
+      /** On packets, only those sender sent, and heardDirectlyBy heard with
+       * no relay. */
       sender: number | null;
       heardDirectlyBy: number | null;
+      /** On relay checks, how this reception's relay is named. */
+      receptionId: number | null;
     }
-  | { page: "relayChecks"; receptionId: number | null }
   | {
       page: "packet";
       id: number;
@@ -148,29 +155,37 @@ export function routeFromHash(hash: string): Route {
           : null,
     };
   }
-  // Diagnostics' relay checks, optionally one reception's.
-  const relayChecks = hash.match(/^#diagnostics\/relays(?:\/([1-9]\d*))?$/);
-  if (relayChecks !== null) {
-    const id = relayChecks[1] === undefined ? null : Number(relayChecks[1]);
-    return {
-      page: "relayChecks",
-      receptionId: id !== null && Number.isSafeInteger(id) ? id : null,
-    };
-  }
-  // Diagnostics, optionally listing the packets one node sent, optionally
-  // only those a second heard directly.
+  // Diagnostics' tabs: long links, optionally one node's; relay checks,
+  // optionally one reception's; packets, optionally those one node sent,
+  // optionally only those a second heard directly.
   const diagnostics = hash.match(
-    new RegExp(String.raw`^#diagnostics(?:\/packets\/${NODE}(?:-${NODE})?)?$`),
+    new RegExp(
+      String.raw`^#diagnostics(?:\/(?:(doubtful)|(links)(?:\/${NODE})?|(relays)(?:\/([1-9]\d*))?|(packets)(?:\/${NODE}(?:-${NODE})?)?))?$`,
+    ),
   );
   if (diagnostics !== null) {
-    const [, first, second] = diagnostics;
-    const ids = [first, second].map((id) =>
-      id === undefined || nodeNumber(id) > 0xffffffff ? null : nodeNumber(id),
-    );
+    const [, doubtful, links, node, relays, reception, packets, first, second] =
+      diagnostics;
+    const id = (text: string | undefined) =>
+      text === undefined || nodeNumber(text) > 0xffffffff
+        ? null
+        : nodeNumber(text);
+    const receptionId = reception === undefined ? null : Number(reception);
+    const sender = id(first);
     return {
       page: "diagnostics",
-      sender: ids[0],
-      heardDirectlyBy: ids[0] !== null ? ids[1] : null,
+      tab: (doubtful ??
+        links ??
+        relays ??
+        packets ??
+        "overview") as DiagnosticsTab,
+      node: id(node),
+      sender,
+      heardDirectlyBy: sender !== null ? id(second) : null,
+      receptionId:
+        receptionId !== null && Number.isSafeInteger(receptionId)
+          ? receptionId
+          : null,
     };
   }
   // A packet, optionally showing only the reports where the first node

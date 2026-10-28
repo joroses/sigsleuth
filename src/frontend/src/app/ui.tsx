@@ -44,7 +44,7 @@ export const DIAGNOSTICS_LINKED = "diagnostics.linked";
 // The AGPL asks a modified copy run for others to offer its own source here.
 const SOURCE_URL = "https://github.com/joroses/sigsleuth";
 
-type IconName =
+export type IconName =
   | MainPage
   | "back"
   | "check"

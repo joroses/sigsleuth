@@ -40,6 +40,10 @@ test("every page loads without errors", async ({ page, request }) => {
     "#links/traceroutes",
     "#links/line-of-sight",
     "#diagnostics",
+    "#diagnostics/doubtful",
+    "#diagnostics/links",
+    "#diagnostics/relays",
+    "#diagnostics/packets",
   ]) {
     await page.goto(`/${hash}`, { waitUntil: "networkidle" });
     await expect(page.locator(".app-content"), hash).not.toBeEmpty();

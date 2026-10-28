@@ -87,7 +87,7 @@ export function LinksView({
 }) {
   return (
     <section className="links-page" aria-label="Links">
-      <nav className="links-tabs" aria-label="Links views">
+      <nav className="page-tabs" aria-label="Links views">
         {TABS.map((item) => (
           <a
             key={item.tab}

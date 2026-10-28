@@ -1,4 +1,12 @@
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ReactNode,
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   DiagnosticsSummary,
@@ -20,6 +28,7 @@ import {
   request,
 } from "./api";
 import {
+  diagnosticsLinksHref,
   diagnosticsPacketsHref,
   formatKm,
   formatNodeId,
@@ -44,7 +53,9 @@ import {
   DIAGNOSTICS_LINKED,
   DataItem,
   DoubtfulBadge,
+  Icon,
   IconButton,
+  IconName,
   NodeLink,
   OpenedAt,
   PendingBadge,
@@ -53,14 +64,68 @@ import {
   WideTable,
 } from "./ui";
 
+export type DiagnosticsTab =
+  "overview" | "doubtful" | "links" | "relays" | "packets";
+
+const TABS: {
+  tab: DiagnosticsTab;
+  icon: IconName;
+  label: string;
+  href: string;
+}[] = [
+  {
+    tab: "overview",
+    icon: "diagnostics",
+    label: "Overview",
+    href: "#diagnostics",
+  },
+  {
+    tab: "doubtful",
+    icon: "locate",
+    label: "Doubtful nodes",
+    href: "#diagnostics/doubtful",
+  },
+  {
+    tab: "links",
+    icon: "links",
+    label: "Long links",
+    href: diagnosticsLinksHref(),
+  },
+  {
+    tab: "relays",
+    icon: "route",
+    label: "Relay checks",
+    href: relayChecksHref(),
+  },
+  {
+    tab: "packets",
+    icon: "table",
+    label: "Packets",
+    href: diagnosticsPacketsHref(null),
+  },
+];
+
+// Relay checks bring in MapLibre, so they load only on their own tab.
+const RelayChecks = lazy(() =>
+  import("./RelayChecks").then((module) => ({ default: module.RelayChecks })),
+);
+
 export function Diagnostics({
+  tab,
+  node: linkNode = null,
   sender = null,
   heardDirectlyBy = null,
+  receptionId = null,
 }: {
+  tab: DiagnosticsTab;
+  /** The long links listed: only this node's (#diagnostics/links/node). */
+  node?: number | null;
   /** The packets listed: only those sender sent, and heardDirectlyBy heard
    * with no relay (#diagnostics/packets/sender-gateway). */
   sender?: number | null;
   heardDirectlyBy?: number | null;
+  /** The relay check open (#diagnostics/relays/reception). */
+  receptionId?: number | null;
 }) {
   const summary = useApi<DiagnosticsSummary>(diagnosticsSummaryUrl);
   // Loaded, so the password was accepted (or none is set): link the page in
@@ -69,61 +134,77 @@ export function Diagnostics({
   useEffect(() => {
     if (loaded) saveSetting(DIAGNOSTICS_LINKED, true);
   }, [loaded]);
-  // The long links listed are only this node's when it is set.
-  const [linkNode, setLinkNode] = usePageView<number | null>(
-    "diagnostics.linkNode",
-    null,
-  );
-  const nodes = useNodes(linkNode !== null || sender !== null);
-  const showLinksOf = (nodeId: number) => {
-    setLinkNode(nodeId);
-    scrollToId(LONGEST_HEADING);
-  };
+  // A tab stays mounted, hidden, once opened, so going back to it shows what
+  // it had loaded; a hidden one keeps the filters it was left with.
+  const [opened, setOpened] = useState<DiagnosticsTab[]>([tab]);
+  if (!opened.includes(tab)) setOpened([...opened, tab]);
+  const node = useHeldWhile(tab !== "links", linkNode);
+  const from = useHeldWhile(tab !== "packets", sender);
+  const heardBy = useHeldWhile(tab !== "packets", heardDirectlyBy);
+  const reception = useHeldWhile(tab !== "relays", receptionId);
+  const nodes = useNodes(node !== null || from !== null);
+  const panel = (which: DiagnosticsTab, content: ReactNode) =>
+    opened.includes(which) ? <div hidden={tab !== which}>{content}</div> : null;
   return (
     <div className="diagnostics-page">
       <div className="detail-heading">
         <div>
           <p className="eyebrow">Operator tool</p>
           <h2>Diagnostics</h2>
-          <p className="diagnostic-lede">
-            Service health, saved history, deliveries capture skipped, doubtful
-            nodes, long links and saved packets.{" "}
-            <a className="text-button" href={relayChecksHref()}>
-              Relay checks
-            </a>{" "}
-            test relay names against traceroute routes.
-          </p>
         </div>
       </div>
-
-      <SummarySection state={summary} />
-      <SkippedSection state={summary} />
-      <DoubtfulNodesSection onShowLinks={showLinksOf} />
-      <LongestLinksSection
-        node={linkNode}
-        onNode={setLinkNode}
-        onShowLinks={showLinksOf}
-        nodes={nodes}
-      />
-      <PacketsSection
-        sender={sender}
-        heardDirectlyBy={heardDirectlyBy}
-        nodes={nodes}
-      />
+      <nav className="page-tabs" aria-label="Diagnostics views">
+        {TABS.map((item) => (
+          <a
+            key={item.tab}
+            href={item.href}
+            aria-current={item.tab === tab ? "page" : undefined}
+          >
+            <Icon name={item.icon} />
+            <strong>{item.label}</strong>
+          </a>
+        ))}
+      </nav>
+      {panel(
+        "overview",
+        <>
+          <SummarySection state={summary} />
+          <SkippedSection state={summary} />
+        </>,
+      )}
+      {panel("doubtful", <DoubtfulNodesSection />)}
+      {panel("links", <LongestLinksSection node={node} nodes={nodes} />)}
+      {panel(
+        "relays",
+        <Suspense fallback={<StatusPanel>Loading…</StatusPanel>}>
+          <RelayChecks receptionId={reception} />
+        </Suspense>,
+      )}
+      {panel(
+        "packets",
+        <PacketsSection
+          sender={from}
+          heardDirectlyBy={heardBy}
+          nodes={nodes}
+        />,
+      )}
     </div>
   );
 }
 
-const LONGEST_HEADING = "diagnostic-longest-heading";
-const PACKETS_HEADING = "diagnostic-packets-heading";
-
-function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ block: "start" });
+/**
+ * `value`, or while `hold` the one it had when hold began: a hidden tab
+ * keeps its filters, rather than loading the unfiltered list unseen.
+ */
+function useHeldWhile<T>(hold: boolean, value: T): T {
+  const [held, setHeld] = useState(value);
+  if (!hold && held !== value) setHeld(value);
+  return hold ? held : value;
 }
 
 /**
  * useViewState for a page that stays open while its own address changes
- * (#diagnostics/packets/…): a new history entry starts with the value as it
+ * (#diagnostics/…): a new history entry starts with the value as it
  * is, and Back to an entry brings back its value.
  */
 function usePageView<T>(key: string, initial: T) {
@@ -142,24 +223,6 @@ function usePageView<T>(key: string, initial: T) {
     return () => window.removeEventListener("hashchange", follow);
   }, [key, setValue]);
   return [value, setValue] as const;
-}
-
-const ARRIVED = "diagnostics.arrived";
-
-/**
- * Scrolls to the element with this id the first time this history entry
- * shows `target`. Back to the entry later restores its own scroll instead.
- * Waits a moment, for App to finish resetting the scroll of a new entry.
- */
-function useArrivalScroll(target: string | null, elementId: string) {
-  useEffect(() => {
-    if (target === null || readView(ARRIVED) === target) return;
-    const timer = window.setTimeout(() => {
-      writeView(ARRIVED, target);
-      scrollToId(elementId);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [target, elementId]);
 }
 
 /** The map's nodes, for the node searches and the chosen nodes' names. */
@@ -369,23 +432,16 @@ function PacketsSection({
     null,
   );
   const ports = useApi<PacketPortList>(packetPortsUrl);
-  useArrivalScroll(
-    sender === null ? null : `packets/${sender}-${heardDirectlyBy}`,
-    PACKETS_HEADING,
-  );
   // The node filters are in the address, so Back undoes them and a long
   // link can link to its packets.
   const filterBy = (nextSender: number | null, gateway: number | null) => {
-    window.location.hash =
-      nextSender === null
-        ? "#diagnostics"
-        : diagnosticsPacketsHref(nextSender, gateway);
+    window.location.hash = diagnosticsPacketsHref(nextSender, gateway);
   };
 
   return (
-    <section aria-labelledby={PACKETS_HEADING}>
+    <section aria-labelledby="diagnostic-packets-heading">
       <div className="section-intro compact">
-        <h3 id={PACKETS_HEADING}>Packets</h3>
+        <h3 id="diagnostic-packets-heading">Packets</h3>
         <p>
           Saved packets, newest first. Choose a sender, then a gateway, to see
           the packets that gateway heard from it with no relay.
@@ -482,13 +538,9 @@ const MAX_LINK_REQUEST = 1000;
 
 function LongestLinksSection({
   node,
-  onNode,
-  onShowLinks,
   nodes,
 }: {
   node: number | null;
-  onNode: (nodeId: number | null) => void;
-  onShowLinks: (nodeId: number) => void;
   nodes: NodeChoices;
 }) {
   const [shown, setShown] = useSetting<LongLinkFilter | "all">(
@@ -512,9 +564,9 @@ function LongestLinksSection({
   for (const item of state.data?.items ?? []) counts[item.shown] += 1;
   const data = state.data;
   return (
-    <section aria-labelledby={LONGEST_HEADING}>
+    <section aria-labelledby="diagnostic-longest-heading">
       <div className="section-intro compact">
-        <h3 id={LONGEST_HEADING}>Long links</h3>
+        <h3 id="diagnostic-longest-heading">Long links</h3>
         <p>Long links for review.</p>
       </div>
       <div className="nodes-toolbar">
@@ -542,7 +594,15 @@ function LongestLinksSection({
             </option>
           ))}
         </select>
-        <NodeFilter label="Node" nodeId={node} nodes={nodes} onPick={onNode} />
+        {/* In the address, so Back undoes it and other tabs link to it. */}
+        <NodeFilter
+          label="Node"
+          nodeId={node}
+          nodes={nodes}
+          onPick={(picked) => {
+            window.location.hash = diagnosticsLinksHref(picked);
+          }}
+        />
         <OpenedAt at={state.openedAt} onRefresh={state.refresh} />
       </div>
       {state.error !== null ? (
@@ -581,7 +641,6 @@ function LongestLinksSection({
                           : keys.filter((other) => other !== key),
                       )
                     }
-                    onShowLinks={onShowLinks}
                   />
                 );
               })}
@@ -767,11 +826,7 @@ const LONG_LINKS_VIEW = "diagnostics.longLinks";
  * Every doubtful node, and the nodes the terrain check most
  * often blames, with their long-link counts.
  */
-function DoubtfulNodesSection({
-  onShowLinks,
-}: {
-  onShowLinks: (nodeId: number) => void;
-}) {
+function DoubtfulNodesSection() {
   const state = useApi<DoubtfulNodeList>(doubtfulNodesUrl);
   return (
     <section aria-labelledby="diagnostic-doubtful-heading">
@@ -796,11 +851,7 @@ function DoubtfulNodesSection({
             </EndHeadings>
             <tbody>
               {state.data.items.map((item) => (
-                <EndRow
-                  key={item.end.node.node_id}
-                  end={item.end}
-                  onShowLinks={onShowLinks}
-                >
+                <EndRow key={item.end.node.node_id} end={item.end}>
                   <td>
                     {item.long_links === 0
                       ? "none"
@@ -821,14 +872,12 @@ function LongLinkItem({
   latest = false,
   open,
   onToggle,
-  onShowLinks,
 }: {
   link: LongLink;
   /** Ranked by when last heard 250 km+ apart, so say when in the summary. */
   latest?: boolean;
   open: boolean;
   onToggle: (open: boolean) => void;
-  onShowLinks: (nodeId: number) => void;
 }) {
   const a = link.node_a;
   const b = link.node_b;
@@ -1028,11 +1077,7 @@ function LongLinkItem({
             <EndHeadings />
             <tbody>
               {[a, b].map((end) => (
-                <EndRow
-                  key={end.node.node_id}
-                  end={end}
-                  onShowLinks={onShowLinks}
-                />
+                <EndRow key={end.node.node_id} end={end} />
               ))}
             </tbody>
           </table>
@@ -1080,16 +1125,8 @@ function EndHeadings({ children }: { children?: ReactNode }) {
   );
 }
 
-/** A node as a long link's end, with `children` cells before the button that lists its long links. */
-function EndRow({
-  end,
-  onShowLinks,
-  children,
-}: {
-  end: LongLinkEnd;
-  onShowLinks: (nodeId: number) => void;
-  children?: ReactNode;
-}) {
+/** A node as a long link's end, with `children` cells before the link to its long links. */
+function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
   const node = end.node;
   return (
     <tr>
@@ -1136,13 +1173,9 @@ function EndRow({
       </td>
       {children}
       <td>
-        <button
-          type="button"
-          className="text-button"
-          onClick={() => onShowLinks(node.node_id)}
-        >
+        <a className="text-button" href={diagnosticsLinksHref(node.node_id)}>
           Its long links
-        </button>
+        </a>
       </td>
     </tr>
   );

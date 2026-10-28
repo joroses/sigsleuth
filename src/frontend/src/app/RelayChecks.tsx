@@ -97,7 +97,7 @@ const OUTCOME_TONES = {
 } as const;
 
 /**
- * Diagnostics' relay checks (#diagnostics/relays): traceroute copies whose
+ * Diagnostics' relay checks tab (#diagnostics/relays): traceroute copies whose
  * route names their relay, against the relay SigSleuth names, and one
  * copy's scores term by term (#diagnostics/relays/<reception>).
  */
@@ -109,7 +109,7 @@ export function RelayChecks({ receptionId }: { receptionId: number | null }) {
   const [generation, setGeneration] = useState(0);
   const [queue, setQueue] = useState<number[]>([]);
   return (
-    <div className="diagnostics-page relay-checks-page">
+    <>
       {listShown ? (
         <div hidden={receptionId !== null}>
           <CheckList
@@ -126,7 +126,7 @@ export function RelayChecks({ receptionId }: { receptionId: number | null }) {
           queue={queue}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -244,21 +244,14 @@ function CheckList({
 
   return (
     <>
-      <div className="detail-heading">
-        <div>
-          <p className="eyebrow">
-            <a className="text-button" href="#diagnostics">
-              Diagnostics
-            </a>
-          </p>
-          <h2>Relay checks</h2>
-          <p className="diagnostic-lede">
-            Traceroute copies whose own route names their relay: the node before
-            the gateway, when it sends the copy&apos;s relay byte. Each is
-            checked against the relay SigSleuth names. Open one to see each
-            candidate&apos;s score, term by term.
-          </p>
-        </div>
+      <div className="section-intro compact">
+        <h3>Relay checks</h3>
+        <p>
+          Traceroute copies whose own route names their relay: the node before
+          the gateway, when it sends the copy&apos;s relay byte. Each is checked
+          against the relay SigSleuth names. Open one to see each
+          candidate&apos;s score, term by term.
+        </p>
       </div>
       <div className="nodes-toolbar">
         <select

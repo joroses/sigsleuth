@@ -1402,38 +1402,6 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-relays.nodes_by_byte
-  SCAN node_current
-relays.node_radios
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
-relays.relay_evidence
-  SEARCH node_activity_hour USING INDEX node_activity_node
-positions.radio_links
-  SEARCH link_hour USING PRIMARY KEY
-positions.traceroute_hops
-  SEARCH link_hour USING INDEX link_hour_pair
-links.limited_nodes
-  SCAN node_current
-  SCAN node_doubtful
-positions.own_reach
-  SEARCH link_hour USING INDEX link_hour_pair
-  SEARCH long_link USING PRIMARY KEY
-positions.own_reach
-  SEARCH link_hour USING INDEX link_hour_pair
-  SEARCH long_link USING PRIMARY KEY
-  SCAN node_current
-  SCAN node_doubtful
-  SEARCH node_current USING PRIMARY KEY
-  SCAN node_current
-  SCAN node_doubtful
-  SEARCH node_current USING PRIMARY KEY
-relays.relay_evidence
-  SEARCH node_activity_hour USING PRIMARY KEY
-relays.direct_receptions
-  SEARCH link_hour USING INDEX link_hour_pair
-relays.direct_signals
-  SEARCH link_hour USING INDEX link_hour_pair
 
 ## GET /api/v1/diagnostics/relay-checks/30
 

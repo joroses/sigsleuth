@@ -329,18 +329,19 @@ def packet_detail(
 
 @dataclass(frozen=True)
 class RelayedPacket:
-    """A shown packet, its receptions as its page lists them before relays
-    are named, and how _with_relays names each relayed one's relay, None
-    when none has a relay to name. Opted-out nodes stay among the
-    candidates, as for the packet page: callers must not name them."""
+    """A shown packet and its receptions before relay names are attached.
+    relays is None when naming is skipped or no copy needs it. Callers
+    must hide opted-out candidates before serving them."""
 
     packet: PacketRow
     receptions: tuple[PacketReception, ...]
     relays: "PacketRelays | None"
 
 
-def relayed_packet(connection: sqlite3.Connection, packet_row_id: int) -> RelayedPacket | None:
-    """The RelayedPacket of a shown packet; None when it is not shown."""
+def relayed_packet(
+    connection: sqlite3.Connection, packet_row_id: int, *, with_relays: bool = True
+) -> RelayedPacket | None:
+    """A shown packet and its receptions, optionally with relay names."""
     hidden = opted_out(connection)
     row = _shown_packet(connection, packet_row_id, hidden)
     if row is None:
@@ -355,7 +356,9 @@ def relayed_packet(connection: sqlite3.Connection, packet_row_id: int) -> Relaye
             int(row["sender_node_id"]),
             at=int(row["first_received_at"]),
             spreading_factor=channel_spreading_factor(str(row["channel"])),
-        ),
+        )
+        if with_relays
+        else None,
     )
 
 
@@ -568,8 +571,10 @@ def relay_namings(
     *,
     at: int,
     spreading_factor: int | None,
+    reception_ids: set[int] | None = None,
+    reach: Mapping[int, float] | None = None,
 ) -> PacketRelays | None:
-    """How each reception whose relay byte is neither the sender's nor the
+    """How each selected reception whose relay byte is neither the sender's nor the
     gateway's (a gateway sending its own byte uploaded its own rebroadcast)
     gets its relay named, by coverage's rules (relays.py) with the gateway
     in the survey node's place, where it was when heard:
@@ -586,6 +591,7 @@ def relay_namings(
         reception
         for reception in receptions
         if reception.relay_byte
+        and (reception_ids is None or reception.reception_id in reception_ids)
         and not reception.direct
         and reception.relay_byte
         not in (relay_byte_of(sender), relay_byte_of(reception.gateway_node_id))
@@ -600,6 +606,7 @@ def relay_namings(
         spreading_factors=set() if spreading_factor is None else {spreading_factor},
         links_around=at,
         one_hop_senders={sender},
+        reach=reach,
     )
     pairs = [
         (node, reception.gateway_node_id)

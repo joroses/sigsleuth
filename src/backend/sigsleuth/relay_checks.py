@@ -33,8 +33,10 @@ from sigsleuth.packets import (
     RelayedPacket,
     RelayNodeHow,
     name_copy,
+    relay_namings,
     relayed_packet,
 )
+from sigsleuth.positions import own_reach
 from sigsleuth.radio import relay_byte_of
 from sigsleuth.relays import (
     ACTIVE_MS,
@@ -45,7 +47,9 @@ from sigsleuth.relays import (
     UNKNOWN_SCORE,
     WEIGHTS,
     RelayTerm,
+    channel_spreading_factor,
     node_km,
+    nodes_by_byte,
 )
 from sigsleuth.reported import positions_when_heard
 from sigsleuth.traceroute import MQTT_HOP_SNR_DB
@@ -149,16 +153,42 @@ def relay_checks(
         )
     ]
     hidden = opted_out(connection)
-    checks: list[RelayCheck] = []
-    times = []
+    packets = []
+    relay_bytes: set[int] = set()
     for packet_row_id in ids:
-        found = relayed_packet(connection, packet_row_id)
+        found = relayed_packet(connection, packet_row_id, with_relays=False)
         if found is None:
             continue
-        times.append(found.packet.first_received_at)
-        checks.extend(
-            check for check in _checks(found, hidden).values() if check.route_relay is not None
+        reception_ids = {
+            reception.reception_id
+            for reception in found.receptions
+            if route_relay(reception) is not None
+        }
+        packets.append((found, reception_ids))
+        relay_bytes.update(
+            int(reception.relay_byte)
+            for reception in found.receptions
+            if reception.reception_id in reception_ids and reception.relay_byte
         )
+    candidates = {
+        node for nodes in nodes_by_byte(connection, relay_bytes).values() for node in nodes
+    }
+    reach = own_reach(connection, candidates, from_km=NAME_KM) if candidates else {}
+    checks: list[RelayCheck] = []
+    times = []
+    for found, reception_ids in packets:
+        packet = found.packet
+        times.append(packet.first_received_at)
+        relays = relay_namings(
+            connection,
+            list(found.receptions),
+            packet.sender_node_id,
+            at=to_epoch_ms(packet.first_received_at),
+            spreading_factor=channel_spreading_factor(packet.channel),
+            reception_ids=reception_ids,
+            reach=reach,
+        )
+        checks.extend(_checks(replace(found, relays=relays), hidden).values())
     return RelayCheckList(
         checks=tuple(checks),
         traceroutes=len(ids),

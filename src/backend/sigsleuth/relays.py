@@ -246,6 +246,7 @@ def relay_evidence(
     spreading_factors: set[int],
     links_around: int | None = None,
     one_hop_senders: Collection[int] = (),
+    reach: Mapping[int, float] | None = None,
 ) -> RelayEvidence:
     """The RelayEvidence for naming relays of these bytes for these senders,
     around these times (epoch ms), heard on these spreading factors (empty
@@ -283,7 +284,9 @@ def relay_evidence(
         radio_links=radio_links(connection, possible, around=links_around),
         sender_hops=traceroute_hops(connection, one_hop_senders, possible, around=links_around),
         placed=placed,
-        reach=own_reach(connection, possible, from_km=NAME_KM),
+        reach=own_reach(connection, possible, from_km=NAME_KM)
+        if reach is None
+        else {node: reach[node] for node in possible if node in reach},
         radios=radios,
         active_hours=active_hours,
         history_from=connection.execute(

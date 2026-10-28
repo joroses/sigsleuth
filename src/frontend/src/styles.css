@@ -5484,6 +5484,30 @@ div.zones-zone-end .link-end-name {
   max-width: none;
 }
 
+.relay-check-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  margin: var(--space-3) 0;
+}
+
+.relay-check-rates dt {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.relay-check-rates dd {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.relay-check-rates dd .muted {
+  margin-left: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 400;
+}
+
 .relay-check-counts {
   display: flex;
   flex-wrap: wrap;

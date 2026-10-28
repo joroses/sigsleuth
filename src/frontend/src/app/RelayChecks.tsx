@@ -193,10 +193,40 @@ function CheckList({
   const data = state.data;
   const checks = useMemo(() => data?.checks ?? [], [data]);
   const counts = { right: 0, wrong: 0, undecided: 0 };
+  let likeliestRight = 0;
+  let likeliestChecked = 0;
   for (const check of checks) {
-    const outcome = check[answer].outcome;
+    const given = check[answer];
+    const outcome = given.outcome;
     if (outcome !== null) counts[outcome] += 1;
+    const routeId = check.route_relay?.node_id;
+    if (outcome !== null && routeId !== undefined && routeId !== null) {
+      likeliestChecked += 1;
+      if (given.likeliest?.node_id === routeId) likeliestRight += 1;
+    }
   }
+  const named = counts.right + counts.wrong;
+  const total = named + counts.undecided;
+  const rates = [
+    {
+      label: "Accuracy when named",
+      title: "Named relay matches the route",
+      right: counts.right,
+      total: named,
+    },
+    {
+      label: "Named",
+      title: "Copies with a named relay",
+      right: named,
+      total,
+    },
+    {
+      label: "Likeliest correct",
+      title: "Top-scored candidate matches the route",
+      right: likeliestRight,
+      total: likeliestChecked,
+    },
+  ];
   const kept = checks.filter((check) => shows(check[answer].outcome, show));
   const whys = new Map<string, number>();
   for (const check of kept) {
@@ -277,6 +307,21 @@ function CheckList({
         <StatusPanel>Checking the newest {count} traceroutes…</StatusPanel>
       ) : (
         <>
+          <dl className="relay-check-rates" aria-label="Loaded check rates">
+            {rates.map((rate) => (
+              <div key={rate.label}>
+                <dt title={rate.title}>{rate.label}</dt>
+                <dd>
+                  {rate.total === 0
+                    ? "—"
+                    : `${((100 * rate.right) / rate.total).toFixed(1)}%`}{" "}
+                  <span className="muted">
+                    {rate.right} / {rate.total}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
           <p className="relay-check-counts">
             {(["right", "wrong", "undecided"] as const).map((outcome) => (
               <Badge key={outcome} tone={OUTCOME_TONES[outcome]}>
@@ -284,7 +329,7 @@ function CheckList({
               </Badge>
             ))}
             <span className="muted">
-              {checks.length} copies in {data.traceroutes} traceroutes
+              {checks.length} loaded copies in {data.traceroutes} traceroutes
               {data.oldest_at !== null && data.newest_at !== null ? (
                 <>
                   , <ShortTime value={data.oldest_at} /> to{" "}
@@ -319,11 +364,15 @@ function CheckList({
                     <th>Result</th>
                     <th>Why</th>
                     <th>Route says</th>
-                    <th>Named</th>
-                    <th>Likeliest</th>
+                    <th>Relay</th>
                     <th>Sender → gateway</th>
                     <th>Byte · hops</th>
-                    <th className="number">Possible</th>
+                    <th
+                      className="number"
+                      title="Candidates that could have sent this copy"
+                    >
+                      Possible
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -363,6 +412,11 @@ function CheckList({
 
 function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
   const given = check[answer];
+  const relay = given.relay ?? given.likeliest;
+  const differs =
+    given.relay !== null &&
+    given.likeliest !== null &&
+    given.relay.node_id !== given.likeliest.node_id;
   return (
     <tr>
       <td>
@@ -387,24 +441,31 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         ) : null}
       </td>
       <td>
-        {given.relay === null ? (
-          <span className="muted">none</span>
-        ) : (
-          <>
-            {nodeText(given.relay)}
-            {given.how !== null ? (
-              <span className="muted"> · {HOW_LABELS[given.how]}</span>
-            ) : null}
-          </>
-        )}
-      </td>
-      <td>
-        {given.likeliest === null ? (
+        {relay === null ? (
           <span className="muted">—</span>
         ) : (
           <>
-            {nodeText(given.likeliest)}
-            <span className="muted"> {percent(given.probability)}</span>
+            <Badge
+              tone={
+                given.outcome === null
+                  ? "neutral"
+                  : OUTCOME_TONES[given.outcome]
+              }
+              title={
+                given.relay === null ? "Likeliest, not named" : "Named relay"
+              }
+            >
+              {nodeText(relay)}
+            </Badge>
+            {!differs && given.likeliest !== null ? (
+              <span className="muted"> {percent(given.probability)}</span>
+            ) : null}
+            {differs ? (
+              <span className="column-note">
+                Likeliest {nodeText(given.likeliest)}{" "}
+                {percent(given.probability)}
+              </span>
+            ) : null}
           </>
         )}
       </td>
@@ -415,9 +476,7 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         {byteText(check.relay_byte)} ·{" "}
         {hopsText(check.hop_start, check.hop_limit)}
       </td>
-      <td className="number">
-        {check.possible} of {check.candidates}
-      </td>
+      <td className="number">{check.possible}</td>
     </tr>
   );
 }

@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from derived_rows import insert_row, link_hour
 from sigsleuth import coverage
@@ -813,6 +814,143 @@ def test_cohearer_signal_patterns_outweigh_link_counts(
 
     link(connection, NEAR, RECEIVER, observations=1)
     assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
+
+
+@pytest.mark.parametrize("reply", [False, True])
+@pytest.mark.parametrize("appended", [False, True])
+@pytest.mark.parametrize(
+    "routes", ["same", "split", "relay-split", "missing-target", "missing-witness"]
+)
+def test_traceroute_cohearers_share_only_the_receivers_route_version(
+    client: TestClient,
+    connection: sqlite3.Connection,
+    reply: bool,
+    appended: bool,
+    routes: str,
+) -> None:
+    witness = 0x0B0B0B05
+    upstream, other_upstream, target = 0x0C000006, 0x0C000007, 0x0C000008
+    for candidate in (NEAR, LINKED_TO_GATEWAY):
+        node(connection, candidate, PHONE[0] + 0.1)
+    for gateway in (RECEIVER, GATEWAY, witness):
+        node(connection, gateway, PHONE[0])
+        mqtt_report(connection, gateway, hop_limit=1, relay_byte=0x1A)
+    for candidate, gateway, count, snr in (
+        (NEAR, witness, 3, 5.0),
+        (NEAR, GATEWAY, 3, -25.0),
+        (LINKED_TO_GATEWAY, GATEWAY, 300, 5.0),
+    ):
+        link_hour(
+            connection,
+            candidate,
+            gateway,
+            now_ms() - 3_600_000,
+            observations=count,
+            snr=[snr] * count,
+        )
+    connection.execute(
+        "UPDATE packet SET portnum = ?, recipient_node_id = ?, request_id = ?",
+        (portnums_pb2.PortNum.TRACEROUTE_APP, target, 7 if reply else None),
+    )
+    for gateway in (RECEIVER, GATEWAY, witness):
+        if (gateway == RECEIVER and routes == "missing-target") or (
+            gateway == GATEWAY and routes == "missing-witness"
+        ):
+            continue
+        prefix = other_upstream if gateway == GATEWAY and routes == "split" else upstream
+        terminal = LINKED_TO_GATEWAY if gateway == GATEWAY and routes == "relay-split" else NEAR
+        route = [prefix, terminal]
+        if appended or gateway == RECEIVER:
+            route.append(gateway)
+        discovery = mesh_pb2.RouteDiscovery(
+            route=[gateway] if reply else route,
+            snr_towards=[20] * (1 if reply else len(route)),
+            route_back=route if reply else [],
+            snr_back=[20] * len(route) if reply else [],
+        )
+        connection.execute(
+            "UPDATE reception SET route_payload = ? WHERE gateway_node_id = ?",
+            (discovery.SerializeToString(), gateway),
+        )
+
+    conflicting = routes in ("split", "relay-split")
+    filtered = conflicting or routes == "missing-witness"
+    expected = NEAR if filtered else LINKED_TO_GATEWAY
+    assert packet_relays(client, connection)[RECEIVER] == (expected, "gateway_link")
+    # A phone has no route prefix to distinguish the two branches.
+    assert heard(client, connection)[:2] == (LINKED_TO_GATEWAY, "gateway_link")
+    reception_id = connection.execute(
+        "SELECT id FROM reception WHERE gateway_node_id = ?", (RECEIVER,)
+    ).fetchone()[0]
+    url = f"/api/v1/diagnostics/relay-checks/{reception_id}"
+    survey = client.get(url).json()
+    assert survey["check"]["survey"]["relay"]["node_id"] == LINKED_TO_GATEWAY
+    assert survey["check"]["mixed"] == conflicting
+    page = client.get(url, params={"receiver": "gateway"}).json()
+    assert page["check"]["page"]["relay"]["node_id"] == expected
+    report = next(r for r in page["reports"] if r["gateway"]["node_id"] == GATEWAY)
+    assert report["signal"] == (not filtered)
+    assert report["route_conflict"] == conflicting
+    if appended or routes == "missing-witness":
+        assert report["route_hint"] is None
+    else:
+        terminal = LINKED_TO_GATEWAY if routes == "relay-split" else NEAR
+        assert report["route_hint"]["node_id"] == terminal
+        assert report["route_relay"] is None
+    checks = client.get("/api/v1/diagnostics/relay-checks?count=25").json()["checks"]
+    check = next((c for c in checks if c["reception_id"] == reception_id), None)
+    if routes == "missing-target":
+        assert check is None
+    else:
+        assert check is not None and check["mixed"] == conflicting
+
+
+def test_terminal_route_hints_stay_unlabelled_and_hide_opted_out_nodes(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    node(connection, NEAR, PHONE[0] + 0.1)
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    route = mesh_pb2.RouteDiscovery(route=[NEAR], snr_towards=[20])
+    connection.execute("UPDATE reception SET route_payload = ?", (route.SerializeToString(),))
+    reception_id = connection.execute("SELECT id FROM reception").fetchone()[0]
+    url = f"/api/v1/diagnostics/relay-checks/{reception_id}"
+    detail = client.get(url).json()
+    assert detail["reports"][0]["route_hint"]["node_id"] == NEAR
+    assert detail["reports"][0]["route_relay"] is None
+    assert detail["check"]["page"]["outcome"] is None
+    assert detail["check"]["survey"]["outcome"] is None
+
+    connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (NEAR,))
+    assert client.get(url).json()["reports"][0]["route_hint"] is None
+
+
+@pytest.mark.parametrize("other", ["earlier", "other-byte", "own-upload", "sender"])
+def test_unrelated_reports_do_not_make_traceroute_routes_mixed(
+    client: TestClient, connection: sqlite3.Connection, other: str
+) -> None:
+    gateway = {"own-upload": 0x0B0B0B1A, "sender": SENDER}.get(other, GATEWAY)
+    node(connection, NEAR, PHONE[0] + 0.1)
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x1A)
+    mqtt_report(
+        connection,
+        gateway,
+        hop_limit=2 if other == "earlier" else 1,
+        relay_byte=0x2B if other == "other-byte" else 0x1A,
+    )
+    for heard_by, route in ((RECEIVER, [NEAR, RECEIVER]), (gateway, [LINKED_TO_GATEWAY])):
+        payload = mesh_pb2.RouteDiscovery(route=route, snr_towards=[20] * len(route))
+        connection.execute(
+            "UPDATE reception SET route_payload = ? WHERE gateway_node_id = ?",
+            (payload.SerializeToString(), heard_by),
+        )
+    reception_id = connection.execute(
+        "SELECT id FROM reception WHERE gateway_node_id = ?", (RECEIVER,)
+    ).fetchone()[0]
+    detail = client.get(f"/api/v1/diagnostics/relay-checks/{reception_id}").json()
+    assert not detail["check"]["mixed"]
+    assert not any(report["route_conflict"] for report in detail["reports"])
 
 
 @pytest.mark.parametrize(

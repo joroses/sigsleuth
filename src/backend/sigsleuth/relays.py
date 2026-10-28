@@ -17,7 +17,7 @@ import sqlite3
 from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from sigsleuth.db import NodeSummary, nodes_by_id
@@ -167,6 +167,8 @@ class Relayed:
     relay_byte: int
     reports: Sequence[Report]
     rssi: float | None = None
+    # Traceroute prefixes before each gateway appended itself.
+    route_prefixes: Mapping[int, tuple[int | None, ...]] = field(default_factory=dict)
 
     @property
     def one_hop(self) -> bool:
@@ -177,15 +179,26 @@ class Relayed:
         )
 
     def other_reports(self) -> list[Report]:
-        """The reports from gateways other than the sender and the receiver;
-        none when the copy's hops left are unknown, as no rule can read them."""
+        """Other gateways' reports, excluding incompatible co-hearers when
+        the receiver's traceroute is known."""
         if self.hop_limit is None:
             return []
-        return [report for report in self.reports if report[0] not in (self.sender, self.receiver)]
+        # Equal headers can belong to different same-byte transmitters.
+        route = self.route_prefixes.get(self.receiver)
+        return [
+            report
+            for report in self.reports
+            if report[0] not in (self.sender, self.receiver)
+            and (
+                route is None
+                or (report[1], report[2]) != (self.hop_limit, self.relay_byte)
+                or self.route_prefixes.get(report[0]) == route
+            )
+        ]
 
     def cohearers(self) -> list[int]:
-        """The gateways that heard the same rebroadcast: same relay byte and
-        hops left."""
+        """Gateways with matching relay byte and hops left, excluding conflicting
+        traceroute versions when the receiver has a route."""
         return [
             gateway
             for gateway, hop_limit, relay_byte, _ in self.other_reports()

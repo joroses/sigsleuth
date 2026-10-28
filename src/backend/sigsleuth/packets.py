@@ -565,6 +565,15 @@ class PacketRelays:
     namings: Mapping[int, ReceptionNaming]
 
 
+def reception_route_prefix(reception: PacketReception) -> tuple[int | None, ...] | None:
+    """The upstream traceroute without the reporting gateway's appended tail."""
+    if reception.paths is None:
+        return None
+    path = reception.paths.return_path or reception.paths.forward
+    route = path.nodes[1:-1]
+    return route[:-1] if route and route[-1] == reception.gateway_node_id else route
+
+
 def relay_namings(
     connection: sqlite3.Connection,
     receptions: list[PacketReception],
@@ -626,6 +635,10 @@ def relay_namings(
         (reception.gateway_node_id, reception.hop_limit, reception.relay_byte, reception.rx_snr)
         for reception in receptions
     ]
+    route_prefixes = {}
+    for reception in receptions:
+        if (route := reception_route_prefix(reception)) is not None:
+            route_prefixes[reception.gateway_node_id] = route
     namings = {}
     for reception in relayed:
         gateway = reception.gateway_node_id
@@ -643,6 +656,7 @@ def relay_namings(
             relay_byte=int(reception.relay_byte or 0),
             reports=reports,
             rssi=reception.rx_rssi,
+            route_prefixes=route_prefixes,
         )
         namings[reception.reception_id] = name_copy(evidence, copy, direct, signals)
     return PacketRelays(evidence, signals, namings)

@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sigsleuth.packets import PacketReception
-from sigsleuth.relay_checks import route_relay
+from sigsleuth.relay_checks import route_hint, route_relay
 from sigsleuth.traceroute import ReportPaths, RoutePath
 
 REQUESTER, RELAY_A, RELAY_B, GATEWAY, TARGET = (
@@ -40,10 +40,30 @@ def reception(
 def test_a_route_names_the_node_before_its_gateway() -> None:
     request = RoutePath((REQUESTER, RELAY_A, RELAY_B, GATEWAY, TARGET), (4.0, -2.5, 6.75))
     assert route_relay(reception(request)) == (RELAY_B, 6.75)
+    assert route_hint(reception(request)) is None
     # A reply's copy carried the return route; the gateway relayed the request.
     forward = RoutePath((REQUESTER, GATEWAY, RELAY_B, TARGET), (1.0, 2.0, 3.0))
     back = RoutePath((TARGET, RELAY_A, GATEWAY, REQUESTER), (5.0, -1.0))
     assert route_relay(reception(forward, back, relay_byte=0xAA)) == (RELAY_A, -1.0)
+    assert route_hint(reception(forward, back, relay_byte=0xAA)) is None
+
+
+@pytest.mark.parametrize(
+    ("nodes", "hint"),
+    [
+        ((REQUESTER, RELAY_A, RELAY_B, TARGET), RELAY_B),
+        ((REQUESTER, RELAY_A, TARGET), None),
+        ((REQUESTER, RELAY_B, None, TARGET), None),
+        ((REQUESTER, TARGET), None),
+        ((REQUESTER, RELAY_B, GATEWAY, TARGET), None),
+    ],
+)
+def test_only_a_matching_terminal_node_hints_at_a_non_appending_gateway(
+    nodes: tuple[int | None, ...], hint: int | None
+) -> None:
+    path = RoutePath(nodes, ())
+    assert route_hint(reception(path)) == hint
+    assert route_hint(reception(RoutePath((REQUESTER, RELAY_A, TARGET), ()), path)) == hint
 
 
 @pytest.mark.parametrize(

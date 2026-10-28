@@ -488,7 +488,7 @@ function RouteBadge() {
 
 function MixedBadge() {
   return (
-    <Badge tone="amber" title="Another co-hearer's route names another relay">
+    <Badge tone="amber" title="Reports carry different traceroute paths">
       mixed
     </Badge>
   );
@@ -668,10 +668,9 @@ function CheckScores({
         </dl>
         {check.mixed ? (
           <p className="relay-check-warning">
-            <MixedBadge /> Another gateway heard a copy with the same byte and
-            hops left, but its route names another relay: two nodes sending this
-            byte rebroadcast it, so the co-hearers&apos; signals and links mix
-            two copies.
+            <MixedBadge /> Gateways report different paths for copies with the
+            same relay byte and hops left. Their signals may describe different
+            rebroadcasts.
           </p>
         ) : null}
       </section>
@@ -1386,7 +1385,6 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
     other: "other",
     sender: "sender's own upload",
   };
-  const relay = detail.check.route_relay?.node_id ?? null;
   const reports = [...detail.reports].sort(
     (a, b) =>
       KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
@@ -1408,11 +1406,6 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
         </thead>
         <tbody>
           {reports.map((report) => {
-            const differs =
-              report.kind === "cohearer" &&
-              report.route_relay !== null &&
-              relay !== null &&
-              report.route_relay.node_id !== relay;
             return (
               <tr
                 key={report.reception_id}
@@ -1430,6 +1423,9 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
                   {KIND_LABELS[report.kind]}
                   {report.signal ? (
                     <span className="muted"> · signal term</span>
+                  ) : null}
+                  {report.route_conflict ? (
+                    <span className="muted"> · different route</span>
                   ) : null}
                   {detail.receiver_mode === "survey" &&
                   report.gateway.node_id === detail.check.gateway.node_id ? (
@@ -1451,8 +1447,17 @@ function ReportTable({ detail }: { detail: RelayCheckDetail }) {
                 <td className="number">
                   {report.rssi_dbm === null ? "—" : `${report.rssi_dbm} dBm`}
                 </td>
-                <td className={differs ? "rule-hit" : undefined}>
-                  <NodeRef node={report.route_relay} />
+                <td className={report.route_conflict ? "rule-hit" : undefined}>
+                  {report.route_relay !== null ? (
+                    <NodeRef node={report.route_relay} />
+                  ) : report.route_hint !== null ? (
+                    <>
+                      <span className="muted">possibly </span>
+                      <NodeRef node={report.route_hint} />
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </td>
               </tr>
             );

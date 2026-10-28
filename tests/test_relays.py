@@ -90,6 +90,23 @@ def test_evidence_names_a_candidate_and_words_the_name() -> None:
     assert scores.named() == (linked, "gateway_link")
 
 
+def test_route_filtering_keeps_reports_from_an_earlier_hop() -> None:
+    earlier, rival = 0x0101_003D, 0x0202_003D
+    received = replace(
+        copy(),
+        reports=[(earlier, 4, 0x3D, 5.0), (COHEARER, 3, 0x3D, -5.0)],
+        route_prefixes={RECEIVER: (earlier,), earlier: (), COHEARER: (rival,)},
+    )
+    found = evidence(
+        {earlier: node(earlier, 2), rival: node(rival, 2)}, links={COHEARER: {rival: 100}}
+    )
+    assert score_relays(found, replace(received, route_prefixes={}), {}).named() == (
+        rival,
+        "gateway_link",
+    )
+    assert score_relays(found, received, {}).named() == (earlier, "reported")
+
+
 def test_an_estimated_node_on_the_receiver_gains_nothing_from_its_distance() -> None:
     estimated, placed = 0x0101_003D, 0x0202_003D
     scores = score_relays(

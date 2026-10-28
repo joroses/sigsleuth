@@ -33,6 +33,7 @@ from sigsleuth.packets import (
     RelayedPacket,
     RelayNodeHow,
     name_copy,
+    reception_route_prefix,
     relay_namings,
     relayed_packet,
 )
@@ -99,9 +100,8 @@ class RelayCheck:
     a receiver at the gateway with no links of its own names, as for a
     survey measurement. candidates counts the nodes sending the byte,
     possible those that may have sent the copy. route_relay_possible is
-    None when the route's relay is no candidate. mixed: another gateway
-    heard the same rebroadcast (same byte and hops left), but its route
-    names another relay."""
+    None when the route's relay is no candidate. mixed: reports with the
+    same byte and hops left carry different upstream route prefixes."""
 
     packet_row_id: int
     reception_id: int
@@ -224,6 +224,20 @@ def route_relay(reception: PacketReception) -> tuple[int, float | None] | None:
     return None if snr == MQTT_HOP_SNR_DB else (relay, snr)
 
 
+def route_hint(reception: PacketReception) -> int | None:
+    """A matching-byte terminal node when the gateway is absent from the route."""
+    if reception.paths is None or reception.relay_byte is None:
+        return None
+    path = reception.paths.return_path or reception.paths.forward
+    if reception.gateway_node_id in path.nodes:
+        return None
+    prefix = reception_route_prefix(reception)
+    terminal = prefix[-1] if prefix else None
+    if terminal is None or terminal == UNKNOWN_NODE:
+        return None
+    return terminal if relay_byte_of(terminal) == reception.relay_byte else None
+
+
 def _checks(
     found: RelayedPacket, hidden: set[int], instead: Mapping[int, ReceptionNaming] | None = None
 ) -> dict[int, RelayCheck]:
@@ -279,11 +293,18 @@ def _checks(
         for reception_id in namings
         if (truth := route_relay(by_id[reception_id])) is not None
     }
-    groups: dict[tuple[int | None, int | None], set[int]] = defaultdict(set)
-    for reception_id, (relay, _) in truths.items():
-        reception = by_id[reception_id]
-        groups[reception.relay_byte, reception.hop_limit].add(relay)
     sender = found.packet.sender_node_id
+    groups: dict[tuple[int | None, int | None], set[tuple[int | None, ...]]] = defaultdict(set)
+    for reception in found.receptions:
+        if (
+            reception.gateway_node_id == sender
+            or not reception.relay_byte
+            or relay_byte_of(reception.gateway_node_id) == reception.relay_byte
+            or reception.hop_limit is None
+        ):
+            continue
+        if (prefix := reception_route_prefix(reception)) is not None:
+            groups[reception.relay_byte, reception.hop_limit].add(prefix)
     names = {r.gateway_node_id: r.gateway_name for r in found.receptions}
     checks = {}
     for reception_id, original in namings.items():
@@ -381,11 +402,10 @@ class RelayCandidate:
 
 @dataclass(frozen=True)
 class RelayCheckReport:
-    """One gateway's report of the packet. Kinds: receiver (the reception
-    checked), sender (its own upload), cohearer (same relay byte and hops
-    left), earlier (one more hop left), other. signal: the signal term reads
-    it (a co-hearer that does not send the byte, with an SNR). route_relay
-    is the relay its own route names."""
+    """A gateway's report and its role in the checked naming. Co-hearers have
+    compatible routes when known; earlier reports have one more hop left.
+    route_relay names an explicit gateway step; route_hint is only a
+    matching-byte terminal node. route_conflict compares upstream prefixes."""
 
     reception_id: int
     gateway: RelayCheckNode
@@ -400,6 +420,8 @@ class RelayCheckReport:
     sends_byte: bool
     signal: bool
     route_relay: RelayCheckNode | None
+    route_hint: RelayCheckNode | None
+    route_conflict: bool
 
 
 @dataclass(frozen=True)
@@ -530,7 +552,7 @@ def relay_check(
         shortcut_skipped=naming.shortcut_skipped,
         **places,
         **_route(found, reception, hidden),
-        **_explained(found, naming, checks, hidden),
+        **_explained(found, naming, reception, checks, hidden),
         activity_from=None
         if found.relays.evidence.history_from is None
         else from_epoch_ms(found.relays.evidence.history_from),
@@ -625,6 +647,7 @@ def _route(found: RelayedPacket, reception: PacketReception, hidden: set[int]) -
 def _explained(
     found: RelayedPacket,
     naming: ReceptionNaming,
+    target: PacketReception,
     checks: dict[int, RelayCheck],
     hidden: set[int],
 ) -> dict[str, Any]:
@@ -696,6 +719,7 @@ def _explained(
         )
 
     cohearers = set(copy.cohearers())
+    target_prefix = reception_route_prefix(target)
     reports = []
     for reception in found.receptions:
         gateway = reception.gateway_node_id
@@ -718,6 +742,9 @@ def _explained(
             kind = "earlier"
         sends_byte = relay_byte_of(gateway) == copy.relay_byte
         its_check = checks.get(reception.reception_id)
+        hint = route_hint(reception)
+        hint_place = evidence.placed.get(hint) if hint is not None else None
+        prefix = reception_route_prefix(reception)
         reports.append(
             RelayCheckReport(
                 reception_id=reception.reception_id,
@@ -733,6 +760,20 @@ def _explained(
                 sends_byte=sends_byte,
                 signal=kind == "cohearer" and not sends_byte and reception.rx_snr is not None,
                 route_relay=None if its_check is None else its_check.route_relay,
+                route_hint=None
+                if hint is None or hint in hidden
+                else RelayCheckNode(
+                    hint,
+                    None if hint_place is None else hint_place.long_name or hint_place.short_name,
+                ),
+                route_conflict=target.hop_limit is not None
+                and reception.hop_limit == target.hop_limit
+                and reception.relay_byte == target.relay_byte
+                and gateway != copy.sender
+                and not sends_byte
+                and target_prefix is not None
+                and prefix is not None
+                and prefix != target_prefix,
             )
         )
 

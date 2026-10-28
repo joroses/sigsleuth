@@ -2154,9 +2154,8 @@ export interface components {
      *     a receiver at the gateway with no links of its own names, as for a
      *     survey measurement. candidates counts the nodes sending the byte,
      *     possible those that may have sent the copy. route_relay_possible is
-     *     None when the route's relay is no candidate. mixed: another gateway
-     *     heard the same rebroadcast (same byte and hops left), but its route
-     *     names another relay.
+     *     None when the route's relay is no candidate. mixed: reports with the
+     *     same byte and hops left carry different upstream route prefixes.
      */
     RelayCheck: {
       packet_row_id: number;
@@ -2236,11 +2235,10 @@ export interface components {
     };
     /**
      * RelayCheckReport
-     * @description One gateway's report of the packet. Kinds: receiver (the reception
-     *     checked), sender (its own upload), cohearer (same relay byte and hops
-     *     left), earlier (one more hop left), other. signal: the signal term reads
-     *     it (a co-hearer that does not send the byte, with an SNR). route_relay
-     *     is the relay its own route names.
+     * @description A gateway's report and its role in the checked naming. Co-hearers have
+     *     compatible routes when known; earlier reports have one more hop left.
+     *     route_relay names an explicit gateway step; route_hint is only a
+     *     matching-byte terminal node. route_conflict compares upstream prefixes.
      */
     RelayCheckReport: {
       reception_id: number;
@@ -2257,6 +2255,8 @@ export interface components {
       sends_byte: boolean;
       signal: boolean;
       route_relay: components["schemas"]["RelayCheckNode"] | null;
+      route_hint: components["schemas"]["RelayCheckNode"] | null;
+      route_conflict: boolean;
     };
     /**
      * RelayLinks

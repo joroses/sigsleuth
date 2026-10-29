@@ -194,6 +194,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/nodes/{node}"
     yield f"/api/v1/nodes/{node}/packets?limit=50"
     yield f"/api/v1/nodes/{node}/packets?limit=50&port={text}"
+    # A shared node number's radio filter (the sample has none:
+    # tests/test_shared_numbers.py).
+    yield f"/api/v1/nodes/{node}/packets?limit=50&radio=1"
+    yield f"/api/v1/nodes/{node}/packets?limit=50&radio=unsorted"
     yield f"/api/v1/nodes/{node}/charts?since={week}"
     yield f"/api/v1/nodes/{node}/positions"
     yield f"/api/v1/nodes/{node}/contacts?since={week}"

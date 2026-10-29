@@ -40,6 +40,7 @@ function row(
     link_kind: kind,
     distance_km: null,
     doubts: [],
+    radio_names: [],
   };
 }
 

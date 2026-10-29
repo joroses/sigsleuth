@@ -43,6 +43,7 @@ from sigsleuth.links import (
 from sigsleuth.opt_out import opted_out, opted_out_sql, shown_sql
 from sigsleuth.radio import spreading_factor
 from sigsleuth.reported import HeardPosition, positions_when_heard
+from sigsleuth.shared_numbers import shared_nodes
 from sigsleuth.traceroute import (
     Hop,
     RoutePath,
@@ -213,7 +214,8 @@ class TracerouteRun:
     would be. positions are where the
     route's nodes and ends were when the shown route's packet was heard
     (reported.positions_when_heard); a node missing there is drawn where the
-    page's nodes place it now, estimates included."""
+    page's nodes place it now, estimates included. A shared node number is
+    placed in neither."""
 
     requester_node_id: int
     target_node_id: int
@@ -233,12 +235,14 @@ class TracerouteRun:
 @dataclass(frozen=True)
 class TracerouteRuns:
     """matched_node_ids are the page's nodes that match the node searches;
-    doubtful_node_ids those with a doubtful position (links.doubtful_nodes)."""
+    doubtful_node_ids those with a doubtful position (links.doubtful_nodes)
+    and shared_node_ids those that are a shared node number."""
 
     items: tuple[TracerouteRun, ...]
     nodes: tuple[NodeSummary, ...]
     matched_node_ids: tuple[int, ...]
     doubtful_node_ids: tuple[int, ...]
+    shared_node_ids: tuple[int, ...]
     has_more: bool
 
 
@@ -272,7 +276,7 @@ def traceroute_runs(
     routes; the distance sort always does, since an unconfirmed run's ends
     need not have heard each other. Each sort puts apart the runs with a
     badge on the km it sorts by. A shown route has one with a hop at a
-    doubtful position (links.doubtful_nodes), while the route has a km, or
+    doubtful position or a shared node number, while the route has a km, or
     between a pair the terrain check finds unlikely (links.unlikely_links).
     The distance sort puts those runs, and the runs whose distance is
     doubted (TracerouteRun), just before the runs without a distance. The
@@ -333,6 +337,7 @@ def traceroute_runs(
             (packet["requester_node_id"], packet["request_packet_id"]), []
         ).append(packet)
     doubtful = doubtful_nodes(connection)
+    shared = shared_nodes(connection)
     unlikely = unlikely_links(connection)
     routes = []
     for row in shown:
@@ -348,7 +353,12 @@ def traceroute_runs(
         routes.append((packets, replace(route, unlikely=over)))
     routes = _with_hop_costs(connection, routes, since)
     node_ids = {node_id for packets, route in routes for node_id in _run_nodes(packets, route)}
-    nodes = nodes_by_id(connection, node_ids)
+    nodes = {
+        node_id: replace(node, latitude=None, longitude=None, estimated=False)
+        if node_id in shared
+        else node
+        for node_id, node in nodes_by_id(connection, node_ids).items()
+    }
     # Each route's packet is one of its run's.
     heard_at = {
         int(packet["packet_row_id"]): int(packet["first_received_at"])
@@ -360,7 +370,7 @@ def traceroute_runs(
         {
             (node_id, heard_at[route.packet_row_id])
             for packets, route in routes
-            for node_id in _run_nodes(packets, route)
+            for node_id in _run_nodes(packets, route) - shared
         },
     )
     return TracerouteRuns(
@@ -368,7 +378,7 @@ def traceroute_runs(
             _run(
                 packets,
                 route,
-                _doubts(packets, doubtful, unlikely),
+                _doubts(packets, doubtful, shared, unlikely),
                 default_preset,
                 tuple(
                     heard[node_id, heard_at[route.packet_row_id]]
@@ -381,15 +391,18 @@ def traceroute_runs(
         nodes=tuple(nodes.values()),
         matched_node_ids=tuple(sorted(node_ids & (first or set()) | node_ids & (second or set()))),
         doubtful_node_ids=tuple(sorted(node_ids & doubtful)),
+        shared_node_ids=tuple(sorted(node_ids & shared)),
         has_more=has_more,
     )
 
 
 _IN_FIRST = "IN (SELECT value FROM json_each(:first))"
 _IN_SECOND = "IN (SELECT value FROM json_each(:second))"
-_IN_DOUBTFUL = "IN (SELECT node_id FROM node_doubtful)"
-# The nodes a hop needs for a badge: doubtful, or an end of an unlikely pair.
+_IN_DOUBTFUL = "IN (SELECT node_id FROM node_doubtful UNION ALL SELECT node_id FROM node_shared)"
+# The nodes a hop needs for a badge: doubtful or shared, or an end of an
+# unlikely pair.
 _SUSPECTS = """(SELECT node_id FROM node_doubtful
+    UNION ALL SELECT node_id FROM node_shared
     UNION ALL SELECT node_a FROM long_link WHERE unlikely
     UNION ALL SELECT node_b FROM long_link WHERE unlikely)"""
 _UNLIKELY_PAIR = """EXISTS (SELECT 1 FROM long_link
@@ -605,7 +618,10 @@ def _ends_km(packets: list[sqlite3.Row]) -> float | None:
 
 
 def _doubts(
-    packets: list[sqlite3.Row], doubtful: set[int], unlikely: set[tuple[int, int]]
+    packets: list[sqlite3.Row],
+    doubtful: set[int],
+    shared: set[int],
+    unlikely: set[tuple[int, int]],
 ) -> tuple[Doubt, ...]:
     """Why the run's distance is doubted (TracerouteRun)."""
     heard = _ends_heard(packets)
@@ -617,6 +633,7 @@ def _doubts(
         heard["ends_km"],
         (a, b) in unlikely,
         bool(heard["ends_confirmed"]),
+        shared=a in shared or b in shared,
     )
 
 

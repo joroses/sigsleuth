@@ -9,7 +9,8 @@ Two views of where a link's nodes are, each decided here once:
 - The map and Zones draw nodes where they are now (reported, else
   estimated). They count only the hours that still match where the nodes
   are (trusted_sql, TRUSTED_HOUR): heard after both ends last moved, neither
-  end doubtful, and no suspect signal distance. Estimates and own reach read
+  end doubtful or a shared node number (shared_numbers.py), and no suspect
+  signal distance. Estimates and own reach read
   the same hours. Then
   map_misfit leaves out links that do not fit where the nodes are drawn
   (Misfit), more often MQTT bridges or stale positions than radio; Zones adds
@@ -17,8 +18,8 @@ Two views of where a link's nodes are, each decided here once:
 - The Links page, a node's links, the Traceroute explorer and packet pages
   keep every link and show only the km saved when it was heard, never one
   from current positions, which would mix two moments. link_doubts says why
-  such a distance is doubted (Doubt): a suspect signal distance, a doubtful end,
-  unlikely by terrain,
+  such a distance is doubted (Doubt): a suspect signal distance, a shared or
+  doubtful end, unlikely by terrain,
   or pending until both ends have reported a position since it was heard,
   without moving (confirmed_sql). Pages badge those and rank them apart from
   measured links; links with no distance come last.
@@ -42,6 +43,7 @@ from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.opt_out import is_opted_out, opted_out, shown_sql
 from sigsleuth.radio import distance_km, spreading_factor
+from sigsleuth.shared_numbers import link_radios, shared_nodes
 
 MAX_LINK_ROWS = 20_000
 
@@ -82,19 +84,23 @@ CONFIRMED_HOUR = (
     f" AND {confirmed_sql('link_hour.to_node_id', 'link_hour.last_seen_at')}"
 )
 
+# Nodes no hour of counts: doubtful, or a shared node number, whose packets
+# come from several places.
+_UNTRUSTED = "SELECT node_id FROM node_doubtful UNION ALL SELECT node_id FROM node_shared"
 # Nodes whose hours since :since may not count: moved since then, or
-# doubtful. Few, so finding them once and looking up only those is as fast
+# untrusted. Few, so finding them once and looking up only those is as fast
 # as reading no table; a node_current lookup on every hour took 30-40%
 # longer (perf.db, 2026-10-20).
-_LIMITED = """(SELECT node_id FROM node_current WHERE moved_at >= :since
-               UNION ALL SELECT node_id FROM node_doubtful)"""
+_LIMITED = f"""(SELECT node_id FROM node_current WHERE moved_at >= :since
+               UNION ALL {_UNTRUSTED})"""
 
 
 def trusted_sql(node: str, at: str) -> str:
-    """SQL: the node was where pages draw it at `at`: not doubtful, and at
-    or after its last move. Callers bind :since, at or before every `at`."""
+    """SQL: the node was where pages draw it at `at`: not doubtful or
+    shared, and at or after its last move. Callers bind :since, at or before
+    every `at`."""
     return f"""({node} NOT IN {_LIMITED}
-        OR ({node} NOT IN (SELECT node_id FROM node_doubtful)
+        OR ({node} NOT IN ({_UNTRUSTED})
             AND {at} >= (SELECT moved_at FROM node_current WHERE node_id = {node})))"""
 
 
@@ -270,8 +276,9 @@ def _fits_now(
 # over MOVED_KM nearer or farther than when heard.
 Misfit = Literal["terrain", "unmeasured", "estimated_far", "too_far", "drifted"]
 # Why link pages badge a distance when heard and rank it apart (link_doubts):
-# a suspect signal distance, a doubtful end, unlikely terrain, or pending.
-Doubt = Literal["doubtful", "terrain", "pending", "signal"]
+# a suspect signal distance, an end that is a shared node number, a doubtful
+# end, unlikely terrain, or pending.
+Doubt = Literal["shared", "doubtful", "terrain", "pending", "signal"]
 
 
 def _unlikely_far(heard_km: float | None, unlikely: bool) -> bool:
@@ -317,6 +324,7 @@ def link_doubts(
     unlikely: bool,
     confirmed: bool,
     suspect_distance: bool = False,
+    shared: bool = False,
 ) -> tuple[Doubt, ...]:
     """Why a measured distance ranks apart; unmeasured links rank last."""
     if heard_km is None:
@@ -324,6 +332,8 @@ def link_doubts(
     doubts: list[Doubt] = []
     if suspect_distance:
         doubts.append("signal")
+    if shared:
+        doubts.append("shared")
     if doubtful:
         doubts.append("doubtful")
     if _unlikely_far(heard_km, unlikely):
@@ -545,22 +555,27 @@ class LinkRow(MapLink):
     positions when the link was last heard in the window (last_seen_at),
     None when either had none then, and why that distance is doubted
     (link_doubts): by distance a doubted link ranks apart. It is confirmed
-    when any hour PENDING_KM or more in the window is."""
+    when any hour PENDING_KM or more in the window is. On a shared node
+    number's own table, radio_names are the radios sorted packets show on
+    the link (shared_numbers.link_radios), none when none do."""
 
     link_kind: LinkKind
     distance_km: float | None
     doubts: tuple[Doubt, ...]
+    radio_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class LinkTable:
     """doubtful_node_ids are the table's nodes with a doubtful position
-    (doubtful_nodes), the suspects of a link doubted for one. A node's table
+    (doubtful_nodes) and shared_node_ids its shared node numbers
+    (shared_numbers.shared_nodes), the suspects of a link doubted for one. A node's table
     has its zero_cost_hops either way, those free at least as often as not."""
 
     items: tuple[LinkRow, ...]
     nodes: tuple[NodeSummary, ...]
     doubtful_node_ids: tuple[int, ...]
+    shared_node_ids: tuple[int, ...]
     # Some link kind had more than MAX_LINK_ROWS links.
     truncated: bool
     zero_cost_hops: tuple[ZeroCostHop, ...]
@@ -579,6 +594,8 @@ def link_table(
     nodes have a doubtful position."""
     unlikely = unlikely_links(connection)
     doubtful = doubtful_nodes(connection)
+    shared = shared_nodes(connection)
+    radios = link_radios(connection, node, since) if node is not None and node in shared else {}
     items: list[LinkRow] = []
     truncated = False
     for link_kind in link_kinds:
@@ -600,6 +617,15 @@ def link_table(
                         (link.node_a, link.node_b) in unlikely,
                         bool(row["confirmed_hours"]),
                         bool(row["suspect_distance"]),
+                        link.node_a in shared or link.node_b in shared,
+                    ),
+                    radio_names=radios.get(
+                        (
+                            link_kind,
+                            link.node_b if link.node_a == node else link.node_a,
+                            link.channel,
+                        ),
+                        (),
                     ),
                 )
             )
@@ -608,6 +634,7 @@ def link_table(
         tuple(items),
         tuple(nodes.values()),
         tuple(sorted(doubtful & set(nodes))),
+        tuple(sorted(shared & set(nodes))),
         truncated,
         () if node is None else zero_cost_hops(connection, node, since),
     )

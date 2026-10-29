@@ -44,6 +44,7 @@ from sigsleuth.db import migrate_database, open_current_database, open_database,
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
 from sigsleuth.positions import refresh_estimates
 from sigsleuth.retention import apply_retention
+from sigsleuth.shared_numbers import refresh_shared_numbers
 from snapshot_file import check_snapshot
 
 PLANS_FILE = Path(__file__).with_name("query_plans.txt")
@@ -191,6 +192,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
     with closing(statements.watch(open_current_database(path))) as connection:
         # Far enough ahead that everything is old and every delete runs.
         apply_retention(connection, retention_days=14, now=now + timedelta(days=60))
+        refresh_shared_numbers(connection)
         refresh_estimates(connection)
 
     with closing(open_database(path)) as connection:

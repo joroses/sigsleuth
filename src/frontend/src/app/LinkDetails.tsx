@@ -159,7 +159,8 @@ export function LinkDetails({
 
 /**
  * Where A and B were when the link was last heard, by their own positions;
- * a node with none up to then is drawn where the page places it now.
+ * a node with none up to then is drawn where the page places it now. A
+ * shared node number is not drawn: its radios are in several places.
  */
 function PairMap({
   link,
@@ -179,6 +180,10 @@ function PairMap({
   }
   const notes: string[] = [];
   const place = (nodeId: number): LatLon | null => {
+    if (heard.data?.unplaced_node_ids.includes(nodeId)) {
+      notes.push(`${name(nodeId)} is a shared node number.`);
+      return null;
+    }
     const then = heard.data?.items.find((item) => item.node_id === nodeId);
     if (then !== undefined) return then;
     const now = nodes.get(nodeId);

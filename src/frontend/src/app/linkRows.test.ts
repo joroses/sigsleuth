@@ -25,6 +25,7 @@ function link(nodeB: number, seen: number, km: number | null): LinkRow {
     link_kind: "direct",
     distance_km: km,
     doubts: [],
+    radio_names: [],
   };
 }
 

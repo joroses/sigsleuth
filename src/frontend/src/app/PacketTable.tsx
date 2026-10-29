@@ -2,6 +2,7 @@ import { CSSProperties, MouseEvent } from "react";
 
 import { PacketPage, PacketPort, PacketRow } from "./api";
 import { portGroup } from "./nodeActivity";
+import { SenderRadioLine } from "./radios";
 import { PagedApiState, usePagedApi } from "./useApi";
 import { ErrorPanel, NodeLink, StatusPanel, ShortTime } from "./ui";
 
@@ -160,6 +161,7 @@ function PacketTableRow({ packet }: { packet: PacketRow }) {
       </th>
       <td>
         <NodeLink nodeId={packet.sender_node_id} name={packet.sender_name} />
+        <SenderRadioLine radio={packet.sender_radio} />
       </td>
       <td>
         <NodeLink

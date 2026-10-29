@@ -50,6 +50,7 @@ export function NodeLinks({
   const [kind, setKind] = useViewState<LinkKind | "">("node.links.kind", "");
   const showActions = kind === "" || kind === "traceroute";
   const showRssi = kind === "direct";
+  const shared = (data?.shared_node_ids ?? []).includes(nodeId);
   // Most heard first: by distance, links with no position would come last.
   const [sort, setSort] = useSetting<LinkSort>(
     "node.links.sort",
@@ -169,6 +170,11 @@ export function NodeLinks({
                   <th scope="col" className="link-node">
                     ID
                   </th>
+                  {shared ? (
+                    <th scope="col" title="Radios whose packets show this link">
+                      Radio
+                    </th>
+                  ) : null}
                   <th scope="col">Link kind</th>
                   {showActions ? (
                     <th scope="col" className="link-actions-cell">
@@ -226,6 +232,15 @@ export function NodeLinks({
                         <td className="link-node mono muted">
                           {formatNodeId(link.node_b)}
                         </td>
+                        {shared ? (
+                          <td>
+                            {link.radio_names.length === 0 ? (
+                              <span className="muted">Unsorted</span>
+                            ) : (
+                              link.radio_names.join(", ")
+                            )}
+                          </td>
+                        ) : null}
                         <td>
                           {LINK_KIND_LABELS[link.link_kind]}
                           {free === undefined ? null : (
@@ -247,7 +262,13 @@ export function NodeLinks({
                       </tr>
                       {expanded ? (
                         <tr className="links-expanded">
-                          <td colSpan={11 + Number(showActions || showRssi)}>
+                          <td
+                            colSpan={
+                              11 +
+                              Number(showActions || showRssi) +
+                              Number(shared)
+                            }
+                          >
                             <LinkDetails
                               link={link}
                               linkKind={link.link_kind}

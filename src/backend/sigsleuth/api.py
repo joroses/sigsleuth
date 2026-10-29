@@ -401,10 +401,20 @@ def create_app(
         limit: PageLimit = 50,
         before_id: BeforeId = None,
         port: Annotated[int | None, Query(ge=0, le=0xFFFFFFFF)] = None,
+        radio: Annotated[str | None, Query(pattern=r"^([1-9][0-9]{0,2}|unsorted)$")] = None,
     ) -> PacketPage:
         """Packets the node sent or that were addressed to it, only those on
-        application port number `port` when given."""
-        return node_packets(connection, node_id, limit=limit, before_id=before_id, portnum=port)
+        application port number `port` when given. radio keeps those a
+        shared node number sent that are sorted to its radio of that number
+        (NodeOverview.radios), or to none with radio=unsorted."""
+        return node_packets(
+            connection,
+            node_id,
+            limit=limit,
+            before_id=before_id,
+            portnum=port,
+            radio=None if radio is None else "unsorted" if radio == "unsorted" else int(radio),
+        )
 
     @app.get("/api/v1/nodes/{node_id}/charts")
     def node_charts_page(

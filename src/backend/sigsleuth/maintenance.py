@@ -4,9 +4,10 @@ started and stopped with the API in both modes.
 It first rebuilds the derived tables when they are waiting for it
 (derive.rederive); capture keeps saving deliveries meanwhile. Then, at once
 and about every five minutes: retention (only while capturing, as `api` mode
-serves saved copies whose history must stay) and the estimated positions
-(positions.refresh_estimates). A failure is logged and tried again five
-minutes later, a failed rebuild included.
+serves saved copies whose history must stay), shared node numbers
+(shared_numbers.refresh_shared_numbers) and the estimated positions
+(positions.refresh_estimates), which leave shared numbers out. A failure is
+logged and tried again five minutes later, a failed rebuild included.
 
 New long links are judged (terrain.py) on a second thread, started after the
 rebuild and the first estimates, because their tiles come over the network and
@@ -29,6 +30,7 @@ from sigsleuth.db import (
 from sigsleuth.derive import rederive
 from sigsleuth.positions import refresh_estimates
 from sigsleuth.retention import RETENTION_INTERVAL_SECONDS, apply_retention
+from sigsleuth.shared_numbers import refresh_shared_numbers
 from sigsleuth.terrain import refresh_long_links
 
 LOGGER = logging.getLogger(__name__)
@@ -71,6 +73,7 @@ class Maintenance:
                         return
                     if self._retain:
                         self._apply_retention(connection)
+                    refresh_shared_numbers(connection)
                     refresh_estimates(connection)
                     # After the estimates: judging reads node_doubtful, and
                     # keeps its verdicts.

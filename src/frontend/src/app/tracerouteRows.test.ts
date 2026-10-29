@@ -61,6 +61,7 @@ function request(
       sender_name: null,
       recipient_node_id: T,
       recipient_name: null,
+      sender_radio: null,
       packet_id: 99,
       portnum: "TRACEROUTE_APP",
     },

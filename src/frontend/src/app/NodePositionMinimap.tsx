@@ -42,8 +42,15 @@ import {
   linkSourceId,
 } from "./mapLinkLayers";
 import { LinkSwatch, ZeroCostKey } from "./MapLinkDetails";
-import { formatKm, nodeHref, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
+import {
+  formatKm,
+  nodeHref,
+  nodeLabel,
+  nodeMarkerLabel,
+  radioName,
+} from "./nodeDisplay";
 import { spacedPositions } from "./nodePositionHistory";
+import type { NodeRadios } from "./radios";
 import { useLinkedSetting } from "./remember";
 import { type NodeLinkView, nodeViewHref } from "./routes";
 import { Icon, IconButton, ShareButton } from "./ui";
@@ -59,19 +66,25 @@ const POPUP_PACKETS = 5;
 type Current = { latitude: number; longitude: number; estimated: boolean };
 
 // Reported position history, contacts and survey coverage, with a pin at
-// the current reported or estimated position.
+// the current reported or estimated position. A shared node number's radios
+// are in several places: a pin at each radio's latest sorted position
+// instead, and no history or contact lines.
 export function NodePositionMinimap({
   node,
   links,
   linkView = null,
+  radios = null,
 }: {
   node: NodeDetail;
   links: LinkTable | null;
   linkView?: NodeLinkView | null;
+  radios?: NodeRadios | null;
 }) {
-  const { data: history, error } = useApi<NodePositionHistory>(
-    nodePositionsUrl(node.node_id),
+  const { data: fetchedHistory, error } = useApi<NodePositionHistory>(
+    radios === null ? nodePositionsUrl(node.node_id) : null,
   );
+  const history = radios === null ? fetchedHistory : null;
+  const places = useMemo(() => radioPlaces(radios), [radios]);
   const [showTraceroutes, setShowTraceroutes] = useLinkedSetting(
     "node.contacts.traceroutes",
     false,
@@ -82,7 +95,7 @@ export function NodePositionMinimap({
     false,
     linkView?.show.includes("gateways"),
   );
-  const showContacts = showTraceroutes || showGateways;
+  const showContacts = radios === null && (showTraceroutes || showGateways);
   const [since] = useState(
     () => new Date(now() - CONTACT_DAYS * 24 * 60 * 60 * 1000),
   );
@@ -122,14 +135,16 @@ export function NodePositionMinimap({
             cellsInView(coverage.data, coverageArea.view).cells,
           );
   }, [coverage.data, coverageArea]);
-  const loaded = history !== null || error !== null;
+  const loaded = radios !== null || history !== null || error !== null;
   const items = useMemo(() => spacedPositions(history?.items ?? []), [history]);
   const current: Current | null =
-    node.position !== null
-      ? { ...node.position, estimated: false }
-      : node.estimate !== null
-        ? { ...node.estimate, estimated: true }
-        : null;
+    radios !== null
+      ? null
+      : node.position !== null
+        ? { ...node.position, estimated: false }
+        : node.estimate !== null
+          ? { ...node.estimate, estimated: true }
+          : null;
   const contacts = useMemo(
     () =>
       showContacts && contactsState.data !== null
@@ -158,6 +173,7 @@ export function NodePositionMinimap({
     loaded &&
     (items.length > 0 ||
       current !== null ||
+      places.length > 0 ||
       (contacts?.marks.length ?? 0) > 0 ||
       showCoverage);
 
@@ -168,7 +184,7 @@ export function NodePositionMinimap({
       // Contacts or coverage can place the view without a node position;
       // MapLibre cannot fit empty bounds while they load.
       view: () => {
-        const bounds = historyBounds(items, current);
+        const bounds = historyBounds(items, current, places);
         return bounds.isEmpty()
           ? {}
           : { bounds, fitBoundsOptions: { padding: 40, maxZoom: 14 } };
@@ -196,6 +212,15 @@ export function NodePositionMinimap({
           // The pin's point is 6 px below its box (see .minimap-sender::after).
           new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] })
             .setLngLat([current.longitude, current.latitude])
+            .addTo(created);
+        }
+        for (const place of places) {
+          const element = document.createElement("span");
+          element.className = "minimap-marker minimap-sender hop-tone-sender";
+          element.title = `${place.name}: latest position sorted to it`;
+          element.textContent = place.label;
+          new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] })
+            .setLngLat([place.longitude, place.latitude])
             .addTo(created);
         }
         const popup = new maplibregl.Popup({
@@ -245,7 +270,7 @@ export function NodePositionMinimap({
         updateCoverageArea();
       },
     },
-    [hasMap, items, current?.latitude, current?.longitude],
+    [hasMap, items, places, current?.latitude, current?.longitude],
   );
 
   useEffect(() => {
@@ -262,7 +287,7 @@ export function NodePositionMinimap({
     (showContacts && contactsState.loading) || (showCoverage && extent.loading);
   useEffect(() => {
     if (map === null || fitWaits) return;
-    const bounds = historyBounds(items, current);
+    const bounds = historyBounds(items, current, places);
     for (const mark of contacts?.marks ?? []) {
       bounds.extend([mark.longitude, mark.latitude]);
     }
@@ -278,6 +303,7 @@ export function NodePositionMinimap({
     map,
     fitWaits,
     items,
+    places,
     contacts,
     fit?.west,
     fit?.south,
@@ -312,24 +338,28 @@ export function NodePositionMinimap({
             role="group"
             aria-label="Show on the map"
           >
-            <button
-              type="button"
-              aria-pressed={showTraceroutes}
-              title={`Traceroute neighbours, last ${CONTACT_DAYS} days`}
-              onClick={() => setShowTraceroutes(!showTraceroutes)}
-            >
-              <Icon name="route" />
-              Traceroutes
-            </button>
-            <button
-              type="button"
-              aria-pressed={showGateways}
-              title={`Gateways that heard it, last ${CONTACT_DAYS} days`}
-              onClick={() => setShowGateways(!showGateways)}
-            >
-              <Icon name="radio" />
-              Gateways
-            </button>
+            {radios !== null ? null : (
+              <>
+                <button
+                  type="button"
+                  aria-pressed={showTraceroutes}
+                  title={`Traceroute neighbours, last ${CONTACT_DAYS} days`}
+                  onClick={() => setShowTraceroutes(!showTraceroutes)}
+                >
+                  <Icon name="route" />
+                  Traceroutes
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={showGateways}
+                  title={`Gateways that heard it, last ${CONTACT_DAYS} days`}
+                  onClick={() => setShowGateways(!showGateways)}
+                >
+                  <Icon name="radio" />
+                  Gateways
+                </button>
+              </>
+            )}
             <button
               type="button"
               aria-pressed={showCoverage}
@@ -383,7 +413,9 @@ export function NodePositionMinimap({
         </div>
         <figcaption className="muted">
           <span className="data-line">
-            {historyNote(history, error, items.length)}
+            {radios === null
+              ? historyNote(history, error, items.length)
+              : `${places.length.toLocaleString()} of ${radios.items.length.toLocaleString()} radios placed, each at its latest sorted position`}
           </span>
           {showContacts ? (
             <ContactsNote state={contactsState} contacts={contacts} />
@@ -603,11 +635,38 @@ function historyNote(
 function historyBounds(
   items: NodePositionHistory["items"],
   current: Current | null,
+  places: readonly RadioPlace[],
 ): maplibregl.LngLatBounds {
   const bounds = new maplibregl.LngLatBounds();
   for (const item of items) bounds.extend([item.longitude, item.latitude]);
   if (current !== null) bounds.extend([current.longitude, current.latitude]);
+  for (const place of places) bounds.extend([place.longitude, place.latitude]);
   return bounds;
+}
+
+type RadioPlace = {
+  name: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+};
+
+const NO_PLACES: RadioPlace[] = [];
+
+function radioPlaces(radios: NodeRadios | null): RadioPlace[] {
+  if (radios === null) return NO_PLACES;
+  return radios.items.flatMap((radio) =>
+    radio.position === null
+      ? []
+      : [
+          {
+            name: radioName(radio),
+            label: radio.short_name ?? String(radio.number),
+            latitude: radio.position.latitude,
+            longitude: radio.position.longitude,
+          },
+        ],
+  );
 }
 
 // A line through the positions in time order and a dot at each, newer dots

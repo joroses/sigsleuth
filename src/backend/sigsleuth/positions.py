@@ -31,6 +31,7 @@ from sigsleuth.links import LONG_LINK_KM, SUSPECT_DISTANCE, TRUSTED_HOUR, limite
 from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
 from sigsleuth.reported import HeardPosition, positions_when_heard
+from sigsleuth.shared_numbers import shared_nodes
 
 # Estimates come from this many days of links; perf.py budgets the refill.
 ESTIMATE_DAYS = 7
@@ -153,6 +154,7 @@ class DirectPartners:
 
 def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, DirectPartners]:
     """Placed direct partners since both ends last moved, at their shortest km.
+    A shared node number is no one's partner: its radios are in several places.
 
     Exclude a far partner doubtful on at least BLAME_OTHER_PARTNERS other
     partners, leaving this pair out. Use the original partners in one pass so
@@ -168,6 +170,8 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
                OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = from_node_id))
           AND (to_node_id NOT IN (SELECT node_id FROM node_current WHERE moved_at >= :since)
                OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = to_node_id))
+          AND from_node_id NOT IN (SELECT node_id FROM node_shared)
+          AND to_node_id NOT IN (SELECT node_id FROM node_shared)
         GROUP BY from_node_id, to_node_id
         """,
         {"since": since_ms},
@@ -235,6 +239,8 @@ def _traceroute_corroborated(
           AND km IS NOT NULL AND (link_kind = 'direct' OR snr_count > 0)
           AND (from_node_id IN (SELECT value FROM json_each(:nodes))
                OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+          AND from_node_id NOT IN (SELECT node_id FROM node_shared)
+          AND to_node_id NOT IN (SELECT node_id FROM node_shared)
         """,
         {"since": since_ms, "nodes": json.dumps(sorted(candidates))},
     ):
@@ -296,7 +302,11 @@ def node_estimate(connection: sqlite3.Connection, node_id: int) -> EstimatedPosi
 
 @dataclass(frozen=True)
 class HeardPositionList:
+    """unplaced_node_ids are shared node numbers, never placed: their radios
+    are in several places."""
+
     items: tuple[HeardPosition, ...]
+    unplaced_node_ids: tuple[int, ...]
 
 
 def positions_at(
@@ -307,8 +317,9 @@ def positions_at(
     are left out (opt_out.py)."""
     heard_at = to_epoch_ms(at)
     shown = set(node_ids) - opted_out(connection)
-    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in shown})
-    return HeardPositionList(tuple(heard[pair] for pair in sorted(heard)))
+    unplaced = shown & shared_nodes(connection)
+    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in shown - unplaced})
+    return HeardPositionList(tuple(heard[pair] for pair in sorted(heard)), tuple(sorted(unplaced)))
 
 
 def radio_links(

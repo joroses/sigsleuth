@@ -18,7 +18,11 @@ const packet = {
   first_received_at: "2026-09-19T09:00:00Z",
   last_received_at: "2026-09-19T09:00:02Z",
   reception_count: 3,
+  sender_radio: null,
 };
+
+// A node overview's parts for a node with one radio.
+const NO_RADIOS = { radios: null, earlier_node_ids: [], later_node_ids: [] };
 
 const reception = {
   reception_id: 21,
@@ -621,6 +625,7 @@ describe("Node detail", () => {
         { portnum: 3, port: "POSITION_APP" },
         { portnum: 1, port: "TEXT_MESSAGE_APP" },
       ],
+      ...NO_RADIOS,
     };
     const pageWith = (packets: object[]) => ({ packets, next_before_id: null });
     const positionPacket = {
@@ -658,6 +663,66 @@ describe("Node detail", () => {
     );
   });
 
+  it("filters a shared node number's packets by radio, and starts again with every radio", async () => {
+    const radio = (number: number, long_name: string) => ({
+      number,
+      long_name,
+      short_name: null,
+      hardware_model: null,
+      first_reported_at: "2026-09-19T08:00:00Z",
+      last_reported_at: "2026-09-19T09:00:00Z",
+      sorted_packets: 3,
+      position: null,
+      later_node_id: null,
+    });
+    const overview = {
+      node: null,
+      ports: [],
+      radios: {
+        shared: true,
+        proof_at: "2026-09-19T08:30:00Z",
+        items: [radio(1, "Hilltop"), radio(2, "Valley")],
+        unsorted_packets: 1,
+      },
+      earlier_node_ids: [],
+      later_node_ids: [],
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/nodes/286331153"
+            ? overview
+            : { packets: [], next_before_id: null },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const lastPackets = () =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.includes("/packets"))
+        .at(-1);
+
+    window.location.hash = "#nodes/286331153";
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: /Valley/ }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets?radio=2"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Unsorted/ }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe(
+        "/api/v1/nodes/286331153/packets?radio=unsorted",
+      ),
+    );
+
+    cleanup();
+    fetchMock.mockClear();
+    render(<App />);
+    await screen.findByRole("button", { name: /Valley/ });
+    expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets");
+  });
+
   it("opens a shared node page's minimap without keeping its switches, and shares it back", async () => {
     const node = {
       node_id: 0x11111111,
@@ -683,7 +748,7 @@ describe("Node detail", () => {
       Promise.resolve(
         jsonResponse(
           url === "/api/v1/nodes/286331153"
-            ? { node, ports: [] }
+            ? { node, ports: [], ...NO_RADIOS }
             : url.startsWith("/api/v1/nodes/286331153/charts")
               ? { node_id: node.node_id, hours: [], utilization: [] }
               : { items: [], packets: [], next_before_id: null },
@@ -738,11 +803,13 @@ describe("Node detail", () => {
         link_kind: "direct",
         distance_km: null,
         doubts: [],
+        radio_names: [],
       })),
       nodes: [
         { node_id: others[11], long_name: "Mill Gate", short_name: "MILL" },
       ],
       doubtful_node_ids: [],
+      shared_node_ids: [],
       truncated: false,
     };
     vi.stubGlobal(
@@ -754,7 +821,7 @@ describe("Node detail", () => {
               ? table
               : url.includes("/packets")
                 ? { packets: [], next_before_id: null }
-                : { node: null, ports: [] },
+                : { node: null, ports: [], ...NO_RADIOS },
           ),
         ),
       ),
@@ -791,6 +858,7 @@ describe("Node detail", () => {
       link_kind: kind,
       distance_km: null,
       doubts: [],
+      radio_names: [],
     });
     const table = {
       items: [
@@ -801,6 +869,7 @@ describe("Node detail", () => {
       ],
       nodes: [],
       doubtful_node_ids: [],
+      shared_node_ids: [],
       truncated: false,
       // The node relays 0x22222222's copies for free on LongFast, and
       // 0x33333333 relays the node's.
@@ -830,7 +899,7 @@ describe("Node detail", () => {
               ? table
               : url.includes("/packets")
                 ? { packets: [], next_before_id: null }
-                : { node: null, ports: [] },
+                : { node: null, ports: [], ...NO_RADIOS },
           ),
         ),
       ),
@@ -870,7 +939,7 @@ describe("Node detail", () => {
                   ],
                   next_before_id: null,
                 }
-              : { node: null, ports: [] },
+              : { node: null, ports: [], ...NO_RADIOS },
           ),
         ),
       ),
@@ -1467,6 +1536,59 @@ describe("Diagnostics", () => {
     await screen.findByRole("button", { name: "Next IDs" });
   });
 
+  it("marks a shared node number and links the packets that show it", async () => {
+    const url = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
+    const report = {
+      long_name: "Hilltop",
+      short_name: null,
+      hardware_model: null,
+      mac_address: "0a:1b:2c:3d:4e:5f",
+      public_key: null,
+      first_observed_at: "2026-09-19T08:00:00Z",
+      observed_at: "2026-09-19T09:00:00Z",
+      packet_row_id: 4,
+      other_node_ids: [0x13579bdf],
+    };
+    const conflicts = {
+      items: [
+        {
+          node_id: 0x11111111,
+          kind: "shared",
+          proof: {
+            proof_at: "2026-09-19T08:30:00Z",
+            run_from_packet_row_id: 1,
+            run_to_packet_row_id: 2,
+            other_packet_row_id: 3,
+          },
+          reports: [report],
+          limited: false,
+        },
+      ],
+      next_node_id: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((asked: string) =>
+        Promise.resolve(jsonResponse(asked === url ? conflicts : summary)),
+      ),
+    );
+    window.location.hash = "#diagnostics/devices";
+    render(<App />);
+
+    const proof = (await screen.findByText(/inside the run/)).closest("p")!;
+    expect(
+      within(proof)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+    ).toEqual([
+      ["NodeInfo", "#packets/3"],
+      ["from", "#packets/1"],
+      ["to", "#packets/2"],
+    ]);
+    expect(screen.getByText("Shared")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "!13579bdf" })).not.toBeNull();
+  });
+
   const diagnosticsTab = () =>
     within(screen.getByRole("navigation", { name: "Main pages" })).queryByRole(
       "link",
@@ -1608,6 +1730,7 @@ describe("Map text reach", () => {
               position: null,
             },
             ports: [],
+            ...NO_RADIOS,
           }),
         );
       const reachMatch = /\/api\/v1\/map\/text-reach\/(\d+)/.exec(url);
@@ -1997,7 +2120,7 @@ describe("Links", () => {
       Promise.resolve(
         jsonResponse(
           url.startsWith("/api/v1/links/positions")
-            ? { items: [] }
+            ? { items: [], unplaced_node_ids: [] }
             : url.startsWith("/api/v1/links/hours")
               ? {
                   a_to_b: [
@@ -2037,6 +2160,7 @@ describe("Links", () => {
                         link_kind: "traceroute",
                         distance_km: null,
                         doubts: [],
+                        radio_names: [],
                       },
                     ],
                     nodes: [],
@@ -2109,6 +2233,7 @@ describe("Links", () => {
       b_to_a: direction,
       distance_km: null,
       doubts: [],
+      radio_names: [],
     });
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
@@ -2184,6 +2309,7 @@ describe("Links", () => {
       b_to_a: direction,
       distance_km: null,
       doubts: [],
+      radio_names: [],
     });
     const fetchMock = vi.fn(() =>
       Promise.resolve(
@@ -2246,6 +2372,7 @@ describe("Links", () => {
       },
       distance_km: null,
       doubts: [],
+      radio_names: [],
     });
     vi.stubGlobal(
       "fetch",
@@ -2266,6 +2393,7 @@ describe("Links", () => {
                     short_name: null,
                   })),
                   doubtful_node_ids: [],
+                  shared_node_ids: [],
                   truncated: false,
                 }
               : {},
@@ -2344,6 +2472,7 @@ describe("Links", () => {
                     { node_id: 14, long_name: "Pond", short_name: null },
                   ],
                   doubtful_node_ids: [2, 5],
+                  shared_node_ids: [],
                   truncated: false,
                 }
               : {},
@@ -2425,6 +2554,7 @@ const FARM_TO_MILL = {
   reply_receptions: null,
   distance_km: null,
   doubts: [],
+  radio_names: [],
   route: {
     packet_row_id: 9,
     is_return: false,
@@ -2766,6 +2896,7 @@ describe("Traceroute explorer", () => {
                   items: [run(9, 120, false), run(10, 340, true)],
                   nodes: [],
                   doubtful_node_ids: [6],
+                  shared_node_ids: [],
                   has_more: false,
                 },
           ),
@@ -3082,7 +3213,11 @@ describe("Line of sight", () => {
             )
           : url === "/api/v1/nodes/2"
             ? Promise.resolve(
-                jsonResponse({ node: placed(2, "Toledo"), ports: [] }),
+                jsonResponse({
+                  node: placed(2, "Toledo"),
+                  ports: [],
+                  ...NO_RADIOS,
+                }),
               )
             : Promise.reject(new Error("offline")),
       ),
@@ -3192,7 +3327,7 @@ describe("Routing", () => {
             url.startsWith("/api/v1/links/hours")
             ? { a_to_b: [], b_to_a: [] }
             : url.startsWith("/api/v1/links/positions")
-              ? { items: [] }
+              ? { items: [], unplaced_node_ids: [] }
               : zonesBody,
         ),
       ),

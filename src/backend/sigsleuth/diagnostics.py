@@ -37,9 +37,10 @@ from sigsleuth.links import (
     map_misfit,
 )
 from sigsleuth.mqtt import CaptureStatus
-from sigsleuth.opt_out import opted_out, shown_sql
+from sigsleuth.opt_out import opted_out, shown_sql, unlinkable_packets
 from sigsleuth.positions import direct_partners, doubt_limit_km, estimate_since_ms
 from sigsleuth.radio import distance_km
+from sigsleuth.shared_numbers import radio_profiles, shared_nodes
 from sigsleuth.terrain import LongLinkCheck
 
 TABLES = ("reception", "packet", "node_current", "map_report")
@@ -47,18 +48,40 @@ TABLES = ("reception", "packet", "node_current", "map_report")
 
 @dataclass(frozen=True)
 class DeviceReport:
+    """One MAC/key profile: its latest names and packet, its first report,
+    and the other node numbers its MAC reported under."""
+
     long_name: str | None
     short_name: str | None
     hardware_model: str | None
     mac_address: str | None
     public_key: str | None
+    first_observed_at: datetime
     observed_at: datetime
     packet_row_id: int
+    other_node_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class SharedProof:
+    """Why a number is shared (shared_numbers.py): other_packet_row_id, one
+    radio's NodeInfo heard at proof_at, came inside another radio's counter
+    run from run_from_ to run_to_packet_row_id. None for an expired packet."""
+
+    proof_at: datetime
+    run_from_packet_row_id: int | None
+    run_to_packet_row_id: int | None
+    other_packet_row_id: int | None
 
 
 @dataclass(frozen=True)
 class DeviceConflict:
+    """kind is 'shared' when two radios were on air at once, 'one_at_a_time'
+    for two or more radios without that proof, None when only keys differ."""
+
     node_id: int
+    kind: Literal["shared", "one_at_a_time"] | None
+    proof: SharedProof | None
     reports: tuple[DeviceReport, ...]
     limited: bool
 
@@ -87,6 +110,7 @@ def device_conflicts(
         """,
         (after_node, count + 1),
     ).fetchall()
+    hidden = opted_out(connection)
     items = []
     for node in nodes[:count]:
         rows = connection.execute(
@@ -97,6 +121,7 @@ def device_conflicts(
             """,
             (node["node_id"],),
         ).fetchall()
+        node_id = int(node["node_id"])
         reports = tuple(
             DeviceReport(
                 row["long_name"],
@@ -104,14 +129,56 @@ def device_conflicts(
                 row["hardware_model"],
                 bytes(row["mac_address"]).hex(":") or None,
                 base64.b64encode(row["public_key"]).decode() or None,
+                from_epoch_ms(row["first_observed_at"]),
                 from_epoch_ms(row["observed_at"]),
                 row["packet_row_id"],
+                _other_numbers(connection, node_id, bytes(row["mac_address"]), hidden),
             )
             for row in rows[:20]
         )
-        items.append(DeviceConflict(int(node["node_id"]), reports, len(rows) > 20))
+        proof = _shared_proof(connection, node_id)
+        radios = len(radio_profiles(connection, {node_id}).get(node_id, ()))
+        kind: Literal["shared", "one_at_a_time"] | None = (
+            "shared" if proof is not None else "one_at_a_time" if radios > 1 else None
+        )
+        items.append(DeviceConflict(node_id, kind, proof, reports, len(rows) > 20))
     return DeviceConflictList(
         tuple(items), int(nodes[count - 1]["node_id"]) if len(nodes) > count else None
+    )
+
+
+def _other_numbers(
+    connection: sqlite3.Connection, node_id: int, mac: bytes, hidden: set[int]
+) -> tuple[int, ...]:
+    if not mac:
+        return ()
+    return tuple(
+        int(row[0])
+        for row in connection.execute(
+            """
+            SELECT DISTINCT node_id FROM node_device INDEXED BY node_device_mac
+            WHERE mac_address = ? AND mac_address != x'' AND node_id != ?
+            ORDER BY node_id
+            """,
+            (mac, node_id),
+        )
+        if int(row[0]) not in hidden
+    )
+
+
+def _shared_proof(connection: sqlite3.Connection, node_id: int) -> SharedProof | None:
+    row = connection.execute("SELECT * FROM node_shared WHERE node_id = ?", (node_id,)).fetchone()
+    if row is None:
+        return None
+    packets = (
+        row["run_from_packet_row_id"],
+        row["run_to_packet_row_id"],
+        row["other_packet_row_id"],
+    )
+    unshown = unlinkable_packets(connection, packets)
+    return SharedProof(
+        from_epoch_ms(row["proof_at"]),
+        *(None if packet in unshown else int(packet) for packet in packets),
     )
 
 
@@ -269,7 +336,8 @@ class LongLinkEnd:
     altitude_meters 0 is how a manually set position says "not set".
     position_from_map_report marks a position from a map report, which may be
     rounded on purpose, rather than the node's own packet. moved_at is
-    node_current's, doubtful node_doubtful's flag.
+    node_current's, doubtful node_doubtful's flag, shared whether it is a
+    shared node number (shared_numbers.py).
     direct_partners counts the placed nodes used to assess its current position
     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
     blamed_partners counts far partners excluded because their other partners
@@ -284,6 +352,7 @@ class LongLinkEnd:
     position_from_map_report: bool
     moved_at: datetime | None
     doubtful: bool
+    shared: bool
     direct_partners: int
     blamed_partners: int
     traceroute_corroborated: bool
@@ -316,16 +385,17 @@ class LongLinkEvidence:
 
 @dataclass(frozen=True)
 class LongLinkDoubt:
-    """Why the Links page badges a long link and ranks it apart: 'position'
+    """Why the Links page badges a long link and ranks it apart: 'shared'
+    when an end is a shared node number, else 'position'
     when an end has a doubtful position, else 'terrain' when its newest km is
     LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
     'signal' for a suspect signal distance. suspects
-    are the ends to blame: the doubtful ones. The terrain check judges the pair,
+    are the ends to blame: the shared or doubtful ones. The terrain check judges the pair,
     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
     when that is at least two, since one wrong position makes many; none when
     the ends are in as many."""
 
-    reason: Literal["position", "terrain", "signal"]
+    reason: Literal["shared", "position", "terrain", "signal"]
     suspects: tuple[int, ...]
 
 
@@ -389,7 +459,9 @@ class LongLinkList:
 # badged for that reason (LongLinkDoubt.reason), judged unlikely by the
 # terrain check whatever the pages make of it, pending, or with checks to
 # review.
-LongLinkFilter = Literal["long", "shorter", "hidden", "position", "unlikely", "pending", "checks"]
+LongLinkFilter = Literal[
+    "long", "shorter", "hidden", "shared", "position", "unlikely", "pending", "checks"
+]
 # How a page of long links is ranked: by longest distance when heard, or only
 # the links heard links.LONG_LINK_KM or more apart, newest such hour first, to
 # catch new ones. By hour, not last_seen_at: the hour is in link_hour_pair, so
@@ -567,6 +639,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
         )
     }
     doubtful = doubtful_nodes(connection)
+    shared = shared_nodes(connection)
     partners = direct_partners(connection, estimate_since_ms(connection))
     ends = {}
     for node_id in ids:
@@ -585,6 +658,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             and row["position_packet_row_id"] is None,
             moved_at=None if row is None else optional_from_epoch_ms(row["moved_at"]),
             doubtful=node_id in doubtful,
+            shared=node_id in shared,
             direct_partners=len(found),
             blamed_partners=assessment.blamed if assessment else 0,
             traceroute_corroborated=assessment.corroborated if assessment else False,
@@ -623,6 +697,7 @@ def _long_link(
         unlikely,
         any(row["confirmed"] for row in rows),
         bool(newest["suspect_distance"]),
+        a.shared or b.shared,
     )
     doubt = _doubt(a, b, doubts, unlikely_pairs)
     pending = "pending" in doubts
@@ -664,6 +739,8 @@ def _doubt(
     a: LongLinkEnd, b: LongLinkEnd, doubts: Sequence[Doubt], unlikely_pairs: Mapping[int, int]
 ) -> LongLinkDoubt | None:
     ends = (a, b)
+    if "shared" in doubts:
+        return LongLinkDoubt("shared", tuple(end.node.node_id for end in ends if end.shared))
     if "doubtful" in doubts:
         return LongLinkDoubt("position", tuple(end.node.node_id for end in ends if end.doubtful))
     if "signal" in doubts:
@@ -752,6 +829,9 @@ def _misfit_because(misfit: Misfit, a: LongLinkEnd, b: LongLinkEnd, heard_km: fl
 
 
 def _distrusted_because(a: LongLinkEnd, b: LongLinkEnd, last_seen_ms: int) -> str:
+    for end in (a, b):
+        if end.shared:
+            return f"{_name(end)} is a shared node number"
     for end in (a, b):
         if end.doubtful:
             return f"{_name(end)} has a doubtful position"

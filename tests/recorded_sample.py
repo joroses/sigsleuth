@@ -22,6 +22,7 @@ from sigsleuth import db
 from sigsleuth.db import migrate_database, open_current_database
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
 from sigsleuth.positions import refresh_estimates
+from sigsleuth.shared_numbers import refresh_shared_numbers
 
 SAMPLE_FILE = Path(__file__).with_name("sample") / "deliveries.jsonl.gz"
 # The pages are read as if a minute after the last delivery.
@@ -68,5 +69,6 @@ def build_sample(path: Path) -> Sample:
         sample = Sample(path, last_received_at + NOW_AFTER_LAST_MS, count, map_reports, skipped)
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(db, "fixed_now_ms", sample.now_ms)
+            refresh_shared_numbers(connection)
             refresh_estimates(connection)
     return sample

@@ -42,6 +42,7 @@ from sigsleuth.relays import (
     score_relays,
 )
 from sigsleuth.reported import positions_when_heard
+from sigsleuth.shared_numbers import SenderRadio, sender_radios, shared_nodes
 from sigsleuth.traceroute import (
     Hop,
     ReportPaths,
@@ -80,10 +81,13 @@ class PacketIdentity:
 
 @dataclass(frozen=True)
 class PacketRow(PacketIdentity):
-    """A row of a packet table. Names are the long name, else the short name."""
+    """A row of a packet table. Names are the long name, else the short name.
+    sender_radio is the radio a shared node number's packet is sorted to
+    (shared_numbers.py), None when the sender is not one."""
 
     sender_name: str | None
     recipient_name: str | None
+    sender_radio: SenderRadio | None = None
 
 
 @dataclass(frozen=True)
@@ -299,7 +303,7 @@ def packet_detail(
         else None
     )
     return PacketDetail(
-        packet=packet_row(row),
+        packet=with_sender_radios(connection, (packet_row(row),))[0],
         receptions=tuple(receptions),
         payload=payload,
         sender_latitude=None if sender not in places else places[sender].latitude,
@@ -490,10 +494,14 @@ def nodes_when_heard(
     connection: sqlite3.Connection, heard_at: int, node_ids: set[int]
 ) -> dict[int, NodeSummary]:
     """The nodes as nodes_by_id finds them, each placed where it was at
-    heard_at when its reported positions tell."""
-    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in node_ids})
+    heard_at when its reported positions tell. A shared node number is never
+    placed: its radios are in several places."""
+    shared = shared_nodes(connection) & node_ids
+    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in node_ids - shared})
     return {
-        node_id: node
+        node_id: replace(node, latitude=None, longitude=None, estimated=False)
+        if node_id in shared
+        else node
         if (at := heard.get((node_id, heard_at))) is None
         else replace(node, latitude=at.latitude, longitude=at.longitude, estimated=False)
         for node_id, node in nodes_by_id(connection, node_ids).items()
@@ -963,9 +971,24 @@ def packet_rows(
             "limit": limit + 1,
         },
     ).fetchall()
-    packets = tuple(packet_row(item) for item in rows[:limit])
+    packets = with_sender_radios(connection, tuple(packet_row(item) for item in rows[:limit]))
     has_more = len(rows) > limit
     return packets, packets[-1].packet_row_id if has_more else None
+
+
+def with_sender_radios(
+    connection: sqlite3.Connection, packets: tuple[PacketRow, ...]
+) -> tuple[PacketRow, ...]:
+    """The packets, each with its sender_radio when a shared number sent it."""
+    radios = sender_radios(
+        connection, {packet.packet_row_id: packet.sender_node_id for packet in packets}
+    )
+    return tuple(
+        replace(packet, sender_radio=radios[packet.packet_row_id])
+        if packet.packet_row_id in radios
+        else packet
+        for packet in packets
+    )
 
 
 def packet_row(row: sqlite3.Row) -> PacketRow:

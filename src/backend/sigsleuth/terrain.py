@@ -318,7 +318,7 @@ def refresh_long_links(
 
 def _confirmed_nodes(connection: sqlite3.Connection, nodes: set[int]) -> set[int]:
     """Those of nodes heard directly within CONFIRMING_PARTNER_KM of a partner, or
-    that heard one, in saved history, and neither doubtful nor moved. One pass
+    that heard one, in saved history, and neither doubtful, shared nor moved. One pass
     over the direct link hours, only when a refresh has pairs to judge."""
     return {
         int(row[0])
@@ -332,6 +332,7 @@ def _confirmed_nodes(connection: sqlite3.Connection, nodes: set[int]) -> set[int
             WHERE node_id IN (SELECT value FROM json_each(:nodes))
               AND moved_at IS NULL
               AND node_id NOT IN (SELECT node_id FROM node_doubtful)
+              AND node_id NOT IN (SELECT node_id FROM node_shared)
             """,
             {"nodes": json.dumps(sorted(nodes)), "km": CONFIRMING_PARTNER_KM},
         )

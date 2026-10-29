@@ -389,3 +389,12 @@ export const PLACED_BY = {
   chosen: "placed on this page",
   phone: "where the phone was",
 } as const;
+
+/** A radio of a node number (NodeOverview.radios): its name, else its number. */
+export function radioName(radio: {
+  number: number;
+  long_name: string | null;
+  short_name: string | null;
+}): string {
+  return radio.long_name ?? radio.short_name ?? `Radio ${radio.number}`;
+}

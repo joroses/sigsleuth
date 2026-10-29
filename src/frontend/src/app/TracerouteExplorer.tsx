@@ -43,6 +43,7 @@ import {
   StatusPanel,
   WideTable,
 } from "./ui";
+import { SharedBadge } from "./radios";
 
 // The minimap brings in MapLibre, so it loads when a run is first opened.
 const PacketMinimap = lazy(() =>
@@ -160,6 +161,7 @@ export function TracerouteExplorer({
     () => new Set(data?.doubtful_node_ids ?? []),
     [data],
   );
+  const shared = useMemo(() => new Set(data?.shared_node_ids ?? []), [data]);
   // Any change of filter starts again at the first page. Only a choice made
   // here is kept for the next visit, not one Back brought back.
   const update = (change: Partial<typeof filters>) => {
@@ -309,6 +311,7 @@ export function TracerouteExplorer({
               searchNote={searchNote}
               matched={matched}
               doubtful={doubtful}
+              shared={shared}
               nodes={nodes}
               onNode={filterNode}
               sort={filters.sort}
@@ -447,6 +450,7 @@ function RunTable({
   searchNote,
   matched,
   doubtful,
+  shared,
   nodes,
   onNode,
   sort,
@@ -462,6 +466,8 @@ function RunTable({
   matched: ReadonlySet<number>;
   /** Nodes with a doubtful position, whose km get a badge. */
   doubtful: ReadonlySet<number>;
+  /** Shared node numbers, whose km get a badge too. */
+  shared: ReadonlySet<number>;
   nodes: NodeMap;
   onNode: (nodeId: number) => void;
   sort: TracerouteSort;
@@ -620,6 +626,10 @@ function RunTable({
                     }
                     unlikely={run.route.unlikely}
                   />
+                  {run.route.km !== null &&
+                  measured.some((nodeId) => shared.has(nodeId)) ? (
+                    <SharedBadge />
+                  ) : null}
                   <span className="heading-note">
                     {run.route.reached ? "reached" : "not confirmed"}
                   </span>
@@ -639,6 +649,7 @@ function RunTable({
                       }
                       unlikely={run.doubts.includes("terrain")}
                     />
+                    {run.doubts.includes("shared") ? <SharedBadge /> : null}
                     {run.doubts.includes("pending") ? <PendingBadge /> : null}
                   </span>
                 </td>

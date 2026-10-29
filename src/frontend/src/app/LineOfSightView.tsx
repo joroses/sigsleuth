@@ -117,8 +117,15 @@ export function LineOfSightView({
   const nowA = find(picked[0]);
   const nowB = find(picked[1]);
   const heard = then.data?.items;
-  const a = useMemo(() => placedThen(nowA, heard), [nowA, heard]);
-  const b = useMemo(() => placedThen(nowB, heard), [nowB, heard]);
+  const shared = then.data?.unplaced_node_ids;
+  const a = useMemo(
+    () => placedThen(nowA, heard, shared),
+    [nowA, heard, shared],
+  );
+  const b = useMemo(
+    () => placedThen(nowB, heard, shared),
+    [nowB, heard, shared],
+  );
   const same = picked[0] !== null && picked[0] === picked[1];
   const profile = useProfile(same ? null : a, same ? null : b);
 
@@ -157,6 +164,15 @@ export function LineOfSightView({
         <p className="muted">
           Search covers only the {MAP_NODE_LIMIT.toLocaleString()} most recently
           seen nodes with a position.
+        </p>
+      ) : null}
+      {shared !== undefined && shared.length > 0 ? (
+        <p className="muted">
+          {shared.map(formatNodeId).join(" and ")}{" "}
+          {shared.length === 1
+            ? "is a shared node number"
+            : "are shared node numbers"}
+          , so there is no line of sight to show.
         </p>
       ) : null}
       {unplaced.length > 0 ? (
@@ -215,11 +231,16 @@ export function LineOfSightView({
   );
 }
 
-/** The node moved to where it was then, when its own positions tell. */
+/**
+ * The node moved to where it was then, when its own positions tell; null for
+ * a shared node number, never placed.
+ */
 function placedThen(
   node: ReportedNode | null,
   heard: HeardPositionList["items"] | undefined,
+  shared: readonly number[] | undefined,
 ): ReportedNode | null {
+  if (node !== null && shared?.includes(node.node_id)) return null;
   const then = heard?.find((item) => item.node_id === node?.node_id);
   if (node === null || then === undefined) return node;
   return {

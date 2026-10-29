@@ -15,6 +15,8 @@ import {
   formatRole,
   mapHref,
   nodeLabel,
+  nodeHref,
+  radioName,
   nodeLinksHref,
   nodeTraceroutesHref,
   nodeMarkerLabel,
@@ -28,6 +30,13 @@ import { NodeLinks } from "./NodeLinks";
 import { NodePositionMinimap } from "./NodePositionMinimap";
 import type { NodeLinkView } from "./routes";
 import { PagedPacketTable, PortSelect } from "./PacketTable";
+import {
+  type NodeRadios,
+  type RadioFilter,
+  RadioCards,
+  RadioChips,
+  RadioItems,
+} from "./radios";
 import { useApi } from "./useApi";
 import { Badge, CopyValue, DataItem, Icon, StatusPanel } from "./ui";
 import { formatHours } from "./zones";
@@ -41,6 +50,8 @@ export function NodeDetailView({
   linkView?: NodeLinkView | null;
 }) {
   const [port, setPort] = useState<number | null>(null);
+  // Not remembered: radio numbers change as reports expire.
+  const [radio, setRadio] = useState<RadioFilter | null>(null);
   // Ages are measured from when the page opened.
   const [now] = useState(clockNow);
   const { data: page, error } = useApi<NodeOverview>(nodeUrl(nodeId));
@@ -49,6 +60,8 @@ export function NodeDetailView({
     () => new Date(now - CONTACT_DAYS * 24 * 60 * 60 * 1000),
   );
   const links = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
+  const radios = page?.radios ?? null;
+  const shared = radios?.shared === true ? radios : null;
 
   return (
     <section className="node-detail-page" aria-labelledby="node-heading">
@@ -68,11 +81,23 @@ export function NodeDetailView({
                 {nodeMarkerLabel(page.node ?? noNodeInfo(nodeId))}
               </span>
               <div>
-                <p className="eyebrow">Node</p>
+                <p className="eyebrow">
+                  {shared === null ? "Node" : "Shared node number"}
+                </p>
                 <h2 id="node-heading">
-                  {nodeLabel(page.node ?? noNodeInfo(nodeId))}
+                  {shared === null
+                    ? nodeLabel(page.node ?? noNodeInfo(nodeId))
+                    : formatNodeId(nodeId)}
                 </h2>
-                <span className="mono muted">{formatNodeId(nodeId)}</span>
+                {shared === null ? (
+                  <span className="mono muted">{formatNodeId(nodeId)}</span>
+                ) : (
+                  <span className="muted">
+                    {shared.items.map(radioName).join(", ")}
+                  </span>
+                )}
+                <OtherNumbers label="earlier" nodeIds={page.earlier_node_ids} />
+                <OtherNumbers label="later" nodeIds={page.later_node_ids} />
                 {page.node?.last_gateway_at == null ? null : (
                   <>
                     {" "}
@@ -96,7 +121,7 @@ export function NodeDetailView({
                 <Icon name="route" />
                 Traceroutes
               </a>
-              {page.node?.contact_url == null ? null : (
+              {page.node?.contact_url == null || shared !== null ? null : (
                 <AddContactButton
                   url={page.node.contact_url}
                   name={nodeLabel(page.node)}
@@ -114,10 +139,12 @@ export function NodeDetailView({
             <>
               <NodeSummary
                 node={page.node}
+                radios={radios}
                 links={links.data}
                 now={now}
                 linkView={linkView}
               />
+              {shared === null ? null : <RadioCards radios={shared} />}
               <NodeActivityCharts nodeId={nodeId} />
             </>
           )}
@@ -126,12 +153,15 @@ export function NodeDetailView({
             <h3>Packets</h3>
             <PortSelect ports={page.ports} port={port} onChange={setPort} />
           </div>
+          {shared === null ? null : (
+            <RadioChips radios={shared} radio={radio} onChange={setRadio} />
+          )}
           <PagedPacketTable
-            url={nodePacketsUrl(nodeId, port)}
+            url={nodePacketsUrl(nodeId, port, shared === null ? null : radio)}
             empty={
-              port === null
+              port === null && radio === null
                 ? "No packets from or to this node are saved."
-                : "No packets from or to this node on this port are saved."
+                : "No packets match these filters."
             }
           />
         </>
@@ -142,19 +172,23 @@ export function NodeDetailView({
 
 function NodeSummary({
   node,
+  radios,
   links,
   now,
   linkView,
 }: {
   node: NodeDetail;
+  radios: NodeRadios | null;
   links: LinkTable | null;
   now: number;
   linkView: NodeLinkView | null;
 }) {
+  // A shared number's facts mix its radios.
+  const note = radios?.shared === true ? "latest from any radio" : undefined;
   return (
     <div className="node-facts">
       <div className="fact-groups">
-        <FactGroup title="Identity">
+        <FactGroup title="Identity" note={note}>
           <DataItem
             label="Long name"
             value={node.long_name ?? "Not reported"}
@@ -233,10 +267,15 @@ function NodeSummary({
             }
           />
         </FactGroup>
-        <FactGroup title="Position">
+        <FactGroup title="Position" note={note}>
           <PositionItems node={node} now={now} />
         </FactGroup>
-        <FactGroup title="Device">
+        {radios === null || radios.shared ? null : (
+          <FactGroup title="Radios">
+            <RadioItems radios={radios} />
+          </FactGroup>
+        )}
+        <FactGroup title="Device" note={note}>
           <DataItem
             label="Hardware"
             value={formatHardware(node.hardware_model)}
@@ -298,23 +337,59 @@ function NodeSummary({
           />
         </FactGroup>
       </div>
-      <NodePositionMinimap node={node} links={links} linkView={linkView} />
+      <NodePositionMinimap
+        node={node}
+        links={links}
+        linkView={linkView}
+        radios={radios?.shared === true ? radios : null}
+      />
     </div>
   );
 }
 
 function FactGroup({
   title,
+  note,
   children,
 }: {
   title: string;
+  note?: string;
   children: ReactNode;
 }) {
   return (
     <section className="fact-group">
-      <h3>{title}</h3>
+      <h3>
+        {title}
+        {note === undefined ? null : (
+          <span className="heading-note">{note}</span>
+        )}
+      </h3>
       <dl>{children}</dl>
     </section>
+  );
+}
+
+/** Links to the numbers this node's radios reported under before or after it. */
+function OtherNumbers({
+  label,
+  nodeIds,
+}: {
+  label: string;
+  nodeIds: readonly number[];
+}) {
+  if (nodeIds.length === 0) return null;
+  return (
+    <span className="data-line muted">
+      {label}{" "}
+      {nodeIds.map((other, index) => (
+        <span key={other}>
+          {index === 0 ? null : ", "}
+          <a className="text-button mono" href={nodeHref(other)}>
+            {formatNodeId(other)}
+          </a>
+        </span>
+      ))}
+    </span>
   );
 }
 

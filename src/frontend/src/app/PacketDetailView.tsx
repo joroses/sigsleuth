@@ -54,6 +54,7 @@ import {
   ShortTime,
   TierDot,
 } from "./ui";
+import { SenderRadioLine } from "./radios";
 
 export function PacketDetailView({
   packetRowId,
@@ -239,10 +240,13 @@ function PacketDetailContent({
           <DataItem
             label="Sender"
             value={
-              <NodeNameAndId
-                nodeId={packet.sender_node_id}
-                name={packet.sender_name}
-              />
+              <>
+                <NodeNameAndId
+                  nodeId={packet.sender_node_id}
+                  name={packet.sender_name}
+                />
+                <SenderRadioLine radio={packet.sender_radio} />
+              </>
             }
           />
           <DataItem

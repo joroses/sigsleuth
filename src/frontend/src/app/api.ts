@@ -181,9 +181,16 @@ export function nodeUrl(nodeId: number): string {
 }
 
 /** The node's packets, only those on application port `port` when it is not null. */
-export function nodePacketsUrl(nodeId: number, port: number | null): string {
+export function nodePacketsUrl(
+  nodeId: number,
+  port: number | null,
+  radio: number | "unsorted" | null = null,
+): string {
+  const query = new URLSearchParams();
+  if (port !== null) query.set("port", String(port));
+  if (radio !== null) query.set("radio", String(radio));
   const url = `/api/v1/nodes/${nodeId}/packets`;
-  return port === null ? url : `${url}?port=${port}`;
+  return query.size === 0 ? url : `${url}?${query}`;
 }
 
 export function nodeChartsUrl(nodeId: number, since: Date): string {
@@ -278,6 +285,7 @@ export type LongLinkFilter =
   | "long"
   | "shorter"
   | "hidden"
+  | "shared"
   | "position"
   | "unlikely"
   | "pending"

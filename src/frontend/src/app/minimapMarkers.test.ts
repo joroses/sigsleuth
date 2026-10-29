@@ -56,6 +56,7 @@ function detail(
       sender_name: "Alice",
       recipient_node_id: 0xffffffff,
       recipient_name: null,
+      sender_radio: null,
       packet_id: 1234,
       portnum: null,
     },

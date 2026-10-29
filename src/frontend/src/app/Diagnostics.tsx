@@ -540,6 +540,7 @@ const LINK_FILTERS: { value: LongLinkFilter | "all"; label: string }[] = [
   { value: "long", label: "Still shown long" },
   { value: "shorter", label: "Now shorter" },
   { value: "hidden", label: "Hidden" },
+  { value: "shared", label: "Shared node number" },
   { value: "position", label: "Doubtful position" },
   { value: "unlikely", label: "Unlikely by terrain" },
   { value: "pending", label: "Pending" },
@@ -897,8 +898,10 @@ function DeviceConflictsSection() {
       <div className="section-intro compact">
         <h3 id="diagnostic-devices-heading">Conflicting device reports</h3>
         <p>
-          IDs reporting different MAC addresses or public keys. A replacement or
-          key change can also explain these reports.
+          IDs reporting different MAC addresses or public keys. Shared: two
+          radios were on air at once, one's NodeInfo sent inside the other's
+          packet counter run. One at a time: a replacement or key change can
+          also explain these reports.
         </p>
       </div>
       {state.error !== null ? (
@@ -911,8 +914,16 @@ function DeviceConflictsSection() {
         state.data.items.map((item) => (
           <div key={item.node_id}>
             <h4>
-              <NodeLink nodeId={item.node_id} />
+              <NodeLink nodeId={item.node_id} />{" "}
+              {item.kind === null ? null : (
+                <Badge tone={item.kind === "shared" ? "amber" : "neutral"}>
+                  {item.kind === "shared" ? "Shared" : "One at a time"}
+                </Badge>
+              )}
             </h4>
+            {item.proof === null ? null : (
+              <SharedProofLine proof={item.proof} />
+            )}
             <WideTable>
               <table>
                 <thead>
@@ -921,7 +932,9 @@ function DeviceConflictsSection() {
                     <th scope="col">Hardware</th>
                     <th scope="col">MAC address</th>
                     <th scope="col">Public key</th>
+                    <th scope="col">First reported</th>
                     <th scope="col">Last reported</th>
+                    <th scope="col">Same MAC under</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -934,9 +947,22 @@ function DeviceConflictsSection() {
                         <code>{report.public_key ?? "—"}</code>
                       </td>
                       <td>
+                        <ShortTime value={report.first_observed_at} />
+                      </td>
+                      <td>
                         <a href={`#packets/${report.packet_row_id}`}>
                           <ShortTime value={report.observed_at} />
                         </a>
+                      </td>
+                      <td>
+                        {report.other_node_ids.length === 0
+                          ? "—"
+                          : report.other_node_ids.map((other, index) => (
+                              <span key={other}>
+                                {index === 0 ? null : ", "}
+                                <NodeLink nodeId={other} />
+                              </span>
+                            ))}
                       </td>
                     </tr>
                   ))}
@@ -956,6 +982,28 @@ function DeviceConflictsSection() {
         ) : null}
       </div>
     </section>
+  );
+}
+
+/** The packets that show a node number shared: a NodeInfo inside a run. */
+function SharedProofLine({
+  proof,
+}: {
+  proof: NonNullable<DeviceConflictList["items"][number]["proof"]>;
+}) {
+  const packet = (rowId: number | null, label: string) =>
+    rowId === null ? (
+      <span className="muted">{label}</span>
+    ) : (
+      <a href={`#packets/${rowId}`}>{label}</a>
+    );
+  return (
+    <p>
+      Last shown <ShortTime value={proof.proof_at} />:{" "}
+      {packet(proof.other_packet_row_id, "NodeInfo")} inside the run{" "}
+      {packet(proof.run_from_packet_row_id, "from")} –{" "}
+      {packet(proof.run_to_packet_row_id, "to")}
+    </p>
   );
 }
 
@@ -1296,6 +1344,13 @@ function DoubtBadge({ link }: { link: LongLink }) {
     endName(ends.find((end) => end.node.node_id === nodeId)!),
   );
   const named = suspects.join(" and ");
+  if (doubt.reason === "shared") {
+    return (
+      <Badge tone="amber" title="Several radios use this node number">
+        shared node number: {named}
+      </Badge>
+    );
+  }
   if (doubt.reason === "signal") {
     return (
       <Badge tone="amber" title="Signal suggests a suspect distance">

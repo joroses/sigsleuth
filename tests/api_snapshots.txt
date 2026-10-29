@@ -20,6 +20,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 41cd"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31094
     first_received_at: "2026-10-11T16:23:57.248000Z"
     last_received_at: "2026-10-11T16:23:57.334000Z"
@@ -31,6 +32,7 @@ packets: 50 items
     portnum: "POSITION_APP"
     sender_name: "Node 14fc"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31093
     first_received_at: "2026-10-11T16:23:51.720000Z"
     last_received_at: "2026-10-11T16:23:52.252000Z"
@@ -42,6 +44,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 5664"
     recipient_name: null
+    sender_radio: null
 next_before_id: 31046
 
 ## GET /api/v1/packets?limit=50&port=1
@@ -58,6 +61,7 @@ packets: 50 items
     portnum: "TEXT_MESSAGE_APP"
     sender_name: "Node 8308"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31054
     first_received_at: "2026-10-11T16:17:52.588000Z"
     last_received_at: "2026-10-11T16:17:53.670000Z"
@@ -69,6 +73,7 @@ packets: 50 items
     portnum: "TEXT_MESSAGE_APP"
     sender_name: "Node 8308"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31050
     first_received_at: "2026-10-11T16:17:41.118000Z"
     last_received_at: "2026-10-11T16:17:41.429000Z"
@@ -80,6 +85,7 @@ packets: 50 items
     portnum: "TEXT_MESSAGE_APP"
     sender_name: "Node 8308"
     recipient_name: null
+    sender_radio: null
 next_before_id: 29065
 
 ## GET /api/v1/packets?limit=50&port=-1
@@ -96,6 +102,7 @@ packets: 50 items
     portnum: null
     sender_name: "Node 0f10"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31015
     first_received_at: "2026-10-11T16:11:19.563000Z"
     last_received_at: "2026-10-11T16:11:20.279000Z"
@@ -107,6 +114,7 @@ packets: 50 items
     portnum: null
     sender_name: "Node 5950"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 31014
     first_received_at: "2026-10-11T16:11:14.362000Z"
     last_received_at: "2026-10-11T16:11:15.584000Z"
@@ -118,6 +126,7 @@ packets: 50 items
     portnum: null
     sender_name: "Node 95dd"
     recipient_name: null
+    sender_radio: null
 next_before_id: 30154
 
 ## GET /api/v1/packets?limit=50&sender=3655149723
@@ -134,6 +143,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30360
     first_received_at: "2026-10-11T14:52:33.427000Z"
     last_received_at: "2026-10-11T14:52:33.616000Z"
@@ -145,6 +155,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30291
     first_received_at: "2026-10-11T14:42:46.499000Z"
     last_received_at: "2026-10-11T14:42:47.546000Z"
@@ -156,6 +167,7 @@ packets: 50 items
     portnum: "NODEINFO_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
 next_before_id: 13660
 
 ## GET /api/v1/packets?limit=50&sender=3655149723&heard_directly_by=2658555076
@@ -172,6 +184,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30360
     first_received_at: "2026-10-11T14:52:33.427000Z"
     last_received_at: "2026-10-11T14:52:33.616000Z"
@@ -183,6 +196,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30291
     first_received_at: "2026-10-11T14:42:46.499000Z"
     last_received_at: "2026-10-11T14:42:47.546000Z"
@@ -194,6 +208,7 @@ packets: 50 items
     portnum: "NODEINFO_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
 next_before_id: 12598
 
 ## GET /api/v1/packets/ports
@@ -220,6 +235,7 @@ packet:
   portnum: "NODEINFO_APP"
   sender_name: "Node 6e62"
   recipient_name: null
+  sender_radio: null
 receptions: 4 items
   - reception_id: 1
     received_at: "2026-10-08T15:57:19.369000Z"
@@ -345,6 +361,7 @@ packet:
   portnum: "TRACEROUTE_APP"
   sender_name: "Node 4f36"
   recipient_name: "Node d2e1"
+  sender_radio: null
 receptions: 4 items
   - reception_id: 90660
     received_at: "2026-10-11T06:09:12.404000Z"
@@ -1317,7 +1334,7 @@ node:
     minimum: "2.6.8"
     reason: "its NodeInfo says whether it accepts messages"
   map_report: null
-  contact_url: "https://meshtastic.org/v/#CJvR9M4NEkwKCSFkOWRkMjg5YhIJTm9kZSAyODliGgQyODliIgbMYNndKJsoCTgCQiDtWG2TTxJy1RBW65W54GkXvOOQ8IlmMLy6Fay-YVRzfEgB"
+  contact_url: "https://meshtastic.org/v/#CJvR9M4NEkQKCSFkOWRkMjg5YhIJTm9kZSAyODliGgQyODliKAk4AkIg7Vhtk08SctUQVuuVueBpF7zjkPCJZjC8uhWsvmFUc3xIAQ"
 ports: 4 items
   - portnum: 67
     port: "TELEMETRY_APP"
@@ -1325,6 +1342,9 @@ ports: 4 items
     port: "NODEINFO_APP"
   - portnum: 3
     port: "POSITION_APP"
+radios: null
+earlier_node_ids: []
+later_node_ids: []
 
 ## GET /api/v1/nodes/3655149723/packets?limit=50
 
@@ -1340,6 +1360,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30360
     first_received_at: "2026-10-11T14:52:33.427000Z"
     last_received_at: "2026-10-11T14:52:33.616000Z"
@@ -1351,6 +1372,7 @@ packets: 50 items
     portnum: "TELEMETRY_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
   - packet_row_id: 30291
     first_received_at: "2026-10-11T14:42:46.499000Z"
     last_received_at: "2026-10-11T14:42:47.546000Z"
@@ -1362,12 +1384,59 @@ packets: 50 items
     portnum: "NODEINFO_APP"
     sender_name: "Node 289b"
     recipient_name: null
+    sender_radio: null
 next_before_id: 13660
 
 ## GET /api/v1/nodes/3655149723/packets?limit=50&port=1
 
 packets: []
 next_before_id: null
+
+## GET /api/v1/nodes/3655149723/packets?limit=50&radio=1
+
+packets: []
+next_before_id: null
+
+## GET /api/v1/nodes/3655149723/packets?limit=50&radio=unsorted
+
+packets: 50 items
+  - packet_row_id: 30361
+    first_received_at: "2026-10-11T14:52:44.526000Z"
+    last_received_at: "2026-10-11T14:52:44.847000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 2490384298
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+  - packet_row_id: 30360
+    first_received_at: "2026-10-11T14:52:33.427000Z"
+    last_received_at: "2026-10-11T14:52:33.616000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 279989161
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+  - packet_row_id: 30291
+    first_received_at: "2026-10-11T14:42:46.499000Z"
+    last_received_at: "2026-10-11T14:42:47.546000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 3753400232
+    portnum: "NODEINFO_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+next_before_id: 13660
 
 ## GET /api/v1/nodes/3655149723/charts?since=2026-10-04T16:25:30.812000Z
 
@@ -1509,6 +1578,7 @@ items: 46 items
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
+    radio_names: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1527,6 +1597,7 @@ items: 46 items
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
+    radio_names: []
   - node_a: 2933499666
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1545,6 +1616,7 @@ items: 46 items
     link_kind: "traceroute"
     distance_km: 64.4
     doubts: []
+    radio_names: []
 nodes: 41 items
   - node_id: 96879053
     long_name: "Node 41cd"
@@ -1568,6 +1640,7 @@ nodes: 41 items
     longitude: 19.4576
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: 2 items
   - from_node_id: 2224775088
@@ -1970,6 +2043,7 @@ items: 501 items
     link_kind: "traceroute"
     distance_km: 39.7
     doubts: []
+    radio_names: []
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1988,6 +2062,7 @@ items: 501 items
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
+    radio_names: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -2006,6 +2081,7 @@ items: 501 items
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
+    radio_names: []
 nodes: 224 items
   - node_id: 14234932
     long_name: "Node 3534"
@@ -2029,6 +2105,7 @@ nodes: 224 items
     longitude: 19.1562
     estimated: true
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -2053,6 +2130,7 @@ items: 946 items
     link_kind: "traceroute"
     distance_km: 39.7
     doubts: []
+    radio_names: []
   - node_a: 1770149960
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -2071,6 +2149,7 @@ items: 946 items
     link_kind: "traceroute"
     distance_km: 2.4
     doubts: []
+    radio_names: []
   - node_a: 2658555076
     node_b: 3655149723
     last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -2089,6 +2168,7 @@ items: 946 items
     link_kind: "traceroute"
     distance_km: 1.5
     doubts: []
+    radio_names: []
 nodes: 359 items
   - node_id: 14234932
     long_name: "Node 3534"
@@ -2112,6 +2192,7 @@ nodes: 359 items
     longitude: 19.6346
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -2187,6 +2268,7 @@ items: 24 items
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
+    radio_names: []
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -2205,6 +2287,7 @@ items: 24 items
     link_kind: "direct"
     distance_km: 15.3
     doubts: []
+    radio_names: []
   - node_a: 1550505660
     node_b: 1770149960
     last_seen_at: "2026-10-11T16:05:23.256000Z"
@@ -2223,6 +2306,7 @@ items: 24 items
     link_kind: "direct"
     distance_km: 1.5
     doubts: []
+    radio_names: []
 nodes: 20 items
   - node_id: 383887127
     long_name: "Node a717"
@@ -2246,6 +2330,7 @@ nodes: 20 items
     longitude: 19.5101
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -2270,6 +2355,7 @@ items: 35 items
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
+    radio_names: []
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -2288,6 +2374,7 @@ items: 35 items
     link_kind: "direct"
     distance_km: 15.3
     doubts: []
+    radio_names: []
   - node_a: 1550505660
     node_b: 1770149960
     last_seen_at: "2026-10-11T16:05:23.256000Z"
@@ -2306,6 +2393,7 @@ items: 35 items
     link_kind: "direct"
     distance_km: 1.5
     doubts: []
+    radio_names: []
 nodes: 27 items
   - node_id: 383887127
     long_name: "Node a717"
@@ -2329,6 +2417,7 @@ nodes: 27 items
     longitude: 19.5101
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -2404,6 +2493,7 @@ items: 242 items
     link_kind: "neighbor"
     distance_km: 1.5
     doubts: []
+    radio_names: []
   - node_a: 173442116
     node_b: 423423344
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2422,6 +2512,7 @@ items: 242 items
     link_kind: "neighbor"
     distance_km: 2.3
     doubts: []
+    radio_names: []
   - node_a: 173442116
     node_b: 463896892
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2440,6 +2531,7 @@ items: 242 items
     link_kind: "neighbor"
     distance_km: 5.2
     doubts: []
+    radio_names: []
 nodes: 134 items
   - node_id: 67438552
     long_name: null
@@ -2463,6 +2555,7 @@ nodes: 134 items
     longitude: 19.3724
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -2487,6 +2580,7 @@ items: 405 items
     link_kind: "neighbor"
     distance_km: 1.5
     doubts: []
+    radio_names: []
   - node_a: 173442116
     node_b: 423423344
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2505,6 +2599,7 @@ items: 405 items
     link_kind: "neighbor"
     distance_km: 2.3
     doubts: []
+    radio_names: []
   - node_a: 173442116
     node_b: 463896892
     last_seen_at: "2026-10-11T16:22:08.338000Z"
@@ -2523,6 +2618,7 @@ items: 405 items
     link_kind: "neighbor"
     distance_km: 5.2
     doubts: []
+    radio_names: []
 nodes: 181 items
   - node_id: 67438552
     long_name: null
@@ -2546,6 +2642,7 @@ nodes: 181 items
     longitude: 19.3724
     estimated: false
 doubtful_node_ids: []
+shared_node_ids: []
 truncated: false
 zero_cost_hops: []
 
@@ -3169,6 +3266,7 @@ nodes: 80 items
     estimated: false
 matched_node_ids: []
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
@@ -3402,6 +3500,7 @@ nodes: 87 items
     estimated: true
 matched_node_ids: []
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z
@@ -3635,6 +3734,7 @@ nodes: 101 items
     estimated: false
 matched_node_ids: []
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes?packet=26709
@@ -3732,6 +3832,7 @@ nodes: 10 items
     estimated: false
 matched_node_ids: []
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: false
 
 ## GET /api/v1/traceroutes?packet=26709&node=3655149723&next_to=2658555076
@@ -3832,6 +3933,7 @@ nodes: 10 items
     estimated: false
 matched_node_ids: [2658555076, 3655149723]
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: false
 
 ## GET /api/v1/traceroutes?sort=newest&limit=50&offset=0&since=2026-10-10T16:25:30.812000Z&node=289b&next_to=!9e7654c4&channel=ShortFast&min_hops=1&successful=true
@@ -3840,6 +3942,7 @@ items: []
 nodes: []
 matched_node_ids: []
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: false
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&node=!d9dd289b
@@ -4073,6 +4176,7 @@ nodes: 104 items
     estimated: true
 matched_node_ids: [3655149723]
 doubtful_node_ids: []
+shared_node_ids: []
 has_more: true
 
 ## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z&channel=ShortFast
@@ -4146,6 +4250,7 @@ items: 2 items
     latitude: 51.78
     longitude: 19.5101
     altitude_meters: 310
+unplaced_node_ids: []
 
 ## GET /api/v1/links/hours?node_a=2658555076&node_b=3655149723&channel=ShortFast&since=2026-10-04T16:25:30.812000Z
 
@@ -4666,6 +4771,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4686,6 +4792,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4730,6 +4837,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4750,6 +4858,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4794,6 +4903,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4814,6 +4924,7 @@ items: 30 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4892,6 +5003,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4912,6 +5024,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 4
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4956,6 +5069,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -4976,6 +5090,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 4
       blamed_partners: 0
       traceroute_corroborated: false
@@ -5030,6 +5145,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 0
       blamed_partners: 0
       traceroute_corroborated: false
@@ -5050,6 +5166,7 @@ items: 25 items
       position_from_map_report: false
       moved_at: null
       doubtful: false
+      shared: false
       direct_partners: 4
       blamed_partners: 0
       traceroute_corroborated: false

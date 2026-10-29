@@ -196,7 +196,9 @@ export interface paths {
     /**
      * Node Packet Page
      * @description Packets the node sent or that were addressed to it, only those on
-     *     application port number `port` when given.
+     *     application port number `port` when given. radio keeps those a
+     *     shared node number sent that are sorted to its radio of that number
+     *     (NodeOverview.radios), or to none with radio=unsorted.
      */
     get: operations["node_packet_page_api_v1_nodes__node_id__packets_get"];
     put?: never;
@@ -1041,7 +1043,8 @@ export interface components {
      * @description One kind of link between a node and a contact since the window's
      *     start, both directions added up: observations as link_hour counts them,
      *     and the shortest and longest distance when heard (None while the two
-     *     were never both placed). A wide range means one end's position changed.
+     *     were never both placed, or either is a shared node number). A wide range
+     *     means one end's position changed.
      */
     ContactLink: {
       /** @enum {string} */
@@ -1273,9 +1276,15 @@ export interface components {
       newest_packet_at: string | null;
       retention_days: number;
     };
-    /** DeviceConflict */
+    /**
+     * DeviceConflict
+     * @description kind is 'shared' when two radios were on air at once, 'one_at_a_time'
+     *     for two or more radios without that proof, None when only keys differ.
+     */
     DeviceConflict: {
       node_id: number;
+      kind: ("shared" | "one_at_a_time") | null;
+      proof: components["schemas"]["SharedProof"] | null;
       reports: components["schemas"]["DeviceReport"][];
       limited: boolean;
     };
@@ -1284,7 +1293,11 @@ export interface components {
       items: components["schemas"]["DeviceConflict"][];
       next_node_id: number | null;
     };
-    /** DeviceReport */
+    /**
+     * DeviceReport
+     * @description One MAC/key profile: its latest names and packet, its first report,
+     *     and the other node numbers its MAC reported under.
+     */
     DeviceReport: {
       long_name: string | null;
       short_name: string | null;
@@ -1292,8 +1305,11 @@ export interface components {
       mac_address: string | null;
       public_key: string | null;
       /** Format: date-time */
+      first_observed_at: string;
+      /** Format: date-time */
       observed_at: string;
       packet_row_id: number;
+      other_node_ids: number[];
     };
     /** DiagnosticsSummary */
     DiagnosticsSummary: {
@@ -1400,9 +1416,14 @@ export interface components {
       longitude: number;
       altitude_meters: number | null;
     };
-    /** HeardPositionList */
+    /**
+     * HeardPositionList
+     * @description unplaced_node_ids are shared node numbers, never placed: their radios
+     *     are in several places.
+     */
     HeardPositionList: {
       items: components["schemas"]["HeardPosition"][];
+      unplaced_node_ids: number[];
     };
     /**
      * Hop
@@ -1525,7 +1546,9 @@ export interface components {
      *     positions when the link was last heard in the window (last_seen_at),
      *     None when either had none then, and why that distance is doubted
      *     (link_doubts): by distance a doubted link ranks apart. It is confirmed
-     *     when any hour PENDING_KM or more in the window is.
+     *     when any hour PENDING_KM or more in the window is. On a shared node
+     *     number's own table, radio_names are the radios sorted packets show on
+     *     the link (shared_numbers.link_radios), none when none do.
      */
     LinkRow: {
       node_a: number;
@@ -1539,18 +1562,22 @@ export interface components {
       /** @enum {string} */
       link_kind: "traceroute" | "direct" | "neighbor";
       distance_km: number | null;
-      doubts: ("doubtful" | "terrain" | "pending" | "signal")[];
+      doubts: ("shared" | "doubtful" | "terrain" | "pending" | "signal")[];
+      /** @default [] */
+      radio_names: string[];
     };
     /**
      * LinkTable
      * @description doubtful_node_ids are the table's nodes with a doubtful position
-     *     (doubtful_nodes), the suspects of a link doubted for one. A node's table
+     *     (doubtful_nodes) and shared_node_ids its shared node numbers
+     *     (shared_numbers.shared_nodes), the suspects of a link doubted for one. A node's table
      *     has its zero_cost_hops either way, those free at least as often as not.
      */
     LinkTable: {
       items: components["schemas"]["LinkRow"][];
       nodes: components["schemas"]["NodeSummary"][];
       doubtful_node_ids: number[];
+      shared_node_ids: number[];
       truncated: boolean;
       zero_cost_hops: components["schemas"]["ZeroCostHop"][];
     };
@@ -1612,18 +1639,19 @@ export interface components {
     };
     /**
      * LongLinkDoubt
-     * @description Why the Links page badges a long link and ranks it apart: 'position'
+     * @description Why the Links page badges a long link and ranks it apart: 'shared'
+     *     when an end is a shared node number, else 'position'
      *     when an end has a doubtful position, else 'terrain' when its newest km is
      *     LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
      *     'signal' for a suspect signal distance. suspects
-     *     are the ends to blame: the doubtful ones. The terrain check judges the pair,
+     *     are the ends to blame: the shared or doubtful ones. The terrain check judges the pair,
      *     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
      *     when that is at least two, since one wrong position makes many; none when
      *     the ends are in as many.
      */
     LongLinkDoubt: {
       /** @enum {string} */
-      reason: "position" | "terrain" | "signal";
+      reason: "shared" | "position" | "terrain" | "signal";
       suspects: number[];
     };
     /**
@@ -1633,7 +1661,8 @@ export interface components {
      *     altitude_meters 0 is how a manually set position says "not set".
      *     position_from_map_report marks a position from a map report, which may be
      *     rounded on purpose, rather than the node's own packet. moved_at is
-     *     node_current's, doubtful node_doubtful's flag.
+     *     node_current's, doubtful node_doubtful's flag, shared whether it is a
+     *     shared node number (shared_numbers.py).
      *     direct_partners counts the placed nodes used to assess its current position
      *     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
      *     blamed_partners counts far partners excluded because their other partners
@@ -1649,6 +1678,7 @@ export interface components {
       position_from_map_report: boolean;
       moved_at: string | null;
       doubtful: boolean;
+      shared: boolean;
       direct_partners: number;
       blamed_partners: number;
       traceroute_corroborated: boolean;
@@ -1823,7 +1853,8 @@ export interface components {
      *     counts the node's packets this gateway reported, of those read;
      *     fewest_hops is the fewest hops one of them used to reach it (0 heard
      *     directly), None when no report said. km is the distance between the two
-     *     nodes' reported positions now (db.reported_km).
+     *     nodes' reported positions now (db.reported_km), None when either is a
+     *     shared node number.
      */
     NodeContact: {
       node_id: number;
@@ -1953,10 +1984,18 @@ export interface components {
      *
      *     ports are the ports the node has sent on, most packets first, for the packet
      *     table's port filter. Ports only seen on packets addressed to it are left out.
+     *     radios are its radios when it has two or more (shared_numbers.node_radios);
+     *     earlier_node_ids and later_node_ids the numbers its radios reported under
+     *     before and after it.
      */
     NodeOverview: {
       node: components["schemas"]["NodeDetail"] | null;
       ports: components["schemas"]["PacketPort"][];
+      radios: components["schemas"]["NodeRadios"] | null;
+      /** @default [] */
+      earlier_node_ids: number[];
+      /** @default [] */
+      later_node_ids: number[];
     };
     /** NodePosition */
     NodePosition: {
@@ -1981,6 +2020,18 @@ export interface components {
       items: components["schemas"]["NodeHistoricPosition"][];
       invalid: number;
       limited: boolean;
+    };
+    /**
+     * NodeRadios
+     * @description A number's radios, when it has two or more. shared says two were on
+     *     air at once, last shown at proof_at; unsorted_packets counts the shared
+     *     number's packets sorted to none.
+     */
+    NodeRadios: {
+      shared: boolean;
+      proof_at: string | null;
+      items: components["schemas"]["Radio"][];
+      unsorted_packets: number | null;
     };
     /**
      * NodeSummary
@@ -2138,6 +2189,8 @@ export interface components {
     /**
      * PacketRow
      * @description A row of a packet table. Names are the long name, else the short name.
+     *     sender_radio is the radio a shared node number's packet is sorted to
+     *     (shared_numbers.py), None when the sender is not one.
      */
     PacketRow: {
       packet_row_id: number;
@@ -2153,6 +2206,34 @@ export interface components {
       portnum: string | null;
       sender_name: string | null;
       recipient_name: string | null;
+      sender_radio: components["schemas"]["SenderRadio"] | null;
+    };
+    /**
+     * Radio
+     * @description One radio of the page's number (RadioProfile). sorted_packets and
+     *     position (its latest valid sorted position) only for a shared number.
+     *     later_node_id is the number it reported under next (radio_moves).
+     */
+    Radio: {
+      number: number;
+      long_name: string | null;
+      short_name: string | null;
+      hardware_model: string | null;
+      /** Format: date-time */
+      first_reported_at: string;
+      /** Format: date-time */
+      last_reported_at: string;
+      sorted_packets: number | null;
+      position: components["schemas"]["RadioPosition"] | null;
+      later_node_id: number | null;
+    };
+    /** RadioPosition */
+    RadioPosition: {
+      /** Format: date-time */
+      observed_at: string;
+      latitude: number;
+      longitude: number;
+      packet_row_id: number;
     };
     /**
      * RelayAnswer
@@ -2501,6 +2582,29 @@ export interface components {
       nodes: (number | null)[];
       snr_db: (number | null)[];
     };
+    /**
+     * SenderRadio
+     * @description The radio a shared number's packet is sorted to (number and name), and
+     *     why; all None while unsorted.
+     */
+    SenderRadio: {
+      number: number | null;
+      name: string | null;
+      reason: ("node_info" | "gateways" | "channel") | null;
+    };
+    /**
+     * SharedProof
+     * @description Why a number is shared (shared_numbers.py): other_packet_row_id, one
+     *     radio's NodeInfo heard at proof_at, came inside another radio's counter
+     *     run from run_from_ to run_to_packet_row_id. None for an expired packet.
+     */
+    SharedProof: {
+      /** Format: date-time */
+      proof_at: string;
+      run_from_packet_row_id: number | null;
+      run_to_packet_row_id: number | null;
+      other_packet_row_id: number | null;
+    };
     /** SkipCount */
     SkipCount: {
       reason: string;
@@ -2782,7 +2886,8 @@ export interface components {
      *     would be. positions are where the
      *     route's nodes and ends were when the shown route's packet was heard
      *     (reported.positions_when_heard); a node missing there is drawn where the
-     *     page's nodes place it now, estimates included.
+     *     page's nodes place it now, estimates included. A shared node number is
+     *     placed in neither.
      */
     TracerouteRun: {
       requester_node_id: number;
@@ -2796,20 +2901,22 @@ export interface components {
       reply_packet_row_id: number | null;
       reply_receptions: number | null;
       distance_km: number | null;
-      doubts: ("doubtful" | "terrain" | "pending" | "signal")[];
+      doubts: ("shared" | "doubtful" | "terrain" | "pending" | "signal")[];
       route: components["schemas"]["TracerouteRoute"];
       positions: components["schemas"]["HeardPosition"][];
     };
     /**
      * TracerouteRuns
      * @description matched_node_ids are the page's nodes that match the node searches;
-     *     doubtful_node_ids those with a doubtful position (links.doubtful_nodes).
+     *     doubtful_node_ids those with a doubtful position (links.doubtful_nodes)
+     *     and shared_node_ids those that are a shared node number.
      */
     TracerouteRuns: {
       items: components["schemas"]["TracerouteRun"][];
       nodes: components["schemas"]["NodeSummary"][];
       matched_node_ids: number[];
       doubtful_node_ids: number[];
+      shared_node_ids: number[];
       has_more: boolean;
     };
     /** Upload */
@@ -3302,6 +3409,7 @@ export interface operations {
         limit?: number;
         before_id?: number | null;
         port?: number | null;
+        radio?: string | null;
       };
       header?: never;
       path: {
@@ -4125,6 +4233,7 @@ export interface operations {
               | "long"
               | "shorter"
               | "hidden"
+              | "shared"
               | "position"
               | "unlikely"
               | "pending"

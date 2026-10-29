@@ -76,8 +76,9 @@ CREATE TABLE node_opt_out (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295)
 ) STRICT;
 
--- Latest NodeInfo for each reported MAC/key pair. Empty bytes mean missing.
--- Its last packet's expiry removes the profile with it.
+-- Latest NodeInfo for each reported MAC/key pair, and when the pair was first
+-- reported. Empty bytes mean missing. Its last packet's expiry removes the
+-- profile with it.
 CREATE TABLE node_device (
     node_id INTEGER NOT NULL,
     mac_address BLOB NOT NULL,
@@ -87,10 +88,37 @@ CREATE TABLE node_device (
     long_name TEXT,
     short_name TEXT,
     hardware_model TEXT,
+    first_observed_at INTEGER NOT NULL CHECK (first_observed_at <= observed_at),
     PRIMARY KEY (node_id, mac_address, public_key)
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX node_device_packet ON node_device (packet_row_id);
+-- The same radio under other node numbers (shared_numbers.py).
+CREATE INDEX node_device_mac ON node_device (mac_address) WHERE mac_address != x'';
+
+-- Node numbers two radios were on air with at the same time
+-- (shared_numbers.py): one radio's NodeInfo (other_packet_row_id) inside
+-- another's counter run (run_from_ to run_to_packet_row_id). Refilled
+-- wholesale by refresh_shared_numbers, so the packets may have expired since.
+CREATE TABLE node_shared (
+    node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
+    proof_at INTEGER NOT NULL,
+    run_from_packet_row_id INTEGER NOT NULL,
+    run_to_packet_row_id INTEGER NOT NULL,
+    other_packet_row_id INTEGER NOT NULL
+) STRICT;
+
+-- The radio (a MAC of node_device) a shared node number's packet is sorted
+-- to, and why (shared_numbers.SortReason). Unsorted packets have no row.
+-- Refilled wholesale with node_shared.
+CREATE TABLE packet_radio (
+    packet_row_id INTEGER PRIMARY KEY REFERENCES packet(id) ON DELETE CASCADE,
+    node_id INTEGER NOT NULL,
+    mac_address BLOB NOT NULL,
+    reason TEXT NOT NULL CHECK (reason IN ('node_info', 'gateways', 'channel'))
+) STRICT;
+
+CREATE INDEX packet_radio_radio ON packet_radio (node_id, mac_address);
 
 -- Estimated positions of linked nodes that report none (positions.py),
 -- refilled wholesale by refresh_estimates. A reported position always wins.

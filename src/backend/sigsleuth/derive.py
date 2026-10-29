@@ -529,14 +529,21 @@ def _read_payload(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     )
 
 
-def _save_device(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+def device_identity(payload: bytes) -> tuple[bytes, bytes]:
+    """A NodeInfo payload's MAC and public key, each empty when missing, zero
+    or malformed."""
     user = mesh_pb2.User()
     try:
-        user.ParseFromString(row["application_payload"])
+        user.ParseFromString(payload)
     except DecodeError:
-        return
+        return b"", b""
     mac = bytes(user.macaddr) if len(user.macaddr) == 6 and any(user.macaddr) else b""
     key = bytes(user.public_key) if len(user.public_key) == 32 and any(user.public_key) else b""
+    return mac, key
+
+
+def _save_device(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    mac, key = device_identity(row["application_payload"])
     if not mac and not key:
         return
     info = interpret_payload(
@@ -544,15 +551,19 @@ def _save_device(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     ).node_info
     if info is None:
         return
+    # SET reads the old row throughout, so each column checks the same thing.
+    newer = """(excluded.observed_at, excluded.packet_row_id)
+        > (node_device.observed_at, node_device.packet_row_id)"""
     connection.execute(
-        """
-        INSERT INTO node_device VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        f"""
+        INSERT INTO node_device VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (node_id, mac_address, public_key) DO UPDATE SET
-            packet_row_id = excluded.packet_row_id, observed_at = excluded.observed_at,
-            long_name = excluded.long_name, short_name = excluded.short_name,
-            hardware_model = excluded.hardware_model
-        WHERE (excluded.observed_at, excluded.packet_row_id)
-            > (node_device.observed_at, node_device.packet_row_id)
+            packet_row_id = iif({newer}, excluded.packet_row_id, packet_row_id),
+            observed_at = iif({newer}, excluded.observed_at, observed_at),
+            long_name = iif({newer}, excluded.long_name, long_name),
+            short_name = iif({newer}, excluded.short_name, short_name),
+            hardware_model = iif({newer}, excluded.hardware_model, hardware_model),
+            first_observed_at = min(first_observed_at, excluded.first_observed_at)
         """,
         (
             row["sender_node_id"],
@@ -563,6 +574,7 @@ def _save_device(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
             info.long_name,
             info.short_name,
             info.hardware_model,
+            row["first_received_at"],
         ),
     )
 

@@ -33,7 +33,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from sigsleuth import db, positions, retention
+from sigsleuth import db, positions, retention, shared_numbers
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import (
@@ -50,6 +50,7 @@ from sigsleuth.retention import (
     _prune_current_state,
     database_used_bytes,
 )
+from sigsleuth.shared_numbers import refresh_shared_numbers
 from sigsleuth.terrain import refresh_long_links
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
@@ -114,6 +115,7 @@ def time_rebuild(connection: sqlite3.Connection, timer: "Timer") -> None:
             connection.executemany(
                 f"INSERT INTO long_link VALUES ({', '.join('?' * len(judged[0]))})", judged
             )
+    refresh_shared_numbers(connection)
     refresh_estimates(connection)
 
 
@@ -134,7 +136,7 @@ def time_capture_jobs(connection: sqlite3.Connection, timer: "Timer") -> None:
     (oldest,) = connection.execute("SELECT min(first_received_at) FROM packet").fetchone()
     # As if the oldest day had just passed the age limit.
     cutoff = oldest + DAY_MS
-    retention.transaction = positions.transaction = rolled_back  # type: ignore[assignment]
+    retention.transaction = positions.transaction = shared_numbers.transaction = rolled_back  # type: ignore[assignment]
     timer.time(
         f"retention: delete {RETENTION_BATCH_SIZE:,} packets",
         lambda: _delete_oldest_packets(connection, RETENTION_BATCH_SIZE, cutoff),
@@ -144,6 +146,11 @@ def time_capture_jobs(connection: sqlite3.Connection, timer: "Timer") -> None:
         "retention: trim nodes, positions and hourly totals",
         lambda: _prune_current_state(connection, cutoff),
         RETENTION_BUDGET_MS,
+    )
+    timer.time(
+        "capture: refill shared node numbers",
+        lambda: refresh_shared_numbers(connection),
+        REFILL_BUDGET_MS,
     )
     timer.time(
         "capture: refill estimated positions",

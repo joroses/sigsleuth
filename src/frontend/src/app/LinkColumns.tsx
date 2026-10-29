@@ -21,6 +21,7 @@ import {
   ShortTime,
   SortHeading,
 } from "./ui";
+import { SharedBadge } from "./radios";
 
 /**
  * The shared columns' headings, from Distance to Last seen. `ways` names the
@@ -91,6 +92,7 @@ export function LinkCells({
     <>
       <td className="number">
         {formatKm(link.distance_km)}
+        {link.doubts.includes("shared") ? <SharedBadge /> : null}
         <DoubtfulBadge
           suspects={
             link.doubts.includes("doubtful")
@@ -105,7 +107,7 @@ export function LinkCells({
           </Badge>
         ) : null}
         {link.doubts.includes("pending") ? <PendingBadge /> : null}
-        {link.distance_km !== null ? (
+        {link.distance_km !== null && !link.doubts.includes("shared") ? (
           <a
             className="los-link"
             href={lineOfSightHref(link.node_a, link.node_b, link.last_seen_at)}

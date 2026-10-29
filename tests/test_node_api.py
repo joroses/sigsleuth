@@ -385,7 +385,13 @@ def test_unknown_node_page_is_empty_not_an_error(tmp_path: Path) -> None:
         packets = client.get("/api/v1/nodes/42/packets")
         invalid = client.get("/api/v1/nodes/0")
 
-    assert unknown.json() == {"node": None, "ports": []}
+    assert unknown.json() == {
+        "node": None,
+        "ports": [],
+        "radios": None,
+        "earlier_node_ids": [],
+        "later_node_ids": [],
+    }
     assert packets.json() == {"packets": [], "next_before_id": None}
     assert invalid.json()["error"]["code"] == "invalid_parameters"
 

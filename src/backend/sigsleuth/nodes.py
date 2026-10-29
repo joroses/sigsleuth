@@ -11,7 +11,7 @@ import base64
 import json
 import sqlite3
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Literal
 
@@ -36,6 +36,7 @@ from sigsleuth.links import LinkKind
 from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unlinkable_packets
 from sigsleuth.packets import PacketPage, PacketPort, packet_rows
 from sigsleuth.positions import EstimatedPosition, node_estimate
+from sigsleuth.shared_numbers import NodeRadios, node_radios, radio_mac, shared_nodes
 
 # The Nodes page's sorts.
 NodeSort = Literal[
@@ -174,10 +175,16 @@ class NodeOverview:
 
     ports are the ports the node has sent on, most packets first, for the packet
     table's port filter. Ports only seen on packets addressed to it are left out.
+    radios are its radios when it has two or more (shared_numbers.node_radios);
+    earlier_node_ids and later_node_ids the numbers its radios reported under
+    before and after it.
     """
 
     node: NodeDetail | None
     ports: tuple[PacketPort, ...]
+    radios: NodeRadios | None = None
+    earlier_node_ids: tuple[int, ...] = ()
+    later_node_ids: tuple[int, ...] = ()
 
 
 def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
@@ -250,12 +257,16 @@ def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
         """,
         (node_id,),
     ).fetchall()
+    radios, moves = node_radios(connection, node_id, opted_out(connection))
     return NodeOverview(
         node,
         ports=tuple(
             PacketPort(portnum=int(row["portnum"]), port=portnum_name(row["portnum"]))
             for row in ports
         ),
+        radios=radios,
+        earlier_node_ids=moves.earlier,
+        later_node_ids=moves.later,
     )
 
 
@@ -266,9 +277,12 @@ def node_packets(
     limit: int,
     before_id: int | None = None,
     portnum: int | None = None,
+    radio: int | Literal["unsorted"] | None = None,
 ) -> PacketPage:
     """The node's newest packets sent by it or addressed to it, only those on
-    application port portnum when it is given.
+    application port portnum when it is given. With radio, only those it
+    sent that are sorted to its radio of that number, or to none
+    (shared_numbers.py).
 
     Broadcasts count only as sent by their sender, not as addressed to every node.
     """
@@ -281,6 +295,8 @@ def node_packets(
     if is_opted_out(connection, node_id):
         return PacketPage((), None)
     port_filter = "" if portnum is None else "AND portnum = :port"
+    if radio is not None:
+        return _radio_packets(connection, node_id, radio, port_filter, portnum, limit, before_id)
     packets, next_before_id = packet_rows(
         connection,
         f"""
@@ -298,6 +314,47 @@ def node_packets(
         )
         """,
         {"node": node_id, "port": portnum},
+        limit=limit,
+        before_id=before_id,
+    )
+    return PacketPage(packets, next_before_id)
+
+
+def _radio_packets(
+    connection: sqlite3.Connection,
+    node_id: int,
+    radio: int | Literal["unsorted"],
+    port_filter: str,
+    portnum: int | None,
+    limit: int,
+    before_id: int | None,
+) -> PacketPage:
+    """node_packets with radio: sorted ones through packet_radio's index,
+    unsorted ones through the sender's."""
+    if radio == "unsorted":
+        picked = f"""
+            SELECT id FROM packet
+            WHERE sender_node_id = :node AND id < :before {port_filter} AND {SHOWN_PACKET}
+              AND NOT EXISTS (SELECT 1 FROM packet_radio WHERE packet_row_id = packet.id)
+            ORDER BY id DESC LIMIT :limit
+        """
+        mac = None
+    else:
+        mac = radio_mac(connection, node_id, radio)
+        if mac is None:
+            return PacketPage((), None)
+        picked = f"""
+            SELECT r.packet_row_id AS id
+            FROM packet_radio AS r INDEXED BY packet_radio_radio
+            JOIN packet ON packet.id = r.packet_row_id
+            WHERE r.node_id = :node AND r.mac_address = :mac AND r.packet_row_id < :before
+              {port_filter} AND {SHOWN_PACKET}
+            ORDER BY r.packet_row_id DESC LIMIT :limit
+        """
+    packets, next_before_id = packet_rows(
+        connection,
+        picked,
+        {"node": node_id, "port": portnum, "mac": mac},
         limit=limit,
         before_id=before_id,
     )
@@ -414,8 +471,9 @@ def _location_source(connection: sqlite3.Connection, packet_row_id: int | None) 
 def _contact_url(
     connection: sqlite3.Connection, node_id: int, packet_row_id: int | None
 ) -> str | None:
-    """The node's latest NodeInfo as it sent it, public key included, in the
-    shared contact link the Meshtastic apps read."""
+    """The node's latest NodeInfo as it sent it, public key included but not
+    its MAC, which pages show only in Diagnostics, in the shared contact link
+    the Meshtastic apps read."""
     if packet_row_id is None:
         return None
     row = connection.execute(
@@ -423,9 +481,9 @@ def _contact_url(
     ).fetchone()
     if row is None or row[0] is None:
         return None
-    contact = admin_pb2.SharedContact(
-        node_num=node_id, user=mesh_pb2.User.FromString(bytes(row[0]))
-    )
+    user = mesh_pb2.User.FromString(bytes(row[0]))
+    user.ClearField("macaddr")
+    contact = admin_pb2.SharedContact(node_num=node_id, user=user)
     encoded = base64.urlsafe_b64encode(contact.SerializeToString()).rstrip(b"=")
     return "https://meshtastic.org/v/#" + encoded.decode()
 
@@ -496,7 +554,8 @@ class ContactLink:
     """One kind of link between a node and a contact since the window's
     start, both directions added up: observations as link_hour counts them,
     and the shortest and longest distance when heard (None while the two
-    were never both placed). A wide range means one end's position changed."""
+    were never both placed, or either is a shared node number). A wide range
+    means one end's position changed."""
 
     kind: LinkKind
     observations: int
@@ -512,7 +571,8 @@ class NodeContact:
     counts the node's packets this gateway reported, of those read;
     fewest_hops is the fewest hops one of them used to reach it (0 heard
     directly), None when no report said. km is the distance between the two
-    nodes' reported positions now (db.reported_km)."""
+    nodes' reported positions now (db.reported_km), None when either is a
+    shared node number."""
 
     node_id: int
     node: NodeSummary | None
@@ -591,14 +651,22 @@ def node_contacts(
     contact_ids = (set(links) | set(heard)) - {node_id} - opted_out(connection)
     summaries = nodes_by_id(connection, contact_ids | {node_id})
     here = summaries.get(node_id)
+    shared = shared_nodes(connection)
+
+    def unmeasured(link: ContactLink) -> ContactLink:
+        return replace(link, min_km=None, max_km=None)
+
     items = [
         NodeContact(
             node_id=other,
             node=summaries.get(other),
-            links=tuple(links.get(other, ())),
+            links=tuple(
+                unmeasured(link) if {node_id, other} & shared else link
+                for link in links.get(other, ())
+            ),
             heard_packets=heard.get(other, (0, None))[0],
             fewest_hops=heard.get(other, (0, None))[1],
-            km=reported_km(here, summaries.get(other)),
+            km=None if {node_id, other} & shared else reported_km(here, summaries.get(other)),
         )
         for other in contact_ids
     ]

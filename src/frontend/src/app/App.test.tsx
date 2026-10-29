@@ -600,6 +600,16 @@ describe("Packet detail", () => {
     expect(rows[3]).toContain("≈");
     expect(rows[4]).toContain("Ridge");
     expect(rows[4]).not.toContain("≈");
+
+    const bob = screen.getByRole("row", { name: /Bob/ });
+    const carol = screen.getByRole("row", { name: /Carol/ });
+    fireEvent.click(bob);
+    expect(bob.classList.contains("pinned")).toBe(true);
+    fireEvent.click(carol);
+    expect(bob.classList.contains("pinned")).toBe(false);
+    expect(carol.classList.contains("pinned")).toBe(true);
+    fireEvent.click(carol);
+    expect(carol.classList.contains("pinned")).toBe(false);
   });
 });
 

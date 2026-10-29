@@ -1,6 +1,8 @@
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 
 import type { FloodRoutes, PacketDetail, PacketReception } from "./api";
+import type { MinimapFocus } from "./PacketMinimap";
+import { linkTier, linkTierColor } from "./linkQuality";
 import { zeroCostColor } from "./mapLinkLayers";
 import { arrowRotation, mercatorMidpoint } from "./minimapMarkers";
 
@@ -11,6 +13,10 @@ interface RelayFeatureProperties {
   color: string;
   rotation: number;
   label: string | null;
+  nodeId: number;
+  active: boolean;
+  selected: boolean;
+  reception: boolean;
 }
 
 const ROUTE_COLOR = "#64748b";
@@ -20,16 +26,18 @@ export type PacketRelays = FeatureCollection<
   RelayFeatureProperties
 >;
 
-/** Relays and likely connections; null for traceroutes or packets heard only directly. */
+/** Relays, likely connections and the selected gateway reports. */
 export function packetRelays(
   detail: PacketDetail,
   routes: FloodRoutes | null = null,
+  focus: MinimapFocus = null,
 ): PacketRelays | null {
   if (
     detail.traceroute !== null ||
-    !detail.receptions.some(
-      (reception) => !reception.own_upload && (hopsOf(reception) ?? 0) > 0,
-    )
+    (focus === null &&
+      !detail.receptions.some(
+        (reception) => !reception.own_upload && (hopsOf(reception) ?? 0) > 0,
+      ))
   ) {
     return null;
   }
@@ -60,6 +68,37 @@ export function packetRelays(
     positions.set(sender, [detail.sender_longitude, detail.sender_latitude]);
   }
 
+  const selectedReports = detail.receptions.filter((report) =>
+    focus?.kind === "reception"
+      ? report.reception_id === focus.receptionId
+      : focus?.kind === "relay"
+        ? report.relay_node?.node_id === focus.nodeId
+        : false,
+  );
+  const activeNodes = new Set<number>();
+  if (focus?.kind === "relay") activeNodes.add(focus.nodeId);
+  for (const report of focus?.kind === "relay" ? [] : selectedReports) {
+    if (report.direct) activeNodes.add(sender);
+    else if (report.relay_node !== null)
+      activeNodes.add(report.relay_node.node_id);
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const hop of routes?.hops ?? []) {
+      if (
+        activeNodes.has(hop.to_node_id) ||
+        (focus?.kind === "relay" && activeNodes.has(hop.from_node_id))
+      ) {
+        for (const nodeId of [hop.from_node_id, hop.to_node_id]) {
+          if (!activeNodes.has(nodeId)) {
+            activeNodes.add(nodeId);
+            changed = true;
+          }
+        }
+      }
+    }
+  }
   const relays = new Set<number>();
   for (const reception of detail.receptions) {
     if (reception.own_upload || hopsOf(reception) === null) continue;
@@ -81,6 +120,12 @@ export function packetRelays(
       color: ROUTE_COLOR,
       rotation: 0,
       label: null,
+      nodeId: hop.to_node_id,
+      active:
+        focus === null ||
+        (activeNodes.has(hop.from_node_id) && activeNodes.has(hop.to_node_id)),
+      selected: false,
+      reception: false,
     };
     features.push(
       {
@@ -102,6 +147,45 @@ export function packetRelays(
     relays.add(hop.from_node_id);
     relays.add(hop.to_node_id);
   }
+  for (const report of selectedReports) {
+    if (report.own_upload) continue;
+    const fromId = report.direct ? sender : report.relay_node?.node_id;
+    if (fromId === undefined || fromId === report.gateway_node_id) continue;
+    const start = positions.get(fromId);
+    const end = positions.get(report.gateway_node_id);
+    if (start === undefined || end === undefined) continue;
+    const line: RelayFeatureProperties = {
+      kind: "route",
+      certainty:
+        report.direct || report.relay_node?.how === "heard_directly"
+          ? "known"
+          : "guess",
+      estimated: false,
+      color: linkTierColor(linkTier(report.rx_snr, detail.spreading_factor)),
+      rotation: 0,
+      label: null,
+      nodeId: fromId,
+      active: true,
+      selected: false,
+      reception: true,
+    };
+    features.push(
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: [start, end] },
+        properties: line,
+      },
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: mercatorMidpoint(start, end) },
+        properties: {
+          ...line,
+          kind: "route-arrow",
+          rotation: arrowRotation(start, end),
+        },
+      },
+    );
+  }
   // The sender keeps its own marker.
   relays.delete(sender);
   for (const node of nodes.values()) {
@@ -117,6 +201,10 @@ export function packetRelays(
         color: "",
         rotation: 0,
         label: node.short_name ?? node.long_name,
+        nodeId: node.node_id,
+        active: focus === null || activeNodes.has(node.node_id),
+        selected: focus?.kind === "relay" && focus.nodeId === node.node_id,
+        reception: false,
       },
     });
   }

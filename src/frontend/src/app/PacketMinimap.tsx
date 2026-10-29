@@ -83,8 +83,12 @@ export function PacketMinimap({
   onHopHover,
   onHopClick,
   onReceptionHover,
+  onReceptionClick,
+  onDeselect,
+  selectedReports,
   showLegend = true,
   relayMap = null,
+  offerRelays,
   relaysOnOpen = false,
   onRelaysShow,
   expandable = false,
@@ -105,9 +109,13 @@ export function PacketMinimap({
   onNodeHover?: (nodeId: number | null) => void;
   /** Called with a gateway's reception when hovered, then null. */
   onReceptionHover?: (receptionId: number | null) => void;
+  onReceptionClick?: (receptionId: number) => void;
+  onDeselect?: () => void;
+  selectedReports?: ReadonlySet<number>;
   showLegend?: boolean;
   /** Offers the packet's relays and their connections. */
   relayMap?: PacketRelays | null;
+  offerRelays?: boolean;
   /** Show relays once the map is ready. */
   relaysOnOpen?: boolean;
   /** Called when relays are shown. */
@@ -124,6 +132,8 @@ export function PacketMinimap({
   const relayClick = useRef(onRelayClick);
   const nodeHover = useRef(onNodeHover);
   const receptionHover = useRef(onReceptionHover);
+  const receptionClick = useRef(onReceptionClick);
+  const deselect = useRef(onDeselect);
   const hopHover = useRef(onHopHover);
   const hopClick = useRef(onHopClick);
   const interactiveHops = onHopHover !== undefined;
@@ -139,8 +149,9 @@ export function PacketMinimap({
   );
   // With nothing else placed, the relays are the map.
   const onlyRelays = markers.length === 0;
-  const relaysShown = relayMap !== null && (relaysEnabled || onlyRelays);
-  const gatewaysShown = relayMap === null || gatewaysEnabled;
+  const hasRelays = offerRelays ?? relayMap !== null;
+  const relaysShown = hasRelays && (relaysEnabled || onlyRelays);
+  const gatewaysShown = !hasRelays || gatewaysEnabled;
   useEffect(() => {
     if (relaysShown) onRelaysShow?.();
   }, [relaysShown, onRelaysShow]);
@@ -187,9 +198,19 @@ export function PacketMinimap({
     relayClick.current = onRelayClick;
     nodeHover.current = onNodeHover;
     receptionHover.current = onReceptionHover;
+    receptionClick.current = onReceptionClick;
+    deselect.current = onDeselect;
     hopHover.current = onHopHover;
     hopClick.current = onHopClick;
-  }, [onRelayClick, onNodeHover, onReceptionHover, onHopHover, onHopClick]);
+  }, [
+    onRelayClick,
+    onNodeHover,
+    onReceptionHover,
+    onReceptionClick,
+    onDeselect,
+    onHopHover,
+    onHopClick,
+  ]);
 
   const { container, map, failure } = useBasemapMap(
     {
@@ -209,13 +230,27 @@ export function PacketMinimap({
       setup: (created) => {
         // Later markers are drawn on top, so add them from the last. The sender is
         // a pin standing above its position, so a marker at the same spot stays
-        // visible under it. Relays are buttons showing their routes; the other
-        // markers link to their node.
+        // visible under it.
         const elements = markerElements.current;
         for (const marker of [...markers].reverse()) {
           const isSender = marker.kind === "sender";
           let element: HTMLElement;
-          if (marker.kind === "relay" && relayClick.current !== undefined) {
+          if (
+            marker.kind === "gateway" &&
+            receptionClick.current !== undefined
+          ) {
+            element = document.createElement("button");
+            element.setAttribute("type", "button");
+            element.addEventListener("click", (event) => {
+              event.stopPropagation();
+              receptionClick.current?.(
+                Number(marker.key.slice("reception-".length)),
+              );
+            });
+          } else if (
+            marker.kind === "relay" &&
+            relayClick.current !== undefined
+          ) {
             element = document.createElement("button");
             element.setAttribute("type", "button");
             element.addEventListener("click", (event) => {
@@ -238,6 +273,12 @@ export function PacketMinimap({
               receptionHover.current?.(receptionId),
             );
             element.addEventListener("mouseleave", () =>
+              receptionHover.current?.(null),
+            );
+            element.addEventListener("focus", () =>
+              receptionHover.current?.(receptionId),
+            );
+            element.addEventListener("blur", () =>
               receptionHover.current?.(null),
             );
           } else {
@@ -350,29 +391,48 @@ export function PacketMinimap({
     if (map === null) return;
     map.getSource<maplibregl.GeoJSONSource>(FLOOD_SOURCE)?.setData({
       type: "FeatureCollection",
-      features: relaysShown && relayMap !== null ? relayMap.features : [],
+      features: (relayMap?.features ?? []).filter(
+        (feature) =>
+          relaysShown ||
+          feature.properties.reception ||
+          (selectedReports !== undefined && feature.properties.active),
+      ),
     });
-  }, [map, relayMap, relaysShown]);
+  }, [map, relayMap, relaysShown, selectedReports]);
 
   useEffect(() => {
     if (map === null) return;
     for (const marker of markers) {
       if (marker.kind !== "gateway") continue;
       const element = markerElements.current.get(marker.key);
-      element?.classList.toggle("off-route", !gatewaysShown);
+      const selected =
+        selectedReports?.has(Number(marker.key.slice("reception-".length))) ===
+        true;
+      element?.classList.toggle("off-route", !gatewaysShown && !selected);
+      element?.classList.toggle(
+        "faded",
+        selectedReports !== undefined && !selected,
+      );
     }
-  }, [map, markers, gatewaysShown]);
+  }, [map, markers, gatewaysShown, selectedReports]);
 
+  const selectionShown = useRef(selectedReports !== undefined);
   useEffect(() => {
-    if (map === null) return;
+    selectionShown.current = selectedReports !== undefined;
+  }, [selectedReports]);
+  const relayBounds = JSON.stringify(
+    relaysShown ? relayPositions(relayMap) : [],
+  );
+  useEffect(() => {
+    // Late route data must not move the map while inspecting a selection.
+    if (map === null || selectionShown.current) return;
     const bounds = markerBounds(
       markers.filter((marker) => marker.kind !== "gateway" || gatewaysShown),
     );
-    if (relaysShown) {
-      for (const position of relayPositions(relayMap)) bounds.extend(position);
-    }
+    for (const position of JSON.parse(relayBounds) as [number, number][])
+      bounds.extend(position);
     if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 40, maxZoom: 12 });
-  }, [map, markers, relayMap, relaysShown, gatewaysShown]);
+  }, [map, markers, relayBounds, gatewaysShown]);
 
   useEffect(() => {
     const element =
@@ -431,6 +491,37 @@ export function PacketMinimap({
     };
   }, [map, markers, onRoute]);
 
+  useEffect(() => {
+    if (map === null || onDeselect === undefined) return;
+    const click = (event: maplibregl.MapMouseEvent) => {
+      if (
+        event.originalEvent.target instanceof Element &&
+        event.originalEvent.target.closest(".minimap-marker")
+      )
+        return;
+      const feature = map.queryRenderedFeatures(event.point, {
+        layers: [FLOOD_RELAYS, FLOOD_RELAY_NAMES],
+      })[0];
+      if (typeof feature?.properties?.nodeId === "number")
+        relayClick.current?.(feature.properties.nodeId);
+      else deselect.current?.();
+    };
+    const move = (event: maplibregl.MapMouseEvent) => {
+      const hit =
+        map.queryRenderedFeatures(event.point, {
+          layers: [FLOOD_RELAYS, FLOOD_RELAY_NAMES],
+        }).length > 0;
+      map.getCanvas().style.cursor = hit ? "pointer" : "";
+    };
+    map.on("click", click);
+    map.on("mousemove", move);
+    return () => {
+      map.off("click", click);
+      map.off("mousemove", move);
+      map.getCanvas().style.cursor = "";
+    };
+  }, [map, onDeselect]);
+
   const relayMarker =
     focus?.kind === "relay"
       ? markers.find((marker) => marker.key === focusedMarkerKey)
@@ -453,9 +544,9 @@ export function PacketMinimap({
       <figure
         className={`packet-minimap node-position ${expanded ? "node-position-expanded" : ""}`}
       >
-        {relayMap !== null || expandable || share !== undefined ? (
+        {hasRelays || expandable || share !== undefined ? (
           <div className="node-position-head">
-            {relayMap !== null ? (
+            {hasRelays ? (
               <div
                 className="minimap-toggles"
                 role="group"
@@ -577,7 +668,7 @@ export function PacketMinimap({
             </>
           ) : null}
         </figcaption>
-        {showLegend && allHops.hops > 0 ? (
+        {showLegend && (allHops.hops > 0 || onReceptionClick !== undefined) ? (
           <LinkQualityLegend
             zeroCost={allHops.features.features.some(
               (feature) => feature.properties.zeroCost,
@@ -702,7 +793,8 @@ function addFloodLayers(map: maplibregl.Map, darkBasemap: boolean): void {
   const halo = darkBasemap ? "#0f172a" : "#ffffff";
   const routePaint = {
     "line-color": ["get", "color"],
-    "line-width": ROUTE_LINE_WIDTH,
+    "line-width": ["case", ["get", "reception"], 2.5, ROUTE_LINE_WIDTH],
+    "line-opacity": ["case", ["get", "active"], 0.9, 0.15],
   } satisfies maplibregl.LineLayerSpecification["paint"];
   map.addLayer({
     id: FLOOD_ROUTE_LINES,
@@ -740,6 +832,7 @@ function addFloodLayers(map: maplibregl.Map, darkBasemap: boolean): void {
       "icon-ignore-placement": true,
     },
     paint: {
+      "icon-opacity": ["case", ["get", "active"], 1, 0.15],
       "icon-color": ["get", "color"],
       "icon-halo-color": halo,
       "icon-halo-width": 1,
@@ -751,15 +844,24 @@ function addFloodLayers(map: maplibregl.Map, darkBasemap: boolean): void {
     type: "circle",
     source: FLOOD_SOURCE,
     paint: {
-      "circle-radius": RELAY_DOT_RADIUS,
+      "circle-radius": [
+        "case",
+        ["get", "selected"],
+        RELAY_DOT_RADIUS + 2,
+        RELAY_DOT_RADIUS,
+      ],
+      "circle-opacity": ["case", ["get", "active"], 1, 0.25],
+      "circle-stroke-opacity": ["case", ["get", "active"], 1, 0.25],
       "circle-color": ["case", ["get", "estimated"], halo, RELAY_DOT_COLOR],
       "circle-stroke-color": [
         "case",
+        ["get", "selected"],
+        "#eab308",
         ["get", "estimated"],
         RELAY_DOT_COLOR,
         halo,
       ],
-      "circle-stroke-width": RELAY_DOT_STROKE,
+      "circle-stroke-width": ["case", ["get", "selected"], 3, RELAY_DOT_STROKE],
     },
   });
   map.addLayer({
@@ -777,6 +879,7 @@ function addFloodLayers(map: maplibregl.Map, darkBasemap: boolean): void {
       "text-optional": true,
     },
     paint: {
+      "text-opacity": ["case", ["get", "active"], 1, 0.25],
       "text-color": darkBasemap ? "#f8fafc" : "#1e293b",
       "text-halo-color": halo,
       "text-halo-width": 1.5,

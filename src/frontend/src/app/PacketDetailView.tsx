@@ -45,7 +45,6 @@ import {
 import { useApi } from "./useApi";
 import {
   DataItem,
-  IconButton,
   NodeLink,
   RelayCell,
   ReturnLink,
@@ -123,12 +122,6 @@ function PacketDetailContent({
   const { data: routes } = useApi<FloodRoutes>(
     relaysOpened && canShowRelays ? floodRoutesUrl(packet.packet_row_id) : null,
   );
-  const relayMap = useMemo(
-    () => packetRelays(detail, routes),
-    [detail, routes],
-  );
-  const placed =
-    minimap.markers.length > 0 || relayPositions(relayMap).length > 0;
   const { groups, hidden } = useMemo(
     () =>
       detail.traceroute === null
@@ -165,12 +158,13 @@ function PacketDetailContent({
     () => (narrowed ? splitGroups(groups, hopIds) : null),
     [narrowed, groups, hopIds],
   );
-  // Hovering a reception (its row, or its gateway on the minimap) previews it
-  // on the minimap and in the table over whatever is pinned;
-  // clicking a reception or a relay pins it, and clicking it again unpins it.
+  // A packet selection stays in view during hover; traceroutes preview hovered routes.
   const [hovered, setHovered] = useState<number | null>(null);
   const [pinned, setPinned] = useState<MinimapFocus>(
-    receptionId !== null && minimap.receptionHops.has(receptionId)
+    receptionId !== null &&
+      (detail.traceroute === null
+        ? receptions.some((r) => r.reception_id === receptionId)
+        : minimap.receptionHops.has(receptionId))
       ? { kind: "reception", receptionId }
       : null,
   );
@@ -178,12 +172,57 @@ function PacketDetailContent({
     pinned?.kind === "reception" ? pinned.receptionId : null;
   const pinnedRoutes =
     pinned?.kind === "relay"
-      ? minimap.relayReports.get(pinned.nodeId)?.receptionIds
+      ? detail.traceroute === null
+        ? new Set(
+            receptions
+              .filter((r) => r.relay_node?.node_id === pinned.nodeId)
+              .map((r) => r.reception_id),
+          )
+        : minimap.relayReports.get(pinned.nodeId)?.receptionIds
       : undefined;
-  const focus: MinimapFocus =
-    hovered !== null
-      ? { kind: "reception", receptionId: hovered }
-      : (pinned ?? (narrowed && !othersShown ? { kind: "hop", ...hop } : null));
+  const focus = useMemo<MinimapFocus>(
+    () =>
+      detail.traceroute === null && pinned !== null
+        ? pinned
+        : hovered !== null
+          ? { kind: "reception", receptionId: hovered }
+          : (pinned ??
+            (narrowed && !othersShown ? { kind: "hop", ...hop } : null)),
+    [detail.traceroute, pinned, hovered, narrowed, othersShown, hop],
+  );
+  const relayMap = useMemo(
+    () =>
+      packetRelays(detail, routes, detail.traceroute === null ? focus : null),
+    [detail, routes, focus],
+  );
+  const placed =
+    minimap.markers.length > 0 || relayPositions(relayMap).length > 0;
+  const selectedReports = useMemo(
+    () =>
+      detail.traceroute !== null || focus === null
+        ? undefined
+        : new Set(
+            receptions
+              .filter((r) =>
+                focus.kind === "reception"
+                  ? r.reception_id === focus.receptionId
+                  : focus.kind === "relay" &&
+                    r.relay_node?.node_id === focus.nodeId,
+              )
+              .map((r) => r.reception_id),
+          ),
+    [detail.traceroute, receptions, focus],
+  );
+  const toggleReception = (id: number) => {
+    if (detail.traceroute === null) setRelaysOpened(true);
+    setHovered(null);
+    setPinnedHop(null);
+    setPinned((current) =>
+      current?.kind === "reception" && current.receptionId === id
+        ? null
+        : { kind: "reception", receptionId: id },
+    );
+  };
   const hopName = (nodeId: number) =>
     nodeNames.get(nodeId) ?? formatNodeId(nodeId);
   const [highlightedNode, setHighlightedNode] = useState<number | null>(null);
@@ -339,14 +378,7 @@ function PacketDetailContent({
             pinned={(id) => id === pinnedReception || !!pinnedRoutes?.has(id)}
             pinnedReception={pinnedReception}
             onHover={setHovered}
-            onPin={(id) => {
-              setPinnedHop(null);
-              setPinned(
-                id === pinnedReception
-                  ? null
-                  : { kind: "reception", receptionId: id },
-              );
-            }}
+            onPin={toggleReception}
           />
           <p className="end-note">
             {receptions.length < packet.reception_count
@@ -368,7 +400,21 @@ function PacketDetailContent({
             contents={minimap}
             focus={focus}
             onClearFocus={() => setOthersShown(true)}
+            selectedReports={selectedReports}
+            onReceptionClick={
+              detail.traceroute === null ? toggleReception : undefined
+            }
+            onDeselect={
+              detail.traceroute === null
+                ? () => {
+                    setHovered(null);
+                    setPinned(null);
+                  }
+                : undefined
+            }
             onRelayClick={(nodeId) => {
+              if (detail.traceroute === null) setRelaysOpened(true);
+              setHovered(null);
               setPinnedHop(null);
               setPinned((current) =>
                 current?.kind === "relay" && current.nodeId === nodeId
@@ -392,6 +438,7 @@ function PacketDetailContent({
             }}
             onReceptionHover={setHovered}
             relayMap={relayMap}
+            offerRelays={canShowRelays}
             relaysOnOpen={relaysOnOpen}
             onRelaysShow={() => setRelaysOpened(true)}
             expandable
@@ -533,14 +580,7 @@ function ReceptionTable({
   const otherCount =
     others?.groups.reduce((count, group) => count + group.rows.length, 0) ?? 0;
   const action = (id: number) =>
-    shareHref === null ? (
-      <IconButton
-        icon="pin"
-        label="Pin on the map"
-        aria-pressed={pinned(id)}
-        onClick={() => onPin(id)}
-      />
-    ) : (
+    shareHref === null ? null : (
       <ShareButton
         hash={shareHref(id)}
         title="Traceroute report"
@@ -551,7 +591,7 @@ function ReceptionTable({
     groups.map(({ label, tone, rows }) => (
       <tbody key={`${part}-${label}`}>
         <tr className={`hop-group-row ${tone}`}>
-          <th colSpan={7} scope="colgroup">
+          <th colSpan={shareHref === null ? 6 : 7} scope="colgroup">
             {label} <span className="muted">· {rows.length}</span>
           </th>
         </tr>
@@ -622,18 +662,18 @@ function ReceptionTable({
             <th scope="col" className="number">
               Time
             </th>
-            <th scope="col">
-              <span className="visually-hidden">
-                {shareHref === null ? "Pin" : "Share"}
-              </span>
-            </th>
+            {shareHref === null ? null : (
+              <th scope="col">
+                <span className="visually-hidden">Share</span>
+              </th>
+            )}
           </tr>
         </thead>
         {renderGroups(groups, "matching")}
         {others !== null && others.groups.length > 0 ? (
           <tbody>
             <tr className="others-row">
-              <td colSpan={7}>
+              <td colSpan={shareHref === null ? 6 : 7}>
                 <button
                   type="button"
                   className="text-button"
@@ -747,10 +787,10 @@ function ReplyRows({
         <td className="number">—</td>
         <td className="mono">—</td>
         <td className="number">—</td>
-        <td className="pin-cell">{action}</td>
+        {action === null ? null : <td className="pin-cell">{action}</td>}
       </tr>
       <tr {...props} className={`${props.className} route-row`}>
-        <td colSpan={7}>
+        <td colSpan={action === null ? 6 : 7}>
           <dl>
             <RouteItem
               label="Route to the target"
@@ -853,11 +893,11 @@ function ReceptionRows({
             +{offset.toFixed(1)} s
           </time>
         </td>
-        <td className="pin-cell">{action}</td>
+        {action === null ? null : <td className="pin-cell">{action}</td>}
       </tr>
       {paths !== null && (forward !== null || paths.return_path !== null) ? (
         <tr {...props} className={`${props.className} route-row`}>
-          <td colSpan={7}>
+          <td colSpan={action === null ? 6 : 7}>
             <dl>
               {forward !== null ? (
                 <RouteItem

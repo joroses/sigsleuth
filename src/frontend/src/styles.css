@@ -2275,10 +2275,6 @@ dd {
   padding-block: 0;
 }
 
-.pin-cell .icon-button[aria-pressed="true"] {
-  color: var(--accent);
-}
-
 .gateway-cell > div {
   display: flex;
   align-items: baseline;
@@ -2700,6 +2696,10 @@ dd {
   border-color: var(--hop-colour);
   background: var(--surface);
   color: var(--hop-colour);
+}
+
+.minimap-marker.faded {
+  opacity: 0.25;
 }
 
 /* A relay off the focused route. */
@@ -5796,12 +5796,6 @@ tr.step-pick-row > th {
 
 .relay-terms .against {
   color: var(--error);
-}
-
-.relay-steps-link {
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
 }
 
 .relay-check-map {

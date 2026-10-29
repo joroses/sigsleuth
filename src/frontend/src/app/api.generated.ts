@@ -1594,8 +1594,11 @@ export interface components {
      *     node_current's, doubtful node_doubtful's flag.
      *     direct_partners counts the placed nodes used to assess its current position
      *     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
-     *     doubt_limit_km is the median beyond which its position is doubtful
-     *     (positions.doubt_limit_km, from its altitude).
+     *     blamed_partners counts far partners excluded because their other partners
+     *     contradict their positions.
+     *     traceroute_corroborated means measured hops support its position around
+     *     every counted far direct hour, despite its direct median.
+     *     doubt_limit_km is the altitude-aware direct median limit, before corroboration.
      */
     LongLinkEnd: {
       node: components["schemas"]["NodeSummary"];
@@ -1605,6 +1608,8 @@ export interface components {
       moved_at: string | null;
       doubtful: boolean;
       direct_partners: number;
+      blamed_partners: number;
+      traceroute_corroborated: boolean;
       nearest_partner_km: number | null;
       median_partner_km: number | null;
       doubt_limit_km: number;

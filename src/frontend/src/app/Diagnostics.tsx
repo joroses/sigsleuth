@@ -1247,9 +1247,20 @@ function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
         {end.moved_at === null ? "—" : <ShortTime value={end.moved_at} />}
       </td>
       <td>
-        {end.direct_partners === 0
-          ? "none placed"
-          : `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km (doubtful over ${formatKm(end.doubt_limit_km)} km)`}
+        {end.direct_partners > 0
+          ? `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km (limit ${formatKm(end.doubt_limit_km)} km)`
+          : end.blamed_partners === 0
+            ? "none placed"
+            : null}
+        {end.blamed_partners > 0 ? (
+          <div>
+            {end.blamed_partners} far not counted: doubtful on their other
+            partners
+          </div>
+        ) : null}
+        {end.traceroute_corroborated ? (
+          <div>Position corroborated by nearby traceroute hops</div>
+        ) : null}
       </td>
       {children}
       <td>

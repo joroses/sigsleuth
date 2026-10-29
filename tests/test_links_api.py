@@ -515,6 +515,74 @@ def test_a_node_heard_only_far_from_where_it_was_is_doubtful(path: Path) -> None
     assert table["doubtful_node_ids"] == [far]
 
 
+@pytest.mark.parametrize(
+    ("altitude", "km", "counted", "blamed"), [(0, 250.0, 0, 1), (1500, 155.0, 1, 0)]
+)
+def test_diagnostics_names_only_the_far_tracker_as_suspect(
+    path: Path, altitude: int, km: float, counted: int, blamed: int
+) -> None:
+    tracker = 0x0D0D0D0D
+    for node_id in (A, B, C, tracker):
+        place(path, node_id, f"N{node_id:x}", 40.0, 2.0)
+    with closing(open_current_database(path)) as connection:
+        connection.execute(
+            "UPDATE node_current SET altitude_meters = ? WHERE node_id = ?", (altitude, A)
+        )
+    for victim in (A, B, C):
+        add_link_hour(
+            path,
+            0,
+            tracker,
+            victim,
+            observations=1,
+            snr=[5.0],
+            link_kind="direct",
+            km=km if victim == A else 250.0,
+        )
+    refresh(path)
+
+    reviewed = links(path, "/api/v1/diagnostics/longest-links", count=1, node=A)["items"]
+
+    [item] = reviewed
+    ends = {end["node"]["node_id"]: end for end in (item["node_a"], item["node_b"])}
+    assert ends[A]["doubtful"] is False
+    assert ends[A]["direct_partners"] == counted
+    assert ends[A]["blamed_partners"] == blamed
+    assert ends[A]["nearest_partner_km"] == (km if counted else None)
+    assert ends[A]["median_partner_km"] == (km if counted else None)
+    assert ends[tracker]["doubtful"] is True
+    assert ends[tracker]["direct_partners"] == 3
+    assert ends[tracker]["blamed_partners"] == 0
+    assert item["doubt"] == {"reason": "position", "suspects": [tracker]}
+
+
+def test_diagnostics_explains_a_position_corroborated_despite_its_far_direct_partner(
+    path: Path,
+) -> None:
+    d, e = 0x0D0D0D0D, 0x0E0E0E0E
+    for node_id, latitude in ((A, 40.0), (B, 41.8), (C, 40.7), (d, 40.8), (e, 40.9)):
+        place(path, node_id, f"N{node_id:x}", latitude, 2.0)
+    add_link_hour(path, 0, A, B, observations=1, snr=[-5.0], link_kind="direct", km=200.0)
+    for partner, km in ((C, 80.0), (d, 90.0), (e, 100.0)):
+        add_link_hour(
+            path, 0, partner, B, observations=1, snr=[5.0], link_kind="direct", km=200.0 - km
+        )
+        add_link_hour(path, 0, partner, A, observations=1, snr=[5.0], km=km)
+    refresh(path)
+
+    [item] = links(path, "/api/v1/diagnostics/longest-links", node=A, count=1)["items"]
+    ends = {end["node"]["node_id"]: end for end in (item["node_a"], item["node_b"])}
+    assert ends[A]["traceroute_corroborated"] is True
+    assert ends[A]["doubtful"] is False
+    assert ends[A]["direct_partners"] == 1
+    assert ends[A]["median_partner_km"] == 200.0
+    assert ends[B]["traceroute_corroborated"] is False
+    assert not item["doubt"]
+    assert (A, B) in {
+        (link["node_a"], link["node_b"]) for link in links(path, link_kind="direct")["items"]
+    }
+
+
 def test_diagnostics_judges_current_positions_but_keeps_earlier_link_history(path: Path) -> None:
     d = 0x0D0D0D0D
     for node_id, name in ((A, "NA"), (B, "NB"), (C, "NC"), (d, "ND")):

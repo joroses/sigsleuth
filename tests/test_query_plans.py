@@ -34,6 +34,7 @@ from meshtastic.protobuf import (  # type: ignore[import-untyped]
 )
 
 import sigsleuth
+from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope
 from page_requests import Subjects, page_requests
 from sigsleuth import api
@@ -180,6 +181,11 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
         statements.section = "GET " + re.sub(r"\d{4}-\d\d-\d\dT[\d:.]+Z", "<time>", url)
         response = client.get(url)
         assert response.status_code == 200, (url, response.text)
+
+    statements.section = "position corroboration"
+    with closing(statements.watch(open_current_database(path))) as connection:
+        link_hour(connection, REQUESTER, RELAY, to_epoch_ms(now), km=200.0)
+        refresh_estimates(connection)
 
     statements.section = "retention and estimates"
     with closing(statements.watch(open_current_database(path))) as connection:

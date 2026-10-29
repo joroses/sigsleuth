@@ -34,7 +34,7 @@ from sigsleuth.reported import HeardPosition, positions_when_heard
 
 # Estimates come from this many days of links; perf.py budgets the refill.
 ESTIMATE_DAYS = 7
-# Relay guesses use this many hours of radio links.
+# Recent radio links for relay guesses; either side for position corroboration.
 RECENT_HOURS = 24
 # A node with no placed radio neighbour is estimated from its traceroute
 # neighbours only when at least this many are placed and their median distance
@@ -42,9 +42,11 @@ RECENT_HOURS = 24
 TRACEROUTE_NEIGHBOURS = 2
 TRACEROUTE_SPREAD_KM = 25
 # A node whose direct partners sat, by median, farther than this from it when
-# heard has a doubtful position (node_doubtful). Ground radio does not reach
-# that far.
+# heard has a doubtful position unless measured traceroute hops corroborate it.
 DOUBTFUL_PARTNER_KM = 150
+# A far partner takes the blame only when this many other partners contradict it.
+BLAME_OTHER_PARTNERS = 2
+CORROBORATING_PARTNERS = 2
 # A node reporting an altitude is allowed partners out to its radio horizon,
 # HORIZON_KM_PER_ROOT_M * sqrt(altitude) km (4/3 of the Earth's radius), when that
 # is farther: from 1,340 m up. Altitudes of 0 (the apps' "not set") and over
@@ -116,9 +118,8 @@ def refresh_estimates(connection: sqlite3.Connection) -> int:
 
 
 def doubt_limit_km(altitude_meters: float | None) -> float:
-    """How far, by median, a node's direct partners may sit before its
-    position is doubtful: DOUBTFUL_PARTNER_KM, or the radio horizon of its
-    reported altitude when that is farther."""
+    """The direct median limit before traceroute corroboration:
+    DOUBTFUL_PARTNER_KM, or the radio horizon of its reported altitude when farther."""
     if altitude_meters is None or not 0 < altitude_meters <= MAX_DOUBT_ALTITUDE_M:
         return DOUBTFUL_PARTNER_KM
     return max(DOUBTFUL_PARTNER_KM, HORIZON_KM_PER_ROOT_M * math.sqrt(altitude_meters))
@@ -134,41 +135,141 @@ def _doubtful(connection: sqlite3.Connection, since_ms: int) -> list[tuple[int, 
         )
     }
     return [
-        (node, len(found), round(median, 1))
+        (node, len(found.counted), round(median, 1))
         for node, found in sorted(partners.items())
-        if (median := statistics.median(found.values())) > doubt_limit_km(altitudes.get(node))
+        if not found.corroborated
+        and found.counted
+        and (median := statistics.median(found.counted.values()))
+        > doubt_limit_km(altitudes.get(node))
     ]
 
 
-def direct_partners(
-    connection: sqlite3.Connection, since_ms: int, node_ids: Collection[int] | None = None
-) -> dict[int, dict[int, float]]:
-    """Placed direct partners at their shortest km since both ends last moved."""
-    only_nodes = (
-        ""
-        if node_ids is None
-        else """
-        AND (from_node_id IN (SELECT value FROM json_each(:nodes))
-             OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+@dataclass(frozen=True)
+class DirectPartners:
+    counted: dict[int, float]
+    blamed: int
+    corroborated: bool = False
+
+
+def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, DirectPartners]:
+    """Placed direct partners since both ends last moved, at their shortest km.
+
+    Exclude a far partner doubtful on at least BLAME_OTHER_PARTNERS other
+    partners, leaving this pair out. Use the original partners in one pass so
+    exclusions cannot manufacture support for each other. Remaining doubtful
+    positions may be corroborated by independent measured traceroute hops.
     """
-    )
     partners: dict[int, dict[int, float]] = defaultdict(dict)
     for from_node, to_node, km in connection.execute(
-        f"""
+        """
         SELECT from_node_id, to_node_id, min(km) FROM link_hour
         WHERE link_kind = 'direct' AND hour_start >= :since AND km IS NOT NULL
           AND (from_node_id NOT IN (SELECT node_id FROM node_current WHERE moved_at >= :since)
                OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = from_node_id))
           AND (to_node_id NOT IN (SELECT node_id FROM node_current WHERE moved_at >= :since)
                OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = to_node_id))
-          {only_nodes}
         GROUP BY from_node_id, to_node_id
         """,
-        {"since": since_ms, "nodes": json.dumps(sorted(node_ids or ()))},
+        {"since": since_ms},
     ):
         for node, other in ((from_node, to_node), (to_node, from_node)):
             partners[node][other] = min(km, partners[node].get(other, km))
-    return partners
+    current = connection.execute(
+        "SELECT node_id, altitude_meters, moved_at FROM node_current"
+    ).fetchall()
+    limits = {int(node): doubt_limit_km(altitude) for node, altitude, _ in current}
+    moves = {int(node): int(moved) for node, _, moved in current if moved is not None}
+    assessed = {}
+    for node, found in partners.items():
+        counted = {}
+        for other, km in found.items():
+            if km > limits.get(node, DOUBTFUL_PARTNER_KM):
+                others = [d for partner, d in partners[other].items() if partner != node]
+                if len(others) >= BLAME_OTHER_PARTNERS and statistics.median(others) > limits.get(
+                    other, DOUBTFUL_PARTNER_KM
+                ):
+                    continue
+            counted[other] = km
+        assessed[node] = DirectPartners(counted, len(found) - len(counted))
+    corroborated = _traceroute_corroborated(connection, since_ms, partners, assessed, limits, moves)
+    return {
+        node: DirectPartners(found.counted, found.blamed, node in corroborated)
+        for node, found in assessed.items()
+    }
+
+
+def _traceroute_corroborated(
+    connection: sqlite3.Connection,
+    since_ms: int,
+    partners: dict[int, dict[int, float]],
+    assessed: dict[int, DirectPartners],
+    limits: dict[int, float],
+    moves: dict[int, int],
+) -> set[int]:
+    """Clear a direct flag only with support around every counted far hour.
+
+    Direct partners weigh twice as much as other measured route partners.
+    Original direct partners and first-pass doubtful voters cannot vote;
+    clearing one position never supplies support for another.
+    """
+    candidates = {
+        node: found.counted
+        for node, found in assessed.items()
+        if found.counted
+        and statistics.median(found.counted.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
+    }
+    if not candidates:
+        return set()
+    first = {
+        node
+        for node, found in partners.items()
+        if statistics.median(found.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
+    }
+    direct: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    routes: dict[int, list[tuple[int, int, float]]] = defaultdict(list)
+    for kind, a, b, hour, last, km in connection.execute(
+        """
+        SELECT link_kind, from_node_id, to_node_id, hour_start, last_seen_at, km
+        FROM link_hour
+        WHERE link_kind IN ('direct', 'traceroute') AND hour_start >= :since
+          AND km IS NOT NULL AND (link_kind = 'direct' OR snr_count > 0)
+          AND (from_node_id IN (SELECT value FROM json_each(:nodes))
+               OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+        """,
+        {"since": since_ms, "nodes": json.dumps(sorted(candidates))},
+    ):
+        # A later unmeasured hop can hide a measured hop before a move in the same hour.
+        if (last if kind == "direct" else hour) < max(moves.get(a, 0), moves.get(b, 0)):
+            continue
+        for node, other in ((a, b), (b, a)):
+            if node not in candidates:
+                continue
+            if kind == "direct":
+                if other in candidates[node] and km > limits.get(node, DOUBTFUL_PARTNER_KM):
+                    direct[node].append((hour, last))
+            elif other != node and other not in partners[node] and other not in first:
+                routes[node].append((other, hour, km))
+
+    window = RECENT_HOURS * HOUR_MS
+    corroborated = set()
+    for node, counted in candidates.items():
+        if not direct[node]:
+            continue
+        limit = limits.get(node, DOUBTFUL_PARTNER_KM)
+        for hour, last in direct[node]:
+            extra: dict[int, float] = {}
+            for other, route_hour, km in routes[node]:
+                # Whole route hours must fit for every report in the direct hour.
+                if route_hour >= last - window and route_hour + HOUR_MS <= hour + window:
+                    extra[other] = min(km, extra.get(other, km))
+            if (
+                sum(km <= limit for km in extra.values()) < CORROBORATING_PARTNERS
+                or statistics.median(list(counted.values()) * 2 + list(extra.values())) > limit
+            ):
+                break
+        else:
+            corroborated.add(node)
+    return corroborated
 
 
 def node_estimate(connection: sqlite3.Connection, node_id: int) -> EstimatedPosition | None:

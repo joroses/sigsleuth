@@ -1364,6 +1364,8 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
   SCAN node_current
   SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
 
 ## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
 
@@ -1427,6 +1429,8 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
   SCAN node_current
   SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1493,6 +1497,8 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
   SCAN node_current
   SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1844,6 +1850,36 @@ coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH node_current USING PRIMARY KEY
 
+## position corroboration
+
+positions.estimate_since_ms.<locals>.<genexpr>
+  SEARCH link_hour USING PRIMARY KEY
+positions.direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
+positions._traceroute_corroborated
+  SEARCH link_hour USING PRIMARY KEY
+positions._doubtful
+  SCAN node_current
+positions._estimates
+  SCAN node_current
+positions._estimates
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+
 ## retention and estimates
 
 db.rederive_pending
@@ -1903,6 +1939,8 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
   SCAN node_current
   SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
 positions._doubtful
   SCAN node_current
 positions._estimates

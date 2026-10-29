@@ -4667,6 +4667,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4685,6 +4687,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 161
@@ -4727,6 +4731,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 161
@@ -4745,6 +4751,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4787,6 +4795,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4805,6 +4815,8 @@ items: 30 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4881,6 +4893,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4899,6 +4913,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 4
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150
@@ -4941,6 +4957,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -4959,6 +4977,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 4
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150
@@ -5011,6 +5031,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
@@ -5029,6 +5051,8 @@ items: 25 items
       moved_at: null
       doubtful: false
       direct_partners: 4
+      blamed_partners: 0
+      traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150

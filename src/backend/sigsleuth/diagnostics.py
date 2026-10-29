@@ -272,8 +272,11 @@ class LongLinkEnd:
     node_current's, doubtful node_doubtful's flag.
     direct_partners counts the placed nodes used to assess its current position
     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
-    doubt_limit_km is the median beyond which its position is doubtful
-    (positions.doubt_limit_km, from its altitude)."""
+    blamed_partners counts far partners excluded because their other partners
+    contradict their positions.
+    traceroute_corroborated means measured hops support its position around
+    every counted far direct hour, despite its direct median.
+    doubt_limit_km is the altitude-aware direct median limit, before corroboration."""
 
     node: NodeSummary
     altitude_meters: int | None
@@ -282,6 +285,8 @@ class LongLinkEnd:
     moved_at: datetime | None
     doubtful: bool
     direct_partners: int
+    blamed_partners: int
+    traceroute_corroborated: bool
     nearest_partner_km: float | None
     median_partner_km: float | None
     doubt_limit_km: float
@@ -562,11 +567,12 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
         )
     }
     doubtful = doubtful_nodes(connection)
-    partners = direct_partners(connection, estimate_since_ms(connection), ids)
+    partners = direct_partners(connection, estimate_since_ms(connection))
     ends = {}
     for node_id in ids:
         row = current.get(node_id)
-        found = sorted(partners.get(node_id, {}).values())
+        assessment = partners.get(node_id)
+        found = sorted(assessment.counted.values()) if assessment else []
         ends[node_id] = LongLinkEnd(
             node=nodes.get(node_id)
             or NodeSummary(node_id, None, None, None, None, None, estimated=False),
@@ -580,6 +586,8 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             moved_at=None if row is None else optional_from_epoch_ms(row["moved_at"]),
             doubtful=node_id in doubtful,
             direct_partners=len(found),
+            blamed_partners=assessment.blamed if assessment else 0,
+            traceroute_corroborated=assessment.corroborated if assessment else False,
             nearest_partner_km=found[0] if found else None,
             median_partner_km=round(statistics.median(found), 1) if found else None,
             doubt_limit_km=round(doubt_limit_km(None if row is None else row["altitude_meters"])),
@@ -776,7 +784,11 @@ def _checks(link: LongLink) -> tuple[str, ...]:
         checks.append("Every route step's SNR is exactly 0 dB, the mark of a hop over MQTT.")
     for end in ends:
         name = _name(end)
-        if end.direct_partners >= 2 and (end.nearest_partner_km or 0) > LOCAL_PARTNER_KM:
+        if (
+            not end.traceroute_corroborated
+            and end.direct_partners >= 2
+            and (end.nearest_partner_km or 0) > LOCAL_PARTNER_KM
+        ):
             checks.append(
                 f"{name}'s nearest of {end.direct_partners} direct partners was "
                 f"{end.nearest_partner_km:g} km away: its position may be wrong."

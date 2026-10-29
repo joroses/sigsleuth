@@ -179,6 +179,81 @@ def test_a_high_node_may_be_heard_farther_before_its_position_is_doubted(
     assert (NODE in found) == doubted
 
 
+@pytest.mark.parametrize("victims", [1, 2, 3])
+def test_a_far_tracker_takes_blame_only_with_two_other_partners(
+    connection: sqlite3.Connection, victims: int
+) -> None:
+    node(connection, NODE, 5.0)
+    others = (N1, N2, N3)[:victims]
+    for other in others:
+        node(connection, other, 0.0)
+        link(connection, NODE, other, km=550.0)
+        # Repeated observations in either direction still count as one partner.
+        link(connection, other, NODE, hours_ago=1, km=560.0)
+
+    for _ in range(2):
+        refresh_estimates(connection)
+        found = {
+            row[0]: (row[1], row[2]) for row in connection.execute("SELECT * FROM node_doubtful")
+        }
+        assert found == {
+            n: (victims if n == NODE else 1, 550.0)
+            for n in ({NODE} if victims == 3 else {NODE, *others})
+        }
+
+
+def test_a_victim_with_an_independent_far_partner_stays_doubtful(
+    connection: sqlite3.Connection,
+) -> None:
+    for n in (NODE, N1, N2, N3, 21):
+        node(connection, n, 0.0)
+    for other in (N1, N2, N3):
+        link(connection, NODE, other, km=550.0)
+    link(connection, N1, 21, km=200.0)
+
+    refresh_estimates(connection)
+
+    assert tuple(
+        connection.execute(
+            "SELECT partners, median_km FROM node_doubtful WHERE node_id = ?", (N1,)
+        ).fetchone()
+    ) == (1, 200.0)
+
+
+def test_a_high_partner_within_its_horizon_does_not_take_blame(
+    connection: sqlite3.Connection,
+) -> None:
+    node(connection, NODE, 0.0)
+    connection.execute("UPDATE node_current SET altitude_meters = 1500 WHERE node_id = ?", (NODE,))
+    for other in (N1, N2, N3):
+        node(connection, other, 1.4)
+        link(connection, NODE, other, km=155.0)
+
+    refresh_estimates(connection)
+
+    assert {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")} == {
+        N1,
+        N2,
+        N3,
+    }
+
+
+def test_a_near_partner_and_an_isolated_far_partner_do_not_assign_blame(
+    connection: sqlite3.Connection,
+) -> None:
+    for n in (NODE, N1, N2):
+        node(connection, n, 0.0)
+    link(connection, NODE, N1, km=16.0)
+    link(connection, NODE, N2, km=440.0)
+
+    refresh_estimates(connection)
+
+    assert [tuple(row) for row in connection.execute("SELECT * FROM node_doubtful")] == [
+        (NODE, 2, 228.0),
+        (N2, 1, 440.0),
+    ]
+
+
 @pytest.mark.parametrize("moved", [NODE, N1], ids=["sender", "gateway"])
 @pytest.mark.parametrize(
     ("before_km", "after_km", "doubted"),
@@ -206,6 +281,150 @@ def test_position_doubt_uses_only_links_since_either_end_last_moved(
 
     found = {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")}
     assert found == ({NODE, N1} if doubted else set())
+
+
+@pytest.mark.parametrize("support", ["near", "far-majority", "same-partner", "weak-near"])
+def test_measured_routes_can_corroborate_a_position_against_a_far_reception(
+    connection: sqlite3.Connection, support: str
+) -> None:
+    seen = now_ms() // HOUR_MS * HOUR_MS + 15 * 60_000
+    for n in (NODE, N1, N2, N3, 21, 22, 23):
+        node(connection, n, 0.0)
+    link_hour(connection, NODE, N1, seen, km=200.0)
+    distance = 149.0 if support == "weak-near" else 20.0
+    link_hour(connection, NODE, N2, seen, link_kind="traceroute", km=distance, snr=[5.0])
+    other = N2 if support == "same-partner" else N3
+    link_hour(connection, other, NODE, seen, link_kind="traceroute", km=distance, snr=[5.0])
+    link_hour(
+        connection,
+        NODE,
+        N2,
+        seen - HOUR_MS,
+        link_kind="traceroute",
+        observations=50,
+        km=distance,
+        snr=[5.0] * 50,
+    )
+    if support == "far-majority":
+        for n in (21, 22, 23):
+            link_hour(connection, NODE, n, seen, link_kind="traceroute", km=300.0, snr=[-5.0])
+
+    for _ in range(2):
+        refresh_estimates(connection)
+        found = {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+        assert (NODE not in found) == (support == "near")
+        assert N1 in found
+        assert position(connection, NODE) == (0.0, 0.0)
+
+
+@pytest.mark.parametrize("hours", [-24, -23, 23, 24])
+def test_route_corroboration_must_be_close_in_time_to_the_direct_reports(
+    connection: sqlite3.Connection, hours: int
+) -> None:
+    seen = now_ms() // HOUR_MS * HOUR_MS + 15 * 60_000
+    for n in (NODE, N1, N2, N3):
+        node(connection, n, 0.0)
+    link_hour(connection, NODE, N1, seen, km=200.0)
+    for n in (N2, N3):
+        link_hour(
+            connection,
+            NODE,
+            n,
+            seen + hours * HOUR_MS,
+            link_kind="traceroute",
+            km=20.0,
+            snr=[5.0],
+        )
+
+    refresh_estimates(connection)
+
+    found = {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+    assert (NODE not in found) == (hours in (-23, 23))
+
+
+def test_old_local_routes_do_not_clear_a_later_unsupported_far_reception(
+    connection: sqlite3.Connection,
+) -> None:
+    seen = now_ms() // HOUR_MS * HOUR_MS + 15 * 60_000
+    for n in (NODE, N1, N2, N3):
+        node(connection, n, 0.0)
+    link_hour(connection, NODE, N1, seen, km=200.0)
+    for n in (N2, N3):
+        link_hour(connection, NODE, n, seen, link_kind="traceroute", km=20.0, snr=[5.0])
+    refresh_estimates(connection)
+    assert NODE not in {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+
+    link_hour(connection, NODE, N1, seen + 48 * HOUR_MS, km=200.0)
+    refresh_estimates(connection)
+
+    assert tuple(
+        connection.execute(
+            "SELECT partners, median_km FROM node_doubtful WHERE node_id = ?", (NODE,)
+        ).fetchone()
+    ) == (1, 200.0)
+
+
+@pytest.mark.parametrize("moved", [NODE, N2], ids=["node", "partner"])
+@pytest.mark.parametrize("offset", [0, 30 * 60_000], ids=["hour-start", "within-hour"])
+def test_corroborating_route_hours_must_follow_both_ends_moves(
+    connection: sqlite3.Connection, moved: int, offset: int
+) -> None:
+    hour = now_ms() // HOUR_MS * HOUR_MS
+    for n in (NODE, N1, N2, N3):
+        node(connection, n, 0.0)
+    link_hour(connection, NODE, N1, hour + 2 * HOUR_MS, km=200.0)
+    # A measured hop can precede a move even when a later unmeasured hop is in the hour.
+    link_hour(
+        connection,
+        NODE,
+        N2,
+        hour + 45 * 60_000,
+        link_kind="traceroute",
+        observations=2,
+        km=20.0,
+        snr=[5.0],
+    )
+    link_hour(connection, N3, NODE, hour + HOUR_MS, link_kind="traceroute", km=30.0, snr=[5.0])
+    connection.execute(
+        "UPDATE node_current SET moved_at = ? WHERE node_id = ?", (hour + offset, moved)
+    )
+
+    refresh_estimates(connection)
+
+    found = {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+    assert (NODE not in found) == (offset == 0)
+
+
+@pytest.mark.parametrize("invalid_support", ["unmeasured", "direct-partner", "first-pass-doubtful"])
+def test_corroboration_needs_independent_measured_partners_that_were_not_doubtful(
+    connection: sqlite3.Connection, invalid_support: str
+) -> None:
+    seen = now_ms() // HOUR_MS * HOUR_MS + 15 * 60_000
+    for n in (NODE, N1, N2, N3, 21, 22, 23):
+        node(connection, n, 0.0)
+    link_hour(
+        connection, NODE, N1, seen, km=440.0 if invalid_support == "direct-partner" else 200.0
+    )
+    if invalid_support == "direct-partner":
+        link_hour(connection, NODE, N2, seen, km=16.0)
+    elif invalid_support == "first-pass-doubtful":
+        # This voter becomes unassessed after blame; it must still not vote.
+        for victim in (N2, 22, 23):
+            link_hour(connection, 21, victim, seen, km=440.0)
+    link_hour(
+        connection,
+        NODE,
+        N2,
+        seen,
+        link_kind="traceroute",
+        km=16.0,
+        snr=[] if invalid_support == "unmeasured" else [5.0],
+    )
+    link_hour(connection, NODE, N3, seen, link_kind="traceroute", km=20.0, snr=[5.0])
+
+    for _ in range(2):
+        refresh_estimates(connection)
+        assert NODE in {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
 
 
 def test_a_node_heard_only_before_its_gateway_moved_is_not_placed_there(

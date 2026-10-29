@@ -483,8 +483,8 @@ export interface paths {
     /**
      * Link Positions Page
      * @description Where node_a and node_b were at `at` (a Links row's last_seen_at), by
-     *     their own position packets, for line of sight. A node with none up to
-     *     then is left out; draw it where it is now.
+     *     their newest report before then, else their first afterwards, for line
+     *     of sight. With no report, draw the node at its estimate.
      */
     get: operations["link_positions_page_api_v1_links_positions_get"];
     put?: never;
@@ -1408,7 +1408,7 @@ export interface components {
     /**
      * HeardPosition
      * @description Where a node was when heard: its newest valid reported position by
-     *     then (positions_when_heard).
+     *     then, or the first afterwards for page drawing (positions_when_heard).
      */
     HeardPosition: {
       node_id: number;
@@ -1850,7 +1850,9 @@ export interface components {
      * NodeContact
      * @description A node linked with the page's node, or a gateway that heard its
      *     packets. node is None for a gateway with no row of its own. heard_packets
-     *     counts the node's packets this gateway reported, of those read;
+     *     counts the node's packets this gateway reported at or after both ends'
+     *     moved_at, of those read; heard_before_move says older receptions were
+     *     excluded. moved_at is the contact's last known move, None if never moved;
      *     fewest_hops is the fewest hops one of them used to reach it (0 heard
      *     directly), None when no report said. km is the distance between the two
      *     nodes' reported positions now (db.reported_km), None when either is a
@@ -1860,23 +1862,28 @@ export interface components {
       node_id: number;
       node: components["schemas"]["NodeSummary"] | null;
       links: components["schemas"]["ContactLink"][];
+      moved_at: string | null;
+      heard_before_move: boolean;
       heard_packets: number;
       fewest_hops: number | null;
       km: number | null;
     };
     /**
      * NodeContactList
-     * @description Everything that tells where a node is, unfiltered: every node linked
+     * @description Contacts for the node minimap: every node linked
      *     with it since `since` (link_hour, any kind and distance, also hours the
      *     map hides) and the gateways that reported its newest packets in that
      *     window, nearest first, unplaced contacts last. packets counts the node's
      *     packets read for gateways; limited is True when older ones in the window
-     *     were left unread.
+     *     were left unread. moved_at is the page node's last known move, None if
+     *     never moved. Gateway counts exclude receptions before either end moved;
+     *     link facts retain the full window.
      */
     NodeContactList: {
       node_id: number;
       /** Format: date-time */
       since: string;
+      moved_at: string | null;
       items: components["schemas"]["NodeContact"][];
       packets: number;
       limited: boolean;
@@ -2043,8 +2050,8 @@ export interface components {
      *     (from its own packet or its map report), else its estimate from its
      *     neighbours (node_estimate, positions.py), which sets estimated; None when
      *     neither places it. The map and Zones draw a node here; link pages draw
-     *     it where it was when heard when its own positions tell, else here
-     *     (reported.positions_when_heard).
+     *     it at its newest report before the hearing, else its first afterwards,
+     *     else its estimate (reported.positions_when_heard with for_page).
      */
     NodeSummary: {
       node_id: number;
@@ -2138,9 +2145,9 @@ export interface components {
      *
      *     gateway_name is the long name, else the short name; gateway_short_name is
      *     the short name alone. The gateway's latitude and longitude are where it
-     *     was when the packet was heard (reported.positions_when_heard), else
-     *     where pages draw it now (db.nodes_by_id): its latest valid position, else
-     *     its estimate, which sets gateway_estimated; None when neither places it.
+     *     was when the packet was heard: newest report before, else first afterwards
+     *     (reported.positions_when_heard with for_page). With no report, its
+     *     estimate sets gateway_estimated; None when neither places it.
      *     paths are the traceroute routes this gateway reported, None for other
      *     packets; hops are the hops in them, by the same rule as the packet's hops.
      *     reached is whether the report shows the packet got where it was going (on a
@@ -2880,14 +2887,14 @@ export interface components {
      *     reported each packet. distance_km
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
-     *     then; like every link page, it is never measured from where the nodes are
-     *     now (links.py). doubts are why that distance is doubted
+     *     then; this saved distance also drives the distance sort (links.py).
+     *     doubts are why that distance is doubted
      *     (links.link_doubts), the pair of its ends judged by terrain as a link
      *     would be. positions are where the
      *     route's nodes and ends were when the shown route's packet was heard
-     *     (reported.positions_when_heard); a node missing there is drawn where the
-     *     page's nodes place it now, estimates included. A shared node number is
-     *     placed in neither.
+     *     (reported.positions_when_heard with for_page): newest before, else first
+     *     afterwards. With no report, the page uses the node's estimate. A shared
+     *     node number is placed in neither.
      */
     TracerouteRun: {
       requester_node_id: number;

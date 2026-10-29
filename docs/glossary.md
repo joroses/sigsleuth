@@ -38,7 +38,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Unlikely long link | A link 250 km or longer that the terrain check rejects. |
 | Pending distance | A distance of 100 km or more ranked apart until both ends have reported a position after it was heard, without either moving since (`links.confirmed_sql`). If an end moved after it was heard, that historical distance stays pending even after further reports. Link pages badge and rank it like a distance with a doubtful end or an unlikely one (`links.link_doubts`). |
 | Shared distance | A distance with an end that is a shared node number (`shared` in `links.link_doubts`): its radios are in several places, so link pages badge it and rank it apart. |
-| Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Link pages show only this; the map draws nodes where they are now. |
+| Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Ranked distances use only this. Link pages draw nodes at the newest report before the hearing, else the first afterwards, else their estimate; packet and line-of-sight distances follow those drawn positions. The map draws nodes where they are now. |
 | Channel | The channel name a packet was uploaded under. `PKI` means private messages, not a channel. |
 | Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the radio channel of its latest packet on one. |
 | Packet channel | The number on one packet: a channel hash when encrypted, a gateway-local index when decoded. |

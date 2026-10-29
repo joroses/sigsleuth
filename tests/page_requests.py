@@ -104,14 +104,16 @@ def pick_subjects(database_path: Path) -> Subjects:
         (flood_packet,) = connection.execute(
             """
             SELECT r.packet_row_id FROM packet AS t JOIN reception AS r ON r.packet_row_id = t.id
-            WHERE t.id > (SELECT max(id) FROM packet) - ? AND t.portnum != ?
+            WHERE t.id >= coalesce((
+                SELECT id FROM packet ORDER BY id DESC LIMIT 1 OFFSET ?
+            ), 0) AND t.portnum != ?
               AND r.hop_start > r.hop_limit
             GROUP BY r.packet_row_id
             ORDER BY count(*) DESC, r.packet_row_id
             LIMIT 1
             """,
-            (FLOOD_PACKETS, portnums_pb2.PortNum.TRACEROUTE_APP),
-        ).fetchone()
+            (FLOOD_PACKETS - 1, portnums_pb2.PortNum.TRACEROUTE_APP),
+        ).fetchone() or (packet,)
         (traceroute_packet,) = connection.execute(
             """
             SELECT h.packet_row_id FROM traceroute_hop AS h

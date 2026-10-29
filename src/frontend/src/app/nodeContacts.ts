@@ -48,6 +48,7 @@ export interface ContactLayers {
   zeroCost: ZeroCostArrows;
   /** Contacts with no position, not drawn. */
   unplaced: number;
+  moved: number;
 }
 
 /**
@@ -100,15 +101,9 @@ export function zeroCostTitle({ out, into }: ZeroCostWays): string {
   return `${times((out ?? into)!)} traceroutes`;
 }
 
-/**
- * The contacts of the `shown` groups placed on the node's minimap. With
- * gateways shown, a contact with a direct or neighbour link takes the direct
- * tone; else a gateway takes the tone of the fewest hops it heard the node's
- * packets after, as on a packet page, labelled with that number; a
- * traceroute partner alone is muted. Lines are the node's `links` (its Links
- * table's rows) of the shown groups, from `origin`, the node's current
- * position, to placed contacts; none without an origin. Traceroute lines
- * with one of the node's `zeroCost` hops get an arrowhead.
+/** Placed contacts of the shown groups, with lines heard since both ends'
+ * last move. Markers need a line or a gateway reception since both moves.
+ * Arrowheads follow the visible traceroute lines.
  */
 export function contactLayers(
   nodeId: number,
@@ -117,34 +112,62 @@ export function contactLayers(
   zeroCost: ZeroCostHop[],
   origin: Place | null,
   shown: ContactGroups,
+  movedAt: string | null = null,
 ): ContactLayers {
   const marks: ContactMark[] = [];
   const places = new Map<number, Place>();
   let unplaced = 0;
+  let moved = 0;
+  const rows = new Map<number, LinkRow[]>();
+  for (const row of links) {
+    const link = fromNode(row, nodeId);
+    const group =
+      link.link_kind === "traceroute" ? shown.traceroutes : shown.gateways;
+    if (!group) continue;
+    const found = rows.get(link.node_b) ?? [];
+    found.push(link);
+    rows.set(link.node_b, found);
+  }
+  const trusted: LinkRow[] = [];
   for (const contact of contacts) {
-    const radio = contact.links.some((link) => link.kind !== "traceroute");
-    const gateway = shown.gateways && (radio || contact.heard_packets > 0);
-    const partner =
-      shown.traceroutes &&
-      contact.links.some((link) => link.kind === "traceroute");
-    if (!gateway && !partner) continue;
+    const candidates = rows.get(contact.node_id) ?? [];
+    const kept = candidates.filter(
+      (link) =>
+        (movedAt === null ||
+          Date.parse(link.last_seen_at) >= Date.parse(movedAt)) &&
+        (contact.moved_at === null ||
+          Date.parse(link.last_seen_at) >= Date.parse(contact.moved_at)),
+    );
+    trusted.push(...kept);
+    const radio = kept.some((link) => link.link_kind !== "traceroute");
+    const gateway = shown.gateways && contact.heard_packets > 0;
+    if (kept.length === 0 && !gateway) {
+      if (
+        candidates.length > 0 ||
+        (shown.gateways && contact.heard_before_move)
+      )
+        moved += 1;
+      continue;
+    }
     const place = contact.node;
     if (place?.latitude == null || place.longitude == null) {
       unplaced += 1;
       continue;
     }
+    if (origin === null && !gateway) continue;
     marks.push({
       contact,
       latitude: place.latitude,
       longitude: place.longitude,
       estimated: place.estimated,
-      tone: !gateway
-        ? "hop-tone-relay"
-        : radio
-          ? "hop-tone-direct"
-          : contactHopTone(contact),
+      tone:
+        !gateway && !radio
+          ? "hop-tone-relay"
+          : radio
+            ? "hop-tone-direct"
+            : contactHopTone(contact),
       label:
-        !gateway || contact.fewest_hops === null
+        (!gateway && !radio) || contact.fewest_hops === null
           ? ""
           : String(contact.fewest_hops),
     });
@@ -161,13 +184,9 @@ export function contactLayers(
   const traceroutes: LinkRow[] = [];
   if (origin !== null) {
     places.set(nodeId, origin);
-    for (const row of links) {
-      // node_a is the node, so the half at its end shows what it hears.
-      const link = fromNode(row, nodeId);
+    for (const link of trusted) {
       const place = places.get(link.node_b);
-      const group =
-        link.link_kind === "traceroute" ? shown.traceroutes : shown.gateways;
-      if (place === undefined || !group) continue;
+      if (place === undefined) continue;
       const halves = linkHalves(
         `${link.link_kind}:${link.node_b}:${link.channel}`,
         link,
@@ -183,6 +202,7 @@ export function contactLayers(
     lines,
     zeroCost: zeroCostArrows(traceroutes, zeroCost, places),
     unplaced,
+    moved,
   };
 }
 

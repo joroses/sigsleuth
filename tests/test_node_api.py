@@ -481,7 +481,66 @@ def test_node_contacts_show_every_distance_heard_and_relayed_gateways(tmp_path: 
     (link,) = first["links"]
     assert link["kind"] == "direct" and link["observations"] == 3
     assert link["min_km"] < 2 and link["max_km"] > 1_000
-    assert (first["heard_packets"], first["fewest_hops"]) == (3, 0)
+    assert (first["heard_packets"], first["fewest_hops"]) == (1, 0)
     assert second["links"] == []
     assert (second["heard_packets"], second["fewest_hops"]) == (1, 2)
     assert page["packets"] == 4 and page["limited"] is False
+
+
+def test_node_contacts_exclude_gateway_receptions_before_either_end_moved(tmp_path: Path) -> None:
+    path = tmp_path / "moves.db"
+    migrate_database(path)
+    node, before_page, before_contact, mixed, gateway = range(0x11111111, 0x11111116)
+    home = mesh_pb2.Position(latitude_i=510_000_000, longitude_i=210_000_000)
+    away = mesh_pb2.Position(latitude_i=520_000_000, longitude_i=210_000_000)
+    sequence = 0
+
+    def heard(
+        sender: int, receiver: int, hour: int, position: mesh_pb2.Position, hops: int = 0
+    ) -> None:
+        nonlocal sequence
+        sequence += 1
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.POSITION_APP,
+                position.SerializeToString(),
+                sender=sender,
+                packet_id=sequence,
+                gateway_id=f"!{receiver:08x}",
+                hop_start=3,
+                hop_limit=3 - hops,
+                relay_node=sender & 0xFF if hops == 0 else 0x42,
+            ),
+            received_at=RECEIVED_AT + timedelta(hours=hour),
+            topic=f"msh/EU_868/2/e/LongFast/!{receiver:08x}",
+        )
+
+    for contact in (before_page, before_contact, mixed, gateway):
+        heard(contact, contact, 0, home)
+    heard(node, before_page, 1, home)
+    heard(node, mixed, 1, home)
+    heard(node, mixed, 2, away, hops=2)
+    heard(node, mixed, 3, away, hops=3)
+    heard(node, before_contact, 3, away)
+    heard(node, gateway, 3, away, hops=1)
+    heard(before_contact, before_contact, 4, away)
+    heard(gateway, gateway, 4, away)
+
+    with TestClient(create_app(Settings(path))) as client:
+        page = client.get(
+            f"/api/v1/nodes/{node}/contacts",
+            params={"since": RECEIVED_AT.isoformat()},
+        ).json()
+    items = {item["node_id"]: item for item in page["items"]}
+    assert page["moved_at"] == (RECEIVED_AT + timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    for contact in (before_page, before_contact, gateway):
+        assert items[contact]["heard_packets"] == 0
+        assert items[contact]["fewest_hops"] is None
+        assert items[contact]["heard_before_move"] is True
+    assert items[before_page]["moved_at"] is None
+    assert items[before_contact]["moved_at"] == items[gateway]["moved_at"]
+    assert items[gateway]["links"] == []
+    assert items[mixed]["heard_packets"] == 2
+    assert items[mixed]["fewest_hops"] == 2
+    assert items[mixed]["heard_before_move"] is True

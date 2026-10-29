@@ -155,6 +155,7 @@ export function NodePositionMinimap({
             links?.zero_cost_hops ?? [],
             current,
             { traceroutes: showTraceroutes, gateways: showGateways },
+            contactsState.data.moved_at,
           )
         : null,
     // current is rebuilt each render; its place is what matters.
@@ -455,10 +456,15 @@ function ContactsNote({
     contacts.unplaced > 0
       ? ` · ${contacts.unplaced.toLocaleString()} unplaced`
       : "";
+  const moved =
+    contacts.moved > 0
+      ? ` · ${contacts.moved.toLocaleString()} left out after a move`
+      : "";
   return (
     <span className="data-line">
       Last {CONTACT_DAYS} days: {contacts.marks.length.toLocaleString()}{" "}
-      contacts drawn{unplaced} · click one for its distances
+      contacts drawn{unplaced}
+      {moved} · click one for its distances
     </span>
   );
 }

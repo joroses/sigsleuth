@@ -140,9 +140,9 @@ class PacketReception:
 
     gateway_name is the long name, else the short name; gateway_short_name is
     the short name alone. The gateway's latitude and longitude are where it
-    was when the packet was heard (reported.positions_when_heard), else
-    where pages draw it now (db.nodes_by_id): its latest valid position, else
-    its estimate, which sets gateway_estimated; None when neither places it.
+    was when the packet was heard: newest report before, else first afterwards
+    (reported.positions_when_heard with for_page). With no report, its
+    estimate sets gateway_estimated; None when neither places it.
     paths are the traceroute routes this gateway reported, None for other
     packets; hops are the hops in them, by the same rule as the packet's hops.
     reached is whether the report shows the packet got where it was going (on a
@@ -262,7 +262,7 @@ def packet_detail(
     if row is None:
         return None
     sender = int(row["sender_node_id"])
-    receptions, places = _receptions(connection, row, hidden)
+    receptions, places = _receptions(connection, row, hidden, for_page=True)
     receptions = _with_relays(
         connection,
         receptions,
@@ -317,7 +317,7 @@ def packet_detail(
         ),
         relay_nodes=tuple(
             nodes_when_heard(
-                connection, int(row["first_received_at"]), _relay_ids(receptions)
+                connection, int(row["first_received_at"]), _relay_ids(receptions), for_page=True
             ).values()
         ),
         spreading_factor=spreading_factor(str(row["channel"]), default_preset),
@@ -387,7 +387,7 @@ def _shown_packet(
 
 
 def _receptions(
-    connection: sqlite3.Connection, row: sqlite3.Row, hidden: set[int]
+    connection: sqlite3.Connection, row: sqlite3.Row, hidden: set[int], *, for_page: bool = False
 ) -> tuple[list[PacketReception], dict[int, NodeSummary]]:
     """The packet's receptions in _hop_order, and the sender and gateways
     where they were when it was heard."""
@@ -410,6 +410,7 @@ def _receptions(
         connection,
         int(row["first_received_at"]),
         {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
+        for_page=for_page,
     )
     receptions = sorted(
         (
@@ -491,13 +492,16 @@ def _reply_route(
 
 
 def nodes_when_heard(
-    connection: sqlite3.Connection, heard_at: int, node_ids: set[int]
+    connection: sqlite3.Connection, heard_at: int, node_ids: set[int], *, for_page: bool = False
 ) -> dict[int, NodeSummary]:
     """The nodes as nodes_by_id finds them, each placed where it was at
-    heard_at when its reported positions tell. A shared node number is never
+    heard_at when its reported positions tell; for_page also uses the first
+    report afterwards. A shared node number is never
     placed: its radios are in several places."""
     shared = shared_nodes(connection) & node_ids
-    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in node_ids - shared})
+    heard = positions_when_heard(
+        connection, {(node_id, heard_at) for node_id in node_ids - shared}, for_page=for_page
+    )
     return {
         node_id: replace(node, latitude=None, longitude=None, estimated=False)
         if node_id in shared
@@ -527,7 +531,7 @@ def _route_nodes(
         for path in (reception.paths.forward, reception.paths.return_path):
             if path is not None:
                 node_ids.update(node for node in path.nodes if node is not None)
-    return tuple(nodes_when_heard(connection, heard_at, node_ids).values())
+    return tuple(nodes_when_heard(connection, heard_at, node_ids, for_page=True).values())
 
 
 def _relay_ids(receptions: list[PacketReception]) -> set[int]:
@@ -647,12 +651,16 @@ def relay_namings(
     for reception in receptions:
         if (route := reception_route_prefix(reception)) is not None:
             route_prefixes[reception.gateway_node_id] = route
+    decision_places = nodes_when_heard(
+        connection, at, {reception.gateway_node_id for reception in relayed}
+    )
     namings = {}
     for reception in relayed:
         gateway = reception.gateway_node_id
         position = None
-        if reception.gateway_latitude is not None and reception.gateway_longitude is not None:
-            position = (reception.gateway_latitude, reception.gateway_longitude)
+        place = decision_places.get(gateway)
+        if place is not None and place.latitude is not None and place.longitude is not None:
+            position = (place.latitude, place.longitude)
         copy = Relayed(
             sender=sender,
             receiver=gateway,

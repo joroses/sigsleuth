@@ -568,7 +568,9 @@ class ContactLink:
 class NodeContact:
     """A node linked with the page's node, or a gateway that heard its
     packets. node is None for a gateway with no row of its own. heard_packets
-    counts the node's packets this gateway reported, of those read;
+    counts the node's packets this gateway reported at or after both ends'
+    moved_at, of those read; heard_before_move says older receptions were
+    excluded. moved_at is the contact's last known move, None if never moved;
     fewest_hops is the fewest hops one of them used to reach it (0 heard
     directly), None when no report said. km is the distance between the two
     nodes' reported positions now (db.reported_km), None when either is a
@@ -577,6 +579,8 @@ class NodeContact:
     node_id: int
     node: NodeSummary | None
     links: tuple[ContactLink, ...]
+    moved_at: datetime | None
+    heard_before_move: bool
     heard_packets: int
     fewest_hops: int | None
     km: float | None
@@ -584,15 +588,18 @@ class NodeContact:
 
 @dataclass(frozen=True)
 class NodeContactList:
-    """Everything that tells where a node is, unfiltered: every node linked
+    """Contacts for the node minimap: every node linked
     with it since `since` (link_hour, any kind and distance, also hours the
     map hides) and the gateways that reported its newest packets in that
     window, nearest first, unplaced contacts last. packets counts the node's
     packets read for gateways; limited is True when older ones in the window
-    were left unread."""
+    were left unread. moved_at is the page node's last known move, None if
+    never moved. Gateway counts exclude receptions before either end moved;
+    link facts retain the full window."""
 
     node_id: int
     since: datetime
+    moved_at: datetime | None
     items: tuple[NodeContact, ...]
     packets: int
     limited: bool
@@ -603,9 +610,10 @@ def node_contacts(
 ) -> NodeContactList:
     """The node's links and the gateways that heard it since `since`, for
     checking its position by hand. Links come from the window's link_hour
-    rows; gateways from its newest MAX_CONTACT_PACKETS packets."""
+    rows; gateways from its newest MAX_CONTACT_PACKETS packets, counting only
+    receptions at or after both ends' last known move."""
     if is_opted_out(connection, node_id):
-        return NodeContactList(node_id, since, (), 0, False)
+        return NodeContactList(node_id, since, None, (), 0, False)
     since_ms = to_epoch_ms(since)
     links: dict[int, list[ContactLink]] = defaultdict(list)
     # link_kind is listed so SQLite reads the window through the primary key.
@@ -638,17 +646,48 @@ def node_contacts(
         """,
         (node_id, first_packet_row_id_since(connection, since_ms), MAX_CONTACT_PACKETS),
     ).fetchall()
-    heard: dict[int, tuple[int, int | None]] = {}
-    for gateway, count, hops in connection.execute(
+    receptions = connection.execute(
         """
-        SELECT gateway_node_id, count(*), min(hop_start - hop_limit) FROM reception
+        SELECT gateway_node_id, received_at, hop_start - hop_limit AS hops
+        FROM reception
         WHERE packet_row_id IN (SELECT value FROM json_each(?))
-        GROUP BY gateway_node_id
         """,
         (json.dumps([row[0] for row in packets]),),
-    ):
-        heard[int(gateway)] = (int(count), None if hops is None else max(0, int(hops)))
-    contact_ids = (set(links) | set(heard)) - {node_id} - opted_out(connection)
+    ).fetchall()
+    contact_ids = (
+        (set(links) | {int(row["gateway_node_id"]) for row in receptions})
+        - {node_id}
+        - opted_out(connection)
+    )
+    moves = {
+        int(row["node_id"]): row["moved_at"]
+        for row in connection.execute(
+            """
+            SELECT node_id, moved_at FROM node_current
+            WHERE node_id IN (SELECT value FROM json_each(?))
+            """,
+            (json.dumps(sorted(contact_ids | {node_id})),),
+        )
+    }
+    moved_at = moves.get(node_id)
+    heard: dict[int, tuple[int, int | None]] = {}
+    heard_before_move: set[int] = set()
+    for row in receptions:
+        gateway = int(row["gateway_node_id"])
+        if gateway not in contact_ids:
+            continue
+        if any(
+            move is not None and row["received_at"] < move
+            for move in (moved_at, moves.get(gateway))
+        ):
+            heard_before_move.add(gateway)
+            continue
+        count, hops = heard.get(gateway, (0, None))
+        used = row["hops"]
+        if used is not None:
+            used = max(0, int(used))
+            hops = used if hops is None else min(hops, used)
+        heard[gateway] = (count + 1, hops)
     summaries = nodes_by_id(connection, contact_ids | {node_id})
     here = summaries.get(node_id)
     shared = shared_nodes(connection)
@@ -664,6 +703,8 @@ def node_contacts(
                 unmeasured(link) if {node_id, other} & shared else link
                 for link in links.get(other, ())
             ),
+            moved_at=from_epoch_ms(moves[other]) if moves.get(other) is not None else None,
+            heard_before_move=other in heard_before_move,
             heard_packets=heard.get(other, (0, None))[0],
             fewest_hops=heard.get(other, (0, None))[1],
             km=None if {node_id, other} & shared else reported_km(here, summaries.get(other)),
@@ -674,6 +715,7 @@ def node_contacts(
     return NodeContactList(
         node_id=node_id,
         since=since,
+        moved_at=from_epoch_ms(moved_at) if moved_at is not None else None,
         items=tuple(items),
         packets=len(packets),
         limited=len(packets) == MAX_CONTACT_PACKETS,

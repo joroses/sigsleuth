@@ -437,7 +437,7 @@ def survey_check(connection: sqlite3.Connection, measurement_id: int) -> SurveyC
         )
         unknown = round(score.scores.probabilities[None], 4)
     shown_sender = sender not in hidden
-    heard = positions_when_heard(connection, {(sender, at)}) if shown_sender else {}
+    heard = positions_when_heard(connection, {(sender, at)}, for_page=True) if shown_sender else {}
     now = nodes_by_id(connection, {sender}).get(sender) if shown_sender else None
     when_heard = heard.get((sender, at))
     return SurveyCheckDetail(
@@ -499,7 +499,7 @@ def _reports(
     found = mqtt_reports(connection, row)
     gateways = {int(report["gateway_node_id"]) for report in found}
     at = int(row["heard_at"])
-    heard = positions_when_heard(connection, {(gateway, at) for gateway in gateways})
+    heard = positions_when_heard(connection, {(gateway, at) for gateway in gateways}, for_page=True)
     now = nodes_by_id(connection, gateways)
     sender = int(row["sender_node_id"])
     reports = []

@@ -617,8 +617,8 @@ def create_app(
         at: datetime,
     ) -> HeardPositionList:
         """Where node_a and node_b were at `at` (a Links row's last_seen_at), by
-        their own position packets, for line of sight. A node with none up to
-        then is left out; draw it where it is now."""
+        their newest report before then, else their first afterwards, for line
+        of sight. With no report, draw the node at its estimate."""
         when = _utc(at)
         assert when is not None
         return positions_at(connection, (node_a, node_b), when)

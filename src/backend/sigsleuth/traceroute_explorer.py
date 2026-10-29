@@ -208,14 +208,14 @@ class TracerouteRun:
     reported each packet. distance_km
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
-    then; like every link page, it is never measured from where the nodes are
-    now (links.py). doubts are why that distance is doubted
+    then; this saved distance also drives the distance sort (links.py).
+    doubts are why that distance is doubted
     (links.link_doubts), the pair of its ends judged by terrain as a link
     would be. positions are where the
     route's nodes and ends were when the shown route's packet was heard
-    (reported.positions_when_heard); a node missing there is drawn where the
-    page's nodes place it now, estimates included. A shared node number is
-    placed in neither."""
+    (reported.positions_when_heard with for_page): newest before, else first
+    afterwards. With no report, the page uses the node's estimate. A shared
+    node number is placed in neither."""
 
     requester_node_id: int
     target_node_id: int
@@ -372,6 +372,7 @@ def traceroute_runs(
             for packets, route in routes
             for node_id in _run_nodes(packets, route) - shared
         },
+        for_page=True,
     )
     return TracerouteRuns(
         items=tuple(

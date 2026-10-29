@@ -556,7 +556,7 @@ def relay_check(
         shortcut_skipped=naming.shortcut_skipped,
         **places,
         **_route(found, reception, hidden),
-        **_explained(found, naming, reception, checks, hidden),
+        **_explained(connection, found, naming, reception, checks, hidden),
         activity_from=None
         if found.relays.evidence.history_from is None
         else from_epoch_ms(found.relays.evidence.history_from),
@@ -585,7 +585,9 @@ def _places(
     )
     route = list(dict.fromkeys(n for n in (path.nodes if path else ()) if n is not None))
     route = [node for node in route if node not in hidden]
-    heard = positions_when_heard(connection, {(node, at) for node in {*route, sender, gateway}})
+    heard = positions_when_heard(
+        connection, {(node, at) for node in {*route, sender, gateway}}, for_page=True
+    )
     now = nodes_by_id(connection, {*route, sender})
 
     def when_heard(node: int) -> RelayPlace | None:
@@ -604,11 +606,13 @@ def _places(
             node, place.latitude, place.longitude, "estimated" if place.estimated else "now"
         )
 
-    receiver = None
-    if reception.gateway_latitude is not None and reception.gateway_longitude is not None:
+    receiver = when_heard(gateway)
+    if (
+        receiver is None
+        and reception.gateway_latitude is not None
+        and reception.gateway_longitude is not None
+    ):
         placed_by: PlacedBy = "estimated" if reception.gateway_estimated else "now"
-        if (gateway, at) in heard:
-            placed_by = "when_heard"
         receiver = RelayPlace(
             gateway, reception.gateway_latitude, reception.gateway_longitude, placed_by
         )
@@ -649,6 +653,7 @@ def _route(found: RelayedPacket, reception: PacketReception, hidden: set[int]) -
 
 
 def _explained(
+    connection: sqlite3.Connection,
     found: RelayedPacket,
     naming: ReceptionNaming,
     target: PacketReception,
@@ -661,6 +666,10 @@ def _explained(
     candidates, keys = explain_candidates(evidence, copy, scores, naming.heard, hidden)
     cohearers = set(copy.cohearers())
     target_prefix = reception_route_prefix(target)
+    at = to_epoch_ms(found.packet.first_received_at)
+    heard = positions_when_heard(
+        connection, {(r.gateway_node_id, at) for r in found.receptions}, for_page=True
+    )
     reports = []
     for reception in found.receptions:
         gateway = reception.gateway_node_id
@@ -682,6 +691,7 @@ def _explained(
         ):
             kind = "earlier"
         sends_byte = relay_byte_of(gateway) == copy.relay_byte
+        place = heard.get((gateway, at))
         its_check = checks.get(reception.reception_id)
         hint = route_hint(reception)
         hint_place = evidence.placed.get(hint) if hint is not None else None
@@ -690,8 +700,8 @@ def _explained(
             RelayCheckReport(
                 reception_id=reception.reception_id,
                 gateway=RelayCheckNode(gateway, reception.gateway_name),
-                latitude=reception.gateway_latitude,
-                longitude=reception.gateway_longitude,
+                latitude=reception.gateway_latitude if place is None else place.latitude,
+                longitude=reception.gateway_longitude if place is None else place.longitude,
                 hop_limit=reception.hop_limit,
                 relay_byte=reception.relay_byte,
                 snr_db=reception.rx_snr,

@@ -229,6 +229,7 @@ shared_numbers.shared_nodes
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -249,6 +250,7 @@ packets._receptions
 shared_numbers.shared_nodes
   SCAN node_shared
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
@@ -282,6 +284,7 @@ packets._receptions
 shared_numbers.shared_nodes
   SCAN node_shared
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 db.nodes_by_id
@@ -334,6 +337,9 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
 flood_routes.route_links
@@ -606,6 +612,8 @@ nodes.node_contacts
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 opt_out.opted_out
   SCAN node_opt_out
+nodes.node_contacts
+  SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -1053,6 +1061,7 @@ db.nodes_by_id
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=route&limit=50&offset=0&since=<time>
 
@@ -1142,6 +1151,7 @@ db.nodes_by_id
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?sort=distance&limit=50&offset=0&since=<time>
 
@@ -1225,6 +1235,7 @@ db.nodes_by_id
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes?packet=11
 
@@ -1257,6 +1268,7 @@ db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 
@@ -1297,6 +1309,7 @@ db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 
@@ -1340,6 +1353,7 @@ db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 
@@ -1429,6 +1443,7 @@ db.nodes_by_id
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes/hops?node_a=168430090&node_b=185273099&since=<time>&channel=LongFast
 
@@ -1459,6 +1474,7 @@ opt_out.opted_out
 shared_numbers.shared_nodes
   SCAN node_shared
 reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
 
@@ -1823,6 +1839,10 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/relay-checks/30?receiver=gateway
 
@@ -1892,6 +1912,10 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/relay-checks/30?latitude=52.0&longitude=19.0
 
@@ -1961,6 +1985,10 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/survey-checks?count=25
 

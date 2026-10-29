@@ -645,3 +645,14 @@ def test_a_node_is_placed_where_it_was_when_a_packet_was_heard(
     assert found[NODE, heard].latitude == 50.0  # not the later 51
     assert found[NODE, later].latitude == 51.0  # the current one, not the no-fix one
     assert (unplaced, heard) not in found  # left for the caller's fallback
+
+
+def test_page_placement_keeps_an_estimate_when_the_node_never_reported(
+    connection: sqlite3.Connection,
+) -> None:
+    from sigsleuth.packets import nodes_when_heard
+
+    node(connection, NODE, None)
+    connection.execute("INSERT INTO node_estimate VALUES (?, 50.0, 2.0, 2, 1.0, 0)", (NODE,))
+    [placed] = nodes_when_heard(connection, now_ms(), {NODE}, for_page=True).values()
+    assert (placed.latitude, placed.longitude, placed.estimated) == (50.0, 2.0, True)

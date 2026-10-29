@@ -8,8 +8,8 @@ packet's expiry never changes what a node is called, where it was or whether
 it is hidden; pages only lose their link to that packet. The price: a change
 in how NodeInfo or positions are read reaches only new reports.
 
-positions_when_heard is the one answer to "where was this node when heard",
-for derived km and for pages alike.
+positions_when_heard uses reports available when heard for saved km and
+decisions. Pages may also use the first report afterwards for drawing.
 """
 
 import json
@@ -168,7 +168,7 @@ def km_when_heard_sql(node_a: str, node_b: str, heard_at: str) -> str:
 @dataclass(frozen=True)
 class HeardPosition:
     """Where a node was when heard: its newest valid reported position by
-    then (positions_when_heard)."""
+    then, or the first afterwards for page drawing (positions_when_heard)."""
 
     node_id: int
     latitude: float
@@ -177,24 +177,33 @@ class HeardPosition:
 
 
 def positions_when_heard(
-    connection: sqlite3.Connection, pairs: Collection[tuple[int, int]]
+    connection: sqlite3.Connection, pairs: Collection[tuple[int, int]], *, for_page: bool = False
 ) -> dict[tuple[int, int], HeardPosition]:
     """For each (node, time in epoch ms), the node's newest position in
-    node_position at or before that time. Nodes with none by then are left
-    out: pages fall back to where they draw them now (db.nodes_by_id)."""
+    node_position at or before that time. With for_page, use the first report
+    afterwards when none precedes it. Missing nodes are left out for the
+    caller's fallback; only page drawing may use for_page."""
     if not pairs:
         return {}
+    first_after = (
+        """ , (
+        SELECT min(at) FROM node_position
+        WHERE node_id = h.value ->> 0 AND at > h.value ->> 1
+    )"""
+        if for_page
+        else ""
+    )
     return {
         (int(row[0]), int(row[1])): HeardPosition(int(row[0]), row[2], row[3], row[4])
         for row in connection.execute(
-            """
+            f"""
             SELECT p.node_id, h.value ->> 1, p.latitude, p.longitude, p.altitude_meters
             FROM json_each(?) AS h JOIN node_position AS p
               ON p.node_id = h.value ->> 0
-             AND p.at = (
+             AND p.at = coalesce((
                 SELECT max(at) FROM node_position
                 WHERE node_id = h.value ->> 0 AND at <= h.value ->> 1
-            )
+            ){first_after}, NULL)
             """,
             (json.dumps(sorted(pairs)),),
         )

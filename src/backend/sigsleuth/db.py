@@ -237,8 +237,8 @@ class NodeSummary:
     (from its own packet or its map report), else its estimate from its
     neighbours (node_estimate, positions.py), which sets estimated; None when
     neither places it. The map and Zones draw a node here; link pages draw
-    it where it was when heard when its own positions tell, else here
-    (reported.positions_when_heard)."""
+    it at its newest report before the hearing, else its first afterwards,
+    else its estimate (reported.positions_when_heard with for_page)."""
 
     node_id: int
     long_name: str | None

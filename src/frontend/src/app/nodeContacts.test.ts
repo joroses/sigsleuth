@@ -52,6 +52,8 @@ function contact(
 ): NodeContact {
   return {
     node_id: nodeId,
+    moved_at: null,
+    heard_before_move: false,
     node: {
       node_id: nodeId,
       long_name: null,
@@ -126,6 +128,94 @@ describe("contactLayers", () => {
 
     expect(marks).toHaveLength(1);
     expect(lines.direct.features).toEqual([]);
+  });
+  it("hides stale lines, arrows and markers and counts contacts left out", () => {
+    const after = "2026-10-11T06:00:00Z";
+    const old = contact(1, ["traceroute"], null);
+    const moved = { ...contact(2, ["direct"], null), moved_at: after };
+    const gateway = { ...contact(3, [], 2), heard_before_move: true };
+    const staleGateway = { ...contact(4, [], null), heard_before_move: true };
+    const layers = contactLayers(
+      NODE,
+      [old, moved, gateway, staleGateway],
+      [row(1, "traceroute"), row(2, "direct")],
+      [
+        {
+          from_node_id: NODE,
+          to_node_id: 1,
+          channel: "LongFast",
+          free: 1,
+          costly: 0,
+        },
+      ],
+      origin,
+      both,
+      after,
+    );
+    expect(layers.lines.traceroute.features).toEqual([]);
+    expect(layers.lines.direct.features).toEqual([]);
+    expect(layers.zeroCost.features).toEqual([]);
+    expect(
+      layers.marks.map((mark) => [mark.contact.node_id, mark.label, mark.tone]),
+    ).toEqual([[3, "2", "hop-tone-2"]]);
+    expect(layers.moved).toBe(3);
+    expect(layers.unplaced).toBe(0);
+    expect(
+      contactLayers(
+        NODE,
+        [staleGateway],
+        [],
+        [],
+        origin,
+        { traceroutes: true, gateways: false },
+        after,
+      ).moved,
+    ).toBe(0);
+  });
+
+  it("keeps equality at both moves and filters each link independently", () => {
+    const at = row(1, "traceroute").last_seen_at;
+    const found = {
+      ...contact(1, ["traceroute", "direct"], null),
+      moved_at: at,
+    };
+    const layers = contactLayers(
+      NODE,
+      [found],
+      [
+        row(1, "traceroute"),
+        { ...row(1, "direct"), last_seen_at: "2026-10-11T05:39:59Z" },
+      ],
+      [],
+      origin,
+      both,
+      at,
+    );
+    expect(layers.lines.traceroute.features).toHaveLength(2);
+    expect(layers.lines.direct.features).toEqual([]);
+    expect(layers.marks[0].tone).toBe("hop-tone-relay");
+    expect(layers.moved).toBe(0);
+    expect(
+      contactLayers(
+        NODE,
+        [found],
+        [row(1, "traceroute")],
+        [],
+        origin,
+        both,
+        null,
+      ).marks,
+    ).toHaveLength(1);
+    expect(
+      contactLayers(
+        NODE,
+        [{ ...found, moved_at: "2026-10-11T06:00:00Z" }],
+        [row(1, "traceroute")],
+        [],
+        origin,
+        both,
+      ).marks,
+    ).toEqual([]);
   });
 });
 

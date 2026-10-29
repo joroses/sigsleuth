@@ -312,13 +312,15 @@ class HeardPositionList:
 def positions_at(
     connection: sqlite3.Connection, node_ids: Collection[int], at: datetime
 ) -> HeardPositionList:
-    """Where the nodes were at `at` (reported.positions_when_heard), for line
+    """Reported positions at `at`, else the first afterwards, for line
     of sight between a link's nodes when it was last heard. Opted-out nodes
     are left out (opt_out.py)."""
     heard_at = to_epoch_ms(at)
     shown = set(node_ids) - opted_out(connection)
     unplaced = shown & shared_nodes(connection)
-    heard = positions_when_heard(connection, {(node_id, heard_at) for node_id in shown - unplaced})
+    heard = positions_when_heard(
+        connection, {(node_id, heard_at) for node_id in shown - unplaced}, for_page=True
+    )
     return HeardPositionList(tuple(heard[pair] for pair in sorted(heard)), tuple(sorted(unplaced)))
 
 

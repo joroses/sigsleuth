@@ -12,7 +12,9 @@ from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
-from sigsleuth.positions import refresh_estimates
+from sigsleuth.derive import rederive
+from sigsleuth.packets import nodes_when_heard, packet_detail, relayed_packet
+from sigsleuth.positions import positions_at, refresh_estimates
 
 NOW = datetime(2026, 9, 27, 9, 30, tzinfo=UTC)
 A, B, R1, R2, OTHER = 0x0A0A0A0A, 0x0B0B0B0B, 0x01010101, 0x02020202, 0x0C0C0C0C
@@ -540,6 +542,55 @@ def test_a_run_heard_before_an_end_had_a_position_has_no_distance(path: Path) ->
     assert run["distance_km"] is None
 
 
+def test_page_positions_use_the_first_later_report_without_changing_saved_distances(
+    path: Path,
+) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, 0xAAAAAAAA, 40.0, 2.0)
+    request_and_reply(path)
+    place(path, B, 41.0, 2.0, NOW + timedelta(hours=1))
+    place(path, B, 48.0, 2.0, NOW + timedelta(hours=2))
+    place(path, 0xBBBBBBBB, 41.0, 2.0, NOW + timedelta(hours=1))
+    place(path, 0xBBBBBBBB, 48.0, 2.0, NOW + timedelta(hours=2))
+
+    [run] = get(path, "/api/v1/traceroutes", sort="distance")["items"]
+    assert {p["node_id"]: p["latitude"] for p in run["positions"]}[B] == 41.0
+    assert run["distance_km"] is None
+    with closing(open_current_database(path)) as connection:
+        packet_id = run["reply_packet_row_id"]
+        detail = packet_detail(connection, packet_id, default_preset="LongFast")
+        assert detail is not None
+        assert detail.sender_latitude == 41.0
+        assert not detail.sender_estimated
+        assert {n.node_id: n.latitude for n in detail.route_nodes}[B] == 41.0
+        request = packet_detail(connection, run["request_packet_row_id"], default_preset="LongFast")
+        assert request is not None
+        gateway = next(r for r in request.receptions if r.gateway_node_id == 0xBBBBBBBB)
+        assert gateway.gateway_latitude == 41.0
+        assert not gateway.gateway_estimated
+        assert gateway.km == pytest.approx(111.2, abs=0.1)
+        reception = next(r for r in detail.receptions if r.gateway_node_id == 0xAAAAAAAA)
+        assert reception.km == pytest.approx(111.2, abs=0.1)
+        assert {p.node_id: p.latitude for p in positions_at(connection, {A, B}, NOW).items}[
+            B
+        ] == 41.0
+        assert nodes_when_heard(connection, to_epoch_ms(NOW), {B})[B].latitude == 48.0
+        decision = relayed_packet(connection, packet_id, with_relays=False)
+        assert decision is not None
+        assert next(
+            r for r in decision.receptions if r.gateway_node_id == 0xAAAAAAAA
+        ).km == pytest.approx(889.6, abs=0.2)
+        assert (
+            connection.execute(
+                "SELECT km FROM link_hour WHERE from_node_id = ? AND to_node_id = ?",
+                (R2, B),
+            ).fetchone()[0]
+            is None
+        )
+        assert rederive(connection, lambda: False)
+        assert connection.execute("SELECT ends_km FROM traceroute_run").fetchone()[0] is None
+
+
 def longer_request_and_reply_that_worked(path: Path) -> None:
     """A traces B. The request's A -> R1 hop is the longest route by distance;
     the reply's route to B, through unplaced relays, has three hops."""
@@ -973,3 +1024,31 @@ def test_a_broadcast_runs_return_route_starts_at_its_replier(path: Path) -> None
     assert run["route"]["is_return"] is True
     # The return route's first hop leaves B, the reply's sender, so it costs.
     assert spent(run["route"]["hop_costs"])[B, R1] == (1, None)
+
+
+def test_relay_scoring_keeps_the_old_gateway_placement(path: Path) -> None:
+    place(path, A, 40.0, 2.0)
+    traceroute(
+        path,
+        "!bbbbbbbb",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1, R2],
+        snr=[20, 8],
+        hop_start=3,
+        hop_limit=1,
+        relay_node=R2 & 0xFF,
+    )
+    place(path, 0xBBBBBBBB, 41.0, 2.0, NOW + timedelta(hours=1))
+    place(path, 0xBBBBBBBB, 48.0, 2.0, NOW + timedelta(hours=2))
+    with closing(open_current_database(path)) as connection:
+        packet_id = connection.execute("SELECT id FROM packet").fetchone()[0]
+        decision = relayed_packet(connection, packet_id)
+        assert decision is not None and decision.relays is not None
+        [naming] = decision.relays.namings.values()
+        assert naming.copy.position == (48.0, 2.0)
+        page = packet_detail(connection, packet_id, default_preset="LongFast")
+        assert page is not None
+        assert page.receptions[0].gateway_latitude == 41.0

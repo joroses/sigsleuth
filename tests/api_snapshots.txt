@@ -1494,6 +1494,7 @@ limited: false
 
 node_id: 3655149723
 since: "2026-10-04T16:25:30.812000Z"
+moved_at: null
 items: 40 items
   - node_id: 3562709820
     node:
@@ -1510,6 +1511,8 @@ items: 40 items
         min_km: 0.9
         max_km: 0.9
         last_seen_at: "2026-10-10T20:12:38.139000Z"
+    moved_at: null
+    heard_before_move: false
     heard_packets: 0
     fewest_hops: null
     km: 0.9
@@ -1533,6 +1536,8 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T16:21:06.845000Z"
+    moved_at: null
+    heard_before_move: false
     heard_packets: 86
     fewest_hops: 0
     km: 1.5
@@ -1551,6 +1556,8 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T01:30:38.419000Z"
+    moved_at: null
+    heard_before_move: false
     heard_packets: 0
     fewest_hops: null
     km: 1.5

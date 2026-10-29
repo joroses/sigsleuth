@@ -5479,6 +5479,41 @@ div.zones-zone-end .link-end-name {
 }
 
 /* Relay checks (#diagnostics/relays). */
+/* Relay checks of traceroute copies or of survey uploads. */
+.relay-check-kinds {
+  display: inline-flex;
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.relay-check-kinds a {
+  padding: var(--space-1) var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.relay-check-kinds a + a {
+  border-left: 1px solid var(--border);
+}
+
+.relay-check-kinds a[aria-current="page"] {
+  color: var(--canvas);
+  background: var(--accent);
+}
+
+.relay-check-kinds a:not([aria-current="page"]):hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+.survey-shown {
+  font-weight: 650;
+}
+
 .relay-check-rates {
   display: flex;
   flex-wrap: wrap;
@@ -5802,7 +5837,8 @@ button.relay-map-node {
   cursor: grab;
 }
 
-.relay-map-gateway.receiver.chosen {
+.relay-map-gateway.receiver.chosen,
+.relay-map-gateway.receiver.phone {
   border-color: var(--marker-ring-edge);
 }
 

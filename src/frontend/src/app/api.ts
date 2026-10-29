@@ -46,6 +46,10 @@ export type RelayCheckDetail = Schemas["RelayCheckDetail"];
 export type RelayCandidate = Schemas["RelayCandidate"];
 export type RelayCheckReport = Schemas["RelayCheckReport"];
 export type RelayAnswer = Schemas["RelayAnswer"];
+export type SurveyCheck = Schemas["SurveyCheck"];
+export type SurveyCheckList = Schemas["SurveyCheckList"];
+export type SurveyCheckDetail = Schemas["SurveyCheckDetail"];
+export type SurveyLinkNode = Schemas["SurveyLinkNode"];
 export type ChatParent = Schemas["ChatParent"];
 export type ChatMessage = Schemas["ChatMessage"];
 export type ChatPage = Schemas["ChatPage"];
@@ -321,6 +325,15 @@ export function relayCheckUrl(
   return at === null
     ? url
     : `${url}?latitude=${at[0].toFixed(5)}&longitude=${at[1].toFixed(5)}`;
+}
+
+/** The `count` newest heard survey measurements, relayed ones unless `direct`. */
+export function surveyChecksUrl(count: number, direct: boolean): string {
+  return `/api/v1/diagnostics/survey-checks?count=${count}${direct ? "&direct=true" : ""}`;
+}
+
+export function surveyCheckUrl(measurementId: number): string {
+  return `/api/v1/diagnostics/survey-checks/${measurementId}`;
 }
 
 function setQuery(query: URLSearchParams, key: string, value?: string) {

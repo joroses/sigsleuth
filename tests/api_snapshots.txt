@@ -5988,3 +5988,10 @@ rules:
   far_km: 50
   active_hours: 24
   heard_days: 7
+
+## GET /api/v1/diagnostics/survey-checks?count=25
+
+checks: []
+oldest_at: null
+newest_at: null
+next_before_id: null

@@ -2,31 +2,44 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   RelayAnswer,
-  RelayCandidate,
   RelayCheck,
   RelayCheckDetail,
   RelayCheckList,
-  RelayCheckReport,
   relayCheckUrl,
   relayChecksUrl,
 } from "./api";
 import {
   PLACED_BY,
   formatKm,
-  formatNodeId,
   relayChecksHref,
+  surveyChecksHref,
 } from "./nodeDisplay";
 import { RelayCheckMap } from "./RelayCheckMap";
+import {
+  CandidateTable,
+  LinkTable,
+  NodeRef,
+  ReportTable,
+  ScoreTable,
+  SignalTable,
+} from "./relayScores";
+import {
+  HOW_LABELS,
+  WHY_LABELS,
+  byteText,
+  candidateName,
+  hopsText,
+  nodeText,
+  percent,
+} from "./relayText";
 import { useSetting, useViewState } from "./remember";
+import { SurveyChecks } from "./SurveyChecks";
 import { useApi, usePagedApi } from "./useApi";
-import { Badge, NodeLink, ShortTime, StatusPanel, WideTable } from "./ui";
+import { Badge, ShortTime, StatusPanel, WideTable } from "./ui";
 
 type Answer = "survey" | "page";
 type Outcome = NonNullable<RelayAnswer["outcome"]>;
 type Show = Outcome | "not_right" | "all";
-type How = NonNullable<RelayAnswer["how"]>;
-type Term = RelayCandidate["terms"][number]["term"];
-type CheckNode = RelayCheck["sender"];
 
 const ANSWERS: { value: Answer; label: string }[] = [
   { value: "survey", label: "Survey receiver (no links of its own)" },
@@ -40,56 +53,6 @@ const SHOWS: { value: Show; label: string }[] = [
   { value: "all", label: "All" },
 ];
 const COUNTS = [25, 50, 100, 200];
-// Candidates the score table shows before "Show all".
-const SCORE_ROWS = 8;
-
-const HOW_LABELS: Record<How, string> = {
-  heard_directly: "Heard directly",
-  receiver_heard: "Heard by the gateway",
-  gateway_link: "Links with co-hearers",
-  sender_link: "Links with the sender",
-  reported: "Reported one hop earlier",
-  only_candidate: "Distance",
-};
-
-const WHY_LABELS: Record<
-  Exclude<RelayAnswer["why"], "heard_directly" | "named">,
-  string
-> = {
-  below: "Likeliest not sure enough",
-  unknown: "An unknown node likeliest",
-  no_evidence: "Likeliest has no evidence",
-  no_candidates: "No candidate",
-};
-
-const TERM_LABELS: Record<Term, string> = {
-  unplaced: "no position",
-  estimated: "estimated position",
-  log_km: "distance",
-  beyond_reach: "beyond its reach",
-  near5: "under 5 km",
-  in_reach: "within reach",
-  receiver_far: "receiver far",
-  glink: "linked to a co-hearer",
-  glink_log: "co-hearer links",
-  slink: "linked to the sender",
-  slink_log: "sender links",
-  sender_far: "sender far",
-  snr_llr: "signal match",
-  rep_plus1: "reported one hop earlier",
-  rep_same: "reported, same hops",
-  rep_other: "reported, other hops",
-  role_router: "ROUTER",
-  role_router_late: "ROUTER_LATE",
-  role_client: "CLIENT",
-  role_mute: "CLIENT_MUTE",
-  role_none: "no role",
-  channel_same: "channel on this SF",
-  channel_other: "channel on another SF",
-  inactive: "not active",
-  rheard: "heard by the gateway",
-  r_rssi: "receiver RSSI match",
-};
 
 const OUTCOME_TONES = {
   right: "green",
@@ -100,19 +63,41 @@ const OUTCOME_TONES = {
 /**
  * Diagnostics' relay checks tab (#diagnostics/relays): traceroute copies whose
  * route names their relay, against the relay SigSleuth names, and one
- * copy's scores term by term (#diagnostics/relays/<reception>).
+ * copy's scores term by term (#diagnostics/relays/<reception>); or survey
+ * uploads (#diagnostics/relays/surveys).
  */
-export function RelayChecks({ receptionId }: { receptionId: number | null }) {
-  // The list loads once it is first shown, and stays loaded while a copy is
-  // open, so going back to it is instant.
-  const [listShown, setListShown] = useState(receptionId === null);
-  if (receptionId === null && !listShown) setListShown(true);
+export function RelayChecks({
+  receptionId,
+  surveys = false,
+  measurementId = null,
+}: {
+  receptionId: number | null;
+  surveys?: boolean;
+  measurementId?: number | null;
+}) {
+  // Each list loads once it is first shown, and stays loaded while the
+  // other or an open item is shown, so going back to it is instant.
+  const [listShown, setListShown] = useState(!surveys && receptionId === null);
+  if (!surveys && receptionId === null && !listShown) setListShown(true);
+  const [surveysOpened, setSurveysOpened] = useState(surveys);
+  if (surveys && !surveysOpened) setSurveysOpened(true);
   const [generation, setGeneration] = useState(0);
   const [queue, setQueue] = useState<number[]>([]);
   return (
     <>
+      <nav className="relay-check-kinds" aria-label="Relay checks of">
+        <a href={relayChecksHref()} aria-current={surveys ? undefined : "page"}>
+          Traceroute copies
+        </a>
+        <a
+          href={surveyChecksHref()}
+          aria-current={surveys ? "page" : undefined}
+        >
+          Survey uploads
+        </a>
+      </nav>
       {listShown ? (
-        <div hidden={receptionId !== null}>
+        <div hidden={surveys || receptionId !== null}>
           <CheckList
             key={generation}
             onQueue={setQueue}
@@ -120,12 +105,17 @@ export function RelayChecks({ receptionId }: { receptionId: number | null }) {
           />
         </div>
       ) : null}
-      {receptionId !== null ? (
+      {!surveys && receptionId !== null ? (
         <CheckDetail
           key={receptionId}
           receptionId={receptionId}
           queue={queue}
         />
+      ) : null}
+      {surveysOpened ? (
+        <div hidden={!surveys}>
+          <SurveyChecks measurementId={measurementId} />
+        </div>
       ) : null}
     </>
   );
@@ -149,12 +139,6 @@ function shows(outcome: Outcome | null, show: Show): boolean {
   if (show === "all") return true;
   if (show === "not_right") return outcome !== "right";
   return outcome === show;
-}
-
-function percent(probability: number | null): string {
-  if (probability === null) return "—";
-  const value = probability * 100;
-  return `${value < 1 && value > 0 ? "<1" : Math.round(value)}%`;
 }
 
 function CheckList({
@@ -475,51 +459,12 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
   );
 }
 
-function RouteBadge() {
-  return (
-    <>
-      {" "}
-      <Badge tone="blue" title="The relay this copy's route names">
-        route
-      </Badge>
-    </>
-  );
-}
-
 function MixedBadge() {
   return (
     <Badge tone="amber" title="Reports carry different traceroute paths">
       mixed
     </Badge>
   );
-}
-
-function nodeText(node: CheckNode | null): string {
-  if (node === null) return "—";
-  if (node.node_id === null) return "an opted-out node";
-  return node.name ?? formatNodeId(node.node_id);
-}
-
-function NodeRef({ node }: { node: CheckNode | null }) {
-  if (node === null) return <span className="muted">—</span>;
-  if (node.node_id === null)
-    return <span className="muted">an opted-out node</span>;
-  return <NodeLink nodeId={node.node_id} name={node.name} />;
-}
-
-function byteText(byte: number): string {
-  return byte.toString(16).padStart(2, "0");
-}
-
-function hopsText(start: number | null, left: number | null): string {
-  if (start === null || left === null) return "hops unknown";
-  const used = start - left;
-  return `${used} hop${used === 1 ? "" : "s"}`;
-}
-
-function firmwareText(version: number | null): string {
-  if (version === null) return "—";
-  return `${Math.floor(version / 10000)}.${Math.floor(version / 100) % 100}.${version % 100}`;
 }
 
 function CheckDetail({
@@ -692,6 +637,11 @@ function CheckScores({
         </select>
         <RelayCheckMap
           detail={detail}
+          viewKey={check.reception_id}
+          routeKey={routeKey}
+          namedKeys={[check.page.relay, check.survey.relay].flatMap((node) =>
+            node?.node_id == null ? [] : [node.node_id],
+          )}
           selected={selected}
           onSelect={setSelected}
           onReceiver={onReceiver}
@@ -796,7 +746,11 @@ function CheckScores({
         </p>
         <ScoreTable detail={detail} routeKey={routeKey} />
         <SignalTable detail={detail} routeKey={routeKey} />
-        <LinkTable detail={detail} routeKey={routeKey} />
+        <LinkTable
+          detail={detail}
+          sender={detail.check.sender}
+          routeKey={routeKey}
+        />
       </section>
 
       <section aria-labelledby="relay-reports-heading">
@@ -807,7 +761,14 @@ function CheckScores({
             left. Each traceroute report names its own last relay.
           </p>
         </div>
-        <ReportTable detail={detail} />
+        <ReportTable
+          reports={detail.reports}
+          copyGateway={
+            detail.receiver_mode === "survey"
+              ? detail.check.gateway.node_id
+              : null
+          }
+        />
       </section>
     </>
   );
@@ -894,198 +855,6 @@ function RouteChain({ detail }: { detail: RelayCheckDetail }) {
   );
 }
 
-function candidateName(candidate: RelayCandidate | undefined): string {
-  if (candidate === undefined) return "—";
-  if (candidate.node_id === null) return "an opted-out node";
-  return (
-    candidate.name ?? candidate.short_name ?? formatNodeId(candidate.node_id)
-  );
-}
-
-/** Candidates by probability, those that cannot have sent the copy last. */
-function byProbability(candidates: RelayCandidate[]): RelayCandidate[] {
-  return [...candidates].sort(
-    (a, b) =>
-      (b.probability ?? -1) - (a.probability ?? -1) ||
-      (a.receiver_km ?? Infinity) - (b.receiver_km ?? Infinity),
-  );
-}
-
-function CandidateTable({
-  detail,
-  routeKey,
-  selected,
-  onSelect,
-}: {
-  detail: RelayCheckDetail;
-  routeKey: number | null;
-  selected: number | null;
-  onSelect: (key: number) => void;
-}) {
-  const [allShown, setAllShown] = useState(false);
-  const rules = detail.rules;
-  const copySf = detail.spreading_factor;
-  const sorted = byProbability(detail.candidates);
-  const hidden = (candidate: RelayCandidate) =>
-    candidate.key !== routeKey && !candidate.possible;
-  const hiddenCount = sorted.filter(hidden).length;
-  const rows = allShown ? sorted : sorted.filter((c) => !hidden(c));
-  return (
-    <>
-      <WideTable>
-        <table className="relay-candidate-table">
-          <thead>
-            <tr>
-              <th>Candidate</th>
-              <th className="number">Probability</th>
-              <th>Position</th>
-              <th>Role</th>
-              <th>
-                Spreading factor
-                <span className="column-note">
-                  copy {copySf === null ? "unknown" : `SF${copySf}`}
-                </span>
-              </th>
-              <th>
-                Firmware
-                <span className="column-note">relay byte from 2.6</span>
-              </th>
-              <th>
-                Receiver km
-                <span className="column-note">of its reach</span>
-              </th>
-              <th>
-                Own report
-                <span className="column-note">hops left</span>
-              </th>
-              <th>
-                Active
-                <span className="column-note">
-                  within {rules.active_hours} h
-                </span>
-              </th>
-              <th>
-                Sender km
-                <span className="column-note">one hop only</span>
-              </th>
-              <th className="number">Heard directly</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((candidate) => (
-              <tr
-                key={candidate.key}
-                className={[
-                  "selectable-row",
-                  candidate.key === routeKey ? "route-relay-row" : "",
-                  candidate.key === selected ? "selected-row" : "",
-                ].join(" ")}
-                onClick={() => onSelect(candidate.key)}
-              >
-                <th scope="row">
-                  {candidate.node_id === null ? (
-                    <span className="muted">an opted-out node</span>
-                  ) : (
-                    <NodeLink
-                      nodeId={candidate.node_id}
-                      name={candidateName(candidate)}
-                    />
-                  )}
-                  {candidate.key === routeKey ? <RouteBadge /> : null}
-                </th>
-                <td className="number">
-                  {candidate.possible ? (
-                    percent(candidate.probability)
-                  ) : (
-                    <Badge tone="neutral">cannot</Badge>
-                  )}
-                </td>
-                <td>
-                  {candidate.latitude === null && candidate.node_id !== null
-                    ? "none"
-                    : candidate.estimated
-                      ? "estimated"
-                      : "now"}
-                </td>
-                <td>{candidate.role ?? "—"}</td>
-                <td>
-                  {candidate.channel_spreading_factor === null &&
-                  candidate.preset_spreading_factor === null
-                    ? "unknown"
-                    : [
-                        candidate.channel_spreading_factor === null
-                          ? null
-                          : `channel SF${candidate.channel_spreading_factor}`,
-                        candidate.preset_spreading_factor === null
-                          ? null
-                          : `map report SF${candidate.preset_spreading_factor}`,
-                      ]
-                        .filter((text) => text !== null)
-                        .join(", ")}
-                </td>
-                <td>{firmwareText(candidate.firmware)}</td>
-                <td>
-                  <KmOf
-                    km={candidate.receiver_km}
-                    limit={Math.max(candidate.reach_km, rules.name_km)}
-                  />
-                </td>
-                <td>
-                  {candidate.own_hop_limit === null ? (
-                    <span className="muted">no report</span>
-                  ) : (
-                    `${candidate.own_hop_limit} left`
-                  )}
-                </td>
-                <td>
-                  <ActivityText candidate={candidate} />
-                </td>
-                <td>
-                  {!detail.one_hop ? (
-                    <span className="muted">—</span>
-                  ) : (
-                    <KmOf
-                      km={candidate.sender_km}
-                      limit={Math.max(candidate.reach_km, rules.far_km)}
-                    />
-                  )}
-                </td>
-                <td className="number">
-                  {candidate.heard_directly > 0
-                    ? candidate.heard_directly
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </WideTable>
-      {hiddenCount > 0 ? (
-        <button
-          type="button"
-          className="text-button relay-more"
-          onClick={() => setAllShown(!allShown)}
-        >
-          {allShown
-            ? "Hide those that cannot have sent it"
-            : `Show ${hiddenCount} more that cannot have sent it`}
-        </button>
-      ) : null}
-    </>
-  );
-}
-
-/** km and the limit it is held to, with a decimal when rounding would hide which is larger. */
-function KmOf({ km, limit }: { km: number | null; limit: number }) {
-  const close = km !== null && formatKm(km) === formatKm(limit);
-  return (
-    <>
-      {close ? km.toFixed(1) : formatKm(km)}
-      <span className="muted"> of {formatKm(limit)}</span>
-    </>
-  );
-}
-
 /** How the receiver, the sender and the candidates were placed. */
 function PlacementNotes({ detail }: { detail: RelayCheckDetail }) {
   const { receiver, sender, sender_when_heard: heard } = detail;
@@ -1127,343 +896,4 @@ function kmBetween(
       Math.cos(b.latitude * rad) *
       Math.sin(dLon / 2) ** 2;
   return 2 * 6371 * Math.asin(Math.sqrt(h));
-}
-
-function ActivityText({ candidate }: { candidate: RelayCandidate }) {
-  const hours = candidate.activity_hours;
-  const gateway =
-    candidate.last_gateway_at === null ? null : (
-      <span className="muted">
-        {" "}
-        · gateway <ShortTime value={candidate.last_gateway_at} />
-      </span>
-    );
-  return (
-    <>
-      {hours === null
-        ? "none near"
-        : hours === 0
-          ? "same hour"
-          : `${hours > 0 ? "+" : "−"}${Math.abs(hours)} h`}
-      {gateway}
-    </>
-  );
-}
-
-function signed(value: number): string {
-  return `${value < 0 ? "−" : "+"}${Math.abs(value).toFixed(2)}`;
-}
-
-function ScoreTable({
-  detail,
-  routeKey,
-}: {
-  detail: RelayCheckDetail;
-  routeKey: number | null;
-}) {
-  const [allShown, setAllShown] = useState(false);
-  const possible = byProbability(
-    detail.candidates.filter((candidate) => candidate.possible),
-  );
-  const rows = allShown ? possible : possible.slice(0, SCORE_ROWS);
-  if (possible.length === 0) return null;
-  return (
-    <>
-      <WideTable>
-        <table className="relay-step-table">
-          <thead>
-            <tr>
-              <th>Candidate</th>
-              <th className="number">Probability</th>
-              <th className="number">Score</th>
-              <th>Terms, largest first</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((candidate) => (
-              <tr key={candidate.key}>
-                <th scope="row">
-                  {candidateName(candidate)}
-                  {candidate.key === routeKey ? <RouteBadge /> : null}
-                  {candidate.evidence ? null : (
-                    <span className="muted"> · no evidence</span>
-                  )}
-                </th>
-                <td className="number">{percent(candidate.probability)}</td>
-                <td className="number">{signed(candidate.score ?? 0)}</td>
-                <td className="relay-terms">
-                  {candidate.terms.map((term) => (
-                    <span
-                      key={term.term}
-                      className={term.score < 0 ? "against" : "for"}
-                      title={`Value ${term.value}`}
-                    >
-                      {TERM_LABELS[term.term]} {signed(term.score)}
-                    </span>
-                  ))}
-                </td>
-              </tr>
-            ))}
-            <tr className="muted">
-              <th scope="row">A node SigSleuth does not know</th>
-              <td className="number">{percent(detail.unknown_probability)}</td>
-              <td className="number">{signed(detail.rules.unknown_score)}</td>
-              <td />
-            </tr>
-          </tbody>
-        </table>
-      </WideTable>
-      {possible.length > SCORE_ROWS ? (
-        <button
-          type="button"
-          className="text-button relay-more"
-          onClick={() => setAllShown(!allShown)}
-        >
-          {allShown
-            ? `Show the ${SCORE_ROWS} likeliest`
-            : `Show all ${possible.length}`}
-        </button>
-      ) : null}
-    </>
-  );
-}
-
-/** The co-hearers' SNR against each candidate's usual direct SNR there. */
-function SignalTable({
-  detail,
-  routeKey,
-}: {
-  detail: RelayCheckDetail;
-  routeKey: number | null;
-}) {
-  const copies = detail.reports.filter(
-    (report) => report.signal || report.kind === "receiver",
-  );
-  if (copies.length === 0 || detail.signals.length === 0) return null;
-  const profile = new Map(
-    detail.signals.map((signal) => [
-      `${signal.key}/${signal.gateway_node_id}`,
-      signal,
-    ]),
-  );
-  const keys = new Set(detail.signals.map((signal) => signal.key));
-  const rows = byProbability(
-    detail.candidates.filter((candidate) => keys.has(candidate.key)),
-  );
-  return (
-    <>
-      <h4 className="relay-score-figures">Direct signal profiles</h4>
-      <WideTable>
-        <table className="relay-step-table">
-          <thead>
-            <tr>
-              <th>Candidate</th>
-              {copies.map((report) => (
-                <th key={report.reception_id}>
-                  {nodeText(report.gateway)}
-                  <span className="column-note">
-                    copy {report.snr_db ?? "—"} dB · {report.rssi_dbm ?? "—"}{" "}
-                    dBm
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((candidate) => (
-              <tr key={candidate.key}>
-                <th scope="row">
-                  {candidateName(candidate)}
-                  {candidate.key === routeKey ? <RouteBadge /> : null}
-                </th>
-                {copies.map((report) => {
-                  const signal = profile.get(
-                    `${candidate.key}/${report.gateway.node_id}`,
-                  );
-                  return (
-                    <td key={report.reception_id}>
-                      {signal === undefined ? (
-                        <span className="muted">never heard</span>
-                      ) : (
-                        <>
-                          {signal.snr_mean_db?.toFixed(1) ?? "—"} dB
-                          <span className="muted"> ({signal.snr_count})</span>
-                          <br />
-                          {signal.rssi_mean_dbm?.toFixed(1) ?? "—"} dBm
-                          <span className="muted"> ({signal.rssi_count})</span>
-                        </>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </WideTable>
-    </>
-  );
-}
-
-/** Radio links with the co-hearers, and radio links and traceroute hops with the sender after one hop. */
-function LinkTable({
-  detail,
-  routeKey,
-}: {
-  detail: RelayCheckDetail;
-  routeKey: number | null;
-}) {
-  if (detail.links.length === 0) return null;
-  const sender = detail.check.sender.node_id;
-  const others = [
-    ...detail.reports
-      .filter((report) => report.kind === "cohearer")
-      .map((report) => report.gateway),
-    ...(detail.one_hop ? [detail.check.sender] : []),
-  ];
-  const links = new Map(
-    detail.links.map((link) => [`${link.key}/${link.node_id}`, link]),
-  );
-  const keys = new Set(detail.links.map((link) => link.key));
-  const rows = byProbability(
-    detail.candidates.filter((candidate) => keys.has(candidate.key)),
-  );
-  return (
-    <>
-      <h4 className="relay-score-figures">Links</h4>
-      <WideTable>
-        <table className="relay-step-table">
-          <thead>
-            <tr>
-              <th>Candidate</th>
-              {others.map((other) => (
-                <th key={other.node_id}>
-                  {nodeText(other)}
-                  {other.node_id === sender ? (
-                    <span className="column-note">
-                      sender: radio + traceroute
-                    </span>
-                  ) : null}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((candidate) => (
-              <tr key={candidate.key}>
-                <th scope="row">
-                  {candidateName(candidate)}
-                  {candidate.key === routeKey ? <RouteBadge /> : null}
-                </th>
-                {others.map((other) => {
-                  const link = links.get(`${candidate.key}/${other.node_id}`);
-                  return (
-                    <td key={other.node_id}>
-                      {link === undefined
-                        ? "—"
-                        : other.node_id === sender
-                          ? `${link.radio} + ${link.traceroute}`
-                          : link.radio}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </WideTable>
-    </>
-  );
-}
-
-function ReportTable({ detail }: { detail: RelayCheckDetail }) {
-  const KIND_ORDER = ["receiver", "cohearer", "earlier", "other", "sender"];
-  const KIND_LABELS: Record<RelayCheckReport["kind"], string> = {
-    receiver: "this copy",
-    cohearer: "co-hearer",
-    earlier: "one more hop left",
-    other: "other",
-    sender: "sender's own upload",
-  };
-  const reports = [...detail.reports].sort(
-    (a, b) =>
-      KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
-      (b.hop_limit ?? -1) - (a.hop_limit ?? -1),
-  );
-  return (
-    <WideTable>
-      <table className="relay-report-table">
-        <thead>
-          <tr>
-            <th>Gateway</th>
-            <th>Kind</th>
-            <th className="number">Hops left</th>
-            <th>Relay byte</th>
-            <th className="number">SNR</th>
-            <th className="number">RSSI</th>
-            <th>Its route&apos;s relay</th>
-          </tr>
-        </thead>
-        <tbody>
-          {reports.map((report) => {
-            return (
-              <tr
-                key={report.reception_id}
-                className={
-                  report.kind === "receiver" ? "route-relay-row" : undefined
-                }
-              >
-                <th scope="row">
-                  <NodeRef node={report.gateway} />
-                  {report.sends_byte ? (
-                    <span className="muted"> · sends the byte</span>
-                  ) : null}
-                </th>
-                <td>
-                  {KIND_LABELS[report.kind]}
-                  {report.signal ? (
-                    <span className="muted"> · signal term</span>
-                  ) : null}
-                  {report.route_conflict ? (
-                    <span className="muted"> · different route</span>
-                  ) : null}
-                  {detail.receiver_mode === "survey" &&
-                  report.gateway.node_id === detail.check.gateway.node_id ? (
-                    <span className="muted"> · this copy&apos;s gateway</span>
-                  ) : null}
-                  {report.direct ? (
-                    <span className="muted"> · heard the sender</span>
-                  ) : null}
-                </td>
-                <td className="number">{report.hop_limit ?? "—"}</td>
-                <td>
-                  {report.relay_byte === null || report.relay_byte === 0
-                    ? "—"
-                    : byteText(report.relay_byte)}
-                </td>
-                <td className="number">
-                  {report.snr_db === null ? "—" : `${report.snr_db} dB`}
-                </td>
-                <td className="number">
-                  {report.rssi_dbm === null ? "—" : `${report.rssi_dbm} dBm`}
-                </td>
-                <td className={report.route_conflict ? "rule-hit" : undefined}>
-                  {report.route_relay !== null ? (
-                    <NodeRef node={report.route_relay} />
-                  ) : report.route_hint !== null ? (
-                    <>
-                      <span className="muted">possibly </span>
-                      <NodeRef node={report.route_hint} />
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </WideTable>
-  );
 }

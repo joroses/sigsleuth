@@ -1349,6 +1349,95 @@ describe("Diagnostics", () => {
     expect(asked()).not.toContain("/api/v1/diagnostics/doubtful-nodes");
   });
 
+  it("loads survey uploads once opened, with direct receptions when asked, and pages on", async () => {
+    const check = {
+      measurement_id: 9,
+      heard_at: "2026-09-19T09:00:00Z",
+      surveyor: { node_id: 0x0f0f0f0f, name: "Phone" },
+      sender: { node_id: 0x22222222, name: "Valley Base" },
+      relay_byte: 0x1a,
+      hop_start: 3,
+      hop_limit: 1,
+      rx_snr: 5,
+      rx_rssi: -100,
+      upload_node: null,
+      upload_how: "unknown",
+      link: { node_id: 0x0500001a, name: "Hill" },
+      link_nodes: 1,
+      today: {
+        node: null,
+        how: "unknown",
+        why: "below",
+        likeliest: { node_id: 0x0500001a, name: "Hill" },
+        probability: 0.6,
+        possible: 3,
+        ruled_out: 0,
+      },
+      shown_node: { node_id: 0x0500001a, name: "Hill" },
+      shown_how: "survey_link",
+      changed: false,
+    };
+    const list = {
+      checks: [check],
+      oldest_at: check.heard_at,
+      newest_at: check.heard_at,
+      next_before_id: 9,
+    };
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url.startsWith("/api/v1/diagnostics/survey-checks")
+            ? list
+            : url.startsWith("/api/v1/diagnostics/relay-checks")
+              ? {
+                  checks: [],
+                  traceroutes: 0,
+                  oldest_at: null,
+                  newest_at: null,
+                  next_before_id: null,
+                }
+              : summary,
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const asked = () => fetch.mock.calls.map(([url]) => url);
+
+    window.location.hash = "#diagnostics/relays";
+    render(<App />);
+    await screen.findByText("Survey uploads");
+    expect(
+      asked().some((url) =>
+        url.startsWith("/api/v1/diagnostics/survey-checks"),
+      ),
+    ).toBe(false);
+
+    window.location.hash = "#diagnostics/relays/surveys";
+    expect(
+      await screen.findByRole("button", { name: "Survey link 1" }),
+    ).not.toBeNull();
+    expect(asked()).toContain("/api/v1/diagnostics/survey-checks?count=50");
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Heard directly too" }),
+    );
+    await waitFor(() =>
+      expect(asked()).toContain(
+        "/api/v1/diagnostics/survey-checks?count=50&direct=true",
+      ),
+    );
+    expect(loadSetting("surveyChecks.direct")).toBe(true);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Check 50 older measurements",
+      }),
+    );
+    await waitFor(() =>
+      expect(asked()).toContain(
+        "/api/v1/diagnostics/survey-checks?count=50&direct=true&before_id=9",
+      ),
+    );
+  });
+
   it("loads device reports on demand and pages by node ID", async () => {
     const first = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
     const next = "/api/v1/diagnostics/device-conflicts?after_node=17&count=30";

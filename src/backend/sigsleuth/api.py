@@ -129,6 +129,14 @@ from sigsleuth.relay_checks import (
     relay_checks,
 )
 from sigsleuth.retention import coverage_limit_days
+from sigsleuth.survey_checks import (
+    MAX_SURVEY_CHECKS,
+    SURVEY_CHECKS,
+    SurveyCheckDetail,
+    SurveyCheckList,
+    survey_check,
+    survey_checks,
+)
 from sigsleuth.zones import NetworkZones, network_zones
 
 LOGGER = logging.getLogger(__name__)
@@ -933,6 +941,28 @@ def create_app(
         page = relay_check(connection, reception_id, receiver_at, receiver_mode=receiver)
         if page is None:
             raise ApiError(404, "relay_check_not_found", "No relay to name for this reception.")
+        return page
+
+    @app.get("/api/v1/diagnostics/survey-checks", dependencies=[Admin])
+    def survey_checks_page(
+        connection: Connection,
+        before_id: Annotated[int | None, Query(gt=0)] = None,
+        count: Annotated[int, Query(ge=1, le=MAX_SURVEY_CHECKS)] = SURVEY_CHECKS,
+        direct: bool = False,
+    ) -> SurveyCheckList:
+        """The `count` newest heard survey measurements before measurement
+        `before_id`, relayed ones only unless `direct`, each with the node
+        upload, its survey link and today's rules name."""
+        return survey_checks(connection, before_id=before_id, count=count, direct=direct)
+
+    @app.get("/api/v1/diagnostics/survey-checks/{measurement_id}", dependencies=[Admin])
+    def survey_check_page(
+        connection: Connection, measurement_id: Annotated[int, ApiPath(gt=0)]
+    ) -> SurveyCheckDetail:
+        """One survey measurement's decisions, term by term."""
+        page = survey_check(connection, measurement_id)
+        if page is None:
+            raise ApiError(404, "survey_check_not_found", "No such survey measurement.")
         return page
 
     @app.get("/{requested_path:path}", include_in_schema=False)

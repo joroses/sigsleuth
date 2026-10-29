@@ -16,7 +16,7 @@ under a negative key.
 import sqlite3
 from bisect import bisect_left
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal
@@ -47,6 +47,10 @@ from sigsleuth.relays import (
     NAME_PROBABILITY,
     UNKNOWN_SCORE,
     WEIGHTS,
+    DirectSignal,
+    Relayed,
+    RelayEvidence,
+    RelayScores,
     RelayTerm,
     channel_spreading_factor,
     node_km,
@@ -449,8 +453,8 @@ class RelayLinks:
 
 # How a node was placed: when_heard, its newest reported position by the
 # packet; now, its latest reported position; estimated, from its neighbours;
-# chosen, a receiver moved on the page.
-PlacedBy = Literal["when_heard", "now", "estimated", "chosen"]
+# chosen, a receiver moved on the page; phone, where a survey's phone was.
+PlacedBy = Literal["when_heard", "now", "estimated", "chosen", "phone"]
 # A survey receiver has no known node.
 CHOSEN_RECEIVER = 0
 
@@ -654,70 +658,7 @@ def _explained(
     """The candidates, reports, signals and links of one naming."""
     assert found.relays is not None
     evidence, copy, scores = found.relays.evidence, naming.copy, naming.scores
-    nodes = evidence.candidates(copy)
-    keys: dict[int, int] = {}
-    for node in nodes:
-        keys[node] = -(len(keys) + 1) if node in hidden else node
-    own: dict[int, int | None] = {}
-    for gateway, hop_limit, _, _ in copy.other_reports():
-        own.setdefault(gateway, hop_limit)
-    sender = evidence.placed.get(copy.sender)
-    sender_at = None
-    if copy.one_hop and sender is not None and sender.latitude is not None:
-        if sender.longitude is not None:
-            sender_at = (sender.latitude, sender.longitude)
-
-    candidates = []
-    for node in nodes:
-        shown = node not in hidden
-        place = evidence.placed.get(node)
-        radio = evidence.radios.get(node)
-        hours = evidence.active_hours.get(node, [])
-        nearest = None
-        if hours:
-            index = bisect_left(hours, copy.at)
-            close = [hours[i] for i in (index - 1, index) if 0 <= i < len(hours)]
-            nearest = min(close, key=lambda hour: abs(hour - copy.at))
-        receiver_km = None if copy.position is None else node_km(place, copy.position)
-        sender_km = None if sender_at is None else node_km(place, sender_at)
-        terms = scores.terms.get(node)
-        weighted = sorted(
-            (
-                RelayTermScore(term, round(value, 2), round(WEIGHTS[term] * value, 2))
-                for term, value in (terms or {}).items()
-            ),
-            key=lambda item: (-abs(item.score), item.term),
-        )
-        candidates.append(
-            RelayCandidate(
-                key=keys[node],
-                node_id=node if shown else None,
-                name=None if place is None or not shown else place.long_name,
-                short_name=None if place is None or not shown else place.short_name,
-                role=None if place is None else place.role,
-                latitude=None if place is None or not shown else place.latitude,
-                longitude=None if place is None or not shown else place.longitude,
-                estimated=place is not None and place.estimated,
-                channel_spreading_factor=None if radio is None else radio.channel_spreading_factor,
-                preset_spreading_factor=None if radio is None else radio.preset_spreading_factor,
-                firmware=None if radio is None else radio.firmware,
-                receiver_km=None if receiver_km is None else round(receiver_km, 1),
-                sender_km=None if sender_km is None else round(sender_km, 1),
-                reach_km=round(evidence.reach.get(node, 0.0), 1),
-                heard_directly=naming.heard.get(node, 0),
-                activity_hours=None if nearest is None else round((nearest - copy.at) / HOUR_MS, 1),
-                last_gateway_at=None
-                if radio is None or radio.last_gateway_at is None
-                else from_epoch_ms(radio.last_gateway_at),
-                own_hop_limit=own.get(node),
-                possible=terms is not None,
-                probability=None if terms is None else round(scores.probabilities[node], 4),
-                score=None if terms is None else round(sum(item.score for item in weighted), 2),
-                evidence=terms is not None and scores.evidenced(node),
-                terms=tuple(weighted),
-            )
-        )
-
+    candidates, keys = explain_candidates(evidence, copy, scores, naming.heard, hidden)
     cohearers = set(copy.cohearers())
     target_prefix = reception_route_prefix(target)
     reports = []
@@ -777,23 +718,45 @@ def _explained(
             )
         )
 
+    gateways = [
+        report.gateway.node_id
+        for report in reports
+        if (report.signal or report.kind == "receiver") and report.gateway.node_id is not None
+    ]
+    return {
+        "candidates": candidates,
+        "unknown_probability": round(scores.probabilities[None], 4),
+        "reports": tuple(reports),
+        **explain_evidence(evidence, copy, scores, keys, found.relays.signals, gateways),
+    }
+
+
+def explain_evidence(
+    evidence: RelayEvidence,
+    copy: Relayed,
+    scores: RelayScores,
+    keys: Mapping[int, int],
+    signals: Mapping[tuple[int, int], DirectSignal],
+    gateways: Sequence[int],
+) -> dict[str, Any]:
+    """The possible candidates' direct signal profiles at these gateways, and
+    their links with the co-hearers and, after one hop, the sender."""
     possible = list(scores.terms)
-    signals = [
+    profiles = [
         RelaySignal(
             keys[node],
-            report.gateway.node_id,
+            gateway,
             profile.snr_count,
             profile.snr_mean,
             profile.rssi_count,
             profile.rssi_mean,
         )
-        for report in reports
-        if (report.signal or report.kind == "receiver") and report.gateway.node_id is not None
+        for gateway in gateways
         for node in possible
-        if (profile := found.relays.signals.get((node, report.gateway.node_id))) is not None
+        if (profile := signals.get((node, gateway))) is not None
     ]
     sender_hops = evidence.sender_hops.get(copy.sender, {})
-    linked = [*sorted(cohearers), *([copy.sender] if copy.one_hop else [])]
+    linked = [*sorted(set(copy.cohearers())), *([copy.sender] if copy.one_hop else [])]
     links = []
     for node in possible:
         for other in linked:
@@ -801,10 +764,81 @@ def _explained(
             hops = sender_hops.get(node, 0) if other == copy.sender else 0
             if count or hops:
                 links.append(RelayLinks(keys[node], other, count, hops))
-    return {
-        "candidates": tuple(candidates),
-        "unknown_probability": round(scores.probabilities[None], 4),
-        "reports": tuple(reports),
-        "signals": tuple(signals),
-        "links": tuple(links),
-    }
+    return {"signals": tuple(profiles), "links": tuple(links)}
+
+
+def explain_candidates(
+    evidence: RelayEvidence,
+    copy: Relayed,
+    scores: RelayScores,
+    heard: Mapping[int, int],
+    hidden: set[int],
+) -> tuple[tuple[RelayCandidate, ...], dict[int, int]]:
+    """Each candidate sending a copy's relay byte as its score reads it, and
+    the key naming each (RelayCandidate.key). heard counts the receiver's
+    direct receptions of each."""
+    nodes = evidence.candidates(copy)
+    keys: dict[int, int] = {}
+    for node in nodes:
+        keys[node] = -(len(keys) + 1) if node in hidden else node
+    own: dict[int, int | None] = {}
+    for gateway, hop_limit, _, _ in copy.other_reports():
+        own.setdefault(gateway, hop_limit)
+    sender = evidence.placed.get(copy.sender)
+    sender_at = None
+    if copy.one_hop and sender is not None and sender.latitude is not None:
+        if sender.longitude is not None:
+            sender_at = (sender.latitude, sender.longitude)
+
+    candidates = []
+    for node in nodes:
+        shown = node not in hidden
+        place = evidence.placed.get(node)
+        radio = evidence.radios.get(node)
+        hours = evidence.active_hours.get(node, [])
+        nearest = None
+        if hours:
+            index = bisect_left(hours, copy.at)
+            close = [hours[i] for i in (index - 1, index) if 0 <= i < len(hours)]
+            nearest = min(close, key=lambda hour: abs(hour - copy.at))
+        receiver_km = None if copy.position is None else node_km(place, copy.position)
+        sender_km = None if sender_at is None else node_km(place, sender_at)
+        terms = scores.terms.get(node)
+        weighted = sorted(
+            (
+                RelayTermScore(term, round(value, 2), round(WEIGHTS[term] * value, 2))
+                for term, value in (terms or {}).items()
+            ),
+            key=lambda item: (-abs(item.score), item.term),
+        )
+        candidates.append(
+            RelayCandidate(
+                key=keys[node],
+                node_id=node if shown else None,
+                name=None if place is None or not shown else place.long_name,
+                short_name=None if place is None or not shown else place.short_name,
+                role=None if place is None else place.role,
+                latitude=None if place is None or not shown else place.latitude,
+                longitude=None if place is None or not shown else place.longitude,
+                estimated=place is not None and place.estimated,
+                channel_spreading_factor=None if radio is None else radio.channel_spreading_factor,
+                preset_spreading_factor=None if radio is None else radio.preset_spreading_factor,
+                firmware=None if radio is None else radio.firmware,
+                receiver_km=None if receiver_km is None else round(receiver_km, 1),
+                sender_km=None if sender_km is None else round(sender_km, 1),
+                reach_km=round(evidence.reach.get(node, 0.0), 1),
+                heard_directly=heard.get(node, 0),
+                activity_hours=None if nearest is None else round((nearest - copy.at) / HOUR_MS, 1),
+                last_gateway_at=None
+                if radio is None or radio.last_gateway_at is None
+                else from_epoch_ms(radio.last_gateway_at),
+                own_hop_limit=own.get(node),
+                possible=terms is not None,
+                probability=None if terms is None else round(scores.probabilities[node], 4),
+                score=None if terms is None else round(sum(item.score for item in weighted), 2),
+                evidence=terms is not None and scores.evidenced(node),
+                terms=tuple(weighted),
+            )
+        )
+
+    return tuple(candidates), keys

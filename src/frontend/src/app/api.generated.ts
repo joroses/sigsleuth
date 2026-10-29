@@ -880,6 +880,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/diagnostics/survey-checks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Survey Checks Page
+     * @description The `count` newest heard survey measurements before measurement
+     *     `before_id`, relayed ones only unless `direct`, each with the node
+     *     upload, its survey link and today's rules name.
+     */
+    get: operations["survey_checks_page_api_v1_diagnostics_survey_checks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/diagnostics/survey-checks/{measurement_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Survey Check Page
+     * @description One survey measurement's decisions, term by term.
+     */
+    get: operations["survey_check_page_api_v1_diagnostics_survey_checks__measurement_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2347,7 +2389,7 @@ export interface components {
       latitude: number;
       longitude: number;
       /** @enum {string} */
-      placed_by: "when_heard" | "now" | "estimated" | "chosen";
+      placed_by: "when_heard" | "now" | "estimated" | "chosen" | "phone";
     };
     /**
      * RelayRules
@@ -2476,6 +2518,157 @@ export interface components {
        * @constant
        */
       status: "ok";
+    };
+    /**
+     * SurveyCheck
+     * @description One measurement and its decisions. upload_node/upload_how are as
+     *     saved; link is its survey link, link_nodes how many nodes survey
+     *     evidence leaves it now (one makes a link). shown_node/shown_how are
+     *     what the map shows; changed: today names another node than upload, a
+     *     saved nearest guess reading as none.
+     */
+    SurveyCheck: {
+      measurement_id: number;
+      /** Format: date-time */
+      heard_at: string;
+      surveyor: components["schemas"]["RelayCheckNode"];
+      sender: components["schemas"]["RelayCheckNode"];
+      relay_byte: number | null;
+      hop_start: number | null;
+      hop_limit: number | null;
+      rx_snr: number | null;
+      rx_rssi: number | null;
+      upload_node: components["schemas"]["RelayCheckNode"] | null;
+      /** @enum {string} */
+      upload_how:
+        | "direct"
+        | "reported"
+        | "gateway_link"
+        | "sender_link"
+        | "nearest"
+        | "only_candidate"
+        | "unknown";
+      link: components["schemas"]["RelayCheckNode"] | null;
+      link_nodes: number;
+      today: components["schemas"]["SurveyToday"];
+      shown_node: components["schemas"]["RelayCheckNode"] | null;
+      /** @enum {string} */
+      shown_how:
+        | "direct"
+        | "reported"
+        | "gateway_link"
+        | "sender_link"
+        | "survey_link"
+        | "only_candidate"
+        | "unknown";
+      changed: boolean;
+    };
+    /**
+     * SurveyCheckDetail
+     * @description One measurement's decisions, explained. The receiver is the phone
+     *     where it heard the packet; reports are MQTT gateways' reports of the same
+     *     packet (packet_row_id, the one pages show). candidates and their terms
+     *     are today's rules', ruled_out the keys of those too_strong left out;
+     *     signal_db the measurement's own signal as too_strong reads it.
+     */
+    SurveyCheckDetail: {
+      check: components["schemas"]["SurveyCheck"];
+      packet_row_id: number | null;
+      spreading_factor: number | null;
+      bandwidth_khz: number | null;
+      frequency_mhz: number | null;
+      one_hop: boolean;
+      receiver: components["schemas"]["RelayPlace"];
+      sender: components["schemas"]["RelayPlace"] | null;
+      sender_when_heard: components["schemas"]["RelayPlace"] | null;
+      route_places: components["schemas"]["RelayPlace"][];
+      candidates: components["schemas"]["RelayCandidate"][];
+      unknown_probability: number;
+      ruled_out: number[];
+      reports: components["schemas"]["RelayCheckReport"][];
+      signals: components["schemas"]["RelaySignal"][];
+      links: components["schemas"]["RelayLinks"][];
+      signal_db: number | null;
+      survey_link: components["schemas"]["SurveyLinkNode"][];
+      activity_from: string | null;
+      rules: components["schemas"]["RelayRules"];
+      link_rules: components["schemas"]["SurveyLinkRules"];
+    };
+    /**
+     * SurveyCheckList
+     * @description The newest measurements heard before before_id's, relayed ones only
+     *     unless direct; next_before_id continues with older ones, None when none
+     *     are left.
+     */
+    SurveyCheckList: {
+      checks: components["schemas"]["SurveyCheck"][];
+      oldest_at: string | null;
+      newest_at: string | null;
+      next_before_id: number | null;
+    };
+    /**
+     * SurveyLinkNode
+     * @description A node sending the measurement's relay byte that some survey node on
+     *     the same radio settings heard directly within the longest tier: how
+     *     often, its reception nearest the phone (km) and, of those within
+     *     link_km, the one nearest in time (hours from the measurement, negative
+     *     before). tier_hours is the first tier that finds it, None when none
+     *     does. strongest_here_db is the survey node's own strongest direct
+     *     signal of it within too_strong_km, which too_strong compares.
+     *     excluded: the measurement's sender or survey node, never its relay.
+     *     candidate: survey evidence leaves it.
+     */
+    SurveyLinkNode: {
+      key: number;
+      node_id: number | null;
+      name: string | null;
+      receptions: number;
+      km: number | null;
+      hours: number | null;
+      tier_hours: number | null;
+      too_strong: boolean;
+      strongest_here_db: number | null;
+      excluded: ("sender" | "surveyor") | null;
+      candidate: boolean;
+    };
+    /** SurveyLinkRules */
+    SurveyLinkRules: {
+      km: number;
+      tiers_hours: number[];
+      too_strong_db: number;
+      too_strong_km: number;
+    };
+    /**
+     * SurveyToday
+     * @description What heard_node's rules name now, and the likeliest candidate when
+     *     they name none. possible counts the candidates scored, ruled_out those
+     *     too_strong left out.
+     */
+    SurveyToday: {
+      node: components["schemas"]["RelayCheckNode"] | null;
+      /** @enum {string} */
+      how:
+        | "direct"
+        | "reported"
+        | "gateway_link"
+        | "sender_link"
+        | "nearest"
+        | "only_candidate"
+        | "unknown";
+      /** @enum {string} */
+      why:
+        | "direct"
+        | "named"
+        | "no_relay_byte"
+        | "ruled_out"
+        | "no_candidates"
+        | "unknown"
+        | "below"
+        | "no_evidence";
+      likeliest: components["schemas"]["RelayCheckNode"] | null;
+      probability: number | null;
+      possible: number;
+      ruled_out: number;
     };
     /**
      * TextReach
@@ -4073,6 +4266,70 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["RelayCheckDetail"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  survey_checks_page_api_v1_diagnostics_survey_checks_get: {
+    parameters: {
+      query?: {
+        before_id?: number | null;
+        count?: number;
+        direct?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SurveyCheckList"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  survey_check_page_api_v1_diagnostics_survey_checks__measurement_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        measurement_id: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SurveyCheckDetail"];
         };
       };
       /** @description Validation Error */

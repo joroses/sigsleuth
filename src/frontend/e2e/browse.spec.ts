@@ -44,6 +44,7 @@ test("every page loads without errors", async ({ page, request }) => {
     "#diagnostics/doubtful",
     "#diagnostics/links",
     "#diagnostics/relays",
+    "#diagnostics/relays/surveys",
     "#diagnostics/packets",
   ]) {
     await page.goto(`/${hash}`, { waitUntil: "networkidle" });

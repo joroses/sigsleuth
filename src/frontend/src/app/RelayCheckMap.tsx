@@ -2,6 +2,18 @@ import { useEffect, useMemo, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 
 import type { RelayCandidate, RelayCheckDetail } from "./api";
+
+/** What the map draws: a relay check's or a survey measurement's copy. */
+export type MapCopy = Pick<
+  RelayCheckDetail,
+  | "candidates"
+  | "reports"
+  | "receiver"
+  | "sender"
+  | "sender_when_heard"
+  | "route_places"
+  | "rules"
+>;
 import { PLACED_BY, formatKm, formatNodeId } from "./nodeDisplay";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -21,30 +33,35 @@ type Place = { latitude: number; longitude: number };
  */
 export function RelayCheckMap({
   detail,
+  viewKey,
+  routeKey,
+  namedKeys,
   selected,
   onSelect,
   onReceiver,
 }: {
-  detail: RelayCheckDetail;
+  detail: MapCopy;
+  /** The copy shown: the view is fitted again when it changes. */
+  viewKey: number | string;
+  /** The route's relay, drawn blue. */
+  routeKey: number | null;
+  /** The relays named, drawn green. */
+  namedKeys: number[];
   selected: number | null;
   onSelect: (key: number) => void;
-  /** Moves the receiver to a clicked or dragged-to place. */
-  onReceiver: (at: [number, number]) => void;
+  /** Moves the receiver to a clicked or dragged-to place; none keeps it. */
+  onReceiver?: (at: [number, number]) => void;
 }) {
   // A ref, so a new handler does not rebuild the map.
   const moveReceiver = useRef(onReceiver);
   useEffect(() => {
     moveReceiver.current = onReceiver;
   }, [onReceiver]);
-  const routeKey = detail.check.route_relay?.node_id ?? null;
+  const movable = onReceiver !== undefined;
+  const namedKey = namedKeys.join(",");
   const named = useMemo(
-    () =>
-      new Set(
-        [detail.check.page.relay, detail.check.survey.relay].flatMap((node) =>
-          node?.node_id == null ? [] : [node.node_id],
-        ),
-      ),
-    [detail],
+    () => new Set(namedKey === "" ? [] : namedKey.split(",").map(Number)),
+    [namedKey],
   );
   const { container, map, failure } = useBasemapMap(
     {
@@ -59,11 +76,11 @@ export function RelayCheckMap({
           // A click on a marker selects it instead.
           const target = event.originalEvent.target as HTMLElement | null;
           if (target?.closest(".maplibregl-marker")) return;
-          moveReceiver.current([event.lngLat.lat, event.lngLat.lng]);
+          moveReceiver.current?.([event.lngLat.lat, event.lngLat.lng]);
         });
       },
     },
-    [detail.check.reception_id],
+    [viewKey],
   );
 
   // Markers, redrawn when the selection changes.
@@ -137,17 +154,19 @@ export function RelayCheckMap({
         label(
           `relay-map-gateway receiver ${detail.receiver.placed_by}`,
           "R",
-          `Receiver: ${PLACED_BY[detail.receiver.placed_by]}; drag to move`,
+          movable
+            ? `Receiver: ${PLACED_BY[detail.receiver.placed_by]}; drag to move`
+            : `Receiver: ${PLACED_BY[detail.receiver.placed_by]}`,
         ),
-        true,
+        movable,
       );
       receiver.on("dragend", () => {
         const at = receiver.getLngLat();
-        moveReceiver.current([at.lat, at.lng]);
+        moveReceiver.current?.([at.lat, at.lng]);
       });
     }
     return () => markers.forEach((marker) => marker.remove());
-  }, [map, detail, selected, onSelect, routeKey, named]);
+  }, [map, detail, selected, onSelect, routeKey, named, movable]);
 
   // Reach circles, the route and the sender's move.
   useEffect(() => {
@@ -303,7 +322,7 @@ function addLayers(map: maplibregl.Map) {
  * Others far away stay off it.
  */
 function viewBounds(
-  detail: RelayCheckDetail,
+  detail: MapCopy,
   routeKey: number | null,
   named: Set<number>,
 ): maplibregl.LngLatBounds {

@@ -124,7 +124,7 @@ relays.relay_evidence
 coverage._survey_direct
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
-coverage._mqtt_reports
+coverage.mqtt_reports
   SEARCH packet USING INDEX packet_identity_time
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 coverage.save_upload
@@ -1704,6 +1704,60 @@ relays.direct_receptions
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
 
+## GET /api/v1/diagnostics/survey-checks?count=25
+
+survey_checks.survey_checks
+  SEARCH coverage_measurement USING INDEX coverage_measurement_time
+  SEARCH coverage_session USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+coverage.survey_receptions
+  SEARCH coverage_measurement USING INDEX coverage_measurement_time
+  SEARCH coverage_session USING PRIMARY KEY
+relays.nodes_by_byte
+  SCAN node_current
+links.limited_nodes
+  SCAN node_current
+  SCAN node_doubtful
+positions.reach_by_partner
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH long_link USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+positions.reach_by_partner
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH long_link USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
+relays.relay_evidence
+  SEARCH node_activity_hour USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH link_hour USING PRIMARY KEY
+coverage.mqtt_reports
+  SEARCH packet USING INDEX packet_identity_time
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+
 ## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12
 
 coverage.coverage_cells
@@ -1821,7 +1875,7 @@ coverage.coverage_cell
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-coverage._measurement_row
+coverage.shown_packet
   SEARCH packet USING INDEX packet_identity_time
 
 ## GET /api/v1/coverage/cells/17/67320/43265?node=168430090

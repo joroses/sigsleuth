@@ -149,6 +149,8 @@ export function App() {
               sender={route.sender}
               heardDirectlyBy={route.heardDirectlyBy}
               receptionId={route.receptionId}
+              surveys={route.surveys}
+              measurementId={route.measurementId}
             />
           )}
         </Suspense>

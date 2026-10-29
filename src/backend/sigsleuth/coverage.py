@@ -57,6 +57,7 @@ from sigsleuth.radio import PRESET_SPREADING_FACTORS, fade_margin, great_circle_
 from sigsleuth.relays import (
     DAY_MS,
     FAR_KM,
+    DirectSignal,
     NodeRadio,
     Relayed,
     RelayEvidence,
@@ -514,14 +515,19 @@ def _survey_direct(
             "receivers": json.dumps(sorted({int(row["receiver_node_id"]) for row in rows})),
         },
     ).fetchall()
-    own = [{**row, "heard_how": "direct"} for row in rows if _is_direct(row)]
+    own = [{**row, "heard_how": "direct"} for row in rows if is_direct(row)]
     return heard_directly([*saved, *own])
 
 
 def relay_evidence(
-    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+    connection: sqlite3.Connection,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    links_around: int | None = None,
+    reach: Mapping[int, float] | None = None,
 ) -> RelayEvidence:
-    """The RelayEvidence for naming the relays of measurement rows."""
+    """The RelayEvidence for naming the relays of measurement rows, with
+    links of the last day or around links_around (relays.relay_evidence)."""
     return relays.relay_evidence(
         connection,
         {row["relay_byte"] for row in rows if row["relay_byte"]},
@@ -535,6 +541,8 @@ def relay_evidence(
             and row["hop_limit"] is not None
             and row["hop_start"] - row["hop_limit"] == 1
         },
+        links_around=links_around,
+        reach=reach,
     )
 
 
@@ -582,21 +590,51 @@ def heard_node(
        direct receptions (is_direct_reception).
     2. A relay, by relays.RelayScores.named among the possible candidates
        that are not too_strong by the survey node's direct receptions, with
-       the MQTT gateways' reports of the same packet (_mqtt_reports).
+       the MQTT gateways' reports of the same packet (mqtt_reports).
     3. unknown: no relay byte (older firmware), or nothing names one; maybe
        lists the likeliest candidates with some evidence.
 
     A survey link (refresh_survey_links) wins over all but direct when the
     map reads it.
     """
-    sender, receiver = int(row["sender_node_id"]), int(row["receiver_node_id"])
-    if _is_direct(row):
+    sender = int(row["sender_node_id"])
+    if is_direct(row):
         return HeardNode(sender, "direct", 1)
     if not row["relay_byte"]:
         return HeardNode(None, "unknown", 0)
-    relayed = Relayed(
-        sender=sender,
-        receiver=receiver,
+    scores = score_measurement(connection, evidence, direct, row).scores
+    if not scores.terms:
+        return HeardNode(None, "unknown", 0)
+    named = scores.named()
+    maybe = tuple(scores.hints())
+    # A survey receiver hears no candidate in relay_terms' heard.
+    if named is None or named[1] == "receiver_heard":
+        return HeardNode(None, "unknown", len(scores.terms), maybe)
+    return HeardNode(named[0], named[1], len(scores.terms), maybe)
+
+
+@dataclass(frozen=True)
+class MeasurementScore:
+    """How heard_node scores a relayed measurement: its copy, the possible
+    candidates too_strong rules out, and the scores of the rest, with the
+    co-hearers' signal profiles they read."""
+
+    copy: Relayed
+    ruled_out: tuple[int, ...]
+    signals: Mapping[tuple[int, int], DirectSignal]
+    scores: RelayScores
+
+
+def score_measurement(
+    connection: sqlite3.Connection,
+    evidence: RelayEvidence,
+    direct: DirectReceptions,
+    row: Mapping[str, Any],
+) -> MeasurementScore:
+    """The MeasurementScore of a measurement row with a relay byte."""
+    copy = Relayed(
+        sender=int(row["sender_node_id"]),
+        receiver=int(row["receiver_node_id"]),
         at=int(row["heard_at"]),
         position=(row["latitude"], row["longitude"]),
         spreading_factor=row["spreading_factor"],
@@ -612,51 +650,46 @@ def heard_node(
                 report["relay_byte"],
                 report["rx_snr"],
             )
-            for report in _mqtt_reports(connection, row)
+            for report in mqtt_reports(connection, row)
         ],
     )
     receptions = direct.get(_link_key(row), {})
-    left = [
-        node
-        for node in possible(evidence, relayed)
-        if not too_strong(receptions.get(node, []), row)
-    ]
-    if not left:
-        return HeardNode(None, "unknown", 0)
-    signals = direct_signals(
-        connection,
-        ((node, gateway) for node in left for gateway in relayed.cohearers()),
-        relayed.at,
+    left: list[int] = []
+    ruled_out: list[int] = []
+    for node in possible(evidence, copy):
+        (ruled_out if too_strong(receptions.get(node, []), row) else left).append(node)
+    signals = (
+        direct_signals(
+            connection, ((node, gateway) for node in left for gateway in copy.cohearers()), copy.at
+        )
+        if left
+        else {}
     )
     terms = {
-        node: found
-        for node, found in relay_terms(evidence, relayed, signals).items()
-        if node in left
+        node: found for node, found in relay_terms(evidence, copy, signals).items() if node in left
     }
-    scores = RelayScores(terms, relay_probabilities(terms))
-    named = scores.named()
-    maybe = tuple(scores.hints())
-    # A survey receiver hears no candidate in relay_terms' heard.
-    if named is None or named[1] == "receiver_heard":
-        return HeardNode(None, "unknown", len(left), maybe)
-    return HeardNode(named[0], named[1], len(left), maybe)
+    return MeasurementScore(
+        copy, tuple(ruled_out), signals, RelayScores(terms, relay_probabilities(terms))
+    )
 
 
-def _is_direct(row: Mapping[str, Any]) -> bool:
+def is_direct(row: Mapping[str, Any]) -> bool:
+    """Whether a measurement row heard its sender itself (is_direct_reception)."""
     header = SavedHeader(
         row["rx_snr"], row["rx_rssi"], row["hop_start"], row["hop_limit"], row["relay_byte"]
     )
     return is_direct_reception(int(row["sender_node_id"]), int(row["receiver_node_id"]), header)
 
 
-def _mqtt_reports(connection: sqlite3.Connection, row: Mapping[str, Any]) -> list[sqlite3.Row]:
+def mqtt_reports(connection: sqlite3.Connection, row: Mapping[str, Any]) -> list[sqlite3.Row]:
     """MQTT gateways' reports of the measurement's packet: the same sender and
     packet ID, saved within MQTT_MATCH_MS of when the phone heard it."""
     if row["packet_id"] is None:
         return []
     return connection.execute(
         """
-        SELECT r.gateway_node_id, r.hop_limit, r.relay_byte, r.rx_snr
+        SELECT r.id, r.gateway_node_id, r.hop_start, r.hop_limit, r.relay_byte,
+               r.rx_snr, r.rx_rssi
         FROM packet AS t INDEXED BY packet_identity_time
         JOIN reception AS r ON r.packet_row_id = t.id
         WHERE t.sender_node_id = :sender AND t.packet_id = :packet
@@ -766,6 +799,50 @@ def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
         for receptions in nodes.values():
             receptions.sort(key=lambda reception: reception[0])
     return heard
+
+
+def survey_receptions(
+    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+) -> DirectReceptions:
+    """Every survey node's direct receptions of nodes sending the rows' relay
+    bytes, within SURVEY_LINK_TIERS_MS[-1] of them: what survey_candidates
+    and too_strong read for those rows."""
+    relayed = [row for row in rows if row["relay_byte"]]
+    if not relayed:
+        return heard_directly(())
+    times = [int(row["heard_at"]) for row in relayed]
+    reach = SURVEY_LINK_TIERS_MS[-1]
+    return heard_directly(
+        connection.execute(
+            f"""
+            SELECT {SURVEY_LINK_COLUMNS}
+            FROM coverage_measurement AS m INDEXED BY coverage_measurement_time
+            JOIN coverage_session AS s ON s.id = m.session_row_id
+            WHERE m.heard_at BETWEEN :start AND :end AND m.heard_how = 'direct'
+              AND m.relay_byte IN (SELECT value FROM json_each(:bytes))
+            """,
+            {
+                "start": min(times) - reach,
+                "end": max(times) + reach,
+                "bytes": json.dumps(sorted({int(row["relay_byte"]) for row in relayed})),
+            },
+        )
+    )
+
+
+def heard_tier(
+    receptions: list[Reception],
+    row: Mapping[str, Any],
+    *,
+    km: float = SURVEY_LINK_KM,
+    tiers_ms: Sequence[int] = SURVEY_LINK_TIERS_MS,
+) -> int | None:
+    """The first of survey_candidates' tiers in which a node's direct
+    receptions came within km of a measurement row; None when none did."""
+    return next(
+        (index for index, tier in enumerate(tiers_ms) if _heard_near(receptions, row, tier, km)),
+        None,
+    )
 
 
 def survey_candidates(
@@ -1603,9 +1680,11 @@ def _heard_node(row: sqlite3.Row, summary: NodeSummary | None) -> CoverageHeardN
     )
 
 
-def _measurement_row(
-    connection: sqlite3.Connection, row: sqlite3.Row, names: Mapping[int, NodeSummary]
-) -> CoverageMeasurementRow:
+def shown_packet(
+    connection: sqlite3.Connection, row: Mapping[str, Any] | sqlite3.Row
+) -> int | None:
+    """The packet MQTT saved with a measurement's sender and packet ID, when
+    pages show it (opt_out.SHOWN_PACKET)."""
     packet = None
     if row["packet_id"] is not None:
         packet = connection.execute(
@@ -1623,6 +1702,12 @@ def _measurement_row(
                 "window": MQTT_MATCH_MS,
             },
         ).fetchone()
+    return None if packet is None else int(packet[0])
+
+
+def _measurement_row(
+    connection: sqlite3.Connection, row: sqlite3.Row, names: Mapping[int, NodeSummary]
+) -> CoverageMeasurementRow:
     heard = row["heard_node_id"]
     return CoverageMeasurementRow(
         heard_at=from_epoch_ms(row["heard_at"]),
@@ -1633,7 +1718,7 @@ def _measurement_row(
         rx_snr=row["rx_snr"],
         rx_rssi=row["rx_rssi"],
         margin=_round(row["margin_db"]),
-        packet_row_id=None if packet is None else int(packet[0]),
+        packet_row_id=shown_packet(connection, row),
     )
 
 

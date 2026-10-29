@@ -124,6 +124,8 @@ export function Diagnostics({
   sender = null,
   heardDirectlyBy = null,
   receptionId = null,
+  surveys = false,
+  measurementId = null,
 }: {
   tab: DiagnosticsTab;
   /** The long links listed: only this node's (#diagnostics/links/node). */
@@ -134,6 +136,10 @@ export function Diagnostics({
   heardDirectlyBy?: number | null;
   /** The relay check open (#diagnostics/relays/reception). */
   receptionId?: number | null;
+  /** Survey uploads shown, and the measurement open
+   * (#diagnostics/relays/surveys/measurement). */
+  surveys?: boolean;
+  measurementId?: number | null;
 }) {
   const summary = useApi<DiagnosticsSummary>(diagnosticsSummaryUrl);
   // Loaded, so the password was accepted (or none is set): link the page in
@@ -150,6 +156,8 @@ export function Diagnostics({
   const from = useHeldWhile(tab !== "packets", sender);
   const heardBy = useHeldWhile(tab !== "packets", heardDirectlyBy);
   const reception = useHeldWhile(tab !== "relays", receptionId);
+  const surveysShown = useHeldWhile(tab !== "relays", surveys);
+  const measurement = useHeldWhile(tab !== "relays", measurementId);
   const nodes = useNodes(node !== null || from !== null);
   const panel = (which: DiagnosticsTab, content: ReactNode) =>
     opened.includes(which) ? <div hidden={tab !== which}>{content}</div> : null;
@@ -186,7 +194,11 @@ export function Diagnostics({
       {panel(
         "relays",
         <Suspense fallback={<StatusPanel>Loading…</StatusPanel>}>
-          <RelayChecks receptionId={reception} />
+          <RelayChecks
+            receptionId={reception}
+            surveys={surveysShown}
+            measurementId={measurement}
+          />
         </Suspense>,
       )}
       {panel(

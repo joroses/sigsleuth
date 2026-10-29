@@ -35,6 +35,9 @@ export type Route =
       heardDirectlyBy: number | null;
       /** On relay checks, how this reception's relay is named. */
       receptionId: number | null;
+      /** On relay checks, survey uploads, optionally one measurement. */
+      surveys: boolean;
+      measurementId: number | null;
     }
   | {
       page: "packet";
@@ -156,21 +159,36 @@ export function routeFromHash(hash: string): Route {
     };
   }
   // Diagnostics' tabs: long links, optionally one node's; relay checks,
-  // optionally one reception's; packets, optionally those one node sent,
-  // optionally only those a second heard directly.
+  // optionally one reception's, or survey uploads, optionally one
+  // measurement's; packets, optionally those one node sent, optionally only
+  // those a second heard directly.
   const diagnostics = hash.match(
     new RegExp(
-      String.raw`^#diagnostics(?:\/(?:(doubtful|devices)|(links)(?:\/${NODE})?|(relays)(?:\/([1-9]\d*))?|(packets)(?:\/${NODE}(?:-${NODE})?)?))?$`,
+      String.raw`^#diagnostics(?:\/(?:(doubtful|devices)|(links)(?:\/${NODE})?|(relays)(?:\/(?:([1-9]\d*)|(surveys)(?:\/([1-9]\d*))?))?|(packets)(?:\/${NODE}(?:-${NODE})?)?))?$`,
     ),
   );
   if (diagnostics !== null) {
-    const [, doubtful, links, node, relays, reception, packets, first, second] =
-      diagnostics;
+    const [
+      ,
+      doubtful,
+      links,
+      node,
+      relays,
+      reception,
+      surveys,
+      measurement,
+      packets,
+      first,
+      second,
+    ] = diagnostics;
     const id = (text: string | undefined) =>
       text === undefined || nodeNumber(text) > 0xffffffff
         ? null
         : nodeNumber(text);
-    const receptionId = reception === undefined ? null : Number(reception);
+    const positive = (text: string | undefined) =>
+      text !== undefined && Number.isSafeInteger(Number(text))
+        ? Number(text)
+        : null;
     const sender = id(first);
     return {
       page: "diagnostics",
@@ -182,10 +200,9 @@ export function routeFromHash(hash: string): Route {
       node: id(node),
       sender,
       heardDirectlyBy: sender !== null ? id(second) : null,
-      receptionId:
-        receptionId !== null && Number.isSafeInteger(receptionId)
-          ? receptionId
-          : null,
+      receptionId: positive(reception),
+      surveys: surveys !== undefined,
+      measurementId: positive(measurement),
     };
   }
   // A packet, optionally showing only the reports where the first node

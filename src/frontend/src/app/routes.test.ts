@@ -13,6 +13,7 @@ import {
   diagnosticsLinksHref,
   diagnosticsPacketsHref,
   relayChecksHref,
+  surveyChecksHref,
 } from "./nodeDisplay";
 
 describe("routeFromHash", () => {
@@ -107,6 +108,23 @@ describe("diagnostics tabs", () => {
     expect(tab(relayChecksHref(21))).toMatchObject({
       tab: "relays",
       receptionId: 21,
+      surveys: false,
+    });
+    expect(tab(surveyChecksHref())).toMatchObject({
+      tab: "relays",
+      receptionId: null,
+      surveys: true,
+      measurementId: null,
+    });
+    expect(tab(surveyChecksHref(9))).toMatchObject({
+      tab: "relays",
+      surveys: true,
+      measurementId: 9,
+    });
+    expect(tab("#diagnostics/relays/surveys/0")).toEqual({
+      page: "map",
+      nodeId: null,
+      view: null,
     });
     expect(tab(diagnosticsPacketsHref(null))).toMatchObject({
       tab: "packets",

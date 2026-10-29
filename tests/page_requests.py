@@ -272,3 +272,5 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
         f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
         "?latitude=52.0&longitude=19.0"
     )
+    # Survey uploads beside them (the sample has none: tests/test_survey_checks.py).
+    yield "/api/v1/diagnostics/survey-checks?count=25"

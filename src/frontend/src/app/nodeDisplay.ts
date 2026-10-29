@@ -79,6 +79,13 @@ export function relayChecksHref(receptionId: number | null = null): string {
     : `#diagnostics/relays/${receptionId}`;
 }
 
+/** Relay checks' survey uploads, or one measurement's decisions. */
+export function surveyChecksHref(measurementId: number | null = null): string {
+  return measurementId === null
+    ? "#diagnostics/relays/surveys"
+    : `#diagnostics/relays/surveys/${measurementId}`;
+}
+
 /** A packet's page showing its relays. */
 export function packetRelaysHref(packetRowId: number): string {
   return `#packets/${packetRowId}/relays`;
@@ -380,4 +387,5 @@ export const PLACED_BY = {
   now: "where it is now",
   estimated: "estimated from its neighbours",
   chosen: "placed on this page",
+  phone: "where the phone was",
 } as const;

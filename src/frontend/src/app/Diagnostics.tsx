@@ -10,6 +10,7 @@ import {
 
 import {
   DiagnosticsSummary,
+  DeviceConflictList,
   DoubtfulNodeList,
   LongLink,
   LongLinkEnd,
@@ -20,6 +21,7 @@ import {
   MapNodeList,
   PacketPortList,
   diagnosticsSummaryUrl,
+  deviceConflictsUrl,
   doubtfulNodesUrl,
   longestLinksUrl,
   mapNodesUrl,
@@ -65,7 +67,7 @@ import {
 } from "./ui";
 
 export type DiagnosticsTab =
-  "overview" | "doubtful" | "links" | "relays" | "packets";
+  "overview" | "doubtful" | "devices" | "links" | "relays" | "packets";
 
 const TABS: {
   tab: DiagnosticsTab;
@@ -84,6 +86,12 @@ const TABS: {
     icon: "locate",
     label: "Doubtful nodes",
     href: "#diagnostics/doubtful",
+  },
+  {
+    tab: "devices",
+    icon: "nodes",
+    label: "Device reports",
+    href: "#diagnostics/devices",
   },
   {
     tab: "links",
@@ -173,6 +181,7 @@ export function Diagnostics({
         </>,
       )}
       {panel("doubtful", <DoubtfulNodesSection />)}
+      {panel("devices", <DeviceConflictsSection />)}
       {panel("links", <LongestLinksSection node={node} nodes={nodes} />)}
       {panel(
         "relays",
@@ -863,6 +872,77 @@ function DoubtfulNodesSection() {
           </table>
         </WideTable>
       )}
+    </section>
+  );
+}
+
+function DeviceConflictsSection() {
+  const [afterNode, setAfterNode] = useState(0);
+  const state = useApi<DeviceConflictList>(deviceConflictsUrl(afterNode));
+  const nextNode = state.data?.next_node_id;
+  return (
+    <section aria-labelledby="diagnostic-devices-heading">
+      <div className="section-intro compact">
+        <h3 id="diagnostic-devices-heading">Conflicting device reports</h3>
+        <p>
+          IDs reporting different MAC addresses or public keys. A replacement or
+          key change can also explain these reports.
+        </p>
+      </div>
+      {state.error !== null ? (
+        <StatusPanel tone="error">{state.error}</StatusPanel>
+      ) : state.data === null ? (
+        <StatusPanel>Loading device reports…</StatusPanel>
+      ) : state.data.items.length === 0 ? (
+        <p className="empty-inline">No conflicting device reports.</p>
+      ) : (
+        state.data.items.map((item) => (
+          <div key={item.node_id}>
+            <h4>
+              <NodeLink nodeId={item.node_id} />
+            </h4>
+            <WideTable>
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Reported name</th>
+                    <th scope="col">Hardware</th>
+                    <th scope="col">MAC address</th>
+                    <th scope="col">Public key</th>
+                    <th scope="col">Last reported</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.reports.map((report) => (
+                    <tr key={report.packet_row_id}>
+                      <td>{report.long_name ?? report.short_name ?? "—"}</td>
+                      <td>{report.hardware_model ?? "—"}</td>
+                      <td className="mono">{report.mac_address ?? "—"}</td>
+                      <td>
+                        <code>{report.public_key ?? "—"}</code>
+                      </td>
+                      <td>
+                        <a href={`#packets/${report.packet_row_id}`}>
+                          <ShortTime value={report.observed_at} />
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </WideTable>
+            {item.limited ? <p>Showing the newest 20 device reports.</p> : null}
+          </div>
+        ))
+      )}
+      <div className="button-row">
+        {afterNode !== 0 ? (
+          <button onClick={() => setAfterNode(0)}>First IDs</button>
+        ) : null}
+        {nextNode != null ? (
+          <button onClick={() => setAfterNode(nextNode)}>Next IDs</button>
+        ) : null}
+      </div>
     </section>
   );
 }

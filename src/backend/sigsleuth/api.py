@@ -71,11 +71,13 @@ from sigsleuth.db import (
 from sigsleuth.diagnostics import (
     LONGEST_LINKS,
     MAX_LONG_LINK_SCAN,
+    DeviceConflictList,
     DiagnosticsSummary,
     DoubtfulNodeList,
     LongLinkFilter,
     LongLinkList,
     LongLinkOrder,
+    device_conflicts,
     diagnostics_summary,
     doubtful_node_list,
     longest_links,
@@ -892,6 +894,14 @@ def create_app(
         """Nodes with a doubtful position, and nodes in two or more links the
         terrain check finds unlikely, with their long-link counts."""
         return doubtful_node_list(connection)
+
+    @app.get("/api/v1/diagnostics/device-conflicts", dependencies=[Admin])
+    def device_conflicts_page(
+        connection: Connection,
+        after_node: Annotated[int, Query(ge=0, le=0xFFFFFFFF)] = 0,
+        count: Annotated[int, Query(ge=1, le=100)] = 30,
+    ) -> DeviceConflictList:
+        return device_conflicts(connection, after_node=after_node, count=count)
 
     @app.get("/api/v1/diagnostics/relay-checks", dependencies=[Admin])
     def relay_checks_page(

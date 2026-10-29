@@ -39,6 +39,7 @@ export type LongLinkEnd = Schemas["LongLinkEnd"];
 export type LongLinkList = Schemas["LongLinkList"];
 export type DoubtfulNode = Schemas["DoubtfulNode"];
 export type DoubtfulNodeList = Schemas["DoubtfulNodeList"];
+export type DeviceConflictList = Schemas["DeviceConflictList"];
 export type RelayCheck = Schemas["RelayCheck"];
 export type RelayCheckList = Schemas["RelayCheckList"];
 export type RelayCheckDetail = Schemas["RelayCheckDetail"];
@@ -299,6 +300,10 @@ export function longestLinksUrl(request: {
 }
 
 export const doubtfulNodesUrl = "/api/v1/diagnostics/doubtful-nodes";
+
+export function deviceConflictsUrl(afterNode = 0): string {
+  return `/api/v1/diagnostics/device-conflicts?after_node=${afterNode}&count=30`;
+}
 
 /** The relay checks of the `count` newest traceroute packets. */
 export function relayChecksUrl(count: number): string {

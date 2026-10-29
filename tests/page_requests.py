@@ -255,6 +255,8 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4", 300
     yield "/api/v1/diagnostics/summary"
     yield "/api/v1/diagnostics/doubtful-nodes"
+    yield "/api/v1/diagnostics/device-conflicts?after_node=0&count=30"
+    yield f"/api/v1/diagnostics/device-conflicts?after_node={node}&count=30"
     yield "/api/v1/diagnostics/longest-links?offset=0&count=30"
     yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest"
     # Looking further down builds the evidence of 300 links.

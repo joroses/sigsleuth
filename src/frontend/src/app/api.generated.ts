@@ -819,6 +819,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/diagnostics/device-conflicts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Device Conflicts Page */
+    get: operations["device_conflicts_page_api_v1_diagnostics_device_conflicts_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/diagnostics/relay-checks": {
     parameters: {
       query?: never;
@@ -1213,6 +1230,28 @@ export interface components {
       oldest_packet_at: string | null;
       newest_packet_at: string | null;
       retention_days: number;
+    };
+    /** DeviceConflict */
+    DeviceConflict: {
+      node_id: number;
+      reports: components["schemas"]["DeviceReport"][];
+      limited: boolean;
+    };
+    /** DeviceConflictList */
+    DeviceConflictList: {
+      items: components["schemas"]["DeviceConflict"][];
+      next_node_id: number | null;
+    };
+    /** DeviceReport */
+    DeviceReport: {
+      long_name: string | null;
+      short_name: string | null;
+      hardware_model: string | null;
+      mac_address: string | null;
+      public_key: string | null;
+      /** Format: date-time */
+      observed_at: string;
+      packet_row_id: number;
     };
     /** DiagnosticsSummary */
     DiagnosticsSummary: {
@@ -3939,6 +3978,38 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DoubtfulNodeList"];
+        };
+      };
+    };
+  };
+  device_conflicts_page_api_v1_diagnostics_device_conflicts_get: {
+    parameters: {
+      query?: {
+        after_node?: number;
+        count?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeviceConflictList"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

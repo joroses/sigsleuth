@@ -1,5 +1,6 @@
 """Bounded reads for the operator diagnostics page."""
 
+import base64
 import json
 import sqlite3
 import statistics
@@ -42,6 +43,78 @@ from sigsleuth.radio import distance_km
 from sigsleuth.terrain import LongLinkCheck
 
 TABLES = ("reception", "packet", "node_current", "map_report")
+
+
+@dataclass(frozen=True)
+class DeviceReport:
+    long_name: str | None
+    short_name: str | None
+    hardware_model: str | None
+    mac_address: str | None
+    public_key: str | None
+    observed_at: datetime
+    packet_row_id: int
+
+
+@dataclass(frozen=True)
+class DeviceConflict:
+    node_id: int
+    reports: tuple[DeviceReport, ...]
+    limited: bool
+
+
+@dataclass(frozen=True)
+class DeviceConflictList:
+    items: tuple[DeviceConflict, ...]
+    next_node_id: int | None
+
+
+def device_conflicts(
+    connection: sqlite3.Connection, *, after_node: int = 0, count: int = 30
+) -> DeviceConflictList:
+    """IDs with differing nonempty MACs or keys in retained NodeInfo reports.
+    A change can be a replacement or key reset; these are reports to inspect,
+    not a count of physical devices. Each ID shows its newest 20 profiles."""
+    shown = f"{shown_sql('d.node_id')} AND {shown_sql('p.recipient_node_id')}"
+    nodes = connection.execute(
+        f"""
+        SELECT d.node_id FROM node_device AS d JOIN packet AS p ON p.id = d.packet_row_id
+        WHERE d.node_id > ? AND {shown}
+        GROUP BY d.node_id
+        HAVING count(DISTINCT nullif(d.mac_address, x'')) > 1
+            OR count(DISTINCT nullif(d.public_key, x'')) > 1
+        ORDER BY d.node_id LIMIT ?
+        """,
+        (after_node, count + 1),
+    ).fetchall()
+    items = []
+    for node in nodes[:count]:
+        rows = connection.execute(
+            f"""
+            SELECT d.* FROM node_device AS d JOIN packet AS p ON p.id = d.packet_row_id
+            WHERE d.node_id = ? AND {shown}
+            ORDER BY d.observed_at DESC, d.packet_row_id DESC LIMIT 21
+            """,
+            (node["node_id"],),
+        ).fetchall()
+        reports = tuple(
+            DeviceReport(
+                row["long_name"],
+                row["short_name"],
+                row["hardware_model"],
+                bytes(row["mac_address"]).hex(":") or None,
+                base64.b64encode(row["public_key"]).decode() or None,
+                from_epoch_ms(row["observed_at"]),
+                row["packet_row_id"],
+            )
+            for row in rows[:20]
+        )
+        items.append(DeviceConflict(int(node["node_id"]), reports, len(rows) > 20))
+    return DeviceConflictList(
+        tuple(items), int(nodes[count - 1]["node_id"]) if len(nodes) > count else None
+    )
+
+
 # The one place skip and application reason codes are explained; the page
 # shows these texts. Unusable reasons come from decode.parse_delivery.
 REASON_DESCRIPTIONS = {

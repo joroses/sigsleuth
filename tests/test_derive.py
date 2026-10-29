@@ -29,6 +29,7 @@ from sigsleuth.radio import relay_byte_of, relay_byte_sql
 SENT_AT = 1_790_000_000_000
 SENDER, REQUESTER, TARGET, RELAY = 0x11111111, 0x0A0A0A0A, 0x0B0B0B0B, 0x22222222
 DERIVED_TABLES = (
+    "node_device",
     "node_current",
     "node_activity_hour",
     "link_hour",

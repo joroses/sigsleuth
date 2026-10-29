@@ -4639,6 +4639,16 @@ skipped: []
 
 items: []
 
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
+
+items: []
+next_node_id: null
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=3655149723&count=30
+
+items: []
+next_node_id: null
+
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=30
 
 items: 30 items

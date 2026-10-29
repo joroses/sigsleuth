@@ -160,7 +160,7 @@ export function routeFromHash(hash: string): Route {
   // optionally only those a second heard directly.
   const diagnostics = hash.match(
     new RegExp(
-      String.raw`^#diagnostics(?:\/(?:(doubtful)|(links)(?:\/${NODE})?|(relays)(?:\/([1-9]\d*))?|(packets)(?:\/${NODE}(?:-${NODE})?)?))?$`,
+      String.raw`^#diagnostics(?:\/(?:(doubtful|devices)|(links)(?:\/${NODE})?|(relays)(?:\/([1-9]\d*))?|(packets)(?:\/${NODE}(?:-${NODE})?)?))?$`,
     ),
   );
   if (diagnostics !== null) {

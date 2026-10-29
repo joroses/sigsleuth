@@ -6,6 +6,7 @@ ingest.group_reception
   SEARCH traceroute_run USING INDEX traceroute_run_first
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH node_device USING INDEX node_device_packet
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 ingest.save_application_data
   SEARCH packet USING PRIMARY KEY
@@ -1364,6 +1365,18 @@ positions.direct_partners
   SCAN node_current
   SEARCH node_current USING PRIMARY KEY
 
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
+
+diagnostics.device_conflicts
+  SEARCH node_device USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=168430090&count=30
+
+diagnostics.device_conflicts
+  SEARCH node_device USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=30
 
 diagnostics.longest_links
@@ -1865,6 +1878,7 @@ retention._delete_oldest_packets
   SEARCH traceroute_run USING INDEX traceroute_run_first
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH node_device USING INDEX node_device_packet
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX coverage_measurement_time

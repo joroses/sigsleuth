@@ -76,6 +76,22 @@ CREATE TABLE node_opt_out (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295)
 ) STRICT;
 
+-- Latest NodeInfo for each reported MAC/key pair. Empty bytes mean missing.
+-- Its last packet's expiry removes the profile with it.
+CREATE TABLE node_device (
+    node_id INTEGER NOT NULL,
+    mac_address BLOB NOT NULL,
+    public_key BLOB NOT NULL,
+    packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
+    observed_at INTEGER NOT NULL,
+    long_name TEXT,
+    short_name TEXT,
+    hardware_model TEXT,
+    PRIMARY KEY (node_id, mac_address, public_key)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX node_device_packet ON node_device (packet_row_id);
+
 -- Estimated positions of linked nodes that report none (positions.py),
 -- refilled wholesale by refresh_estimates. A reported position always wins.
 CREATE TABLE node_estimate (

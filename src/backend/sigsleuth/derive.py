@@ -34,10 +34,12 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Protocol
 
-from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
+from google.protobuf.message import DecodeError
+from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import recreate_derived, rederive_pending, transaction
 from sigsleuth.decode import (
+    interpret_payload,
     read_device_telemetry,
     read_neighbors,
 )
@@ -509,13 +511,14 @@ def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
 
 
 def _read_payload(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
-    """The sender's ChUtil, AirUtil and battery, and its firmware traits,
-    from the packet's saved payload."""
+    """Read telemetry, device reports and firmware traits from a saved payload."""
     payload = row["application_payload"]
     if payload is None or row["portnum"] is None:
         return
     sender_node_id = int(row["sender_node_id"])
     portnum = int(row["portnum"])
+    if portnum == portnums_pb2.PortNum.NODEINFO_APP:
+        _save_device(connection, row)
     if portnum == portnums_pb2.PortNum.TELEMETRY_APP:
         _update_device_telemetry(
             connection, sender_node_id, int(row["first_received_at"]), bytes(payload)
@@ -523,6 +526,44 @@ def _read_payload(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     signed = "signature" if row["is_signed"] else None
     raise_firmware(
         connection, sender_node_id, newest(signed, payload_trait(sender_node_id, portnum, payload))
+    )
+
+
+def _save_device(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    user = mesh_pb2.User()
+    try:
+        user.ParseFromString(row["application_payload"])
+    except DecodeError:
+        return
+    mac = bytes(user.macaddr) if len(user.macaddr) == 6 and any(user.macaddr) else b""
+    key = bytes(user.public_key) if len(user.public_key) == 32 and any(user.public_key) else b""
+    if not mac and not key:
+        return
+    info = interpret_payload(
+        portnums_pb2.PortNum.NODEINFO_APP, row["application_payload"]
+    ).node_info
+    if info is None:
+        return
+    connection.execute(
+        """
+        INSERT INTO node_device VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (node_id, mac_address, public_key) DO UPDATE SET
+            packet_row_id = excluded.packet_row_id, observed_at = excluded.observed_at,
+            long_name = excluded.long_name, short_name = excluded.short_name,
+            hardware_model = excluded.hardware_model
+        WHERE (excluded.observed_at, excluded.packet_row_id)
+            > (node_device.observed_at, node_device.packet_row_id)
+        """,
+        (
+            row["sender_node_id"],
+            mac,
+            key,
+            row["packet_row_id"],
+            row["first_received_at"],
+            info.long_name,
+            info.short_name,
+            info.hardware_model,
+        ),
     )
 
 

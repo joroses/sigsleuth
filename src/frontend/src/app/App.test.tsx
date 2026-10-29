@@ -1349,6 +1349,35 @@ describe("Diagnostics", () => {
     expect(asked()).not.toContain("/api/v1/diagnostics/doubtful-nodes");
   });
 
+  it("loads device reports on demand and pages by node ID", async () => {
+    const first = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
+    const next = "/api/v1/diagnostics/device-conflicts?after_node=17&count=30";
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === first
+            ? { items: [], next_node_id: 17 }
+            : url === next
+              ? { items: [], next_node_id: null }
+              : summary,
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    window.location.hash = "#diagnostics";
+    render(<App />);
+    await screen.findByText("Overview");
+    expect(fetch.mock.calls.map(([url]) => url)).not.toContain(first);
+    window.location.hash = "#diagnostics/devices";
+    await screen.findByRole("button", { name: "Next IDs" });
+    fireEvent.click(screen.getByRole("button", { name: "Next IDs" }));
+    await waitFor(() =>
+      expect(fetch.mock.calls.map(([url]) => url)).toContain(next),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "First IDs" }));
+    await screen.findByRole("button", { name: "Next IDs" });
+  });
+
   const diagnosticsTab = () =>
     within(screen.getByRole("navigation", { name: "Main pages" })).queryByRole(
       "link",

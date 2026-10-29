@@ -1355,8 +1355,14 @@ opt_out.opted_out
   SCAN node_opt_out
 diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
-diagnostics._direct_partners
+positions.estimate_since_ms.<locals>.<genexpr>
   SEARCH link_hour USING PRIMARY KEY
+positions.direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=30
 
@@ -1400,8 +1406,14 @@ diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
-diagnostics._direct_partners
+positions.estimate_since_ms.<locals>.<genexpr>
   SEARCH link_hour USING PRIMARY KEY
+positions.direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1460,8 +1472,14 @@ diagnostics._long_link_ends
   SEARCH node_current USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
-diagnostics._direct_partners
+positions.estimate_since_ms.<locals>.<genexpr>
   SEARCH link_hour USING PRIMARY KEY
+positions.direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1863,10 +1881,14 @@ retention._delete_old_measurements
   SCAN coverage_session
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
-positions.refresh_estimates.<locals>.<genexpr>
+positions.estimate_since_ms.<locals>.<genexpr>
   SEARCH link_hour USING PRIMARY KEY
-positions._doubtful
+positions.direct_partners
   SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
 positions._doubtful
   SCAN node_current
 positions._estimates

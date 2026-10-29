@@ -78,11 +78,8 @@ class _Neighbours:
     traceroute: dict[int, int]
 
 
-def refresh_estimates(connection: sqlite3.Connection) -> int:
-    """Replace node_doubtful, then node_estimate, from the ESTIMATE_DAYS of
-    links up to the newest hour. Counting back from the newest link rather
-    than now keeps both on an old database. Returns how many
-    nodes were estimated."""
+def estimate_since_ms(connection: sqlite3.Connection) -> int:
+    """The shared doubt and estimate window, ending at the newest link hour."""
     newest = max(
         (
             connection.execute(
@@ -92,7 +89,15 @@ def refresh_estimates(connection: sqlite3.Connection) -> int:
             for kind in ("direct", "neighbor", "traceroute")
         ),
     )
-    since_ms = newest - (ESTIMATE_DAYS * 24 - 1) * HOUR_MS
+    return newest - (ESTIMATE_DAYS * 24 - 1) * HOUR_MS
+
+
+def refresh_estimates(connection: sqlite3.Connection) -> int:
+    """Replace node_doubtful, then node_estimate, from the ESTIMATE_DAYS of
+    links up to the newest hour. Counting back from the newest link rather
+    than now keeps both on an old database. Returns how many
+    nodes were estimated."""
+    since_ms = estimate_since_ms(connection)
     doubtful = _doubtful(connection, since_ms)
     with transaction(connection):
         connection.execute("DELETE FROM node_doubtful")
@@ -120,22 +125,8 @@ def doubt_limit_km(altitude_meters: float | None) -> float:
 
 
 def _doubtful(connection: sqlite3.Connection, since_ms: int) -> list[tuple[int, int, float]]:
-    """(node, placed partners, their median km) for each node whose direct
-    partners since since_ms sat a median of over its doubt_limit_km from it
-    when heard, each partner at its shortest. One far partner is enough, so a
-    node heard only by a misplaced gateway is doubted along with it; the
-    distance between them is wrong either way."""
-    partners: dict[int, dict[int, float]] = defaultdict(dict)
-    for from_node, to_node, km in connection.execute(
-        """
-        SELECT from_node_id, to_node_id, min(km) FROM link_hour
-        WHERE link_kind = 'direct' AND hour_start >= ? AND km IS NOT NULL
-        GROUP BY from_node_id, to_node_id
-        """,
-        (since_ms,),
-    ):
-        for node, other in ((from_node, to_node), (to_node, from_node)):
-            partners[node][other] = min(km, partners[node].get(other, km))
+    """Nodes whose direct partners contradict their current position."""
+    partners = direct_partners(connection, since_ms)
     altitudes = {
         int(node): float(altitude)
         for node, altitude in connection.execute(
@@ -147,6 +138,37 @@ def _doubtful(connection: sqlite3.Connection, since_ms: int) -> list[tuple[int, 
         for node, found in sorted(partners.items())
         if (median := statistics.median(found.values())) > doubt_limit_km(altitudes.get(node))
     ]
+
+
+def direct_partners(
+    connection: sqlite3.Connection, since_ms: int, node_ids: Collection[int] | None = None
+) -> dict[int, dict[int, float]]:
+    """Placed direct partners at their shortest km since both ends last moved."""
+    only_nodes = (
+        ""
+        if node_ids is None
+        else """
+        AND (from_node_id IN (SELECT value FROM json_each(:nodes))
+             OR to_node_id IN (SELECT value FROM json_each(:nodes)))
+    """
+    )
+    partners: dict[int, dict[int, float]] = defaultdict(dict)
+    for from_node, to_node, km in connection.execute(
+        f"""
+        SELECT from_node_id, to_node_id, min(km) FROM link_hour
+        WHERE link_kind = 'direct' AND hour_start >= :since AND km IS NOT NULL
+          AND (from_node_id NOT IN (SELECT node_id FROM node_current WHERE moved_at >= :since)
+               OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = from_node_id))
+          AND (to_node_id NOT IN (SELECT node_id FROM node_current WHERE moved_at >= :since)
+               OR last_seen_at >= (SELECT moved_at FROM node_current WHERE node_id = to_node_id))
+          {only_nodes}
+        GROUP BY from_node_id, to_node_id
+        """,
+        {"since": since_ms, "nodes": json.dumps(sorted(node_ids or ()))},
+    ):
+        for node, other in ((from_node, to_node), (to_node, from_node)):
+            partners[node][other] = min(km, partners[node].get(other, km))
+    return partners
 
 
 def node_estimate(connection: sqlite3.Connection, node_id: int) -> EstimatedPosition | None:

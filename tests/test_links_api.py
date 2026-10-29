@@ -515,6 +515,41 @@ def test_a_node_heard_only_far_from_where_it_was_is_doubtful(path: Path) -> None
     assert table["doubtful_node_ids"] == [far]
 
 
+def test_diagnostics_judges_current_positions_but_keeps_earlier_link_history(path: Path) -> None:
+    d = 0x0D0D0D0D
+    for node_id, name in ((A, "NA"), (B, "NB"), (C, "NC"), (d, "ND")):
+        place(path, node_id, name, 40.0, 2.0)
+    for hours_ago, km in ((5, 11.0), (3, 11.0), (2, 180.0)):
+        add_link_hour(path, hours_ago, A, B, observations=1, snr=[1.0], link_kind="direct", km=km)
+    add_link_hour(path, 168, C, d, observations=1, snr=[1.0], link_kind="direct", km=190.0)
+    add_link_hour(path, 0, C, d, observations=1, snr=[1.0])
+    with closing(open_current_database(path)) as connection, connection:
+        connection.executemany(
+            "UPDATE node_current SET moved_at = ? WHERE node_id = ?",
+            [
+                (to_epoch_ms(HOUR) - hours * HOUR_MS + 30 * 60_000, node)
+                for hours, node in ((4, A), (3, B))
+            ],
+        )
+    refresh(path)
+
+    reviewed = links(path, "/api/v1/diagnostics/longest-links")["items"]
+    ends = {
+        end["node"]["node_id"]: end for item in reviewed for end in (item["node_a"], item["node_b"])
+    }
+    for node_id in (A, B):
+        assert ends[node_id]["doubtful"] is True
+        assert ends[node_id]["direct_partners"] == 1
+        assert ends[node_id]["median_partner_km"] == 180.0
+    for node_id in (C, d):
+        assert ends[node_id]["doubtful"] is False
+        assert ends[node_id]["direct_partners"] == 0
+    table = links(path, "/api/v1/links", link_kind="direct")
+    assert {
+        (item["node_a"], item["node_b"]): item["a_to_b"]["observations"] for item in table["items"]
+    } == {(A, B): 3, (C, d): 1}
+
+
 def test_the_map_hides_link_hours_that_no_longer_match_where_nodes_are(path: Path) -> None:
     moved, doubted, far = B, C, 0x0E0E0E0E
     for node_id, name in ((A, "NA"), (moved, "NB"), (doubted, "NC"), (far, "NE")):

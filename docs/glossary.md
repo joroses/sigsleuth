@@ -30,7 +30,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Last sent / last seen | When the node last originated a packet / that, or when it last reported as a gateway or appeared in a traceroute hop. |
 | Valid position | Coordinates in range and not near 0,0. An invalid one never replaces the latest valid one. |
 | Estimated position | Where a node that reports no position probably is, from its placed radio neighbours (`positions.py`). Drawn hollow; never used for km. |
-| Doubtful position | A reported position the node's own direct links contradict (`positions.py`). Its links are hidden on the map and badged elsewhere. |
+| Doubtful position | A current reported position contradicted by direct links heard since both ends last moved (`positions.py`). Its links are hidden on the map and badged elsewhere. |
 | Moved node | A node whose new position is over 25 km from the last; its earlier link hours are hidden on the map. |
 | Unlikely long link | A link 250 km or longer that the terrain check rejects. |
 | Pending distance | A distance of 100 km or more ranked apart until both ends have reported a position after it was heard, without either moving since (`links.confirmed_sql`). If an end moved after it was heard, that historical distance stays pending even after further reports. Link pages badge and rank it like a distance with a doubtful end or an unlikely one (`links.link_doubts`). |

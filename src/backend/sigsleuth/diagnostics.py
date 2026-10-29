@@ -20,7 +20,7 @@ from sigsleuth.db import (
     reported_km,
     utc_now,
 )
-from sigsleuth.derive import HOUR_MS, MOVED_KM
+from sigsleuth.derive import MOVED_KM
 from sigsleuth.links import (
     CONFIRMED_HOUR,
     LONG_LINK_KM,
@@ -37,7 +37,7 @@ from sigsleuth.links import (
 )
 from sigsleuth.mqtt import CaptureStatus
 from sigsleuth.opt_out import opted_out, shown_sql
-from sigsleuth.positions import ESTIMATE_DAYS, doubt_limit_km
+from sigsleuth.positions import direct_partners, doubt_limit_km, estimate_since_ms
 from sigsleuth.radio import distance_km
 from sigsleuth.terrain import LongLinkCheck
 
@@ -197,9 +197,8 @@ class LongLinkEnd:
     position_from_map_report marks a position from a map report, which may be
     rounded on purpose, rather than the node's own packet. moved_at is
     node_current's, doubtful node_doubtful's flag.
-    direct_partners counts the placed nodes it had direct receptions with over
-    the last positions.ESTIMATE_DAYS of links, each at its shortest distance
-    when heard; nearest_partner_km and median_partner_km are over those.
+    direct_partners counts the placed nodes used to assess its current position
+    (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
     doubt_limit_km is the median beyond which its position is doubtful
     (positions.doubt_limit_km, from its altitude)."""
 
@@ -490,7 +489,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
         )
     }
     doubtful = doubtful_nodes(connection)
-    partners = _direct_partners(connection, ids)
+    partners = direct_partners(connection, estimate_since_ms(connection), ids)
     ends = {}
     for node_id in ids:
         row = current.get(node_id)
@@ -513,31 +512,6 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             doubt_limit_km=round(doubt_limit_km(None if row is None else row["altitude_meters"])),
         )
     return ends
-
-
-def _direct_partners(connection: sqlite3.Connection, ids: list[int]) -> dict[int, dict[int, float]]:
-    """Per node among ids, its placed direct partners over the last
-    ESTIMATE_DAYS of direct links and each one's shortest km when heard, as
-    positions._doubtful judges them."""
-    newest = connection.execute(
-        "SELECT max(hour_start) FROM link_hour WHERE link_kind = 'direct'"
-    ).fetchone()[0]
-    if newest is None:
-        return {}
-    partners: dict[int, dict[int, float]] = defaultdict(dict)
-    for from_node, to_node, km in connection.execute(
-        """
-        SELECT from_node_id, to_node_id, min(km) FROM link_hour
-        WHERE link_kind = 'direct' AND hour_start >= :since AND km IS NOT NULL
-          AND (from_node_id IN (SELECT value FROM json_each(:ids))
-               OR to_node_id IN (SELECT value FROM json_each(:ids)))
-        GROUP BY 1, 2
-        """,
-        {"since": newest - (ESTIMATE_DAYS * 24 - 1) * HOUR_MS, "ids": json.dumps(ids)},
-    ):
-        for node, other in ((from_node, to_node), (to_node, from_node)):
-            partners[node][other] = min(km, partners[node].get(other, km))
-    return partners
 
 
 def _long_link(

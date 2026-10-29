@@ -1553,9 +1553,8 @@ export interface components {
      *     position_from_map_report marks a position from a map report, which may be
      *     rounded on purpose, rather than the node's own packet. moved_at is
      *     node_current's, doubtful node_doubtful's flag.
-     *     direct_partners counts the placed nodes it had direct receptions with over
-     *     the last positions.ESTIMATE_DAYS of links, each at its shortest distance
-     *     when heard; nearest_partner_km and median_partner_km are over those.
+     *     direct_partners counts the placed nodes used to assess its current position
+     *     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
      *     doubt_limit_km is the median beyond which its position is doubtful
      *     (positions.doubt_limit_km, from its altitude).
      */

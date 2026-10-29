@@ -179,6 +179,35 @@ def test_a_high_node_may_be_heard_farther_before_its_position_is_doubted(
     assert (NODE in found) == doubted
 
 
+@pytest.mark.parametrize("moved", [NODE, N1], ids=["sender", "gateway"])
+@pytest.mark.parametrize(
+    ("before_km", "after_km", "doubted"),
+    [(200.0, None, False), (11.0, 200.0, True), (200.0, 11.0, False)],
+    ids=["no-new-evidence", "far-after-move", "near-after-move"],
+)
+def test_position_doubt_uses_only_links_since_either_end_last_moved(
+    connection: sqlite3.Connection,
+    moved: int,
+    before_km: float,
+    after_km: float | None,
+    doubted: bool,
+) -> None:
+    node(connection, NODE, 0.1)
+    node(connection, N1, 1.0)
+    moved_at = now_ms()
+    link_hour(connection, NODE, N1, moved_at - 2 * HOUR_MS, km=before_km)
+    if after_km is not None:
+        link_hour(connection, N1, NODE, moved_at, km=after_km)
+    refresh_estimates(connection)
+    connection.execute("UPDATE node_current SET moved_at = ? WHERE node_id = ?", (moved_at, moved))
+
+    refresh_estimates(connection)
+    refresh_estimates(connection)
+
+    found = {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")}
+    assert found == ({NODE, N1} if doubted else set())
+
+
 def test_a_node_heard_only_before_its_gateway_moved_is_not_placed_there(
     connection: sqlite3.Connection,
 ) -> None:

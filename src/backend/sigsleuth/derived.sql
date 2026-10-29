@@ -87,7 +87,7 @@ CREATE TABLE node_estimate (
     from_traceroute INTEGER NOT NULL CHECK (from_traceroute IN (0, 1))
 ) STRICT;
 
--- Nodes whose own direct links contradict their reported position
+-- Nodes whose direct links since both ends last moved contradict their current position
 -- (positions.doubt_limit_km), refilled with node_estimate.
 CREATE TABLE node_doubtful (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),

@@ -21,7 +21,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         sample = build_sample(Path(directory) / "history.db")
         db.fixed_now_ms = sample.now_ms
-        app = create_app(Settings(sample.path, default_preset="LongFast"))
+        app = create_app(Settings(sample.path))
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
 
 

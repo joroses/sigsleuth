@@ -419,3 +419,43 @@ def test_missing_frontend_build_returns_instructions_without_hiding_api(tmp_path
     assert page.status_code == 503
     assert "./scripts/setup.sh" in page.text
     assert status.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("channel", "earlier", "sf"),
+    [("Custom", True, 11), ("Custom", False, None), ("ShortFast", True, 7)],
+)
+def test_packet_snr_uses_its_radio_channel_without_traceroute_hops(
+    tmp_path: Path, channel: str, earlier: bool, sf: int | None
+) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    sender = 0x0C0C0C42
+    if earlier:
+        save(
+            path,
+            payload=application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"earlier",
+                sender=sender,
+                packet_id=1,
+            ),
+        )
+    result = ingest(
+        path,
+        application_envelope(
+            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            b"hello",
+            sender=sender,
+            packet_id=2,
+            channel_id=channel,
+            rx_snr=-8.0,
+        ),
+        received_at=RECEIVED_AT + timedelta(minutes=1),
+        topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+    )
+    with TestClient(create_app(Settings(path))) as client:
+        detail = client.get(f"/api/v1/packets/{result.packet_row_id}").json()
+    assert detail["packet"]["channel"] == channel
+    assert detail["spreading_factor"] == sf
+    assert detail["receptions"][0]["rx_snr"] == -8.0

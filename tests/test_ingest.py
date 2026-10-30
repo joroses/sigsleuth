@@ -293,7 +293,7 @@ def test_gateways_and_traceroute_hops_count_as_seen_without_new_activity(
     )
 
 
-def test_link_hours_add_up_packets_per_channel(
+def test_link_hours_add_up_packets_per_radio_channel(
     connection: sqlite3.Connection,
 ) -> None:
     traceroute_request(connection, "!aaaaaaaa", HOUR_START + 1_000, [R1], [20], packet_id=1)
@@ -307,8 +307,7 @@ def test_link_hours_add_up_packets_per_channel(
     traceroute_request(connection, "!aaaaaaaa", next_hour, [R1], [-4], packet_id=3)
 
     assert link_hours(connection) == [
-        (HOUR_START, REQUESTER, R1, 2, 1, 5.0, HOUR_START + 2_500, "LongFast"),
-        (HOUR_START, REQUESTER, R1, 1, 1, -2.0, HOUR_START + 2_000, "Other"),
+        (HOUR_START, REQUESTER, R1, 3, 2, 3.0, HOUR_START + 2_500, "LongFast"),
         (HOUR_START, R1, R2, 1, 1, 1.0, HOUR_START + 1_000, "LongFast"),
         (next_hour, REQUESTER, R1, 1, 1, -1.0, next_hour, "LongFast"),
     ]

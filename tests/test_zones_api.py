@@ -93,7 +93,7 @@ def relayed_triangles(path: Path) -> None:
 
 
 def get_zones(path: Path, **params: object) -> dict[str, Any]:
-    with TestClient(create_app(Settings(path, default_preset="LongFast"))) as client:
+    with TestClient(create_app(Settings(path))) as client:
         response = client.get("/api/v1/zones", params=params)
     assert response.status_code == 200
     body: dict[str, Any] = response.json()
@@ -630,3 +630,26 @@ def test_a_pairs_warnings_follow_its_solid_links(
     assert (pair["solid_links"], pair["warnings"]) == (cross_links, warnings)
     # 12 links inside the cliques, all solid.
     assert (body["link_count"], body["solid_link_count"]) == (12 + cross_links, 12 + cross_links)
+
+
+def test_unknown_radio_settings_do_not_turn_snr_into_solid_zone_links(path: Path) -> None:
+    for a, b in ((X1, X2), (X2, X3), (X1, X3)):
+        link(path, a, b, channel="Unknown", snr=20)
+    result = get_zones(path, channel="Unknown")
+    assert result["channels"] == []
+    assert result["zones"] == []
+
+
+def test_unknown_links_are_never_the_default_zone_channel(path: Path) -> None:
+    clique(path, X1, X2, X3, X4)
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute("UPDATE link_hour SET channel = 'Unknown'")
+    unknown_only = get_zones(path)
+    assert unknown_only["channel"] is None
+    assert unknown_only["channels"] == []
+    assert unknown_only["zones"] == []
+
+    link(path, Y1, Y2, channel="MediumFast")
+    result = get_zones(path)
+    assert result["channel"] == "MediumFast"
+    assert result["channels"] == [{"channel": "MediumFast", "links": 1}]

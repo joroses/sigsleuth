@@ -319,7 +319,7 @@ def create_app(
         """One packet's identity and payload forms, plus its receptions: heard
         directly first, then by hops used, then hops not reported. Fewer receptions
         than reception_count means the list was cut at MAX_PACKET_RECEPTIONS."""
-        page = packet_detail(connection, packet_row_id, default_preset=settings.default_preset)
+        page = packet_detail(connection, packet_row_id)
         if page is None:
             raise ApiError(404, "packet_not_found", "Packet not found.")
         return page
@@ -333,7 +333,6 @@ def create_app(
         page = packet_detail(
             connection,
             packet_row_id,
-            default_preset=settings.default_preset,
             include_hidden_relays=True,
         )
         if page is None:
@@ -366,7 +365,7 @@ def create_app(
 
         q matches the short or long name, the hex node ID with or without "!", or
         the exact decimal node number. channel matches the node's radio channel
-        (its latest packet on a channel naming its radio settings). gateway=true
+        (last observed in its own packet or a traceroute hop). gateway=true
         keeps nodes that have reported as a gateway.
         total counts every matching node; page with offset.
         """
@@ -464,7 +463,6 @@ def create_app(
             connection,
             link_kinds=links.LINK_KINDS,
             since=start,
-            default_preset=settings.default_preset,
             node=node_id,
         )
 
@@ -528,7 +526,6 @@ def create_app(
             link_kind=link_kind,
             since=start,
             limit=limit,
-            default_preset=settings.default_preset,
             trusted=True,
             with_free_hops=link_kind == "traceroute",
         )
@@ -606,7 +603,6 @@ def create_app(
             connection,
             link_kinds=(link_kind,),
             since=_utc(since),
-            default_preset=settings.default_preset,
         )
 
     @app.get("/api/v1/links/positions")
@@ -676,7 +672,6 @@ def create_app(
             successful=successful,
             limit=limit,
             offset=offset,
-            default_preset=settings.default_preset,
             packet_row_id=packet,
         )
 
@@ -728,7 +723,6 @@ def create_app(
             per_day=per_day,
             min_margin_db=min_margin_db,
             link_limit=MAX_MAP_LINKS,
-            default_preset=settings.default_preset,
         )
 
     @app.post("/api/v1/coverage/uploads", dependencies=[Uploader])

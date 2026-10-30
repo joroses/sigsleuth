@@ -42,7 +42,7 @@ from typing import Literal
 from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.opt_out import is_opted_out, opted_out, shown_sql
-from sigsleuth.radio import distance_km, spreading_factor
+from sigsleuth.radio import PRESET_SPREADING_FACTORS, distance_km, preset_name
 from sigsleuth.shared_numbers import link_radios, shared_nodes
 
 MAX_LINK_ROWS = 20_000
@@ -157,15 +157,14 @@ class MapLink:
     kind; node_a < node_b.
 
     a_to_b is node_a transmitting and node_b hearing it; b_to_a the reverse.
-    spreading_factor is the one the channel name suggests, else the configured
-    default preset's.
+    spreading_factor is unknown until the radio channel is known.
     """
 
     node_a: int
     node_b: int
     last_seen_at: datetime
     channel: str
-    spreading_factor: int
+    spreading_factor: int | None
     a_to_b: LinkDirection
     b_to_a: LinkDirection
 
@@ -199,7 +198,6 @@ def map_links(
     link_kind: LinkKind,
     since: datetime | None,
     limit: int,
-    default_preset: str,
     channel: str | None = None,
     trusted: bool = False,
     max_km: float | None = None,
@@ -218,7 +216,7 @@ def map_links(
         nodes = nodes_by_id(connection, {n for row in kept for n in (row["node_a"], row["node_b"])})
         unlikely = unlikely_links(connection)
         kept = [row for row in kept if _fits_now(row, nodes, unlikely, max_km)]
-    items = tuple(_map_link(row, default_preset) for row in kept)
+    items = tuple(_map_link(row) for row in kept)
     return MapLinkList(
         items,
         len(rows) > limit,
@@ -242,10 +240,10 @@ def free_hops(
     # scanned all of it.
     rows = connection.execute(
         """
-        SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+        SELECT from_node_id, to_node_id, radio_channel, sum(free), sum(costly)
         FROM hop_cost_hour
-        WHERE hour_start >= :since AND (:channel IS NULL OR channel = :channel)
-        GROUP BY +from_node_id, to_node_id, channel
+        WHERE hour_start >= :since AND (:channel IS NULL OR radio_channel = :channel)
+        GROUP BY +from_node_id, to_node_id, radio_channel
         HAVING sum(free) > 0 AND sum(free) >= sum(costly)
         """,
         {"since": since_ms - since_ms % HOUR_MS, "channel": channel},
@@ -421,13 +419,13 @@ def _hourly_links(
     ).fetchall()
 
 
-def _map_link(row: sqlite3.Row, default_preset: str) -> MapLink:
+def _map_link(row: sqlite3.Row) -> MapLink:
     return MapLink(
         node_a=int(row["node_a"]),
         node_b=int(row["node_b"]),
         last_seen_at=from_epoch_ms(row["last_seen_at"]),
         channel=str(row["channel"]),
-        spreading_factor=spreading_factor(str(row["channel"]), default_preset),
+        spreading_factor=PRESET_SPREADING_FACTORS.get(preset_name(str(row["channel"])) or ""),
         a_to_b=_link_direction(
             row["ab_observations"],
             row["ab_snr_count"],
@@ -586,7 +584,6 @@ def link_table(
     *,
     link_kinds: Sequence[LinkKind],
     since: datetime | None,
-    default_preset: str,
     node: int | None = None,
 ) -> LinkTable:
     """The map's links of link_kinds, only node's when given, with both nodes'
@@ -604,7 +601,7 @@ def link_table(
         )
         truncated |= len(rows) > MAX_LINK_ROWS
         for row in rows[:MAX_LINK_ROWS]:
-            link = _map_link(row, default_preset)
+            link = _map_link(row)
             km = row["km"]
             items.append(
                 LinkRow(
@@ -649,7 +646,7 @@ def zero_cost_hops(
 
     def one_way(end: str) -> str:
         return f"""
-            SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+            SELECT from_node_id, to_node_id, radio_channel, sum(free), sum(costly)
             FROM hop_cost_hour INDEXED BY hop_cost_hour_{end}
             WHERE {end}_node_id = :node AND hour_start >= :since
             GROUP BY 1, 2, 3
@@ -699,10 +696,13 @@ def hop_costs(
     directions: Collection[tuple[int, int, str]],
     start_ms: int,
     end_ms: int | None = None,
+    *,
+    radio: bool = False,
 ) -> dict[tuple[int, int, str], HopCost]:
     """The HopCost of each direction (from, to, channel) over the hours from
     start_ms's to end_ms. An opted-out end reads as a node never heard: no
-    measurement and no role."""
+    measurement and no role. radio groups observed counts by physical radio
+    channel; predictions for a packet use the original message channel."""
     hidden = opted_out(connection)
     wanted = {d for d in directions if d[0] not in hidden and d[1] not in hidden}
     # Each sender's rows once, then the wanted pairs: looking each pair up
@@ -711,8 +711,9 @@ def hop_costs(
     counts = {
         found: (int(row[3]), int(row[4]))
         for row in connection.execute(
-            """
-            SELECT from_node_id, to_node_id, channel, sum(free), sum(costly)
+            f"""
+            SELECT from_node_id, to_node_id, {"radio_channel" if radio else "channel"},
+                   sum(free), sum(costly)
             FROM hop_cost_hour INDEXED BY hop_cost_hour_from
             WHERE from_node_id IN (SELECT value FROM json_each(:senders))
               AND hour_start >= :start AND (:end IS NULL OR hour_start <= :end)

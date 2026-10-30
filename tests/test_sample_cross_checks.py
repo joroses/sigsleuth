@@ -123,9 +123,9 @@ def test_direct_links_count_no_more_than_the_receptions_behind_them(
                     """
                     SELECT count(*) FROM reception JOIN packet ON packet.id = packet_row_id
                     WHERE sender_node_id = ? AND gateway_node_id = ?
-                      AND channel = ? AND first_received_at >= ?
+                      AND first_received_at >= ?
                     """,
-                    (sender, gateway, link["channel"], hour_start),
+                    (sender, gateway, hour_start),
                 ).fetchone()
                 assert heard["observations"] <= receptions, link
 
@@ -275,7 +275,7 @@ def assert_same_as_capture(sample: Sample, sample_client: TestClient, path: Path
             f"{table}\nonly captured: {missing[:5]}\nonly rederived: {extra[:5]}"
         )
 
-    rederived = TestClient(create_app(Settings(path, default_preset="LongFast")))
+    rederived = TestClient(create_app(Settings(path)))
 
     now = from_epoch_ms(sample.now_ms)
     for url in page_requests(now, pick_subjects(sample.path)):

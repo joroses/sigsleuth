@@ -433,11 +433,10 @@ def test_lines_from_a_shared_number_are_hidden(connection: sqlite3.Connection) -
         link_kind="direct",
         since=since,
         limit=100,
-        default_preset="LongFast",
         trusted=True,
     )
     assert [(link.node_a, link.node_b) for link in drawn.items] == [(P, Q)]
-    table = link_table(connection, link_kinds=("direct",), since=since, default_preset="LongFast")
+    table = link_table(connection, link_kinds=("direct",), since=since)
     assert {(row.node_a, row.node_b): row.doubts for row in table.items} == {
         (P, Q): (),
         (P, S): ("shared",),
@@ -466,7 +465,6 @@ def test_without_the_shared_mark_the_same_links_count(connection: sqlite3.Connec
         link_kind="direct",
         since=START - timedelta(hours=1),
         limit=100,
-        default_preset="LongFast",
         trusted=True,
     )
     assert len(drawn.items) == 3
@@ -484,3 +482,114 @@ def test_a_shared_numbers_contacts_have_no_distance(path: Path) -> None:
     assert by_node[S]["km"] is None
     assert {link["max_km"] for link in by_node[S]["links"]} == {None}
     assert json.dumps(by_node[Q]["links"]).count('"max_km": 5.0') == 1
+
+
+def test_fallback_channels_follow_the_attributed_radio_and_refresh_with_it(
+    path: Path,
+    connection: sqlite3.Connection,
+) -> None:
+    send(path, -1, TEXT, b"early", counter=99, gateway=GW_B, channel="Test")
+    two_radios_at_once(path)
+    for minute, gateway in ((60, GW_A), (61, GW_B), (62, GW_C)):
+        send(path, minute, TEXT, b"private", counter=980 + minute, gateway=gateway, channel="Test")
+    refresh(path)
+
+    def counts() -> dict[tuple[int, str], int]:
+        return {
+            (int(row[0]), str(row[1])): int(row[2])
+            for row in connection.execute(
+                """
+                SELECT to_node_id, channel, sum(observations) FROM link_hour
+                WHERE link_kind = 'direct' AND from_node_id = ? GROUP BY 1, 2
+                """,
+                (NODE,),
+            )
+        }
+
+    first = counts()
+    assert first[GW_B, "Unknown"] == 1
+    assert first[GW_C, "Unknown"] == 1
+    assert first[GW_A, "MediumFast"] == 5
+    assert first[GW_B, "NarrowFast"] == 3
+    since = START.isoformat().replace("+00:00", "Z")
+    table = get(path, f"/api/v1/nodes/{NODE}/links?since={since}")
+    assert next(
+        r
+        for r in table["items"]
+        if r["channel"] == "MediumFast" and GW_A in (r["node_a"], r["node_b"])
+    )["radio_names"] == ["Hilltop"]
+    # A report by another node cannot identify which twin transmitted a hop.
+    send(
+        path,
+        63,
+        portnums_pb2.PortNum.NEIGHBORINFO_APP,
+        mesh_pb2.NeighborInfo(
+            neighbors=[mesh_pb2.Neighbor(node_id=NODE, snr=-3)]
+        ).SerializeToString(),
+        node=GW_A,
+        counter=50,
+        gateway=GW_B,
+        channel="Test",
+    )
+    send(
+        path,
+        64,
+        portnums_pb2.PortNum.TRACEROUTE_APP,
+        mesh_pb2.RouteDiscovery(route=[NODE, GW_B], snr_towards=[12, 8]).SerializeToString(),
+        node=GW_A,
+        counter=51,
+        gateway=GW_B,
+        channel="Test",
+    )
+    # A new gateway association can sort an existing packet at the next refresh,
+    # which recounts every link the shared number transmitted.
+    node_info(path, 65, MAC_A, "Hilltop", counter=105, gateway=GW_C, channel="MediumFast")
+    refresh(path)
+    second = counts()
+    assert (GW_C, "Unknown") not in second
+    assert second[GW_C, "MediumFast"] == first[GW_C, "MediumFast"] + 2
+    assert second[GW_B, "Unknown"] == 1
+    assert {
+        (row[0], row[1])
+        for row in connection.execute(
+            """
+            SELECT link_kind, channel FROM link_hour
+            WHERE from_node_id = ? AND link_kind != 'direct'
+            """,
+            (NODE,),
+        )
+    } == {("neighbor", "Unknown"), ("traceroute", "Unknown")}
+    captured = [tuple(r) for r in connection.execute("SELECT * FROM link_hour ORDER BY 1,2,3,4,11")]
+    connection.execute("UPDATE derived_state SET rebuilt = 0")
+    assert rederive(connection, lambda: False, batch_size=2)
+    assert [
+        tuple(r) for r in connection.execute("SELECT * FROM link_hour ORDER BY 1,2,3,4,11")
+    ] == captured
+
+
+def test_relay_channel_updates_the_shared_number_without_attributing_a_radio(
+    path: Path,
+    connection: sqlite3.Connection,
+) -> None:
+    two_radios_at_once(path)
+    refresh(path)
+    before = [tuple(r) for r in connection.execute("SELECT * FROM packet_radio ORDER BY 1")]
+    send(
+        path,
+        70,
+        portnums_pb2.PortNum.TRACEROUTE_APP,
+        mesh_pb2.RouteDiscovery(route=[NODE], snr_towards=[12]).SerializeToString(),
+        node=GW_A,
+        counter=55,
+        gateway=GW_B,
+        channel="LongSlow",
+    )
+    assert (
+        connection.execute(
+            "SELECT channel FROM node_current WHERE node_id = ?",
+            (NODE,),
+        ).fetchone()[0]
+        == "LongSlow"
+    )
+    refresh(path)
+    assert [tuple(r) for r in connection.execute("SELECT * FROM packet_radio ORDER BY 1")] == before

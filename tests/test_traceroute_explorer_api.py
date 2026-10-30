@@ -558,12 +558,12 @@ def test_page_positions_use_the_first_later_report_without_changing_saved_distan
     assert run["distance_km"] is None
     with closing(open_current_database(path)) as connection:
         packet_id = run["reply_packet_row_id"]
-        detail = packet_detail(connection, packet_id, default_preset="LongFast")
+        detail = packet_detail(connection, packet_id)
         assert detail is not None
         assert detail.sender_latitude == 41.0
         assert not detail.sender_estimated
         assert {n.node_id: n.latitude for n in detail.route_nodes}[B] == 41.0
-        request = packet_detail(connection, run["request_packet_row_id"], default_preset="LongFast")
+        request = packet_detail(connection, run["request_packet_row_id"])
         assert request is not None
         gateway = next(r for r in request.receptions if r.gateway_node_id == 0xBBBBBBBB)
         assert gateway.gateway_latitude == 41.0
@@ -830,6 +830,7 @@ def hop_cost(
                 "from_node_id": from_node,
                 "to_node_id": to_node,
                 "channel": "LongFast",
+                "radio_channel": row.get("channel", "LongFast"),
                 "free": free,
                 "costly": costly,
                 **row,
@@ -1049,6 +1050,203 @@ def test_relay_scoring_keeps_the_old_gateway_placement(path: Path) -> None:
         assert decision is not None and decision.relays is not None
         [naming] = decision.relays.namings.values()
         assert naming.copy.position == (48.0, 2.0)
-        page = packet_detail(connection, packet_id, default_preset="LongFast")
+        page = packet_detail(connection, packet_id)
         assert page is not None
         assert page.receptions[0].gateway_latitude == 41.0
+
+
+def test_link_drilldowns_merge_radio_channels_without_merging_message_hop_predictions(
+    path: Path,
+) -> None:
+    from sigsleuth.links import hop_costs
+
+    for sender, channel in ((A, "LongFast"), (R1, "SFNarrow")):
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"hello",
+                sender=sender,
+                packet_id=90,
+                channel_id=channel,
+            ),
+            received_at=NOW - timedelta(minutes=1),
+            topic=f"msh/region/2/e/{channel}/!aaaaaaaa",
+        )
+    for second, message_channel in enumerate(("Test", "PKI")):
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            NOW + timedelta(seconds=second),
+            sender=A,
+            recipient=B,
+            packet_id=100 + second,
+            route=[R1, R2, R3],
+            snr=[20, 16, 12],
+            channel=message_channel,
+            hop_start=3,
+            hop_limit=2,
+            relay_node=0x99,
+        )
+    # Each hop uses its transmitter's settings, including an unresolved relay.
+    links = get(path, "/api/v1/links", link_kind="traceroute")["items"]
+    by_pair = {(r["node_a"], r["node_b"]): r for r in links}
+    assert by_pair[min(A, R1), max(A, R1)]["channel"] == "LongFast"
+    link = by_pair[R1, R2]
+    assert (link["channel"], link["a_to_b"]["observations"], link["a_to_b"]["average_snr"]) == (
+        "SFNarrow",
+        2,
+        4.0,
+    )
+    assert by_pair[R2, R3]["channel"] == "Unknown"
+    assert by_pair[R2, R3]["spreading_factor"] is None
+    hops = get(path, "/api/v1/traceroutes/hops", node_a=R1, node_b=R2, channel="SFNarrow")
+    assert len(hops["a_to_b"]) == 2
+    assert hops["a_to_b_cost"]["free"] == 2
+    assert (
+        get(path, "/api/v1/traceroutes/hops", node_a=R1, node_b=R2, channel="Test")["a_to_b"] == []
+    )
+    hours = get(path, "/api/v1/links/hours", node_a=R1, node_b=R2, channel="SFNarrow")
+    assert sum(h["observations"] for h in hours["a_to_b"]) == 2
+    assert {r["channel"] for r in get(path, "/api/v1/traceroutes")["items"]} == {"Test", "PKI"}
+    for item in hops["a_to_b"]:
+        assert get(path, f"/api/v1/packets/{item['packet_row_id']}")["packet"]["channel"] in {
+            "Test",
+            "PKI",
+        }
+    with closing(open_current_database(path)) as connection:
+        costs = hop_costs(connection, {(R1, R2, c) for c in ("Test", "PKI", "SFNarrow")}, 0)
+        assert costs[R1, R2, "Test"].free == costs[R1, R2, "PKI"].free == 1
+        assert costs[R1, R2, "SFNarrow"].verdict == "unknown"
+        before = [
+            tuple(r) for r in connection.execute("SELECT * FROM link_hour ORDER BY 1,2,3,4,11")
+        ]
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False, batch_size=1)
+        assert [
+            tuple(r) for r in connection.execute("SELECT * FROM link_hour ORDER BY 1,2,3,4,11")
+        ] == before
+    assert get(path, "/api/v1/traceroutes/hops", node_a=R1, node_b=R2, channel="SFNarrow") == hops
+
+
+def test_link_drilldown_keeps_a_replys_hop_on_a_different_radio_channel(path: Path) -> None:
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1],
+        snr=[20],
+        channel="LongFast",
+    )
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(seconds=5),
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[R1],
+        snr=[20, 16],
+        channel="SFNarrow",
+    )
+    for channel in ("LongFast", "SFNarrow"):
+        hops = get(path, "/api/v1/traceroutes/hops", node_a=A, node_b=R1, channel=channel)
+        assert len(hops["a_to_b"]) == 1
+        assert hops["a_to_b"][0]["is_reply"] == (channel == "SFNarrow")
+
+
+@pytest.mark.parametrize(
+    ("channel", "hop_channels", "sender_channel", "packet_sf", "run_sf"),
+    [
+        ("Custom", ("NarrowFast", "Unknown"), None, 7, 7),
+        ("Custom", ("Unknown", "Unknown"), "MediumSlow", 10, 10),
+        ("Custom", ("Unknown", "Unknown"), None, None, None),
+        ("longslow", ("NarrowFast", "Unknown"), None, 12, 7),
+        ("Custom", ("NarrowFast", "MediumFast"), "LongFast", None, None),
+    ],
+)
+def test_packet_and_run_sf_use_radio_channel_evidence(
+    path: Path,
+    channel: str,
+    hop_channels: tuple[str, str],
+    sender_channel: str | None,
+    packet_sf: int | None,
+    run_sf: int | None,
+) -> None:
+    if sender_channel is not None:
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            NOW - timedelta(minutes=1),
+            sender=A,
+            recipient=B,
+            packet_id=1,
+            route=[],
+            snr=[],
+            channel=sender_channel,
+        )
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1, R2],
+        snr=[20, 8],
+        channel=channel,
+    )
+    with closing(open_current_database(path)) as connection, connection:
+        packet_id = connection.execute("SELECT max(id) FROM packet").fetchone()[0]
+        for node, radio_channel in zip((A, R1), hop_channels, strict=True):
+            connection.execute(
+                "UPDATE traceroute_hop SET radio_channel = ? "
+                "WHERE packet_row_id = ? AND from_node_id = ?",
+                (radio_channel, packet_id, node),
+            )
+    # Later sender evidence must not fill an earlier packet's missing channel.
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(minutes=1),
+        sender=A,
+        recipient=B,
+        packet_id=9,
+        route=[],
+        snr=[],
+        channel="ShortFast",
+    )
+    detail = get(path, f"/api/v1/packets/{packet_id}")
+    [run] = get(path, "/api/v1/traceroutes", packet=packet_id)["items"]
+    assert detail["packet"]["channel"] == run["channel"] == channel
+    assert detail["spreading_factor"] == packet_sf
+    assert run["spreading_factor"] == run_sf
+    assert sorted(hop["snr_db"] for hop in detail["hops"]) == [2.0, 5.0]
+
+
+def test_run_radio_channel_uses_hops_from_both_request_and_reply(path: Path) -> None:
+    request_and_reply(path)
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute("UPDATE packet SET channel = 'Custom'")
+        connection.execute("DELETE FROM node_channel")
+        connection.execute(
+            "UPDATE traceroute_hop SET radio_channel = CASE "
+            "WHEN packet_row_id = (SELECT min(id) FROM packet) THEN 'Unknown' "
+            "ELSE 'NarrowFast' END"
+        )
+    [run] = get(path, "/api/v1/traceroutes")["items"]
+    assert run["spreading_factor"] == 7
+    assert get(path, f"/api/v1/packets/{run['request_packet_row_id']}")["spreading_factor"] is None
+    assert get(path, f"/api/v1/packets/{run['reply_packet_row_id']}")["spreading_factor"] == 7
+
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute(
+            "UPDATE traceroute_hop SET radio_channel = 'MediumFast' "
+            "WHERE packet_row_id = (SELECT min(id) FROM packet)"
+        )
+    [run] = get(path, "/api/v1/traceroutes")["items"]
+    assert run["spreading_factor"] is None

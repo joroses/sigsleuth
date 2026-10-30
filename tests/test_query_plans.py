@@ -58,6 +58,7 @@ BIG_TABLES = {
     "link_hour",
     "hop_cost_hour",
     "node_activity_hour",
+    "node_channel",
     "traceroute_hop",
     "traceroute_packet",
     "coverage_measurement",
@@ -133,6 +134,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
             portnums_pb2.PortNum.POSITION_APP,
             position.SerializeToString(),
             sender=RELAY + 0x100,
+            channel_id="Custom",
             bitfield=1,
             gateway_id=GATEWAYS[0],
         )
@@ -140,7 +142,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
             connection,
             MqttDelivery(
                 to_epoch_ms(now - timedelta(days=3)),
-                f"msh/EU_868/2/e/LongFast/{GATEWAYS[0]}",
+                f"msh/EU_868/2/e/Custom/{GATEWAYS[0]}",
                 envelope,
             ),
         )
@@ -161,7 +163,7 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
             (relayed_text,),
         ).fetchone()
 
-    settings = Settings(path, default_preset="LongFast", upload_password="survey")
+    settings = Settings(path, upload_password="survey")
     client = TestClient(create_app(settings), headers={"Authorization": "Basic cGhvbmU6c3VydmV5"})
     statements.section = "POST /api/v1/coverage/uploads"
     response = client.post("/api/v1/coverage/uploads", json=survey_upload(now))

@@ -28,7 +28,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 
 - One backend, one frontend, direct function and database calls. Split code only when it makes a feature clearer or easier to test. No interfaces, repositories, service classes, empty folders, caches, queues, extra databases or services without a measured need.
 - Shared interpretations (grouping, links, traceroutes) live in the backend; presentation-only maths may stay in the frontend. API and frontend change together, no backward compatibility.
-- To change a derived table or rule, raise `DERIVED_VERSION`. No upgrade code, calculation versions, provenance tables or integrity checks.
+- Rule changes apply to new traffic; keep existing derived rows when usable. Raise `DERIVED_VERSION` only for incompatible derived-table changes or requested historical recalculation. No upgrade code, calculation versions, provenance tables or integrity checks.
 - A failed part degrades its own section, never the whole page or response.
 - Add files, dependencies and processes only when behaviour needs them. Setup and checks stay behind `scripts/setup.sh` and `scripts/verify.sh`.
 

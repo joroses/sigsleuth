@@ -159,7 +159,7 @@ export interface RouteMarkers {
   /** The node IDs that have a marker on the minimap. */
   placed: ReadonlySet<number>;
   /** The packet's spreading factor, which sets each hop's tier. */
-  spreadingFactor: number;
+  spreadingFactor: number | null;
   /** The hops that spent none, as `${from}-${to}` (zeroCostHops). */
   zeroCostHops: ReadonlySet<string>;
 }
@@ -179,7 +179,7 @@ function RouteHop({
 }: {
   path: RoutePath;
   index: number;
-  spreadingFactor: number;
+  spreadingFactor: number | null;
   zeroCost: boolean;
 }) {
   if (index >= path.snr_db.length) {

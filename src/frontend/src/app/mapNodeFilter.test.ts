@@ -7,6 +7,7 @@ import {
   filterCounts,
   linkableNodes,
   NOT_REPORTED,
+  onChosenChannel,
   matchesNodeFilter,
   shownNodes,
 } from "./mapNodeFilter";
@@ -186,5 +187,20 @@ describe("busiestChannel", () => {
       ]),
     ).toBe("LongFast");
     expect(busiestChannel([silent])).toBeNull();
+  });
+});
+
+describe("onChosenChannel", () => {
+  it("keeps only Unknown links for Unknown and every channel for Any", () => {
+    const links = ["Unknown", "LongFast", "MediumFast"].map((channel) => ({
+      channel,
+    }));
+    expect(links.filter((link) => onChosenChannel(link, NOT_REPORTED))).toEqual(
+      [{ channel: "Unknown" }],
+    );
+    expect(links.filter((link) => onChosenChannel(link, ANY))).toEqual(links);
+    expect(links.filter((link) => onChosenChannel(link, "MediumFast"))).toEqual(
+      [{ channel: "MediumFast" }],
+    );
   });
 });

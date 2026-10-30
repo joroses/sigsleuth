@@ -13,7 +13,7 @@ CREATE TABLE derived_state (
 -- reported (node_reported, its newest node_position row), which outlives
 -- the packets; a map report's names stand in until a NodeInfo arrives.
 -- The other parts (channel, telemetry, firmware) only move to newer data.
--- channel is the latest packet's channel among radio channels (radio.py);
+-- channel is the latest recognised channel from an own packet or accepted hop;
 -- PKI and other channels go out on the same radio, so they never change it.
 -- last_seen_at also counts gateway reports and traceroute hops, so it can be
 -- newer than last_sent_at.
@@ -48,6 +48,7 @@ CREATE TABLE node_current (
     firmware_trait TEXT CHECK (firmware_trait IS NULL OR length(firmware_trait) <= 64),
     channel TEXT,
     channel_observed_at INTEGER,
+    channel_packet_row_id INTEGER,
     moved_at INTEGER,
     CHECK ((last_sent_at IS NULL) = (last_sent_packet_row_id IS NULL)),
     CHECK ((channel IS NULL) = (channel_observed_at IS NULL)),
@@ -57,6 +58,17 @@ CREATE TABLE node_current (
         AND altitude_meters IS NULL AND device_time IS NULL)),
     CHECK (position_observed_at IS NULL OR (latitude IS NOT NULL AND longitude IS NOT NULL))
 ) STRICT;
+
+-- Recognised own packets and accepted hop participation, for as-of channel lookups.
+-- A shared number still needs packet_radio attribution to identify its radio.
+CREATE TABLE node_channel (
+    node_id INTEGER NOT NULL,
+    observed_at INTEGER NOT NULL,
+    packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL,
+    PRIMARY KEY (node_id, observed_at DESC, packet_row_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX node_channel_packet ON node_channel (packet_row_id);
 
 -- The node a relayed survey measurement most likely heard, from survey nodes'
 -- direct receptions (coverage.refresh_survey_links); it wins over upload's
@@ -157,9 +169,9 @@ CREATE TABLE long_link (
 ) STRICT, WITHOUT ROWID;
 
 -- One row per hop per traceroute packet: from_node_id transmitted and
--- to_node_id heard it. Later gateways repeating the hop add nothing, so a row
--- is one observation. The route_ columns are the packet's best route with the
--- hop (as in traceroute_packet), for the Traceroute explorer's node search.
+-- to_node_id heard it. is_observation excludes a reply's copy of a captured
+-- request's hop on the same radio channel. The route_ columns hold the packet's
+-- best route with the hop, for the Traceroute explorer's node search.
 -- free is whether the first request copy to pin the hop's cost
 -- (traceroute.pinned_costs) found it free, NULL until one does; it counts the
 -- hop once in hop_cost_hour.
@@ -168,6 +180,8 @@ CREATE TABLE traceroute_hop (
     from_node_id INTEGER NOT NULL CHECK (from_node_id BETWEEN 0 AND 4294967295),
     to_node_id INTEGER NOT NULL CHECK (to_node_id BETWEEN 0 AND 4294967295),
     snr_db REAL,
+    radio_channel TEXT NOT NULL DEFAULT 'Unknown',
+    is_observation INTEGER NOT NULL DEFAULT 1 CHECK (is_observation IN (0, 1)),
     route_reception_id INTEGER NOT NULL,
     route_is_return INTEGER NOT NULL CHECK (route_is_return IN (0, 1)),
     route_hops INTEGER NOT NULL CHECK (route_hops >= 0),
@@ -226,10 +240,10 @@ CREATE TABLE traceroute_run (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX traceroute_run_first ON traceroute_run (first_packet_row_id);
 
--- Hourly link observations per direction, kind and channel: from_node_id
+-- Hourly link observations per direction, kind and radio channel: from_node_id
 -- was heard by to_node_id. Kinds and channels are never added together: a
 -- channel's radio settings decide what an SNR means.
---   'traceroute': a traceroute_hop, once per packet.
+--   'traceroute': an independent traceroute_hop observation.
 --   'direct': derive.is_direct_reception, once per reception.
 --   'neighbor': a NeighborInfo listing (decode.read_neighbors), once per
 --     NeighborInfo packet. A neighbour stays listed for hours, so this counts
@@ -255,7 +269,7 @@ CREATE TABLE link_hour (
 CREATE INDEX link_hour_pair ON link_hour (from_node_id, to_node_id, km);
 
 -- Hourly counts of traceroute request hops whose cost a single copy pins
--- (traceroute.pinned_costs), per direction and channel, once per packet:
+-- (traceroute.pinned_costs), per direction, message and radio channel, once per packet:
 -- free when to_node_id passed on from_node_id's copy without spending a hop
 -- (from firmware 2.7.11, a router role relaying a favourite router), costly
 -- when it spent one. It holds for that channel only: from 2.8 a relay that
@@ -266,9 +280,10 @@ CREATE TABLE hop_cost_hour (
     from_node_id INTEGER NOT NULL CHECK (from_node_id BETWEEN 0 AND 4294967295),
     to_node_id INTEGER NOT NULL CHECK (to_node_id BETWEEN 0 AND 4294967295),
     channel TEXT NOT NULL CHECK (length(CAST(channel AS BLOB)) BETWEEN 1 AND 1024),
+    radio_channel TEXT NOT NULL DEFAULT 'Unknown',
     free INTEGER NOT NULL CHECK (free >= 0),
     costly INTEGER NOT NULL CHECK (costly >= 0),
-    PRIMARY KEY (hour_start, from_node_id, to_node_id, channel)
+    PRIMARY KEY (hour_start, from_node_id, to_node_id, channel, radio_channel)
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX hop_cost_hour_to ON hop_cost_hour (to_node_id, free, costly);
 CREATE INDEX hop_cost_hour_from ON hop_cost_hour (from_node_id, free, costly);

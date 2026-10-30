@@ -47,4 +47,4 @@ def sample(tmp_path_factory: pytest.TempPathFactory) -> Sample:
 def sample_client(sample: Sample, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     """The API on the sample, with the clock stopped a minute after its last delivery."""
     monkeypatch.setattr(db, "fixed_now_ms", sample.now_ms)
-    yield TestClient(create_app(Settings(Path(sample.path), default_preset="LongFast")))
+    yield TestClient(create_app(Settings(Path(sample.path))))

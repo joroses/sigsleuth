@@ -132,7 +132,7 @@ export interface paths {
      *
      *     q matches the short or long name, the hex node ID with or without "!", or
      *     the exact decimal node number. channel matches the node's radio channel
-     *     (its latest packet on a channel naming its radio settings). gateway=true
+     *     (last observed in its own packet or a traceroute hop). gateway=true
      *     keeps nodes that have reported as a gateway.
      *     total counts every matching node; page with offset.
      */
@@ -1556,7 +1556,7 @@ export interface components {
       /** Format: date-time */
       last_seen_at: string;
       channel: string;
-      spreading_factor: number;
+      spreading_factor: number | null;
       a_to_b: components["schemas"]["LinkDirection"];
       b_to_a: components["schemas"]["LinkDirection"];
       /** @enum {string} */
@@ -1733,8 +1733,7 @@ export interface components {
      *     kind; node_a < node_b.
      *
      *     a_to_b is node_a transmitting and node_b hearing it; b_to_a the reverse.
-     *     spreading_factor is the one the channel name suggests, else the configured
-     *     default preset's.
+     *     spreading_factor is unknown until the radio channel is known.
      */
     MapLink: {
       node_a: number;
@@ -1742,7 +1741,7 @@ export interface components {
       /** Format: date-time */
       last_seen_at: string;
       channel: string;
-      spreading_factor: number;
+      spreading_factor: number | null;
       a_to_b: components["schemas"]["LinkDirection"];
       b_to_a: components["schemas"]["LinkDirection"];
     };
@@ -2091,7 +2090,7 @@ export interface components {
      *     name, placed the same way.
      *     traceroute says which node ran the traceroute and which it traced; None
      *     for other packets.
-     *     spreading_factor is the one the channel suggests, as for map links.
+     *     spreading_factor is the radio channel's SF, None when unknown.
      *     reply_route is set on a traceroute request whose reply was saved; None
      *     otherwise. hop_costs are what the hops and reply_route's hops spent
      *     (links.RouteHopCost), learned links.LINK_WINDOW_MS either side of the
@@ -2110,7 +2109,7 @@ export interface components {
       hops: components["schemas"]["TracerouteHop"][];
       route_nodes: components["schemas"]["NodeSummary"][];
       relay_nodes: components["schemas"]["NodeSummary"][];
-      spreading_factor: number;
+      spreading_factor: number | null;
       traceroute: components["schemas"]["TracerouteEnds"] | null;
       reply_route: components["schemas"]["ReplyRoute"] | null;
       hop_costs: components["schemas"]["RouteHopCost"][];
@@ -2882,9 +2881,9 @@ export interface components {
      * TracerouteRun
      * @description A traceroute request and its reply, matched by requester and the
      *     request's packet ID; either may be missing. A window lists a run when it
-     *     holds the run's earliest saved packet, which gives first_received_at,
-     *     channel and spreading_factor. The reception counts are the gateways that
-     *     reported each packet. distance_km
+     *     holds the run's earliest saved packet, which gives first_received_at
+     *     and channel. Its spreading_factor comes from the run's radio channel.
+     *     The reception counts are the gateways that reported each packet. distance_km
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
      *     then; this saved distance also drives the distance sort (links.py).
@@ -2902,7 +2901,7 @@ export interface components {
       /** Format: date-time */
       first_received_at: string;
       channel: string;
-      spreading_factor: number;
+      spreading_factor: number | null;
       request_packet_row_id: number | null;
       request_receptions: number | null;
       reply_packet_row_id: number | null;
@@ -3139,7 +3138,7 @@ export interface components {
       solid: boolean;
       /** Format: date-time */
       last_seen_at: string;
-      spreading_factor: number;
+      spreading_factor: number | null;
       a_to_b: components["schemas"]["LinkDirection"];
       b_to_a: components["schemas"]["LinkDirection"];
     };

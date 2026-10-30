@@ -236,7 +236,7 @@ function CardWay({
   from: LinkEnd;
   to: LinkEnd;
   direction: LinkDirection;
-  spreadingFactor: number;
+  spreadingFactor: number | null;
   hopCost: ReactNode;
 }) {
   const snr = direction.average_snr;

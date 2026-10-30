@@ -2,6 +2,7 @@ from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from meshtastic_fixtures import application_envelope, ingest
@@ -262,7 +263,6 @@ def test_node_channel_filter_keeps_links_with_the_observed_spelling(tmp_path: Pa
             link_kind="direct",
             since=None,
             limit=100,
-            default_preset="LongFast",
             channel=channel,
         ).items
         assert [(link.node_a, link.node_b, link.channel) for link in links] == [
@@ -347,3 +347,188 @@ def test_a_links_km_follows_the_latest_observation_of_its_hour(tmp_path: Path) -
     finally:
         connection.close()
     assert km == 55.6
+
+
+def test_hop_channels_preserve_activity_and_ignore_unobserved_destinations(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 19, 12, tzinfo=UTC)
+    relay, target = 0x22222222, 0x33333333
+
+    def route(channel: str, packet_id: int, minutes: int, *, reply: bool = False) -> bytes:
+        payload = mesh_pb2.RouteDiscovery(
+            route=[relay],
+            snr_towards=[20, 16] if reply else [20],
+            route_back=[0x44444444] if reply else [],
+            snr_back=[12, 8] if reply else [],
+        )
+        envelope = application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            payload.SerializeToString(),
+            sender=target if reply else SENDER,
+            recipient=SENDER if reply else target,
+            request_id=1 if reply else 0,
+            packet_id=packet_id,
+            channel_id=channel,
+        )
+        ingest(
+            path,
+            envelope,
+            received_at=now + timedelta(minutes=minutes),
+            topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+        )
+        return envelope
+
+    def state(node: int) -> tuple[object, ...]:
+        with closing(open_current_database(path)) as connection:
+            row = connection.execute(
+                "SELECT channel, channel_observed_at, last_sent_at, last_seen_at "
+                "FROM node_current WHERE node_id = ?",
+                (node,),
+            ).fetchone()
+            return tuple(row) if row else ()
+
+    ingest(
+        path,
+        application_envelope(portnums_pb2.PortNum.TEXT_MESSAGE_APP, b"hello", recipient=target),
+        received_at=now,
+    )
+    assert state(target) == ()
+    route("longfast", 1, 1)
+    assert state(relay) == (
+        "longfast",
+        to_epoch_ms(now + timedelta(minutes=1)),
+        None,
+        to_epoch_ms(now + timedelta(minutes=1)),
+    )
+    assert state(target) == ()
+    for i, channel in enumerate(("PKI", "Unknown", "chat"), start=2):
+        route(channel, i, i)
+        assert state(relay)[:3] == ("LongFast", to_epoch_ms(now + timedelta(minutes=i)), None)
+        assert state(target) == ()
+    route("MediumFast", 5, 5, reply=True)
+    assert state(relay)[:3] == ("MediumFast", to_epoch_ms(now + timedelta(minutes=5)), None)
+    assert state(0x44444444)[:3] == ("MediumFast", to_epoch_ms(now + timedelta(minutes=5)), None)
+    route("LongSlow", 6, 0)
+    duplicate = route("LongFast", 7, 6)
+    before = state(relay)
+    ingest(path, duplicate, received_at=now + timedelta(minutes=20))
+    assert state(relay) == before
+    with closing(open_current_database(path)) as connection:
+        assert (
+            connection.execute(
+                "SELECT count(*) FROM packet WHERE sender_node_id = ?", (relay,)
+            ).fetchone()[0]
+            == 0
+        )
+    for minutes, channel in ((7, "MediumSlow"), (8, "PKI"), (9, "Unknown"), (10, "chat")):
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"hi",
+                sender=relay,
+                packet_id=minutes + 10,
+                channel_id=channel,
+            ),
+            received_at=now + timedelta(minutes=minutes),
+            topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+        )
+        assert state(relay)[:2] == ("MediumSlow", to_epoch_ms(now + timedelta(minutes=7)))
+    route("LongFast", 30, 6)
+    before = state(relay)
+    with closing(open_current_database(path)) as connection:
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False, batch_size=2)
+    assert state(relay) == before
+
+
+@pytest.mark.parametrize("batch_size", [1, 100])
+@pytest.mark.parametrize(
+    "first_hop,second_hop,late",
+    [
+        (True, False, False),
+        (False, True, False),
+        (True, True, False),
+        (True, False, True),
+        (True, True, True),
+    ],
+)
+def test_channel_ties_follow_packet_order_even_for_late_routes(
+    tmp_path: Path,
+    batch_size: int,
+    first_hop: bool,
+    second_hop: bool,
+    late: bool,
+) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    now = datetime(2026, 9, 19, 12, tzinfo=UTC)
+    relay = 0x22222222
+
+    def envelope(hop: bool, packet_id: int, channel: str, encrypted: bool = False) -> bytes:
+        return application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP if hop else portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            mesh_pb2.RouteDiscovery(route=[relay], snr_towards=[20]).SerializeToString()
+            if hop
+            else b"hi",
+            sender=SENDER if hop else relay,
+            recipient=0x33333333,
+            packet_id=packet_id,
+            channel_id=channel,
+            encrypted=encrypted,
+            key=bytes(range(16)),
+        )
+
+    for hop, packet_id, channel in ((first_hop, 1, "LongSlow"), (second_hop, 2, "LongFast")):
+        ingest(
+            path,
+            envelope(hop, packet_id, channel, late and packet_id == 1),
+            received_at=now,
+            topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+        )
+    if late:
+        ingest(
+            path,
+            envelope(first_hop, 1, "LongSlow"),
+            received_at=now + timedelta(minutes=1),
+            topic="msh/EU_868/2/e/LongSlow/!aaaaaaaa",
+        )
+
+    def channel_state() -> tuple[object, ...]:
+        with closing(open_current_database(path)) as connection:
+            return tuple(
+                connection.execute(
+                    "SELECT channel, channel_observed_at, last_sent_at FROM node_current "
+                    "WHERE node_id = ?",
+                    (relay,),
+                ).fetchone()
+            )
+
+    captured = channel_state()
+    assert captured[:2] == ("LongSlow", to_epoch_ms(now))
+    with closing(open_current_database(path)) as connection:
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        assert rederive(connection, lambda: False, batch_size=batch_size)
+    assert channel_state() == captured
+
+
+@pytest.mark.parametrize("snr", [[0, 0], [20, 0]])
+def test_rejected_route_steps_supply_no_channel(tmp_path: Path, snr: list[int]) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    relay, beyond = 0x22222222, 0x33333333
+    ingest(
+        path,
+        application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(route=[relay, beyond], snr_towards=snr).SerializeToString(),
+            recipient=0x44444444,
+        ),
+        received_at=datetime(2026, 9, 19, 12, tzinfo=UTC),
+    )
+    with closing(open_current_database(path)) as connection:
+        channels = dict(connection.execute("SELECT node_id, channel FROM node_current"))
+        assert channels.get(relay) == ("LongFast" if snr[0] else None)
+        assert channels.get(beyond) is None
+        assert channels.get(0x44444444) is None

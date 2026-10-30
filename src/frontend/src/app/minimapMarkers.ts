@@ -566,7 +566,7 @@ export function routeNumbers(
 // once, plus a point at its middle for the arrow and the SNR label. A 0 dB
 // step is no measured hop, so it never counts as 0-cost.
 function drawHops(
-  spreadingFactor: number,
+  spreadingFactor: number | null,
   hops: TracerouteHop[],
   positions: ReadonlyMap<number, [number, number]>,
   zeroCost: ReadonlySet<string>,

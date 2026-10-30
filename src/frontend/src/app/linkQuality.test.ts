@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { linkTier } from "./linkQuality";
+import { fadeMargin, linkTier } from "./linkQuality";
 
 describe("linkTier", () => {
+  it("leaves signal quality unknown without radio settings", () => {
+    expect(fadeMargin(-4, null)).toBeNull();
+    expect(linkTier(-4, null)).toBe("unknown");
+  });
   it("judges SNR against the spreading factor's floor", () => {
     // SF7 is good from 2.5 dB and fair from -3.5 dB; SF11 from -7.5 and -13.5 dB.
     expect(linkTier(2.5, 7)).toBe("good");

@@ -63,7 +63,7 @@ from sigsleuth.links import (
 )
 from sigsleuth.opt_out import shown_sql
 from sigsleuth.places import City, cities_in_area, nearest_city
-from sigsleuth.radio import distance_km, fade_margin, great_circle_km
+from sigsleuth.radio import distance_km, fade_margin, great_circle_km, preset_name
 
 # Links longer than this count less toward zones, in proportion to their length.
 ZONE_NEAR_KM = 50
@@ -164,7 +164,7 @@ class ZonePairLink:
     km: float | None
     solid: bool
     last_seen_at: datetime
-    spreading_factor: int
+    spreading_factor: int | None
     a_to_b: LinkDirection
     b_to_a: LinkDirection
 
@@ -343,7 +343,6 @@ def network_zones(
     per_day: float,
     min_margin_db: float,
     link_limit: int,
-    default_preset: str,
 ) -> NetworkZones:
     now = now_ms()
     since_ms = now - window_hours * HOUR_MS
@@ -353,13 +352,12 @@ def network_zones(
         channel = channels[0].channel
     page = (
         MapLinkList((), truncated=False)
-        if channel is None
+        if channel is None or preset_name(channel) is None
         else map_links(
             connection,
             link_kind="traceroute",
             since=since,
             limit=link_limit,
-            default_preset=default_preset,
             channel=channel,
             trusted=True,
             max_km=ZONE_MAX_LINK_KM,
@@ -455,7 +453,11 @@ def _channel_links(connection: sqlite3.Connection, since_ms: int) -> tuple[Chann
         """,
         (since_ms - since_ms % HOUR_MS, UNKNOWN_NODE),
     ).fetchall()
-    return tuple(ChannelLinks(str(row["channel"]), int(row["links"])) for row in rows)
+    return tuple(
+        ChannelLinks(str(row["channel"]), int(row["links"]))
+        for row in rows
+        if preset_name(str(row["channel"])) is not None
+    )
 
 
 def _days(connection: sqlite3.Connection, now: int, window_hours: int) -> float:
@@ -478,7 +480,7 @@ def _heard_links(
         margins = [
             fade_margin(direction.average_snr, item.spreading_factor)
             for direction in directions
-            if direction.average_snr is not None
+            if direction.average_snr is not None and item.spreading_factor is not None
         ]
         observations = item.a_to_b.observations + item.b_to_a.observations
         if observations < 2 or not margins:

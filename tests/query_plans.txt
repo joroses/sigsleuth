@@ -8,6 +8,7 @@ ingest.group_reception
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH packet_radio USING PRIMARY KEY
   SEARCH node_device USING INDEX node_device_packet
+  SEARCH node_channel USING INDEX node_channel_packet
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 ingest.save_application_data
   SEARCH packet USING PRIMARY KEY
@@ -22,8 +23,6 @@ db.rederive_pending
 derive.derive_delivery
   SEARCH reception USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
-derive._update_sender
-  SEARCH node_current USING PRIMARY KEY
 derive.copy_reported
   SEARCH node_reported USING PRIMARY KEY
 derive.copy_reported
@@ -46,6 +45,8 @@ opt_out.refresh_opt_outs
 opt_out.refresh_opt_outs
   SEARCH node_reported USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+link_channels.record_channel
+  SEARCH node_current USING PRIMARY KEY
 ingest.group_reception
   SEARCH packet USING PRIMARY KEY
 reported.save_packet
@@ -61,6 +62,9 @@ derive._count_link
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+derive._sync_hop_observations
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH packet USING PRIMARY KEY
 derive._save_traceroute
   SEARCH traceroute_packet USING PRIMARY KEY
 derive._save_run
@@ -72,6 +76,11 @@ derive._save_run
   SEARCH traceroute_packet USING PRIMARY KEY
   SEARCH packet USING PRIMARY KEY
 derive._save_hops
+  SEARCH traceroute_hop USING PRIMARY KEY
+derive._save_hops
+  SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_hop USING INDEX traceroute_hop_to
+  SEARCH packet USING INDEX packet_identity_time
   SEARCH traceroute_hop USING PRIMARY KEY
 derive._count_hop_costs
   SEARCH traceroute_hop USING PRIMARY KEY
@@ -235,6 +244,11 @@ db.nodes_by_id
   SEARCH node_estimate USING PRIMARY KEY
 packets.packet_detail
   SEARCH traceroute_hop USING PRIMARY KEY
+link_channels.link_channel
+  SEARCH node_shared USING PRIMARY KEY
+link_channels.link_channel
+  SEARCH node_channel USING PRIMARY KEY
+  SEARCH packet_radio USING PRIMARY KEY
 
 ## GET /api/v1/packets/11
 
@@ -1041,6 +1055,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1131,6 +1147,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1215,6 +1233,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1250,6 +1270,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1291,6 +1313,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1335,6 +1359,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1423,6 +1449,8 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+traceroute_explorer.traceroute_runs
+  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1455,10 +1483,28 @@ db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
 traceroute_explorer.hop_observations.<locals>.direction
   SEARCH traceroute_hop USING INDEX traceroute_hop_from
-  SEARCH traceroute_packet USING PRIMARY KEY
-  SEARCH packet USING INDEX packet_identity_time
-  SEARCH traceroute_hop USING INDEX traceroute_hop_to
   SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.hop_costs
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
+links.hop_costs
+  SEARCH node_current USING PRIMARY KEY
+
+## GET /api/v1/traceroutes/hops?node_a=168430090&node_b=185273099&since=<time>&channel=Unknown
+
+opt_out.opted_out
+  SCAN node_opt_out
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+traceroute_explorer.hop_observations.<locals>.direction
+  SEARCH traceroute_hop USING INDEX traceroute_hop_from
+  SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_packet USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -1479,6 +1525,16 @@ reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/links/hours?node_a=168430090&node_b=185273099&channel=LongFast&since=<time>
+
+opt_out.is_opted_out
+  SEARCH node_opt_out USING PRIMARY KEY
+links.link_hours.<locals>.heard
+  SEARCH link_hour USING INDEX link_hour_pair
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+
+## GET /api/v1/links/hours?node_a=168430090&node_b=185273099&channel=Unknown&since=<time>
 
 opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
@@ -2276,6 +2332,7 @@ retention._delete_oldest_packets
   SEARCH traceroute_hop USING PRIMARY KEY
   SEARCH packet_radio USING PRIMARY KEY
   SEARCH node_device USING INDEX node_device_packet
+  SEARCH node_channel USING INDEX node_channel_packet
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
@@ -2294,6 +2351,12 @@ retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
 shared_numbers.refresh_shared_numbers
   SCAN node_device
+shared_numbers.shared_nodes
+  SCAN node_shared
+shared_numbers.refresh_shared_numbers
+  SCAN packet_radio USING INDEX packet_radio_radio
+shared_numbers.refresh_shared_numbers
+  SEARCH packet USING PRIMARY KEY
 shared_numbers.refresh_shared_numbers
   SCAN packet_radio
 positions.estimate_since_ms.<locals>.<genexpr>

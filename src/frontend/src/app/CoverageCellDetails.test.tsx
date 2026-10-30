@@ -59,7 +59,8 @@ const cell: CoverageCellDetail = {
 };
 
 describe("Coverage here", () => {
-  it("links each unknown relay hint to its node page", () => {
+  it("chooses each unknown relay hint", () => {
+    const choose = vi.fn();
     const candidates = [
       { node_id: 0x0200001a, long_name: "Relay A", short_name: "A", km: 12 },
       { node_id: 0x0300001a, long_name: "Relay B", short_name: "B", km: 20 },
@@ -76,16 +77,15 @@ describe("Coverage here", () => {
           loading: false,
         }}
         isDrawn={() => true}
-        onChooseNode={vi.fn()}
+        onChooseNode={choose}
       />,
     );
 
-    expect(
-      screen.getByRole("link", { name: "Relay A" }).getAttribute("href"),
-    ).toBe(`#nodes/${0x0200001a}`);
-    expect(
-      screen.getByRole("link", { name: "Relay B" }).getAttribute("href"),
-    ).toBe(`#nodes/${0x0300001a}`);
+    fireEvent.click(screen.getByRole("button", { name: "Relay A" }));
+    expect(choose).toHaveBeenCalledWith(0x0200001a);
+    choose.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Relay B" }));
+    expect(choose).toHaveBeenCalledWith(0x0300001a);
   });
 
   it("chooses a heard node drawn on the map and links to one that isn't", () => {

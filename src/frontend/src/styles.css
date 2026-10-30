@@ -805,6 +805,11 @@ thead th {
   font-size: var(--text-xs);
 }
 
+.coverage-how .coverage-first-hint {
+  color: var(--accent-strong);
+  font-weight: 600;
+}
+
 .selected-coverage .sidebar-note {
   margin-bottom: var(--space-1);
 }

@@ -794,7 +794,7 @@ export function TierDot({ color }: { color: string }) {
 
 /**
  * One direction of a link: its average SNR with the map's tier colour for its
- * fade margin, or "—" when it was not heard that way or had no SNR. The
+ * fade margin when known, or "—" without an SNR. The
  * tooltip starts with `label` (who heard whom) when given.
  */
 export function DirectionSnr({
@@ -803,13 +803,13 @@ export function DirectionSnr({
   label,
 }: {
   direction: LinkDirection;
-  spreadingFactor: number;
+  spreadingFactor: number | null;
   label?: string;
 }) {
   const prefix = label === undefined ? "" : `${label}: `;
   const snr = direction.average_snr;
   const margin = fadeMargin(snr, spreadingFactor);
-  if (snr === null || margin === null) {
+  if (snr === null) {
     return (
       <span
         className="muted"
@@ -820,7 +820,11 @@ export function DirectionSnr({
     );
   }
   return (
-    <span title={`${prefix}${margin.toFixed(1)} dB margin`}>
+    <span
+      title={
+        margin === null ? undefined : `${prefix}${margin.toFixed(1)} dB margin`
+      }
+    >
       <TierDot color={linkTierColor(linkTier(snr, spreadingFactor))} />
       {snr.toFixed(1)}
     </span>
@@ -828,10 +832,9 @@ export function DirectionSnr({
 }
 
 /**
- * One hop's SNR after a dot in its tier colour at spreadingFactor, which is
- * left out without one. Exactly 0 dB says on hover that it may be an MQTT
- * hop: often a node that got the packet from MQTT, not over the air, so the
- * backend leaves it out of km and links (MQTT_HOP_SNR_DB). digits fixes the
+ * One hop's SNR after a tier dot, omitted when spreadingFactor is not supplied.
+ * A 0 dB hop may have come through MQTT, so the backend leaves it out of km
+ * and links (MQTT_HOP_SNR_DB). digits fixes the
  * decimals; without it the SNR shows as reported.
  */
 export function HopSnr({
@@ -843,7 +846,7 @@ export function HopSnr({
 }: {
   className?: string;
   snr: number | null;
-  spreadingFactor?: number;
+  spreadingFactor?: number | null;
   digits?: number;
   after?: string | null;
 }) {
@@ -860,8 +863,8 @@ export function HopSnr({
             : `${margin.toFixed(1)} dB margin`
       }
     >
-      {margin === null ? null : (
-        <TierDot color={linkTierColor(marginTier(margin))} />
+      {spreadingFactor === undefined || snr === null ? null : (
+        <TierDot color={linkTierColor(linkTier(snr, spreadingFactor))} />
       )}
       {snr === null
         ? "? dB"

@@ -269,7 +269,7 @@ def test_no_page_names_a_node_that_opted_out(
     hidden_sample: tuple[Path, Subjects, set[int]],
 ) -> None:
     path, subjects, hidden = hidden_sample
-    client = TestClient(create_app(Settings(path, default_preset="LongFast")))
+    client = TestClient(create_app(Settings(path)))
     with closing(open_current_database(path)) as connection:
         extra = [f"/api/v1/packets/{packet}" for packet in masked_packets(connection, hidden)]
         nodes = connection.execute("SELECT count(*) FROM node_current").fetchone()[0]
@@ -348,7 +348,7 @@ def test_an_opted_out_node_reads_as_one_never_heard(
     hidden_sample: tuple[Path, Subjects, set[int]],
 ) -> None:
     path, subjects, hidden = hidden_sample
-    client = TestClient(create_app(Settings(path, default_preset="LongFast")))
+    client = TestClient(create_app(Settings(path)))
     with closing(open_current_database(path)) as connection:
         # The hidden node in the most traceroute hops, and one of its packets.
         node, packet = connection.execute(

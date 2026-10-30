@@ -7,12 +7,7 @@ import type {
   CoverageMeasurementRow,
 } from "./api";
 import { heardHowText, isCertain, marginColor } from "./coverageLayer";
-import {
-  formatNodeId,
-  nodeHref,
-  nodeLabel,
-  relayByteText,
-} from "./nodeDisplay";
+import { formatNodeId, nodeLabel, relayByteText } from "./nodeDisplay";
 import { DataItem, LegendLine, ShortTime } from "./ui";
 import type { ApiState } from "./useApi";
 
@@ -127,12 +122,17 @@ export function CoverageCellDetails({
                       {relay.candidates.map((node, index) => (
                         <Fragment key={node.node_id}>
                           {index === 0 ? null : ", "}
-                          <a
-                            className="text-button"
-                            href={nodeHref(node.node_id)}
+                          <button
+                            type="button"
+                            className={
+                              index === 0
+                                ? "text-button coverage-first-hint"
+                                : "text-button"
+                            }
+                            onClick={() => onChooseNode(node.node_id)}
                           >
                             {nodeLabel(node)}
-                          </a>{" "}
+                          </button>{" "}
                           ({node.km} km)
                         </Fragment>
                       ))}

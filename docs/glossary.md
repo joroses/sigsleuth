@@ -40,7 +40,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Shared distance | A distance with an end that is a shared node number (`shared` in `links.link_doubts`): its radios are in several places, so link pages badge it and rank it apart. |
 | Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Ranked distances use only this. Link pages draw nodes at the newest report before the hearing, else the first afterwards, else their estimate; packet and line-of-sight distances follow those drawn positions. The map draws nodes where they are now. |
 | Channel | The channel name a packet was uploaded under. `PKI` means private messages, not a channel. |
-| Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the radio channel of its latest packet on one. |
+| Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the latest observed through its own packet or an accepted traceroute hop. |
 | Packet channel | The number on one packet: a channel hash when encrypted, a gateway-local index when decoded. |
 | Firmware estimate | The oldest firmware a node's packets prove (`firmware.py`), shown when it sends no map report. A minimum, not the version. |
 
@@ -51,7 +51,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | RSSI / SNR | Signal strength / signal-to-noise ratio as the receiver measured it. Not delivery success. |
 | Hop start / hop limit | Header counters; their difference is hops travelled. Equal values alone do not prove direct reception. |
 | Relay byte | The last byte of the relaying node's number. Usually matches many nodes; pages name the likeliest by the [relay evidence](relay-evidence.md) score, marked "≈" unless the gateway heard it directly. |
-| Spreading factor | LoRa setting fixed by the modem preset, guessed from the channel name. |
+| Spreading factor | LoRa setting from the radio channel; unknown when the channel is unknown. |
 | Fade margin | How far an SNR is above the weakest decodable at its spreading factor. Links are rated by it. |
 | ChUtil / AirUtil | A node's reported channel busy share / own transmit share. |
 
@@ -63,10 +63,10 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Route | One direction of a traceroute as one gateway reported it ("route to target", "route back"). |
 | Traceroute run | A request and its reply, matched by requester and request packet ID. A window lists the runs whose first packet it holds, with all their packets. |
 | Reached | A route known to have reached its end (`traceroute.reached_end`); others are "not confirmed", not failed. |
-| Hop | One step of a route: X transmitted, Y heard it. |
+| Hop | One step of a route: X transmitted, Y heard it. A request and its reply reporting that transmission on the same radio channel count once. |
 | Direct reception | A reception where the gateway heard the sender with no relay, by a strict rule (`derive.is_direct_reception`) that misses some. |
 | Neighbour info | A node's list of up to 10 nodes it heard directly in the last few hours. |
-| Link | A node pair with radio evidence in the window, per kind (traceroute, direct, neighbour) and per channel, never added together. |
+| Link | A node pair with radio evidence in the window, per kind (traceroute, direct, neighbour) and per radio channel, never added together. A traceroute's consistent known radio channel applies when a hop is first counted; later reports leave earlier counts unchanged. Otherwise a packet on another channel uses the transmitter's preceding radio channel, else `Unknown`, which has no signal quality. |
 | Text reach | The share of a sender's broadcast texts on one channel each gateway reported: the channel where one of its texts reached the most gateways. Approximate. A gateway with 20% or less from only 1 or 2 texts shows that count in grey. |
 | Line of sight | Whether terrain leaves the path between two antennas open (60% of the Fresnel zone clear). Rough: no buildings. |
 

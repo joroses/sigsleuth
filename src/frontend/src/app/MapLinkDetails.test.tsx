@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MapNode } from "./api";
 import { LinkQualityLegend, MapLinkDetails } from "./MapLinkDetails";
+import { DirectionSnr } from "./ui";
 
 afterEach(() => {
   cleanup();
@@ -56,6 +57,11 @@ const link = {
 };
 
 describe("A selected traceroute link", () => {
+  it("keeps measured SNR when the radio channel is unknown", () => {
+    render(<DirectionSnr direction={link.a_to_b} spreadingFactor={null} />);
+    expect(screen.getByText("4.0")).toBeDefined();
+    expect(screen.queryByTitle(/margin/)).toBeNull();
+  });
   it("lists each direction's hop cost and packets under it, linking to the hop", async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(

@@ -13,7 +13,9 @@ number (links.trusted_sql, positions.direct_partners,
 packets.nodes_when_heard), since its packets come from several places.
 
 refresh_shared_numbers refills node_shared and packet_radio wholesale, so
-packets that arrive between refreshes stay unsorted until the next one.
+packets that arrive between refreshes stay unsorted until the next one. Then it
+recounts the links of numbers whose sorting changed, as a link's radio channel
+can come from its radio's earlier packets (link_channels.py).
 
 The same radio under other numbers, with report spans that do not overlap,
 are its earlier and later numbers (a new key gives a radio its own number).
@@ -34,7 +36,8 @@ from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import from_epoch_ms, to_epoch_ms, transaction
 from sigsleuth.decode import interpret_payload, read_neighbors
-from sigsleuth.derive import HOUR_MS, device_identity, direct_reception_sql
+from sigsleuth.derive import HOUR_MS, device_identity, direct_reception_sql, refresh_radio_links
+from sigsleuth.link_channels import Channels, link_channel
 from sigsleuth.opt_out import SHOWN_PACKET, shown_sql
 
 NODE_INFO = portnums_pb2.PortNum.NODEINFO_APP
@@ -96,10 +99,42 @@ def refresh_shared_numbers(connection: sqlite3.Connection) -> int:
         shared.append((node, other.at, run_from.row_id, run_to.row_id, other.row_id))
         radios.extend((row_id, node, mac, why) for row_id, (mac, why) in sorted_.items())
     with transaction(connection):
+        old_shared = shared_nodes(connection)
+        old_radios = {
+            int(row[0]): bytes(row[1])
+            for row in connection.execute("SELECT packet_row_id, mac_address FROM packet_radio")
+        }
+        new_radios = {row_id: mac for row_id, _, mac, _ in radios}
+        changed = old_shared ^ {row[0] for row in shared}
+        changed_packets = {
+            row_id
+            for row_id in old_radios.keys() | new_radios.keys()
+            if old_radios.get(row_id) != new_radios.get(row_id)
+        }
+        for (node,) in connection.execute(
+            """
+            SELECT DISTINCT sender_node_id FROM packet
+            WHERE id IN (SELECT value FROM json_each(?))
+            """,
+            (json.dumps(sorted(changed_packets)),),
+        ):
+            changed.add(int(node))
         connection.execute("DELETE FROM node_shared")
         connection.execute("DELETE FROM packet_radio")
         connection.executemany("INSERT INTO node_shared VALUES (?, ?, ?, ?, ?)", shared)
         connection.executemany("INSERT INTO packet_radio VALUES (?, ?, ?, ?)", radios)
+        # During rebuild no links exist yet; its batches use the new attribution.
+        if (
+            changed
+            and connection.execute(
+                """
+            SELECT 1 FROM link_hour
+            WHERE from_node_id IN (SELECT value FROM json_each(?)) LIMIT 1
+            """,
+                (json.dumps(sorted(changed)),),
+            ).fetchone()
+        ):
+            refresh_radio_links(connection, changed)
     return len(shared)
 
 
@@ -475,9 +510,11 @@ def link_radios(
         for radio in radio_profiles(connection, {node_id}).get(node_id, ())
     }
     found: dict[tuple[str, int, str], set[bytes]] = defaultdict(set)
-    for gateway, channel, mac in connection.execute(
+    channels: Channels = {}
+    for row in connection.execute(
         f"""
-        SELECT DISTINCT r.gateway_node_id, t.channel, picked.mac_address
+        SELECT r.gateway_node_id, t.channel, picked.mac_address,
+               t.id AS packet_row_id, t.first_received_at
         FROM (
             SELECT packet_row_id, mac_address FROM packet_radio INDEXED BY packet_radio_radio
             WHERE node_id = :node ORDER BY packet_row_id DESC LIMIT :limit
@@ -488,10 +525,12 @@ def link_radios(
         """,
         {"node": node_id, "limit": MAX_RADIO_PACKETS, "since": since_ms},
     ):
-        found["direct", int(gateway), str(channel)].add(bytes(mac))
-    for mac, channel, payload in connection.execute(
+        channel = link_channel(connection, row, node_id, channels)
+        found["direct", int(row["gateway_node_id"]), channel].add(bytes(row["mac_address"]))
+    for row in connection.execute(
         """
-        SELECT r.mac_address, t.channel, t.application_payload
+        SELECT r.mac_address, t.channel, t.application_payload,
+               t.id AS packet_row_id, t.first_received_at
         FROM packet_radio AS r JOIN packet AS t ON t.id = r.packet_row_id
         WHERE r.node_id = ? AND t.portnum = ? AND t.application_payload IS NOT NULL
           AND t.first_received_at >= ?
@@ -499,8 +538,9 @@ def link_radios(
         """,
         (node_id, NEIGHBOR_INFO, since_ms, MAX_RADIO_PACKETS),
     ):
-        for neighbour in read_neighbors(bytes(payload)):
-            found["neighbor", neighbour.node_id, str(channel)].add(bytes(mac))
+        for neighbour in read_neighbors(bytes(row["application_payload"])):
+            channel = link_channel(connection, row, neighbour.node_id, channels)
+            found["neighbor", neighbour.node_id, channel].add(bytes(row["mac_address"]))
     return {
         link: tuple(sorted(names[mac] for mac in macs if mac in names))
         for link, macs in found.items()

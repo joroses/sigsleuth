@@ -26,6 +26,7 @@ from sigsleuth.db import (
     to_epoch_ms,
 )
 from sigsleuth.derive import HOUR_MS
+from sigsleuth.link_channels import packet_radio_channel
 from sigsleuth.links import (
     LONG_LINK_KM,
     PENDING_KM,
@@ -41,7 +42,7 @@ from sigsleuth.links import (
     unlikely_links,
 )
 from sigsleuth.opt_out import opted_out, opted_out_sql, shown_sql
-from sigsleuth.radio import spreading_factor
+from sigsleuth.relays import channel_spreading_factor
 from sigsleuth.reported import HeardPosition, positions_when_heard
 from sigsleuth.shared_numbers import shared_nodes
 from sigsleuth.traceroute import (
@@ -101,7 +102,7 @@ def hop_observations(
     channel: str | None = None,
 ) -> HopObservations:
     """Up to 10 packets per direction since the start of since's hour, newest
-    first, on channel when given. A reply's forward path copies its request's
+    first, on the resolved radio channel when given. A reply's forward path copies its request's
     hops, so a reply is left out when its request reported the same hop; it
     stays when the request was not captured."""
     hidden = opted_out(connection)
@@ -119,16 +120,9 @@ def hop_observations(
             JOIN packet AS t ON t.id = h.packet_row_id
             JOIN traceroute_packet AS tr ON tr.packet_row_id = h.packet_row_id
             WHERE h.packet_row_id >= :since AND h.from_node_id = :from_node
-              AND h.to_node_id = :to_node AND (:channel IS NULL OR t.channel = :channel)
+              AND h.to_node_id = :to_node AND (:channel IS NULL OR h.radio_channel = :channel)
               AND {shown_sql("tr.requester_node_id")} AND {shown_sql("tr.target_node_id")}
-              AND NOT (tr.is_reply AND EXISTS (
-                SELECT 1
-                FROM packet AS request
-                JOIN traceroute_hop AS copy ON copy.packet_row_id = request.id
-                WHERE request.sender_node_id = tr.requester_node_id
-                  AND request.packet_id = tr.request_packet_id
-                  AND copy.from_node_id = h.from_node_id AND copy.to_node_id = h.to_node_id
-              ))
+              AND h.is_observation
             ORDER BY h.packet_row_id DESC
             LIMIT :limit
             """,
@@ -161,7 +155,7 @@ def hop_observations(
     costs = (
         {}
         if channel is None
-        else hop_costs(connection, {(a, b, channel), (b, a, channel)}, since_ms)
+        else hop_costs(connection, {(a, b, channel), (b, a, channel)}, since_ms, radio=True)
     )
     return HopObservations(
         a_to_b,
@@ -203,9 +197,9 @@ class TracerouteRoute:
 class TracerouteRun:
     """A traceroute request and its reply, matched by requester and the
     request's packet ID; either may be missing. A window lists a run when it
-    holds the run's earliest saved packet, which gives first_received_at,
-    channel and spreading_factor. The reception counts are the gateways that
-    reported each packet. distance_km
+    holds the run's earliest saved packet, which gives first_received_at
+    and channel. Its spreading_factor comes from the run's radio channel.
+    The reception counts are the gateways that reported each packet. distance_km
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
     then; this saved distance also drives the distance sort (links.py).
@@ -221,7 +215,7 @@ class TracerouteRun:
     target_node_id: int
     first_received_at: datetime
     channel: str
-    spreading_factor: int
+    spreading_factor: int | None
     request_packet_row_id: int | None
     request_receptions: int | None
     reply_packet_row_id: int | None
@@ -258,7 +252,6 @@ def traceroute_runs(
     successful: bool,
     limit: int,
     offset: int,
-    default_preset: str,
     packet_row_id: int | None = None,
 ) -> TracerouteRuns:
     """One page of the runs first heard since `since` (by their first packet,
@@ -336,6 +329,15 @@ def traceroute_runs(
         packets_by_run.setdefault(
             (packet["requester_node_id"], packet["request_packet_id"]), []
         ).append(packet)
+    hop_channels: dict[int, list[str]] = {}
+    for hop in connection.execute(
+        """
+        SELECT packet_row_id, radio_channel FROM traceroute_hop
+        WHERE packet_row_id IN (SELECT value FROM json_each(?))
+        """,
+        (json.dumps([p["packet_row_id"] for packets in packets_by_run.values() for p in packets]),),
+    ):
+        hop_channels.setdefault(hop["packet_row_id"], []).append(hop["radio_channel"])
     doubtful = doubtful_nodes(connection)
     shared = shared_nodes(connection)
     unlikely = unlikely_links(connection)
@@ -380,7 +382,18 @@ def traceroute_runs(
                 packets,
                 route,
                 _doubts(packets, doubtful, shared, unlikely),
-                default_preset,
+                channel_spreading_factor(
+                    packet_radio_channel(
+                        connection,
+                        packets[0],
+                        (
+                            channel
+                            for p in packets
+                            for channel in hop_channels.get(p["packet_row_id"], ())
+                        ),
+                        prefer_hops=True,
+                    )
+                ),
                 tuple(
                     heard[node_id, heard_at[route.packet_row_id]]
                     for node_id in sorted(_run_nodes(packets, route))
@@ -749,7 +762,7 @@ def _run(
     packets: list[sqlite3.Row],
     route: TracerouteRoute,
     doubts: tuple[Doubt, ...],
-    default_preset: str,
+    spreading_factor: int | None,
     positions: tuple[HeardPosition, ...],
 ) -> TracerouteRun:
     first = packets[0]
@@ -760,7 +773,7 @@ def _run(
         target_node_id=int(first["target_node_id"]),
         first_received_at=from_epoch_ms(first["first_received_at"]),
         channel=str(first["channel"]),
-        spreading_factor=spreading_factor(str(first["channel"]), default_preset),
+        spreading_factor=spreading_factor,
         request_packet_row_id=None if request is None else int(request["packet_row_id"]),
         request_receptions=None if request is None else int(request["reception_count"]),
         reply_packet_row_id=None if reply is None else int(reply["packet_row_id"]),

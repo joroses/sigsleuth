@@ -148,7 +148,7 @@ _FACTS_UPGRADES = {
     FROM node_current WHERE position_observed_at IS NOT NULL;
     """,
 }
-DERIVED_VERSION = 53
+DERIVED_VERSION = 57
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -454,6 +454,7 @@ def recreate_derived(connection: sqlite3.Connection) -> None:
         (
             *(f"DROP TABLE {name};" for name in stale),
             _DERIVED_FILE.read_text(encoding="utf-8"),
+            "DROP INDEX IF EXISTS packet_radio_channel;",
             f"""
             INSERT INTO derived_state (version, rebuilt) VALUES (
                 {DERIVED_VERSION},

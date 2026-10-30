@@ -1,4 +1,4 @@
-import type { MapNode } from "./api";
+import type { MapLink, MapNode } from "./api";
 import { nodeCategory, type NodeCategory } from "./mapNodeLayers";
 import { formatRole } from "./nodeDisplay";
 
@@ -6,6 +6,16 @@ import { formatRole } from "./nodeDisplay";
 // are upper-case enum names and channel names are never a lone symbol.
 export const ANY = "*";
 export const NOT_REPORTED = "-";
+
+export function onChosenChannel(
+  link: Pick<MapLink, "channel">,
+  channel: string,
+): boolean {
+  return (
+    channel === ANY ||
+    link.channel === (channel === NOT_REPORTED ? "Unknown" : channel)
+  );
+}
 
 /**
  * Filters on a node's marker category, reported role and radio channel, and

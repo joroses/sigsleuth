@@ -118,6 +118,7 @@ import {
   filterCounts,
   linkableNodes,
   NOT_REPORTED,
+  onChosenChannel,
   shownNodes,
 } from "./mapNodeFilter";
 import {
@@ -348,16 +349,6 @@ interface Selection {
   unplaced?: TextSender | CoverageViewNode;
   /** Fit coverage even when it is already in view, allowing a closer zoom. */
   zoomIn?: boolean;
-}
-
-/**
- * Whether a link is on the channel chosen in the map filters. Every link has
- * a channel, so "not reported" keeps them all.
- */
-function onChosenChannel(link: MapLink, channel: string): boolean {
-  return (
-    channel === ANY || channel === NOT_REPORTED || link.channel === channel
-  );
 }
 
 /**
@@ -871,8 +862,7 @@ export function MapView({
   // time window: surveys are rare drives, kept for months.
   const coverageNode = focusNodeId;
   const coverageUnknown = unknownCoverage && coverageNode === null;
-  // Measurements follow their sender's channel; "not reported" keeps them
-  // all, as it does for links.
+  // Measurements follow their sender's channel; Unknown keeps them all.
   const coverageChannel =
     nodeFilter.channel === ANY || nodeFilter.channel === NOT_REPORTED
       ? null

@@ -69,15 +69,6 @@ def distance_km(a: Placed | None, b: Placed | None) -> float | None:
     return round(great_circle_km(a.latitude, a.longitude, b.latitude, b.longitude), 1)
 
 
-def spreading_factor(channel: str, default_preset: str) -> int:
-    """The spreading factor a channel name suggests, else the default preset's.
-
-    Channel names are only hints: a channel named after a place says nothing
-    about the radio settings, so it gets the configured default.
-    """
-    return PRESET_SPREADING_FACTORS[preset_name(channel) or default_preset]
-
-
 def fade_margin(average_snr: float, spreading_factor: int) -> float:
     """How far an average SNR sits above the weakest the radio can still
     decode at this spreading factor, in dB (the map's link colours use the same)."""

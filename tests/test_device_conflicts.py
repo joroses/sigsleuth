@@ -14,6 +14,7 @@ from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, recreate_derived
 from sigsleuth.derive import rederive
 from sigsleuth.retention import apply_retention
+from sigsleuth.shared_numbers import refresh_shared_numbers
 
 START = datetime(2026, 10, 1, tzinfo=UTC)
 NODE = 0x11111111
@@ -53,6 +54,8 @@ def test_conflicts_keep_historical_names_and_latest_evidence_per_profile(path: P
     send(path, 4, macaddr=MAC_A, public_key=KEY, long_name="Renamed radio")
     # An old import arriving later must not replace the profile's latest report.
     send(path, 1, macaddr=MAC_A, public_key=KEY, long_name="Delayed old name")
+    with closing(open_current_database(path)) as connection:
+        refresh_shared_numbers(connection)
     result = page(path)
     assert [item["node_id"] for item in result["items"]] == [NODE]
     reports = result["items"][0]["reports"]

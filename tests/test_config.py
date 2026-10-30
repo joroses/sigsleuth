@@ -100,14 +100,6 @@ def test_invalid_topic_filter_is_rejected_at_startup(topic: str) -> None:
         settings_from_environment(environment, capture=True)
 
 
-def test_default_preset_accepts_any_case_and_rejects_unknown_names() -> None:
-    assert settings_from_environment({}, capture=False).default_preset == "LongFast"
-    settings = settings_from_environment({"SIGSLEUTH_DEFAULT_PRESET": "mediumslow"}, capture=False)
-    assert settings.default_preset == "MediumSlow"
-    with pytest.raises(ConfigurationError, match="SIGSLEUTH_DEFAULT_PRESET"):
-        settings_from_environment({"SIGSLEUTH_DEFAULT_PRESET": "Canarias"}, capture=False)
-
-
 def test_fixed_now_needs_an_offset_and_no_capture() -> None:
     settings = settings_from_environment(
         {"SIGSLEUTH_FIXED_NOW": "2026-10-12T16:46:00Z"}, capture=False

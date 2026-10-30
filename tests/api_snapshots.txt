@@ -498,8 +498,8 @@ route_nodes: 14 items
     long_name: "Node 588f"
     short_name: "588f"
     role: "ROUTER_LATE"
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     estimated: true
   - node_id: 702832197
     long_name: "Node 5e45"
@@ -595,7 +595,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T16:18:40.349000Z"
     altitude_meters: 514
-    traceroute_hops: 431
+    traceroute_hops: 406
     traceroute_neighbours: 27
     packets: 57
     broadcast_texts: 0
@@ -666,7 +666,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T09:41:20.113000Z"
     altitude_meters: 1366
-    traceroute_hops: 257
+    traceroute_hops: 247
     traceroute_neighbours: 32
     packets: 53
     broadcast_texts: 0
@@ -688,7 +688,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T13:42:29.507000Z"
     altitude_meters: 1257
-    traceroute_hops: 226
+    traceroute_hops: 212
     traceroute_neighbours: 30
     packets: 17
     broadcast_texts: 0
@@ -710,7 +710,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T16:18:40.349000Z"
     altitude_meters: 514
-    traceroute_hops: 431
+    traceroute_hops: 406
     traceroute_neighbours: 27
     packets: 57
     broadcast_texts: 0
@@ -781,7 +781,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: null
     altitude_meters: null
-    traceroute_hops: 225
+    traceroute_hops: 208
     traceroute_neighbours: 10
     packets: 231
     broadcast_texts: 18
@@ -852,7 +852,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: null
     altitude_meters: null
-    traceroute_hops: 225
+    traceroute_hops: 208
     traceroute_neighbours: 10
     packets: 231
     broadcast_texts: 18
@@ -879,7 +879,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T13:42:29.507000Z"
     altitude_meters: 1257
-    traceroute_hops: 226
+    traceroute_hops: 212
     traceroute_neighbours: 30
     packets: 17
     broadcast_texts: 0
@@ -901,7 +901,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T15:29:05.366000Z"
     altitude_meters: 350
-    traceroute_hops: 75
+    traceroute_hops: 69
     traceroute_neighbours: 25
     packets: 49
     broadcast_texts: 0
@@ -923,7 +923,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T07:45:17.940000Z"
     altitude_meters: 443
-    traceroute_hops: 286
+    traceroute_hops: 281
     traceroute_neighbours: 19
     packets: 27
     broadcast_texts: 0
@@ -950,7 +950,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T09:41:20.113000Z"
     altitude_meters: 1366
-    traceroute_hops: 257
+    traceroute_hops: 247
     traceroute_neighbours: 32
     packets: 53
     broadcast_texts: 0
@@ -972,7 +972,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T16:18:40.349000Z"
     altitude_meters: 514
-    traceroute_hops: 431
+    traceroute_hops: 406
     traceroute_neighbours: 27
     packets: 57
     broadcast_texts: 0
@@ -1163,7 +1163,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T15:19:57.965000Z"
     altitude_meters: 1982
-    traceroute_hops: 3
+    traceroute_hops: 2
     traceroute_neighbours: 1
     packets: 7
     broadcast_texts: 0
@@ -1185,7 +1185,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T16:22:57.964000Z"
     altitude_meters: 1539
-    traceroute_hops: 159
+    traceroute_hops: 155
     traceroute_neighbours: 24
     packets: 48
     broadcast_texts: 0
@@ -1207,7 +1207,7 @@ items: 20 items
     last_gateway_at: null
     position_observed_at: "2026-10-11T09:41:20.113000Z"
     altitude_meters: 1366
-    traceroute_hops: 257
+    traceroute_hops: 247
     traceroute_neighbours: 32
     packets: 53
     broadcast_texts: 0
@@ -1300,7 +1300,7 @@ total: 0
 
 channels: 2 items
   - channel: "ShortFast"
-    nodes: 576
+    nodes: 643
   - channel: "MediumFast"
     nodes: 5
 
@@ -1532,7 +1532,7 @@ items: 40 items
         max_km: 1.5
         last_seen_at: "2026-10-11T14:52:44.526000Z"
       - kind: "traceroute"
-        observations: 1049
+        observations: 961
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -1578,9 +1578,9 @@ items: 46 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 440
-      snr_samples: 440
-      average_snr: -3.03
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
@@ -1597,8 +1597,8 @@ items: 46 items
       average_snr: 11
       average_rssi: null
     b_to_a:
-      observations: 1048
-      snr_samples: 1048
+      observations: 960
+      snr_samples: 960
       average_snr: 12.25
       average_rssi: null
     link_kind: "traceroute"
@@ -1611,9 +1611,9 @@ items: 46 items
     channel: "ShortFast"
     spreading_factor: 7
     a_to_b:
-      observations: 609
-      snr_samples: 609
-      average_snr: -3
+      observations: 577
+      snr_samples: 577
+      average_snr: -3.01
       average_rssi: null
     b_to_a:
       observations: 3
@@ -1888,9 +1888,9 @@ items: 932 items
       average_snr: -4.94
       average_rssi: null
     b_to_a:
-      observations: 642
-      snr_samples: 642
-      average_snr: 1.72
+      observations: 594
+      snr_samples: 594
+      average_snr: 1.74
       average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
@@ -1903,9 +1903,9 @@ items: 932 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 440
-      snr_samples: 440
-      average_snr: -3.03
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
       average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
@@ -1918,8 +1918,8 @@ items: 932 items
       average_snr: 11
       average_rssi: null
     b_to_a:
-      observations: 1048
-      snr_samples: 1048
+      observations: 960
+      snr_samples: 960
       average_snr: 12.25
       average_rssi: null
 truncated: false
@@ -1977,9 +1977,9 @@ items: 499 items
       average_snr: -3.62
       average_rssi: null
     b_to_a:
-      observations: 303
-      snr_samples: 303
-      average_snr: 3.16
+      observations: 280
+      snr_samples: 280
+      average_snr: 3.24
       average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
@@ -1992,9 +1992,9 @@ items: 499 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 217
-      snr_samples: 217
-      average_snr: -2.51
+      observations: 204
+      snr_samples: 204
+      average_snr: -2.49
       average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
@@ -2007,9 +2007,9 @@ items: 499 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 425
-      snr_samples: 425
-      average_snr: 12.16
+      observations: 387
+      snr_samples: 387
+      average_snr: 12.15
       average_rssi: null
 truncated: false
 zero_cost_hops: 3 items
@@ -2043,9 +2043,9 @@ items: 501 items
       average_snr: -3.62
       average_rssi: null
     b_to_a:
-      observations: 303
-      snr_samples: 303
-      average_snr: 3.16
+      observations: 280
+      snr_samples: 280
+      average_snr: 3.24
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 39.7
@@ -2062,9 +2062,9 @@ items: 501 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 217
-      snr_samples: 217
-      average_snr: -2.51
+      observations: 204
+      snr_samples: 204
+      average_snr: -2.49
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
@@ -2081,9 +2081,9 @@ items: 501 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 425
-      snr_samples: 425
-      average_snr: 12.16
+      observations: 387
+      snr_samples: 387
+      average_snr: 12.15
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 1.5
@@ -2130,9 +2130,9 @@ items: 946 items
       average_snr: -4.94
       average_rssi: null
     b_to_a:
-      observations: 642
-      snr_samples: 642
-      average_snr: 1.72
+      observations: 594
+      snr_samples: 594
+      average_snr: 1.74
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 39.7
@@ -2149,9 +2149,9 @@ items: 946 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 440
-      snr_samples: 440
-      average_snr: -3.03
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
       average_rssi: null
     link_kind: "traceroute"
     distance_km: 2.4
@@ -2168,8 +2168,8 @@ items: 946 items
       average_snr: 11
       average_rssi: null
     b_to_a:
-      observations: 1048
-      snr_samples: 1048
+      observations: 960
+      snr_samples: 960
       average_snr: 12.25
       average_rssi: null
     link_kind: "traceroute"
@@ -2205,7 +2205,7 @@ zero_cost_hops: []
 
 ## GET /api/v1/map/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
 
-items: 24 items
+items: 23 items
   - node_a: 1770149960
     node_b: 3306575460
     last_seen_at: "2026-10-11T16:23:51.720000Z"
@@ -2217,10 +2217,10 @@ items: 24 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 10
-      snr_samples: 10
-      average_snr: -6.3
-      average_rssi: -100
+      observations: 11
+      snr_samples: 11
+      average_snr: -6.45
+      average_rssi: -100.09
   - node_a: 2224775088
     node_b: 2658512488
     last_seen_at: "2026-10-11T16:11:49.096000Z"
@@ -2256,7 +2256,7 @@ zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=direct&since=2026-10-10T16:25:30.812000Z
 
-items: 24 items
+items: 23 items
   - node_a: 1770149960
     node_b: 3306575460
     last_seen_at: "2026-10-11T16:23:51.720000Z"
@@ -2268,10 +2268,10 @@ items: 24 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 10
-      snr_samples: 10
-      average_snr: -6.3
-      average_rssi: -100
+      observations: 11
+      snr_samples: 11
+      average_snr: -6.45
+      average_rssi: -100.09
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
@@ -2343,7 +2343,7 @@ zero_cost_hops: []
 
 ## GET /api/v1/links?link_kind=direct&since=2026-10-04T16:25:30.812000Z
 
-items: 35 items
+items: 31 items
   - node_a: 1770149960
     node_b: 3306575460
     last_seen_at: "2026-10-11T16:23:51.720000Z"
@@ -2355,10 +2355,10 @@ items: 35 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 16
-      snr_samples: 16
-      average_snr: -6.42
-      average_rssi: -100.19
+      observations: 17
+      snr_samples: 17
+      average_snr: -6.51
+      average_rssi: -100.24
     link_kind: "direct"
     distance_km: 2.6
     doubts: []
@@ -2369,10 +2369,10 @@ items: 35 items
     channel: "ShortFast"
     spreading_factor: 7
     a_to_b:
-      observations: 35
-      snr_samples: 35
-      average_snr: 2.69
-      average_rssi: -106.37
+      observations: 36
+      snr_samples: 36
+      average_snr: 2.41
+      average_rssi: -106.36
     b_to_a:
       observations: 0
       snr_samples: 0
@@ -2667,9 +2667,9 @@ items: 932 items
       average_snr: -4.94
       average_rssi: null
     b_to_a:
-      observations: 642
-      snr_samples: 642
-      average_snr: 1.72
+      observations: 594
+      snr_samples: 594
+      average_snr: 1.74
       average_rssi: null
   - node_a: 1770149960
     node_b: 3655149723
@@ -2682,9 +2682,9 @@ items: 932 items
       average_snr: null
       average_rssi: null
     b_to_a:
-      observations: 440
-      snr_samples: 440
-      average_snr: -3.03
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
       average_rssi: null
   - node_a: 2658555076
     node_b: 3655149723
@@ -2697,8 +2697,8 @@ items: 932 items
       average_snr: 11
       average_rssi: null
     b_to_a:
-      observations: 1048
-      snr_samples: 1048
+      observations: 960
+      snr_samples: 960
       average_snr: 12.25
       average_rssi: null
 truncated: false
@@ -3254,8 +3254,8 @@ nodes: 80 items
     long_name: null
     short_name: null
     role: null
-    latitude: 50.0694
-    longitude: 19.9646
+    latitude: 50.0689
+    longitude: 19.9629
     estimated: true
   - node_id: 80062684
     long_name: "Node a8dc"
@@ -3502,8 +3502,8 @@ nodes: 87 items
     long_name: null
     short_name: null
     role: null
-    latitude: 50.0694
-    longitude: 19.9646
+    latitude: 50.0689
+    longitude: 19.9629
     estimated: true
 matched_node_ids: []
 doubtful_node_ids: []
@@ -3729,8 +3729,8 @@ nodes: 101 items
     long_name: null
     short_name: null
     role: null
-    latitude: 50.0694
-    longitude: 19.9646
+    latitude: 50.0689
+    longitude: 19.9629
     estimated: true
   - node_id: 96879053
     long_name: "Node 41cd"
@@ -3820,8 +3820,8 @@ nodes: 10 items
     long_name: "Node 588f"
     short_name: "588f"
     role: "ROUTER_LATE"
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     estimated: true
   - node_id: 702832197
     long_name: "Node 5e45"
@@ -3921,8 +3921,8 @@ nodes: 10 items
     long_name: "Node 588f"
     short_name: "588f"
     role: "ROUTER_LATE"
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     estimated: true
   - node_id: 702832197
     long_name: "Node 5e45"
@@ -4178,8 +4178,8 @@ nodes: 104 items
     long_name: null
     short_name: null
     role: null
-    latitude: 50.0694
-    longitude: 19.9646
+    latitude: 50.0689
+    longitude: 19.9629
     estimated: true
 matched_node_ids: [3655149723]
 doubtful_node_ids: []
@@ -4246,6 +4246,38 @@ b_to_a_cost:
   role_node_id: 2658555076
   role: "CLIENT"
 
+## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z&channel=Unknown
+
+a_to_b: []
+b_to_a: []
+nodes: 2 items
+  - node_id: 2658555076
+    long_name: "Node 54c4"
+    short_name: "54c4"
+    role: "CLIENT"
+    latitude: 51.7734
+    longitude: 19.5297
+    estimated: false
+  - node_id: 3655149723
+    long_name: "Node 289b"
+    short_name: "289b"
+    role: "ROUTER"
+    latitude: 51.78
+    longitude: 19.5101
+    estimated: false
+a_to_b_cost:
+  free: 0
+  costly: 0
+  verdict: "never_free"
+  role_node_id: 2658555076
+  role: "CLIENT"
+b_to_a_cost:
+  free: 0
+  costly: 0
+  verdict: "never_free"
+  role_node_id: 2658555076
+  role: "CLIENT"
+
 ## GET /api/v1/links/positions?node_a=3655149723&node_b=2658555076&at=2026-10-11T16:25:30.812000Z
 
 items: 2 items
@@ -4269,20 +4301,25 @@ a_to_b: 1 items
     suspect_distance: false
 b_to_a: 63 items
   - hour_start: "2026-10-08T16:00:00Z"
-    observations: 11
-    average_snr: 12.27
+    observations: 8
+    average_snr: 12.12
     average_rssi: null
     suspect_distance: false
   - hour_start: "2026-10-08T17:00:00Z"
-    observations: 12
-    average_snr: 11.96
+    observations: 10
+    average_snr: 11.97
     average_rssi: null
     suspect_distance: false
   - hour_start: "2026-10-08T18:00:00Z"
-    observations: 11
-    average_snr: 12.14
+    observations: 10
+    average_snr: 12.07
     average_rssi: null
     suspect_distance: false
+
+## GET /api/v1/links/hours?node_a=2658555076&node_b=3655149723&channel=Unknown&since=2026-10-04T16:25:30.812000Z
+
+a_to_b: []
+b_to_a: []
 
 ## GET /api/v1/traceroutes/busiest?since=2026-10-10T16:25:30.812000Z
 
@@ -4373,8 +4410,8 @@ nodes: 27 items
     long_name: "Node 057e"
     short_name: "057e"
     role: "CLIENT"
-    latitude: 50.3835
-    longitude: 19.127
+    latitude: 50.3592
+    longitude: 19.155
     estimated: true
   - node_id: 173442116
     long_name: "Node 8444"
@@ -4392,7 +4429,7 @@ channel: "ShortFast"
 per_day: 2
 min_margin_db: 4
 days: 3
-link_count: 521
+link_count: 508
 solid_link_count: 3
 channels: 2 items
   - channel: "ShortFast"
@@ -4402,29 +4439,12 @@ channels: 2 items
 truncated: false
 zones: 8 items
   - zone_id: 1
-    name: "Node 41cd"
-    place: "Częstochowa"
-    region: "Śląskie"
-    hub_node_id: 96879053
-    members: [48914920, 55052681, 96879053, 104072574, 116759056, 164931732, 292857186, 408545373, 409975644, 507476722, 511336077, 522999951, … 53 items]
-    internal_links: 100
-    text_gateways: 0
-    text_senders: 0
-    text_count: 0
-    latitude: 50.6003
-    longitude: 19.1103
-    solid_paths: []
-    hull: 5 items
-      - [18.16, 50.4562]
-      - [19.1955, 50.2858]
-      - [19.261, 50.2989]
-  - zone_id: 2
     name: "Node 2c3c"
     place: "Łódź"
     region: "Łódzkie"
     hub_node_id: 1770269756
     members: [313596380, 322100324, 383887127, 415923532, 457653058, 463827708, 697746102, 702832197, 797780884, 797781208, 861938604, 873566524, … 50 items]
-    internal_links: 108
+    internal_links: 105
     text_gateways: 5
     text_senders: 3
     text_count: 4
@@ -4435,13 +4455,30 @@ zones: 8 items
       - [19.3135, 51.8193]
       - [19.3397, 51.6096]
       - [19.3528, 51.5965]
+  - zone_id: 2
+    name: "Node 41cd"
+    place: "Częstochowa"
+    region: "Śląskie"
+    hub_node_id: 96879053
+    members: [48914920, 55052681, 96879053, 164931732, 408545373, 409975644, 511336077, 522999951, 552788459, 715507060, 740093392, 797056184, … 49 items]
+    internal_links: 88
+    text_gateways: 0
+    text_senders: 0
+    text_count: 0
+    latitude: 50.7707
+    longitude: 19.1103
+    solid_paths: []
+    hull: 5 items
+      - [18.16, 50.4562]
+      - [18.6319, 50.2989]
+      - [18.894, 50.2989]
   - zone_id: 3
     name: "Node 4ac9"
     place: "Kraków"
     region: "Małopolskie"
     hub_node_id: 1516587721
-    members: [38226422, 67531564, 80052368, 181005552, 327609422, 473145185, 475108345, 732186524, 741062051, 798200156, 799425484, 834572433, … 49 items]
-    internal_links: 87
+    members: [38226422, 67531564, 80052368, 181005552, 327609422, 473145185, 475108345, 732186524, 741062051, 798200156, 799425484, 834572433, … 48 items]
+    internal_links: 85
     text_gateways: 0
     text_senders: 0
     text_count: 0
@@ -4455,10 +4492,10 @@ zones: 8 items
 zone_pairs: 21 items
   - zone_a: 1
     zone_b: 2
-    observations: 1263
+    observations: 1183
     strongest_margin_db: 11.1
     hub_hops: 2
-    km: 133
+    km: 114.5
     through_nodes_a: 2
     through_nodes_b: 2
     solid_links: 0
@@ -4469,44 +4506,44 @@ zone_pairs: 21 items
     warnings: ["no solid link"]
     sole_relay: null
     links: 4 items
-      - node_a: 2933499666
-        node_b: 702832197
-        observations: 646
+      - node_a: 702832197
+        node_b: 2933499666
+        observations: 598
         weaker_margin_db: 2.6
         km: 39.7
         solid: false
         last_seen_at: "2026-10-11T16:21:06.845000Z"
         spreading_factor: 7
         a_to_b:
-          observations: 642
-          snr_samples: 642
-          average_snr: 1.72
-          average_rssi: null
-        b_to_a:
           observations: 4
           snr_samples: 4
           average_snr: -4.94
           average_rssi: null
-      - node_a: 2933499666
-        node_b: 3655149723
-        observations: 612
+        b_to_a:
+          observations: 594
+          snr_samples: 594
+          average_snr: 1.74
+          average_rssi: null
+      - node_a: 3655149723
+        node_b: 2933499666
+        observations: 580
         weaker_margin_db: 1
         km: 64.4
         solid: false
         last_seen_at: "2026-10-11T16:21:06.845000Z"
         spreading_factor: 7
         a_to_b:
-          observations: 609
-          snr_samples: 609
-          average_snr: -3
-          average_rssi: null
-        b_to_a:
           observations: 3
           snr_samples: 3
           average_snr: -6.5
           average_rssi: null
-      - node_a: 96879053
-        node_b: 3655149723
+        b_to_a:
+          observations: 577
+          snr_samples: 577
+          average_snr: -3.01
+          average_rssi: null
+      - node_a: 3655149723
+        node_b: 96879053
         observations: 3
         weaker_margin_db: 4.2
         km: 135.5
@@ -4514,137 +4551,47 @@ zone_pairs: 21 items
         last_seen_at: "2026-10-11T13:56:10.833000Z"
         spreading_factor: 7
         a_to_b:
+          observations: 0
+          snr_samples: 0
+          average_snr: null
+          average_rssi: null
+        b_to_a:
           observations: 3
           snr_samples: 3
           average_snr: -3.25
           average_rssi: null
-        b_to_a:
-          observations: 0
-          snr_samples: 0
-          average_snr: null
-          average_rssi: null
   - zone_a: 1
     zone_b: 3
-    observations: 53
-    strongest_margin_db: 11.3
-    hub_hops: 2
-    km: 88.1
-    through_nodes_a: 2
-    through_nodes_b: 1
+    observations: 0
+    strongest_margin_db: null
+    hub_hops: 4
+    km: 196.2
+    through_nodes_a: 0
+    through_nodes_b: 0
     solid_links: 0
     way_round_links: null
     way_round_zones: []
     single_link: false
     hanging_zones: []
-    warnings: ["no solid link"]
+    warnings: ["no solid route", "long route"]
     sole_relay: null
-    links: 2 items
-      - node_a: 96879053
-        node_b: 3806451940
-        observations: 42
-        weaker_margin_db: 7.1
-        km: 50.5
-        solid: false
-        last_seen_at: "2026-10-11T15:54:54.823000Z"
-        spreading_factor: 7
-        a_to_b:
-          observations: 2
-          snr_samples: 2
-          average_snr: 1.5
-          average_rssi: null
-        b_to_a:
-          observations: 40
-          snr_samples: 40
-          average_snr: -0.36
-          average_rssi: null
-      - node_a: 740093392
-        node_b: 3806451940
-        observations: 11
-        weaker_margin_db: 11.3
-        km: 25.9
-        solid: false
-        last_seen_at: "2026-10-11T15:14:47.333000Z"
-        spreading_factor: 7
-        a_to_b:
-          observations: 3
-          snr_samples: 3
-          average_snr: 3.83
-          average_rssi: null
-        b_to_a:
-          observations: 8
-          snr_samples: 8
-          average_snr: 6.03
-          average_rssi: null
+    links: []
   - zone_a: 1
     zone_b: 4
-    observations: 842
-    strongest_margin_db: 13
-    hub_hops: 1
-    km: 113.8
-    through_nodes_a: 13
-    through_nodes_b: 7
+    observations: 0
+    strongest_margin_db: null
+    hub_hops: 3
+    km: 168.5
+    through_nodes_a: 0
+    through_nodes_b: 0
     solid_links: 0
     way_round_links: null
     way_round_zones: []
     single_link: false
     hanging_zones: []
-    warnings: ["no solid link"]
+    warnings: ["no solid route"]
     sole_relay: null
-    links: 28 items
-      - node_a: 4110175258
-        node_b: 3596185440
-        observations: 127
-        weaker_margin_db: -2.8
-        km: 131.7
-        solid: false
-        last_seen_at: "2026-10-11T15:55:23.414000Z"
-        spreading_factor: 7
-        a_to_b:
-          observations: 1
-          snr_samples: 1
-          average_snr: -10.25
-          average_rssi: null
-        b_to_a:
-          observations: 126
-          snr_samples: 125
-          average_snr: -5.02
-          average_rssi: null
-      - node_a: 96879053
-        node_b: 2483997066
-        observations: 119
-        weaker_margin_db: 3.5
-        km: 112.5
-        solid: false
-        last_seen_at: "2026-10-11T15:39:04.832000Z"
-        spreading_factor: 7
-        a_to_b:
-          observations: 1
-          snr_samples: 1
-          average_snr: -4
-          average_rssi: null
-        b_to_a:
-          observations: 118
-          snr_samples: 118
-          average_snr: -2.88
-          average_rssi: null
-      - node_a: 3472072206
-        node_b: 2483997066
-        observations: 104
-        weaker_margin_db: 4
-        km: 123
-        solid: false
-        last_seen_at: "2026-10-11T15:55:55.822000Z"
-        spreading_factor: 7
-        a_to_b:
-          observations: 0
-          snr_samples: 0
-          average_snr: null
-          average_rssi: null
-        b_to_a:
-          observations: 104
-          snr_samples: 104
-          average_snr: -3.52
-          average_rssi: null
+    links: []
 rules:
   weak_margin_db: 4
   long_route_hops: 4
@@ -4652,15 +4599,29 @@ rules:
 path_links: []
 text_reach: []
 text_reach_truncated: false
-key_relays: 40 items
+key_relays: 43 items
+  - node_id: 3596185440
+    zone_id: 5
+    impact: 9
+    cuts_off: 9
+    no_solid_backup: 0
+    carries: 93
+    only_solid_link_to: []
+    neighbours: 30
+    last_seen_at: "2026-10-11T16:17:50.252000Z"
+    battery_level: 100
+    battery_observed_at: "2026-10-11T13:54:17.967000Z"
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
   - node_id: 1770269756
-    zone_id: 2
-    impact: 7
-    cuts_off: 7
+    zone_id: 1
+    impact: 8
+    cuts_off: 8
     no_solid_backup: 0
     carries: 41
     only_solid_link_to: []
-    neighbours: 34
+    neighbours: 33
     last_seen_at: "2026-10-11T15:56:32.706000Z"
     battery_level: 101
     battery_observed_at: "2026-10-11T15:27:46.309000Z"
@@ -4668,7 +4629,7 @@ key_relays: 40 items
       minimum: "2.6.8"
       reason: "its NodeInfo says whether it accepts messages"
   - node_id: 1094571126
-    zone_id: 5
+    zone_id: 4
     impact: 6
     cuts_off: 6
     no_solid_backup: 0
@@ -4681,20 +4642,6 @@ key_relays: 40 items
     firmware:
       minimum: "2.5.0"
       reason: "its NodeInfo carries a public key"
-  - node_id: 3596185440
-    zone_id: 4
-    impact: 5
-    cuts_off: 5
-    no_solid_backup: 0
-    carries: 93
-    only_solid_link_to: []
-    neighbours: 30
-    last_seen_at: "2026-10-11T16:17:50.252000Z"
-    battery_level: 100
-    battery_observed_at: "2026-10-11T13:54:17.967000Z"
-    firmware:
-      minimum: "2.5.0"
-      reason: "its NodeInfo carries a public key"
 text_hours: 60 items
   - hour_start: "2026-10-08T15:00:00Z"
     count: 3
@@ -4704,10 +4651,10 @@ text_hours: 60 items
     count: 18
 active_channels: 2 items
   - channel: "ShortFast"
-    nodes: 497
+    nodes: 531
   - channel: "MediumFast"
     nodes: 3
-nodes: 245 items
+nodes: 244 items
   - node_id: 38226422
     long_name: "Node 49f6"
     short_name: "49f6"
@@ -5127,10 +5074,10 @@ items: 25 items
         longest_km: 64.4
         map_hidden_because: null
       - link_kind: "traceroute"
-        a_to_b: 609
+        a_to_b: 577
         b_to_a: 3
         hours: 60
-        average_snr: -3.02
+        average_snr: -3.03
         zero_snr: false
         first_hour_at: "2026-10-08T16:00:00Z"
         last_seen_at: "2026-10-11T16:21:06.845000Z"
@@ -5417,8 +5364,8 @@ route: 8 items
 route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
 route_places: 7 items
   - node_id: 522999951
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     placed_by: "estimated"
   - node_id: 2749076957
     latitude: 50.6003
@@ -5437,7 +5384,7 @@ candidates: 11 items
     latitude: 50.2857
     longitude: 19.012
     estimated: true
-    channel_spreading_factor: null
+    channel_spreading_factor: 7
     preset_spreading_factor: null
     firmware: null
     receiver_km: 168.5
@@ -5449,9 +5396,9 @@ candidates: 11 items
     own_hop_limit: null
     possible: true
     probability: 0
-    score: -16.67
+    score: -15.31
     evidence: false
-    terms: 6 items
+    terms: 7 items
       - term: "log_km"
         value: 5.13
         score: -10.88
@@ -5673,8 +5620,8 @@ route: 8 items
 route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
 route_places: 7 items
   - node_id: 522999951
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     placed_by: "estimated"
   - node_id: 2749076957
     latitude: 50.6003
@@ -5693,7 +5640,7 @@ candidates: 11 items
     latitude: 50.2857
     longitude: 19.012
     estimated: true
-    channel_spreading_factor: null
+    channel_spreading_factor: 7
     preset_spreading_factor: null
     firmware: null
     receiver_km: 168.5
@@ -5705,9 +5652,9 @@ candidates: 11 items
     own_hop_limit: null
     possible: true
     probability: 0
-    score: -16.67
+    score: -15.31
     evidence: false
-    terms: 6 items
+    terms: 7 items
       - term: "log_km"
         value: 5.13
         score: -10.88
@@ -5925,8 +5872,8 @@ route: 8 items
 route_snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
 route_places: 7 items
   - node_id: 522999951
-    latitude: 50.7584
-    longitude: 18.8785
+    latitude: 50.7948
+    longitude: 18.8819
     placed_by: "estimated"
   - node_id: 2749076957
     latitude: 50.6003
@@ -5945,7 +5892,7 @@ candidates: 11 items
     latitude: 50.2857
     longitude: 19.012
     estimated: true
-    channel_spreading_factor: null
+    channel_spreading_factor: 7
     preset_spreading_factor: null
     firmware: null
     receiver_km: 190.6
@@ -5957,9 +5904,9 @@ candidates: 11 items
     own_hop_limit: null
     possible: true
     probability: 0
-    score: -16.66
+    score: -15.3
     evidence: false
-    terms: 6 items
+    terms: 7 items
       - term: "log_km"
         value: 5.26
         score: -11.14

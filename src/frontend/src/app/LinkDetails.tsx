@@ -225,7 +225,7 @@ function HourStrip({
   hours: readonly HeardHour[];
   start: number;
   end: number;
-  spreadingFactor: number;
+  spreadingFactor: number | null;
   showRssi: boolean;
 }) {
   const count = Math.max(1, (end - start) / HOUR_MS + 1);

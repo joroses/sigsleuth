@@ -246,6 +246,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     # A busy relay over all history ranks every run it is on.
     yield f"/api/v1/traceroutes?sort=route&limit=50&offset=0&node=!{node:08x}", 500
     yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}&channel={channel}"
+    yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}&channel=Unknown"
     # Line of sight from a Links row, where the pair was when last heard.
     at = now.isoformat().replace("+00:00", "Z")
     yield f"/api/v1/links/positions?node_a={node}&node_b={neighbour}&at={at}"
@@ -253,6 +254,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield (
         f"/api/v1/links/hours?node_a={min(node, neighbour)}&node_b={max(node, neighbour)}"
         f"&channel={channel}&since={week}"
+    )
+    yield (
+        f"/api/v1/links/hours?node_a={min(node, neighbour)}&node_b={max(node, neighbour)}"
+        f"&channel=Unknown&since={week}"
     )
     yield f"/api/v1/traceroutes/busiest?since={day}"
     # Counts every hop row of the week; the explorer opens on 24 hours.

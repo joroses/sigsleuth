@@ -13,12 +13,11 @@ They are computed only from saved rows, never from an MQTT delivery:
   (node_opt_out) refilled. Survey measurements keep what upload decided;
   their survey links (coverage_relay) are refilled from them first.
 
-Totals are written twice, by capture's upserts and by _BATCH_SQL's GROUP
-BYs; test_sample_cross_checks holds them equal. Nodes are placed where they
+Totals are written twice, by capture's upserts and rebuild's GROUP BYs;
+test_sample_cross_checks holds them equal. Nodes are placed where they
 were when heard (reported.positions_when_heard) and node_current's reported
-part is a copy of facts (copy_reported), so nothing depends on the order
-rows are derived in. A readable report that comes while rederive runs but
-after it passed its packet or reception adds nothing: the packet keeps its
+part is a copy of facts (copy_reported). A readable report arriving after a
+rebuild passed its packet or reception adds nothing: the packet keeps its
 unreadable count, a gateway's late traceroute route its missing hops.
 Rederive passes the newest rows only in its last seconds, so this is rare.
 
@@ -31,21 +30,28 @@ import sqlite3
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from functools import partial
+from functools import cache, partial
 from typing import Protocol
 
 from google.protobuf.message import DecodeError
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
-from sigsleuth.db import recreate_derived, rederive_pending, transaction
+from sigsleuth.db import first_packet_row_id_since, recreate_derived, rederive_pending, transaction
 from sigsleuth.decode import (
     interpret_payload,
     read_device_telemetry,
     read_neighbors,
 )
 from sigsleuth.firmware import TRAIT_PORTS, TRAITS, newest, payload_trait
+from sigsleuth.link_channels import Channels, link_channel, record_channel
 from sigsleuth.opt_out import refresh_opt_outs
-from sigsleuth.radio import great_circle_km, preset_name, relay_byte_of, relay_byte_sql
+from sigsleuth.radio import (
+    PRESET_SPREADING_FACTORS,
+    great_circle_km,
+    preset_name,
+    relay_byte_of,
+    relay_byte_sql,
+)
 from sigsleuth.reported import km_when_heard_sql, positions_when_heard, save_position
 from sigsleuth.traceroute import (
     Hop,
@@ -86,6 +92,17 @@ _RECEPTION_QUERY = f"""
 """
 
 
+_INDEPENDENT_HOP_SQL = """
+    NOT (t.request_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM packet AS request
+        JOIN traceroute_hop AS copy ON copy.packet_row_id = request.id
+        WHERE request.sender_node_id = t.recipient_node_id AND request.packet_id = t.request_id
+          AND copy.from_node_id = h.from_node_id AND copy.to_node_id = h.to_node_id
+          AND copy.radio_channel = h.radio_channel
+    ))
+"""
+
+
 @dataclass(frozen=True)
 class SavedDelivery:
     """What saving one delivery added to the facts, which decides what to derive.
@@ -118,6 +135,7 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
     row = connection.execute(
         f"{_RECEPTION_QUERY} WHERE r.id = ?", (delivery.reception_id,)
     ).fetchone()
+    channels: Channels = {}
     if delivery.new_packet:
         _count_activity(connection, row)
     elif delivery.port_learned:
@@ -128,11 +146,13 @@ def derive_delivery(connection: sqlite3.Connection, delivery: SavedDelivery) -> 
         copy_reported(connection, int(row["sender_node_id"]))
         if row["portnum"] == portnums_pb2.PortNum.POSITION_APP:
             _mark_moves(connection, int(row["sender_node_id"]))
-        _count_neighbors(connection, row)
+        _count_neighbors(connection, row, channels)
     if delivery.new_reception:
-        _derive_reception(connection, row)
+        _derive_reception(connection, row, channels)
     elif delivery.route_added:
-        _derive_route(connection, row, {})
+        _derive_route(connection, row, {}, channels)
+    if delivery.new_packet and not delivery.application_saved:
+        record_channel(connection, row, {int(row["sender_node_id"])})
     if delivery.ok_to_mqtt_learned:
         refresh_opt_outs(connection, [int(row["sender_node_id"])])
 
@@ -180,6 +200,12 @@ def rederive(
     from sigsleuth.coverage import refresh_survey_links
 
     refresh_survey_links(connection)
+    # Shared-radio attribution must be available before counting links.
+    if not _save_all_devices(connection, stopping, batch_size):
+        return False
+    from sigsleuth.shared_numbers import refresh_shared_numbers
+
+    refresh_shared_numbers(connection)
     packets_after = receptions_after = 0
     while True:
         if stopping():
@@ -230,6 +256,31 @@ def rederive(
             )
 
 
+def _save_all_devices(
+    connection: sqlite3.Connection, stopping: Callable[[], bool], batch_size: int
+) -> bool:
+    """Every saved NodeInfo's device, in transactions as short as a rebuild
+    batch (perf.db: 195k NodeInfo took 2.8 s in one); False when stopped."""
+    after = 0
+    while True:
+        if stopping():
+            return False
+        with transaction(connection):
+            rows = connection.execute(
+                f"""
+                SELECT {_PACKET_COLUMNS} FROM packet AS t
+                WHERE coalesce(t.portnum, -1) = {portnums_pb2.PortNum.NODEINFO_APP}
+                  AND t.application_payload IS NOT NULL AND t.id > ?
+                ORDER BY t.id LIMIT ?
+                """,
+                (after, batch_size),
+            ).fetchall()
+            _derive_rows(connection, [partial(_save_device, connection, row) for row in rows])
+        if len(rows) < batch_size:
+            return True
+        after = int(rows[-1]["packet_row_id"])
+
+
 def _last_id(connection: sqlite3.Connection, table: str) -> int:
     return int(connection.execute(f"SELECT coalesce(max(id), 0) FROM {table}").fetchone()[0])
 
@@ -247,6 +298,36 @@ def direct_reception_sql(reception: str, packet: str) -> str:
 # What capture's per-delivery steps add up to, for the packets and receptions
 # in one rederive batch: :packets_after < packet.id <= :last_packet and
 # :receptions_after < reception.id <= :last_reception.
+_DIRECT_LINK_SQL = f"""
+    INSERT INTO link_hour (link_kind, hour_start, from_node_id, to_node_id, observations,
+        snr_count, snr_sum, rssi_count, rssi_sum, last_seen_at, channel, km)
+    SELECT 'direct', hour_start, from_node_id, to_node_id, observations, snr_count, snr_sum,
+           rssi_count, rssi_sum, last_seen_at, channel,
+           {km_when_heard_sql("from_node_id", "to_node_id", "last_seen_at")}
+    FROM (
+        SELECT t.first_received_at - t.first_received_at % {HOUR_MS} AS hour_start,
+               t.sender_node_id AS from_node_id, r.gateway_node_id AS to_node_id,
+               count(*) AS observations, count(r.rx_snr) AS snr_count,
+               total(r.rx_snr) AS snr_sum, count(r.rx_rssi) AS rssi_count,
+               total(r.rx_rssi) AS rssi_sum, max(t.first_received_at) AS last_seen_at,
+               t.channel AS channel
+        FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
+        WHERE r.id > :receptions_after AND r.id <= :last_reception
+          AND {direct_reception_sql("r", "t")}
+          AND lower(t.channel) IN (SELECT value FROM json_each(:radio_channels))
+        GROUP BY 1, 2, 3, 10
+    ) WHERE true
+    ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
+        observations = observations + excluded.observations,
+        snr_count = snr_count + excluded.snr_count,
+        snr_sum = snr_sum + excluded.snr_sum,
+        rssi_count = rssi_count + excluded.rssi_count,
+        rssi_sum = rssi_sum + excluded.rssi_sum,
+        last_seen_at = max(last_seen_at, excluded.last_seen_at),
+        km = CASE WHEN excluded.last_seen_at >= last_seen_at
+                  THEN coalesce(excluded.km, km) ELSE coalesce(km, excluded.km) END
+    """
+
 _BATCH_SQL = (
     # _count_activity, at the port each packet has now.
     f"""
@@ -261,6 +342,12 @@ _BATCH_SQL = (
         packets = packets + excluded.packets,
         last_sent_at = max(last_sent_at, excluded.last_sent_at)
     """,
+    """
+    INSERT OR IGNORE INTO node_channel (node_id, observed_at, packet_row_id, channel)
+    SELECT sender_node_id, first_received_at, id, channel FROM packet
+    WHERE id > :packets_after AND id <= :last_packet
+      AND lower(channel) IN (SELECT value FROM json_each(:radio_channels))
+    """,
     # _update_sender: seen when it sent, and its latest radio channel.
     """
     INSERT INTO node_current (node_id, last_seen_at)
@@ -270,22 +357,25 @@ _BATCH_SQL = (
     ON CONFLICT (node_id) DO UPDATE SET last_seen_at = max(last_seen_at, excluded.last_seen_at)
     """,
     """
-    UPDATE node_current SET channel = c.channel, channel_observed_at = c.at
+    UPDATE node_current SET channel = c.channel, channel_observed_at = c.at,
+        channel_packet_row_id = c.packet_row_id
     FROM (
-        SELECT sender_node_id, channel, at FROM (
+        SELECT sender_node_id, channel, at, packet_row_id FROM (
             -- Of packets heard at the same time, capture keeps the first.
-            SELECT sender_node_id, channel, first_received_at AS at,
+            SELECT sender_node_id, channel, first_received_at AS at, id AS packet_row_id,
                    row_number() OVER (
                        PARTITION BY sender_node_id ORDER BY first_received_at DESC, id
                    ) AS newest
             FROM packet
             WHERE id > :packets_after AND id <= :last_packet
-              AND channel IN (SELECT value FROM json_each(:radio_channels))
+              AND lower(channel) IN (SELECT value FROM json_each(:radio_channels))
         )
         WHERE newest = 1
     ) AS c
     WHERE node_current.node_id = c.sender_node_id
-      AND (node_current.channel_observed_at IS NULL OR node_current.channel_observed_at < c.at)
+      AND (node_current.channel_observed_at IS NULL OR node_current.channel_observed_at < c.at
+           OR (node_current.channel_observed_at = c.at
+               AND node_current.channel_packet_row_id > c.packet_row_id))
     """,
     # _mark_gateway.
     f"""
@@ -303,35 +393,6 @@ _BATCH_SQL = (
         SELECT gateway_node_id FROM reception
         WHERE id > :receptions_after AND id <= :last_reception
     )
-    """,
-    # _count_link for direct receptions.
-    f"""
-    INSERT INTO link_hour (link_kind, hour_start, from_node_id, to_node_id, observations,
-        snr_count, snr_sum, rssi_count, rssi_sum, last_seen_at, channel, km)
-    SELECT 'direct', hour_start, from_node_id, to_node_id, observations, snr_count, snr_sum,
-           rssi_count, rssi_sum, last_seen_at, channel,
-           {km_when_heard_sql("from_node_id", "to_node_id", "last_seen_at")}
-    FROM (
-        SELECT t.first_received_at - t.first_received_at % {HOUR_MS} AS hour_start,
-               t.sender_node_id AS from_node_id, r.gateway_node_id AS to_node_id,
-               count(*) AS observations, count(r.rx_snr) AS snr_count,
-               total(r.rx_snr) AS snr_sum, count(r.rx_rssi) AS rssi_count,
-               total(r.rx_rssi) AS rssi_sum, max(t.first_received_at) AS last_seen_at,
-               t.channel AS channel
-        FROM reception AS r JOIN packet AS t ON t.id = r.packet_row_id
-        WHERE r.id > :receptions_after AND r.id <= :last_reception
-          AND {direct_reception_sql("r", "t")}
-        GROUP BY 1, 2, 3, t.channel
-    ) WHERE true
-    ON CONFLICT (link_kind, hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
-        observations = observations + excluded.observations,
-        snr_count = snr_count + excluded.snr_count,
-        snr_sum = snr_sum + excluded.snr_sum,
-        rssi_count = rssi_count + excluded.rssi_count,
-        rssi_sum = rssi_sum + excluded.rssi_sum,
-        last_seen_at = max(last_seen_at, excluded.last_seen_at),
-        km = CASE WHEN excluded.last_seen_at >= last_seen_at
-                  THEN coalesce(excluded.km, km) ELSE coalesce(km, excluded.km) END
     """,
     # _derive_reception's firmware hint: only 2.6.0 and newer fill in the
     # relay byte. No other trait has its version, so order does not matter.
@@ -360,10 +421,9 @@ _READ_PORTS = (
 
 
 def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> None:
-    """Derive one rederive batch: its packets' positions into the position
-    history (after the upgrade that made it a fact it held only the latest),
-    totals and marks in SQL (_BATCH_SQL), then in Python, row by row in
-    capture's order, the payloads that need reading and traceroute routes."""
+    """Derive positions, SQL totals and marks, then read payloads. Process
+    traceroutes and custom-channel links in reception order, and count
+    known-channel direct links in SQL last."""
     _derive_rows(
         connection,
         [
@@ -378,17 +438,12 @@ def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> Non
             ).fetchall()
         ],
     )
-    radio_channels = [
-        channel
-        for (channel,) in connection.execute(
-            "SELECT DISTINCT channel FROM packet WHERE id > :packets_after AND id <= :last_packet",
-            ranges,
-        )
-        if preset_name(channel) is not None
-    ]
+    radio_channels = [name.lower() for name in PRESET_SPREADING_FACTORS]
+    channels: Channels = {}
     for statement in _BATCH_SQL:
         connection.execute(statement, {**ranges, "radio_channels": json.dumps(radio_channels)})
     steps: list[Callable[[], None]] = []
+    neighbors: list[Callable[[], None]] = []
     placed: Placed = {}
     for row in connection.execute(
         f"""
@@ -401,18 +456,58 @@ def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> Non
         ranges,
     ).fetchall():
         steps.append(partial(_read_payload, connection, row))
-        steps.append(partial(_count_neighbors, connection, row))
+        if preset_name(str(row["channel"])) is not None:
+            neighbors.append(partial(_count_neighbors, connection, row, channels))
+    # Report order keeps later channel evidence out of earlier counts.
     for row in connection.execute(
         f"""
         {_RECEPTION_QUERY}
         WHERE r.id > :receptions_after AND r.id <= :last_reception
-          AND r.route_payload IS NOT NULL
+          AND (r.route_payload IS NOT NULL OR (
+            lower(t.channel) NOT IN (SELECT value FROM json_each(:radio_channels)) AND (
+              {direct_reception_sql("r", "t")} OR (
+                t.portnum = {portnums_pb2.PortNum.NEIGHBORINFO_APP}
+                AND r.id = (SELECT min(id) FROM reception WHERE packet_row_id = t.id)
+              )
+            )
+          ))
         ORDER BY r.id
         """,
-        ranges,
+        {**ranges, "radio_channels": json.dumps(radio_channels)},
     ).fetchall():
-        steps.append(partial(_derive_route, connection, row, placed))
+        steps.append(partial(_derive_link_report, connection, row, placed))
     _derive_rows(connection, steps)
+    _derive_rows(connection, neighbors)
+    connection.execute(
+        _DIRECT_LINK_SQL,
+        {**ranges, "radio_channels": json.dumps(radio_channels)},
+    )
+
+
+def _derive_link_report(connection: sqlite3.Connection, row: sqlite3.Row, placed: "Placed") -> None:
+    channels: Channels = {}
+    _derive_route(connection, row, placed, channels)
+    if preset_name(str(row["channel"])) is not None:
+        return
+    if (
+        row["portnum"] == portnums_pb2.PortNum.NEIGHBORINFO_APP
+        and row["reception_id"]
+        == connection.execute(
+            "SELECT min(id) FROM reception WHERE packet_row_id = ?", (row["packet_row_id"],)
+        ).fetchone()[0]
+    ):
+        _count_neighbors(connection, row, channels)
+    if is_direct_reception(
+        int(row["sender_node_id"]), int(row["gateway_node_id"]), SavedHeader.of(row)
+    ):
+        _count_link(
+            connection,
+            "direct",
+            row,
+            Hop(int(row["sender_node_id"]), int(row["gateway_node_id"]), row["rx_snr"]),
+            channels,
+            rssi=row["rx_rssi"],
+        )
 
 
 def _derive_rows(connection: sqlite3.Connection, steps: list[Callable[[], None]]) -> None:
@@ -495,18 +590,7 @@ def _update_sender(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     sender_node_id = int(row["sender_node_id"])
     observed_at = int(row["first_received_at"])
     _mark_seen(connection, sender_node_id, observed_at)
-    # Only a radio channel tells the node's radio settings; private messages
-    # (channel PKI) and other channels leave its channel alone. Keep the
-    # observed spelling so channel filters match the packet and its links.
-    radio_channel = str(row["channel"])
-    if preset_name(radio_channel) is not None:
-        connection.execute(
-            """
-            UPDATE node_current SET channel = ?, channel_observed_at = ?
-            WHERE node_id = ? AND (channel_observed_at IS NULL OR channel_observed_at < ?)
-            """,
-            (radio_channel, observed_at, sender_node_id, observed_at),
-        )
+    record_channel(connection, row, {sender_node_id})
     _read_payload(connection, row)
 
 
@@ -733,7 +817,7 @@ def _update_device_telemetry(
         )
 
 
-def _count_neighbors(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+def _count_neighbors(connection: sqlite3.Connection, row: sqlite3.Row, channels: Channels) -> None:
     """A NeighborInfo packet: each neighbour it lists is one observation of a
     'neighbor' link from that neighbour to the sender, which heard it."""
     payload = row["application_payload"]
@@ -742,11 +826,15 @@ def _count_neighbors(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     sender_node_id = int(row["sender_node_id"])
     for neighbor in read_neighbors(bytes(payload)):
         _count_link(
-            connection, "neighbor", row, Hop(neighbor.node_id, sender_node_id, neighbor.snr_db)
+            connection,
+            "neighbor",
+            row,
+            Hop(neighbor.node_id, sender_node_id, neighbor.snr_db),
+            channels,
         )
 
 
-def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row, channels: Channels) -> None:
     """A gateway's report: the gateway was seen, a direct reception is a link,
     and a traceroute report adds hops and may lengthen its longest routes."""
     gateway_node_id = int(row["gateway_node_id"])
@@ -757,6 +845,7 @@ def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     # own byte it is).
     if row["relay_byte"] is not None:
         raise_firmware(connection, gateway_node_id, "relay_byte")
+    _derive_route(connection, row, {}, channels)
     if is_direct_reception(sender_node_id, gateway_node_id, SavedHeader.of(row)):
         raise_firmware(connection, sender_node_id, "relay_byte")
         _count_link(
@@ -764,9 +853,9 @@ def _derive_reception(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
             "direct",
             row,
             Hop(sender_node_id, gateway_node_id, row["rx_snr"]),
+            channels,
             rssi=row["rx_rssi"],
         )
-    _derive_route(connection, row, {})
 
 
 # Where nodes were when heard, by (node, time), within one transaction;
@@ -787,7 +876,9 @@ def _placed_at(
     return {node: position for node, at in pairs if (position := placed[node, at]) is not None}
 
 
-def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row, placed: Placed) -> None:
+def _derive_route(
+    connection: sqlite3.Connection, row: sqlite3.Row, placed: Placed, channels: Channels
+) -> None:
     """A traceroute report adds hops and may lengthen its longest routes."""
     report = read_traceroute_report(
         row["route_payload"],
@@ -801,7 +892,7 @@ def _derive_route(connection: sqlite3.Connection, row: sqlite3.Row, placed: Plac
     heard_at = int(row["first_received_at"])
     positions = _placed_at(connection, {(node, heard_at) for node in report.node_ids}, placed)
     routes = report_routes(report, positions)
-    _save_hops(connection, row, routes)
+    _save_hops(connection, row, routes, channels)
     if not report.is_reply:
         _count_hop_costs(connection, row, report)
     ends = (positions.get(report.requester), positions.get(report.target))
@@ -864,11 +955,54 @@ def is_direct_reception(sender_node_id: int, gateway_node_id: int, header: Radio
     )
 
 
-def _save_hops(connection: sqlite3.Connection, row: sqlite3.Row, routes: list[Route]) -> None:
-    """Save the report's hops that are new for its packet and count them, and
-    give each hop this report's route with it when that route beats the
-    hop's stored one (see traceroute_hop in derived.sql)."""
+def _save_hops(
+    connection: sqlite3.Connection, row: sqlite3.Row, routes: list[Route], channels: Channels
+) -> None:
+    """Infer custom-channel traceroutes' radio channel, save and count new
+    hops, and keep each hop's best reported route."""
     reception_id = int(row["reception_id"])
+    channel_nodes: set[int] = set()
+    resolved: str | None = None
+    if preset_name(str(row["channel"])) is None:
+        saved = connection.execute(
+            "SELECT from_node_id, to_node_id, radio_channel FROM traceroute_hop "
+            "WHERE packet_row_id = ?",
+            (row["packet_row_id"],),
+        ).fetchall()
+        nodes = {
+            node
+            for route in routes
+            for hop in path_hops(route.path)
+            for node in (hop.from_node_id, hop.to_node_id)
+        }
+        nodes.update(node for h in saved for node in (h["from_node_id"], h["to_node_id"]))
+        history: Channels = {}
+        known = {
+            name
+            for node in nodes | {int(row["sender_node_id"])}
+            if (
+                name := preset_name(link_channel(connection, row, node, history, packet_hops=False))
+            )
+            is not None
+        }
+        known.update(name for h in saved if (name := preset_name(h["radio_channel"])) is not None)
+        channels.update(history)
+        if len(known) == 1:
+            resolved = known.pop()
+            allowed = {
+                node
+                for node in nodes | {int(row["sender_node_id"])}
+                if not connection.execute(
+                    "SELECT 1 FROM node_shared WHERE node_id = ?", (node,)
+                ).fetchone()
+                or connection.execute(
+                    "SELECT 1 FROM packet_radio WHERE packet_row_id = ? AND node_id = ?",
+                    (row["packet_row_id"], node),
+                ).fetchone()
+                is not None
+            }
+            for node in allowed:
+                channels[int(row["packet_row_id"]), node] = resolved
     for route in routes:
         for hop in path_hops(route.path):
             values = {
@@ -881,21 +1015,38 @@ def _save_hops(connection: sqlite3.Connection, row: sqlite3.Row, routes: list[Ro
                 "hops": route.hops,
                 "km": route.km,
                 "reached": route.reached,
+                "radio_channel": link_channel(connection, row, hop.from_node_id, channels),
             }
             new_hop = connection.execute(
                 """
                 INSERT OR IGNORE INTO traceroute_hop (
                     packet_row_id, from_node_id, to_node_id, snr_db, route_reception_id,
-                    route_is_return, route_hops, route_km, route_reached
+                    route_is_return, route_hops, route_km, route_reached, radio_channel
                 ) VALUES (:packet, :from_node, :to_node, :snr, :reception, :is_return, :hops, :km,
-                          :reached)
+                          :reached, :radio_channel)
                 """,
                 values,
             ).rowcount
             if new_hop:
-                _count_link(connection, "traceroute", row, hop)
+                if (
+                    row["request_id"] is None
+                    or connection.execute(
+                        f"SELECT {_INDEPENDENT_HOP_SQL} FROM traceroute_hop AS h "
+                        "JOIN packet AS t ON t.id = h.packet_row_id WHERE h.packet_row_id = ? "
+                        "AND h.from_node_id = ? AND h.to_node_id = ?",
+                        (row["packet_row_id"], hop.from_node_id, hop.to_node_id),
+                    ).fetchone()[0]
+                ):
+                    _count_link(connection, "traceroute", row, hop, channels)
+                else:
+                    connection.execute(
+                        "UPDATE traceroute_hop SET is_observation = 0 WHERE packet_row_id = ? "
+                        "AND from_node_id = ? AND to_node_id = ?",
+                        (row["packet_row_id"], hop.from_node_id, hop.to_node_id),
+                    )
                 _mark_seen(connection, hop.from_node_id, int(row["first_received_at"]))
                 _mark_seen(connection, hop.to_node_id, int(row["first_received_at"]))
+                channel_nodes.update((hop.from_node_id, hop.to_node_id))
                 continue
             # An equal route keeps the earlier report.
             connection.execute(
@@ -910,6 +1061,81 @@ def _save_hops(connection: sqlite3.Connection, row: sqlite3.Row, routes: list[Ro
                 """,
                 values,
             )
+
+    record_channel(
+        connection,
+        row,
+        nodes & allowed if resolved is not None else channel_nodes,
+        channel=resolved,
+    )
+    if channel_nodes and row["request_id"] is None:
+        _sync_hop_observations(connection, row)
+
+
+def _sync_hop_observations(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
+    if row["request_id"] is None:
+        replies = connection.execute(
+            f"SELECT {_PACKET_COLUMNS} FROM traceroute_packet AS tr JOIN packet AS t "
+            "ON t.id = tr.packet_row_id WHERE tr.requester_node_id = ? "
+            "AND tr.request_packet_id = ? AND tr.is_reply",
+            (row["sender_node_id"], row["packet_id"]),
+        ).fetchall()
+        for reply in replies:
+            _sync_hop_observations(connection, reply)
+        return
+    changed = connection.execute(
+        f"SELECT h.*, t.first_received_at, {_INDEPENDENT_HOP_SQL} AS independent "
+        "FROM traceroute_hop AS h JOIN packet AS t ON t.id = h.packet_row_id "
+        "WHERE h.packet_row_id = ?",
+        (row["packet_row_id"],),
+    ).fetchall()
+    changed = [h for h in changed if h["independent"] != h["is_observation"]]
+    for h in changed:
+        connection.execute(
+            "UPDATE traceroute_hop SET is_observation = ? WHERE packet_row_id = ? "
+            "AND from_node_id = ? AND to_node_id = ?",
+            (h["independent"], h["packet_row_id"], h["from_node_id"], h["to_node_id"]),
+        )
+    _refill_hop_hours(connection, changed)
+
+
+def _refill_hop_hours(connection: sqlite3.Connection, hops: list[sqlite3.Row]) -> None:
+    packet_bound = cache(partial(first_packet_row_id_since, connection))
+    for hour, a, b, channel in {
+        (
+            int(h["first_received_at"]) // HOUR_MS * HOUR_MS,
+            int(h["from_node_id"]),
+            int(h["to_node_id"]),
+            str(h["radio_channel"]),
+        )
+        for h in hops
+    }:
+        values = {"hour": hour, "end": hour + HOUR_MS, "a": a, "b": b, "channel": channel}
+        values["first_packet"] = packet_bound(hour)
+        values["last_packet"] = packet_bound(hour + HOUR_MS)
+        connection.execute(
+            "DELETE FROM link_hour WHERE link_kind = 'traceroute' AND hour_start = :hour "
+            "AND from_node_id = :a AND to_node_id = :b AND channel = :channel",
+            values,
+        )
+        connection.execute(
+            f"""
+            INSERT INTO link_hour
+            SELECT 'traceroute', :hour, :a, :b, observations, snr_count, snr_sum,
+                   0, 0.0, last_seen_at, :channel,
+                   {km_when_heard_sql(":a", ":b", "last_seen_at")}
+            FROM (
+                SELECT count(*) AS observations, count(h.snr_db) AS snr_count,
+                       total(h.snr_db) AS snr_sum, max(t.first_received_at) AS last_seen_at
+                FROM traceroute_hop AS h JOIN packet AS t ON t.id = h.packet_row_id
+                WHERE h.from_node_id = :a AND h.to_node_id = :b AND h.radio_channel = :channel
+                  AND h.packet_row_id >= :first_packet AND h.packet_row_id < :last_packet
+                  AND h.is_observation AND t.first_received_at >= :hour
+                  AND t.first_received_at < :end
+            ) WHERE observations > 0
+            """,
+            values,
+        )
 
 
 def _count_hop_costs(
@@ -946,9 +1172,13 @@ def _count_hop_costs(
             continue
         connection.execute(
             """
-            INSERT INTO hop_cost_hour (hour_start, from_node_id, to_node_id, channel, free, costly)
-            VALUES (:hour_start, :from_node, :to_node, :channel, :free, NOT :free)
-            ON CONFLICT (hour_start, from_node_id, to_node_id, channel) DO UPDATE SET
+            INSERT INTO hop_cost_hour (
+                hour_start, from_node_id, to_node_id, channel, radio_channel, free, costly
+            )
+            SELECT :hour_start, :from_node, :to_node, :channel, radio_channel, :free, NOT :free
+            FROM traceroute_hop WHERE packet_row_id = :packet
+              AND from_node_id = :from_node AND to_node_id = :to_node
+            ON CONFLICT (hour_start, from_node_id, to_node_id, channel, radio_channel) DO UPDATE SET
                 free = free + excluded.free, costly = costly + excluded.costly
             """,
             values,
@@ -1125,11 +1355,11 @@ def _count_link(
     link_kind: str,
     row: sqlite3.Row,
     hop: Hop,
+    channels: Channels,
     *,
     rssi: int | None = None,
 ) -> None:
-    """Add one observation of a hop to its hourly link totals on its
-    packet's channel.
+    """Add one observation of a hop on its resolved radio channel.
 
     It is timed at its packet's first receipt, so all of a packet's
     observations land in the same hour whichever gateway reports them. Its
@@ -1167,6 +1397,115 @@ def _count_link(
             "has_rssi": rssi is not None,
             "rssi": rssi or 0,
             "seen_at": seen_at,
-            "channel": row["channel"],
+            "channel": link_channel(connection, row, hop.from_node_id, channels),
         },
+    )
+
+
+def refresh_radio_links(connection: sqlite3.Connection, nodes: set[int]) -> None:
+    """Recount transmitters whose shared-radio attribution changed."""
+    if not nodes:
+        return
+    channels: Channels = {}
+    values = {"nodes": json.dumps(sorted(nodes))}
+    # Only the nodes that listed them as neighbours: reading every NeighborInfo
+    # took 130 of 160 ms for one shared number (perf.db, 2026-10-29).
+    values["listers"] = json.dumps(
+        [
+            int(row[0])
+            for row in connection.execute(
+                """
+                SELECT DISTINCT to_node_id FROM link_hour
+                WHERE link_kind = 'neighbor'
+                  AND from_node_id IN (SELECT value FROM json_each(:nodes))
+                """,
+                values,
+            )
+        ]
+    )
+    connection.execute(
+        "DELETE FROM link_hour WHERE from_node_id IN (SELECT value FROM json_each(:nodes))",
+        values,
+    )
+    for row in connection.execute(
+        f"""
+        {_RECEPTION_QUERY}
+        WHERE t.sender_node_id IN (SELECT value FROM json_each(:nodes))
+          AND {direct_reception_sql("r", "t")}
+        """,
+        values,
+    ).fetchall():
+        _count_link(
+            connection,
+            "direct",
+            row,
+            Hop(int(row["sender_node_id"]), int(row["gateway_node_id"]), row["rx_snr"]),
+            channels,
+            rssi=row["rx_rssi"],
+        )
+    for row in connection.execute(
+        f"""
+        SELECT {_PACKET_COLUMNS} FROM packet AS t
+        WHERE t.sender_node_id IN (SELECT value FROM json_each(:listers))
+          AND coalesce(t.portnum, -1) = {portnums_pb2.PortNum.NEIGHBORINFO_APP}
+          AND t.application_payload IS NOT NULL
+        """,
+        values,
+    ).fetchall():
+        for neighbor in read_neighbors(bytes(row["application_payload"])):
+            if neighbor.node_id in nodes:
+                _count_link(
+                    connection,
+                    "neighbor",
+                    row,
+                    Hop(neighbor.node_id, int(row["sender_node_id"]), neighbor.snr_db),
+                    channels,
+                )
+    hop_rows = connection.execute(
+        f"""
+        SELECT {_PACKET_COLUMNS}, h.from_node_id, h.to_node_id, h.snr_db,
+               h.is_observation, h.radio_channel
+        FROM traceroute_hop AS h JOIN packet AS t ON t.id = h.packet_row_id
+        WHERE h.from_node_id IN (SELECT value FROM json_each(:nodes))
+        """,
+        values,
+    ).fetchall()
+    packets: dict[int, sqlite3.Row] = {}
+    for row in hop_rows:
+        hop = Hop(int(row["from_node_id"]), int(row["to_node_id"]), row["snr_db"])
+        channel = link_channel(connection, row, hop.from_node_id, channels)
+        connection.execute(
+            """
+            UPDATE traceroute_hop SET radio_channel = ?
+            WHERE packet_row_id = ? AND from_node_id = ? AND to_node_id = ?
+            """,
+            (channel, row["packet_row_id"], hop.from_node_id, hop.to_node_id),
+        )
+        packets[int(row["packet_row_id"])] = row
+    for row in packets.values():
+        _sync_hop_observations(connection, row)
+    current = connection.execute(
+        "SELECT h.*, t.first_received_at FROM traceroute_hop AS h "
+        "JOIN packet AS t ON t.id = h.packet_row_id "
+        "WHERE h.from_node_id IN (SELECT value FROM json_each(:nodes))",
+        values,
+    ).fetchall()
+    _refill_hop_hours(connection, [*hop_rows, *current])
+    connection.execute(
+        "DELETE FROM hop_cost_hour WHERE from_node_id IN (SELECT value FROM json_each(:nodes))",
+        values,
+    )
+    connection.execute(
+        f"""
+        INSERT INTO hop_cost_hour (
+            hour_start, from_node_id, to_node_id, channel, radio_channel, free, costly
+        )
+        SELECT t.first_received_at - t.first_received_at % {HOUR_MS},
+               h.from_node_id, h.to_node_id, t.channel, h.radio_channel,
+               sum(h.free), sum(NOT h.free)
+        FROM traceroute_hop AS h JOIN packet AS t ON t.id = h.packet_row_id
+        WHERE h.from_node_id IN (SELECT value FROM json_each(:nodes)) AND h.free IS NOT NULL
+        GROUP BY 1, 2, 3, 4, 5
+        """,
+        values,
     )

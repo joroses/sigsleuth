@@ -57,7 +57,7 @@ def add_link_hour(
 
 
 def links(path: Path, url: str = "/api/v1/map/links", **params: object) -> dict[str, Any]:
-    with TestClient(create_app(Settings(path, default_preset="MediumSlow"))) as client:
+    with TestClient(create_app(Settings(path))) as client:
         response = client.get(url, params=params)
     assert response.status_code == 200
     body: dict[str, Any] = response.json()
@@ -134,12 +134,12 @@ def test_direct_links_are_read_without_traceroute_links(path: Path) -> None:
     }
 
 
-def test_channel_not_named_after_a_preset_uses_the_default_preset(path: Path) -> None:
-    add_link_hour(path, 0, B, A, observations=1, snr=[3.0], channel="Canarias")
+def test_unknown_radio_channel_keeps_snr_without_a_margin(path: Path) -> None:
+    add_link_hour(path, 0, B, A, observations=1, snr=[3.0], channel="Unknown")
 
     [link] = links(path)["items"]
 
-    assert link["spreading_factor"] == 10
+    assert link["spreading_factor"] is None
     assert link["a_to_b"]["observations"] == 0
     assert link["b_to_a"]["average_snr"] == 3.0
 
@@ -275,6 +275,7 @@ def test_a_nodes_links_list_its_0_cost_hops_either_way_but_no_hidden_partner(
                 from_node_id=a,
                 to_node_id=b,
                 channel="LongFast",
+                radio_channel="LongFast",
                 free=free,
                 costly=costly,
             )
@@ -309,6 +310,7 @@ def test_map_links_list_their_0_cost_directions_on_their_channel_in_the_window(
                 from_node_id=a,
                 to_node_id=b,
                 channel=channel,
+                radio_channel=channel,
                 free=free,
                 costly=costly,
             )
@@ -819,7 +821,7 @@ def what_pages_say(path: Path) -> dict[str, object]:
     """What each page makes of the A-B link: whether the map and Zones draw
     it, the Links page's and A's node page's badges, where the explorer's
     distance sort ranks its runs, and Diagnostics' reading."""
-    with TestClient(create_app(Settings(path, default_preset="LongFast"))) as client:
+    with TestClient(create_app(Settings(path))) as client:
 
         def get(url: str, **params: object) -> dict[str, Any]:
             response = client.get(url, params=params)
@@ -1007,11 +1009,9 @@ def test_suspect_signal_distance_keeps_history_and_other_evidence(
         # Exercise reach's moved-node path as well as its fast path.
         connection.execute("UPDATE node_current SET moved_at=?", (at - HOUR_MS,))
         assert own_reach(connection, {A}) == ({} if suspect else {A: 55.6})
-        args: dict[str, Any] = dict(
-            link_kind="direct", since=None, limit=100, default_preset="LongFast"
-        )
+        args: dict[str, Any] = dict(link_kind="direct", since=None, limit=100)
         assert bool(map_links(connection, **args, trusted=True).items) is not suspect
-        table = link_table(connection, link_kinds=["direct"], since=None, default_preset="LongFast")
+        table = link_table(connection, link_kinds=["direct"], since=None)
         assert table.items[0].a_to_b.observations == 1
         assert ("signal" in table.items[0].doubts) is suspect
         history = link_hours(

@@ -29,9 +29,9 @@ export const LINK_TIERS: {
   },
   {
     tier: "unknown",
-    label: "Not observed/no SNR",
+    label: "Unknown",
     color: "#9aa39e",
-    description: "never heard, or heard without an SNR",
+    description: "SNR or radio channel unknown",
   },
 ];
 
@@ -50,20 +50,20 @@ export function demodulationFloor(spreadingFactor: number): number {
 
 /**
  * The fade margin: how far the average SNR sits above the demodulation floor.
- * Null when there is no SNR.
+ * Null when the SNR or radio channel is unknown.
  */
 export function fadeMargin(
   averageSnr: number | null,
-  spreadingFactor: number,
+  spreadingFactor: number | null,
 ): number | null {
-  return averageSnr === null
+  return averageSnr === null || spreadingFactor === null
     ? null
     : averageSnr - demodulationFloor(spreadingFactor);
 }
 
 export function linkTier(
   averageSnr: number | null,
-  spreadingFactor: number,
+  spreadingFactor: number | null,
 ): LinkTier {
   return marginTier(fadeMargin(averageSnr, spreadingFactor));
 }

@@ -18,6 +18,7 @@ from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, optional_text,
 from sigsleuth.decode import describe_payload, portnum_name
 from sigsleuth.derive import direct_reception_sql, is_direct_reception
 from sigsleuth.diagnostics import describe_reason
+from sigsleuth.link_channels import packet_radio_channel
 from sigsleuth.links import (
     LINK_WINDOW_MS,
     RouteHopCost,
@@ -26,7 +27,7 @@ from sigsleuth.links import (
     route_hop_costs,
 )
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
-from sigsleuth.radio import distance_km, relay_byte_of, spreading_factor
+from sigsleuth.radio import distance_km, relay_byte_of
 from sigsleuth.relays import (
     COHEARER_WINDOW_MS,
     DirectSignal,
@@ -222,7 +223,7 @@ class PacketDetail:
     name, placed the same way.
     traceroute says which node ran the traceroute and which it traced; None
     for other packets.
-    spreading_factor is the one the channel suggests, as for map links.
+    spreading_factor is the radio channel's SF, None when unknown.
     reply_route is set on a traceroute request whose reply was saved; None
     otherwise. hop_costs are what the hops and reply_route's hops spent
     (links.RouteHopCost), learned links.LINK_WINDOW_MS either side of the
@@ -241,7 +242,7 @@ class PacketDetail:
     hops: tuple[TracerouteHop, ...]
     route_nodes: tuple[NodeSummary, ...]
     relay_nodes: tuple[NodeSummary, ...]
-    spreading_factor: int
+    spreading_factor: int | None
     traceroute: TracerouteEnds | None
     reply_route: ReplyRoute | None
     hop_costs: tuple[RouteHopCost, ...]
@@ -251,7 +252,6 @@ def packet_detail(
     connection: sqlite3.Connection,
     packet_row_id: int,
     *,
-    default_preset: str,
     include_hidden_relays: bool = False,
 ) -> PacketDetail | None:
     """Return the packet and its receptions, nearest the sender first, or None
@@ -277,15 +277,16 @@ def packet_detail(
         else describe_payload(int(row["portnum"]), row["application_payload"], hidden)
     )
     reason = row["unreadable_reason"]
+    saved_hops = connection.execute(
+        """
+        SELECT from_node_id, to_node_id, snr_db, radio_channel FROM traceroute_hop
+        WHERE packet_row_id = ?
+        """,
+        (packet_row_id,),
+    ).fetchall()
     hops = tuple(
         TracerouteHop(int(hop["from_node_id"]), int(hop["to_node_id"]), hop["snr_db"])
-        for hop in connection.execute(
-            """
-            SELECT from_node_id, to_node_id, snr_db FROM traceroute_hop
-            WHERE packet_row_id = ?
-            """,
-            (packet_row_id,),
-        )
+        for hop in saved_hops
         if hop["from_node_id"] not in hidden and hop["to_node_id"] not in hidden
     )
     traceroute = (
@@ -320,7 +321,9 @@ def packet_detail(
                 connection, int(row["first_received_at"]), _relay_ids(receptions), for_page=True
             ).values()
         ),
-        spreading_factor=spreading_factor(str(row["channel"]), default_preset),
+        spreading_factor=channel_spreading_factor(
+            packet_radio_channel(connection, row, (hop["radio_channel"] for hop in saved_hops))
+        ),
         traceroute=traceroute,
         reply_route=reply_route,
         hop_costs=()
@@ -371,7 +374,7 @@ def _shown_packet(
 ) -> sqlite3.Row | None:
     row: sqlite3.Row | None = connection.execute(
         """
-        SELECT t.*,
+        SELECT t.*, t.id AS packet_row_id,
                COALESCE(sender.long_name, sender.short_name) AS sender_name,
                COALESCE(recipient.long_name, recipient.short_name) AS recipient_name
         FROM packet AS t

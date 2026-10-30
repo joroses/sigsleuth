@@ -1,5 +1,4 @@
 from sigsleuth.decode import RouteDiscovery
-from sigsleuth.radio import spreading_factor
 from sigsleuth.traceroute import Hop, pinned_costs, report_hops, report_paths
 
 A, B = 0xA0A0A0A0, 0xB0B0B0B0
@@ -78,12 +77,6 @@ def test_hop_from_a_node_to_itself_is_skipped() -> None:
     paths = report_paths(route((R1, R1), (4, 8)), A, B, None)
 
     assert report_hops(paths) == [Hop(A, R1, 1.0)]
-
-
-def test_spreading_factor_comes_from_a_preset_channel_name_or_the_default() -> None:
-    assert spreading_factor("SFNarrow", "LongFast") == 7
-    assert spreading_factor("longslow", "LongFast") == 12
-    assert spreading_factor("Canarias", "MediumFast") == 9
 
 
 def costs(

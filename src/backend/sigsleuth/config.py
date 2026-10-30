@@ -8,11 +8,8 @@ from pathlib import Path
 
 from dotenv import dotenv_values
 
-from sigsleuth.radio import PRESET_SPREADING_FACTORS, preset_name
-
 DEFAULT_RETENTION_DAYS = 14
 DEFAULT_COVERAGE_RETENTION_DAYS = 90
-DEFAULT_PRESET = "LongFast"
 
 
 class ConfigurationError(ValueError):
@@ -40,7 +37,6 @@ class Settings:
     # Survey measurements stay this many days, never fewer than retention_days
     # (retention.py); 0 sets no limit.
     coverage_retention_days: int = DEFAULT_COVERAGE_RETENTION_DAYS
-    default_preset: str = DEFAULT_PRESET
     # Guards Diagnostics; without one, Diagnostics is open.
     admin_password: str | None = field(default=None, repr=False)
     # Guards survey uploads; without one, uploads are refused.
@@ -109,7 +105,6 @@ def settings_from_environment(environment: Mapping[str, str], *, capture: bool) 
             ),
             "SIGSLEUTH_COVERAGE_RETENTION_DAYS",
         ),
-        default_preset=_preset(environment.get("SIGSLEUTH_DEFAULT_PRESET", DEFAULT_PRESET)),
         admin_password=_optional(environment.get("SIGSLEUTH_ADMIN_PASSWORD")),
         upload_password=_optional(environment.get("SIGSLEUTH_UPLOAD_PASSWORD")),
         hide_opted_out=_boolean(
@@ -138,15 +133,6 @@ def _topic_filter(value: str) -> str:
                 "'+' and '#' fill a whole level, and '#' only the last one"
             )
     return value
-
-
-def _preset(value: str) -> str:
-    preset = preset_name(value.strip())
-    if preset is None:
-        raise ConfigurationError(
-            "SIGSLEUTH_DEFAULT_PRESET must be one of " + ", ".join(PRESET_SPREADING_FACTORS)
-        )
-    return preset
 
 
 def _optional(value: str | None) -> str | None:

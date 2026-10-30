@@ -133,7 +133,7 @@ export function HopObservationList({
   fromNodeId: number;
   toNodeId: number;
   /** Rates each SNR's tier; without it the SNRs have no dot. */
-  spreadingFactor?: number;
+  spreadingFactor?: number | null;
   compact?: boolean;
   collapsible?: boolean;
 }) {

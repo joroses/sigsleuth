@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { GeoJSONSource } from "maplibre-gl";
 import type { MapLink, MapNode } from "../src/app/api";
+import { cellBounds } from "../src/app/coverageLayer";
 
 // The API serves the recorded sample (tests/serve_sample.py) with its clock
 // stopped. These tests check page loading, map timings and node links;
@@ -797,6 +798,166 @@ for (const { width, late, failed, kind, entry, show } of [
       )
       .toBe(true);
   });
+}
+
+for (const width of [1280, 390]) {
+  for (const coverage of ["none", "known", "failed"] as const) {
+    test(`a coverage relay hint fits its node and source cell (${width}px, ${coverage} coverage)`, async ({
+      page,
+      request,
+    }) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({ width, height: 844 });
+      const { items }: { items: MapNode[] } = await (
+        await request.get("/api/v1/map/nodes")
+      ).json();
+      const node = {
+        ...items[0],
+        long_name: "Relay hint",
+        longitude: 1.7,
+        latitude: 42,
+      };
+      const cell = { level: 17, x: 66107, y: 48695 };
+      const [west, south, east, north] = cellBounds(cell);
+      const center = [(west + east) / 2, (south + north) / 2];
+      const extent = { west: 1.3, south: 41.7, east: 1.4, north: 41.8 };
+      await page.route("**/api/v1/map/nodes?*", (route) =>
+        route.fulfill({ json: { items: [node], truncated: false } }),
+      );
+      await page.route("**/api/v1/coverage/cells?*", (route) =>
+        route.fulfill({
+          json: {
+            level: cell.level,
+            cells: new URL(route.request().url()).searchParams.has("node")
+              ? []
+              : [
+                  {
+                    ...cell,
+                    measurements: 3,
+                    nodes: 0,
+                    guessed: 0,
+                    average_margin: null,
+                    best_margin: null,
+                    average_snr: null,
+                    spreading_factor: null,
+                  },
+                ],
+            truncated: false,
+          },
+        }),
+      );
+      await page.route(
+        `**/api/v1/coverage/cells/${cell.level}/${cell.x}/${cell.y}*`,
+        (route) =>
+          route.fulfill({
+            json: {
+              ...cell,
+              latitude: center[1],
+              longitude: center[0],
+              size_m: 227,
+              measurements: 3,
+              first_heard_at: null,
+              last_heard_at: null,
+              networks: [],
+              heard_nodes: [],
+              unknown_relays: [
+                {
+                  relay_byte: 26,
+                  measurements: 3,
+                  candidates: [{ ...node, km: 15 }],
+                },
+              ],
+              newest: [],
+            },
+          }),
+      );
+      await page.route("**/api/v1/coverage/extent?*", (route) =>
+        route.fulfill({
+          status: coverage === "failed" ? 503 : 200,
+          json:
+            coverage === "failed"
+              ? { error: { code: "unavailable", message: "Unavailable" } }
+              : coverage === "known"
+                ? extent
+                : null,
+        }),
+      );
+      await page.addInitScript((center) => {
+        localStorage.setItem("sigsleuth.coverage", "true");
+        localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("all"));
+        localStorage.setItem("sigsleuth.filterPanelOpen", "false");
+        localStorage.setItem("sigsleuth.textReach", "false");
+        localStorage.setItem(
+          "sigsleuth.nodeFilter",
+          JSON.stringify({ channel: "*" }),
+        );
+        localStorage.setItem(
+          "sigsleuth.map.camera",
+          JSON.stringify({ center, zoom: 14 }),
+        );
+      }, center);
+      await page.goto("/#map");
+      await expect
+        .poll(() =>
+          page.evaluate(() => {
+            const map = window.sigsleuthMap;
+            return (
+              map?.getLayer("coverage-cells-fill") !== undefined &&
+              map.queryRenderedFeatures({ layers: ["coverage-cells-fill"] })
+                .length > 0
+            );
+          }),
+        )
+        .toBe(true);
+      const point = await page.evaluate(([lng, lat]) => {
+        const map = window.sigsleuthMap!;
+        const { x, y } = map.project([lng, lat]);
+        const box = map.getContainer().getBoundingClientRect();
+        return { x: box.left + x, y: box.top + y };
+      }, center);
+      await page.mouse.click(point.x, point.y);
+      await page
+        .getByRole("region", { name: "Coverage here" })
+        .getByRole("button", { name: node.long_name! })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: node.long_name! }),
+      ).toBeVisible();
+      const points = [
+        [node.longitude, node.latitude],
+        [west, south],
+        [east, north],
+      ];
+      if (coverage === "known")
+        points.push([extent.west, extent.south], [extent.east, extent.north]);
+      await expect
+        .poll(() =>
+          page.evaluate((points) => {
+            const map = window.sigsleuthMap;
+            if (map === undefined || map.isMoving()) return false;
+            const canvas = map.getContainer().getBoundingClientRect();
+            const sheet = document
+              .querySelector(".map-sidebar")!
+              .getBoundingClientRect();
+            const bottom =
+              window.innerWidth <= 700 ? sheet.top - canvas.top : canvas.height;
+            return (
+              map.getZoom() > 7 &&
+              points.every(([lng, lat]) => {
+                const { x, y } = map.project([lng, lat]);
+                return (
+                  x >= 40 &&
+                  x <= canvas.width - 40 &&
+                  y >= 40 &&
+                  y <= bottom - 40
+                );
+              })
+            );
+          }, points),
+        )
+        .toBe(true);
+    });
+  }
 }
 
 function collectErrors(page: Page): string[] {

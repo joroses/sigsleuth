@@ -43,6 +43,7 @@ import {
   addCoverageLayers,
   buildCoverageFeatureCollection,
   buildCoverageLines,
+  cellBounds,
   cellText,
   coverageCellUrl,
   coverageCellsUrl,
@@ -273,15 +274,22 @@ function focusCoverage(
   extent: CoverageExtent | null,
   zoomIn: boolean,
   otherNodes: MapNode[] = NO_NODES,
+  cell?: CellAddress,
 ) {
-  if (extent === null) {
+  if (extent === null && cell === undefined) {
     focusTextReach(instance, node, otherNodes);
     return;
   }
-  const bounds = new maplibregl.LngLatBounds(
-    [extent.west, extent.south],
-    [extent.east, extent.north],
-  );
+  const bounds = new maplibregl.LngLatBounds();
+  if (extent !== null) {
+    bounds.extend([extent.west, extent.south]);
+    bounds.extend([extent.east, extent.north]);
+  }
+  if (cell !== undefined) {
+    const [west, south, east, north] = cellBounds(cell);
+    bounds.extend([west, south]);
+    bounds.extend([east, north]);
+  }
   if (node !== null) bounds.extend([node.longitude, node.latitude]);
   for (const other of otherNodes)
     bounds.extend([other.longitude, other.latitude]);
@@ -349,6 +357,8 @@ interface Selection {
   unplaced?: TextSender | CoverageViewNode;
   /** Fit coverage even when it is already in view, allowing a closer zoom. */
   zoomIn?: boolean;
+  /** Keep the source cell in view even if a relay hint has no coverage. */
+  coverageCell?: CellAddress;
 }
 
 /**
@@ -1571,6 +1581,7 @@ export function MapView({
       extent.data,
       selection?.zoomIn ?? false,
       otherNodes,
+      selection?.coverageCell,
     );
   });
   useEffect(() => {
@@ -1649,10 +1660,14 @@ export function MapView({
     if (open && isNarrowScreen()) setCollapsed(true);
   }
 
-  // A node chosen in the cell card shows where it was heard, without moving
-  // the map away from the cell.
   function chooseHeardNode(nodeId: number) {
-    setSelection({ nodeId, fit: "none" });
+    setUnknownCoverage(false);
+    setSelection({
+      nodeId,
+      fit: "coverage",
+      zoomIn: true,
+      coverageCell: selectedCell ?? undefined,
+    });
     setChosenLinkKey(null);
     setSelectedCell(null);
   }

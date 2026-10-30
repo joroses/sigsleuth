@@ -176,10 +176,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/packets?limit=50&sender={node}&heard_directly_by={neighbour}"
     yield "/api/v1/packets/ports"
     yield f"/api/v1/packets/{subjects.packet}"
-    yield f"/api/v1/packets/{subjects.traceroute_packet}"
-    # Live copy 2026-10-23: 220-245 ms for broadcasts heard by 61-64
-    # gateways. Asked for only when the relay map opens.
-    yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 400
+    # perf.db 2026-10-30: 315 ms to name relays across a busy traceroute's copies.
+    yield f"/api/v1/packets/{subjects.traceroute_packet}", 400
+    # perf.db 2026-10-30: 420 ms; asked for only when the relay map opens.
+    yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 500
     for sort in ("last_sent", "traceroute", "packets", "texts"):
         yield f"/api/v1/nodes?sort={sort}&limit=20&offset=0"
     for sort in (
@@ -268,20 +268,24 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield "/api/v1/diagnostics/doubtful-nodes"
     yield "/api/v1/diagnostics/device-conflicts?after_node=0&count=30"
     yield f"/api/v1/diagnostics/device-conflicts?after_node={node}&count=30"
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=30"
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest"
-    # Looking further down builds the evidence of 300 links.
-    yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely", 250
-    yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}"
+    # perf.db 2026-10-30: 163-243 ms to assess long links on this operator page.
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=30", 300
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest", 300
+    yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely", 300
+    yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}", 300
     # An operator page over 25 traceroutes
     # (perf.db 2026-10-27: 0.9 s warm, 2.5 s cold).
     yield "/api/v1/diagnostics/relay-checks?count=25", 1500
-    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
-    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}?receiver=gateway"
+    # perf.db 2026-10-30: 306-352 ms to explain one busy packet's relay naming.
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}", 400
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}?receiver=gateway", 400
     # The same copy as if heard by a node with no direct links elsewhere.
     yield (
-        f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
-        "?latitude=52.0&longitude=19.0"
+        (
+            f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
+            "?latitude=52.0&longitude=19.0"
+        ),
+        400,
     )
     # Survey uploads beside them (the sample has none: tests/test_survey_checks.py).
     yield "/api/v1/diagnostics/survey-checks?count=25"

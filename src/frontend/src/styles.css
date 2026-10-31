@@ -4122,6 +4122,12 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   display: inline;
 }
 
+.map-route-hint {
+  margin: 0 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
 .busiest-hint {
   margin: var(--space-1) 0 0;
   color: var(--muted);

@@ -170,6 +170,8 @@ declare global {
   }
 }
 
+// A second click this soon after the first is a double-tap zoom.
+const DOUBLE_TAP_MS = 400;
 // Half the side of the square kept in view around a chosen node: about 300 × 300 km.
 const FOCUS_HALF_SIDE_KM = 150;
 const KM_PER_DEGREE_LATITUDE = 111.32;
@@ -362,6 +364,10 @@ function savedCamera(): Camera | null {
   return null;
 }
 
+// The two-click route on empty map: its first point, or why it failed.
+type RouteClick =
+  { point: maplibregl.LngLat; router: MapNode; at: number } | { error: string };
+
 /** A new selection fits again and drops any pending fit. */
 interface Selection {
   nodeId: number;
@@ -379,8 +385,9 @@ interface Selection {
  * One kind of link, fetched only while url is set (and kept for Back under
  * chosenAt, see useApi). Links touching a node the category, role or estimate
  * filter hides (whatever its latest channel), on another channel than the one
- * chosen, with neither half of a chosen quality tier, or drawn shorter than
- * minKm, are left out everywhere (see linkTierShown and drawnLongEnough).
+ * chosen, or with neither half of a chosen quality tier are left out
+ * everywhere (see linkTierShown); routes walk the rest (routable). Links drawn
+ * shorter than minKm are also left out of links (see drawnLongEnough).
  */
 function useLinkLayer(
   url: string | null,
@@ -394,27 +401,34 @@ function useLinkLayer(
   const { data: page, error, loading } = useApi<MapLinkList>(url, chosenAt);
   const loaded = page?.items ?? NO_LINKS;
   const allTiers = Object.values(tiers).every(Boolean);
-  const links = useMemo(
+  const routable = useMemo(
     () =>
-      filteredOut.size === 0 && channel === ANY && allTiers && minKm <= 0
+      filteredOut.size === 0 && channel === ANY && allTiers
         ? loaded
         : loaded.filter(
             (link) =>
               !filteredOut.has(link.node_a) &&
               !filteredOut.has(link.node_b) &&
               onChosenChannel(link, channel) &&
-              linkTierShown(tiers, link) &&
-              drawnLongEnough(link, nodeMap, minKm),
+              linkTierShown(tiers, link),
           ),
-    [loaded, filteredOut, channel, tiers, allTiers, minKm, nodeMap],
+    [loaded, filteredOut, channel, tiers, allTiers],
   );
-  return { page, error, loading, links };
+  const links = useMemo(
+    () =>
+      minKm <= 0
+        ? routable
+        : routable.filter((link) => drawnLongEnough(link, nodeMap, minKm)),
+    [routable, minKm, nodeMap],
+  );
+  return { page, error, loading, routable, links };
 }
 
 /**
  * A link layer's drawn links, also walked for hop depth, and their map
  * features: those observed at least minObservations times, in both directions
- * together, and the route's (kept), which ignores that box.
+ * together, and the route's (kept), which ignores that box and the length
+ * filter. With the layer off only the route's are drawn.
  */
 function useDrawnLinks(
   linkKind: LinkKind,
@@ -422,19 +436,26 @@ function useDrawnLinks(
   nodeMap: ReadonlyMap<number, MapNode>,
   minObservations: number,
   kept: ReadonlySet<MapLink>,
+  shown: boolean,
 ) {
-  const { page, error, loading, links: filtered } = layer;
-  const links = useMemo(
-    () =>
-      minObservations <= 1
+  const { page, error, loading, routable, links: filtered } = layer;
+  const links = useMemo(() => {
+    const drawn = !shown
+      ? NO_LINKS
+      : minObservations <= 1
         ? filtered
         : filtered.filter(
             (link) =>
               link.a_to_b.observations + link.b_to_a.observations >=
-                minObservations || kept.has(link),
-          ),
-    [filtered, minObservations, kept],
-  );
+              minObservations,
+          );
+    if (kept.size === 0) return drawn;
+    const known = new Set(drawn);
+    return [
+      ...drawn,
+      ...routable.filter((link) => kept.has(link) && !known.has(link)),
+    ];
+  }, [filtered, routable, minObservations, kept, shown]);
   const data = useMemo(
     () => buildLinkFeatureCollection(linkKind, links, nodeMap),
     [linkKind, links, nodeMap],
@@ -488,7 +509,20 @@ export function MapView({
   // The only links shown; null shows them all.
   const linkFocus = useRef<string[] | null>(null);
   // The route shown, for the map's click handlers.
-  const routeState = useRef<{ from: number; picking: boolean } | null>(null);
+  const routeState = useRef<{
+    from: number;
+    picking: boolean;
+    fromMap: boolean;
+  } | null>(null);
+  const nodeChosen = useRef(false);
+  const routeClick = useRef<RouteClick | null>(null);
+  const [shownRouteClick, setShownRouteClick] = useState<RouteClick | null>(
+    null,
+  );
+  const setRouteClick = useCallback((click: RouteClick | null) => {
+    routeClick.current = click;
+    setShownRouteClick(click);
+  }, []);
   const [seenWindow, setSeenWindow] = useSetting<SeenWindow>(
     "seenWindow",
     DEFAULT_SEEN_WINDOW,
@@ -618,15 +652,6 @@ export function MapView({
   // keep up and skips lengths it has already passed.
   const drawnMinKm = useDeferredValue(minKm);
   // Links are optional; a failure leaves the nodes on the map.
-  const tracerouteFiltered = useLinkLayer(
-    linkChoice.traceroute ? urls.traceroute : null,
-    chosenAt,
-    linkableMap,
-    filteredOut,
-    nodeFilter.channel,
-    linkTiers,
-    drawnMinKm,
-  );
   const directFiltered = useLinkLayer(
     linkChoice.direct ? urls.direct : null,
     chosenAt,
@@ -651,25 +676,38 @@ export function MapView({
   // The chosen link's key; it shows only while the filters keep the link.
   const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
   // A route from the selected node: its other end is being picked while `to`
-  // is null.
+  // is null. One drawn by two map clicks (fromMap) clears with its node.
   const [route, setRoute] = useState<{
     from: number;
     to: number | null;
+    fromMap?: boolean;
   } | null>(null);
-  // The route's links, between placed nodes, whatever "Observed at least" says.
+  // The route's links, between placed nodes, whatever "Observed at least" and
+  // the length filter say.
   const routeFrom =
     route !== null && route.from === selection?.nodeId ? route.from : null;
   const routeEnd = routeFrom === null ? null : (route?.to ?? null);
-  const tracerouteFilteredLinks = tracerouteFiltered.links;
-  const directFilteredLinks = directFiltered.links;
-  const neighborFilteredLinks = neighborFiltered.links;
+  // Routes always walk traceroute links, so the layer can stay off and leave
+  // the map clear to click.
+  const tracerouteFiltered = useLinkLayer(
+    linkChoice.traceroute || routeFrom !== null ? urls.traceroute : null,
+    chosenAt,
+    linkableMap,
+    filteredOut,
+    nodeFilter.channel,
+    linkTiers,
+    drawnMinKm,
+  );
+  const tracerouteRoutable = tracerouteFiltered.routable;
+  const directRoutable = directFiltered.routable;
+  const neighborRoutable = neighborFiltered.routable;
   const routeFound = useMemo(() => {
     if (routeFrom === null || routeEnd === null) return null;
     const placed: SelectedLink[] = [];
     for (const [linkKind, links] of [
-      ["traceroute", tracerouteFilteredLinks],
-      ["direct", directFilteredLinks],
-      ["neighbor", neighborFilteredLinks],
+      ["traceroute", tracerouteRoutable],
+      ["direct", directRoutable],
+      ["neighbor", neighborRoutable],
     ] as const)
       for (const link of links)
         if (linkableMap.has(link.node_a) && linkableMap.has(link.node_b))
@@ -678,9 +716,9 @@ export function MapView({
   }, [
     routeFrom,
     routeEnd,
-    tracerouteFilteredLinks,
-    directFilteredLinks,
-    neighborFilteredLinks,
+    tracerouteRoutable,
+    directRoutable,
+    neighborRoutable,
     linkableMap,
   ]);
   const routeKept = useMemo(
@@ -693,6 +731,7 @@ export function MapView({
     linkableMap,
     minObservations,
     routeKept,
+    linkChoice.traceroute,
   );
   const directLayer = useDrawnLinks(
     "direct",
@@ -700,6 +739,7 @@ export function MapView({
     linkableMap,
     minObservations,
     routeKept,
+    linkChoice.direct,
   );
   const neighborLayer = useDrawnLinks(
     "neighbor",
@@ -707,6 +747,7 @@ export function MapView({
     linkableMap,
     minObservations,
     routeKept,
+    linkChoice.neighbor,
   );
   const linkLayers = {
     traceroute: tracerouteLayer,
@@ -790,6 +831,25 @@ export function MapView({
     setChosenLinkKey(null);
     setRoute(null);
   }, []);
+
+  // A new choice or filter cancels a half-made route.
+  const routeClickFor = [
+    selection,
+    unknownCoverage,
+    chosenLinkKey,
+    selectedCell,
+    nodeFilter,
+    shownWindow,
+  ];
+  const [routeClickMadeFor, setRouteClickMadeFor] = useState(routeClickFor);
+  if (routeClickFor.some((value, i) => value !== routeClickMadeFor[i])) {
+    setRouteClickMadeFor(routeClickFor);
+    setShownRouteClick(null);
+  }
+  useEffect(() => {
+    nodeChosen.current = selection !== null || unknownCoverage;
+    routeClick.current = shownRouteClick;
+  }, [selection, unknownCoverage, shownRouteClick]);
 
   useEffect(() => {
     nodesById.current = nodeMap;
@@ -915,7 +975,11 @@ export function MapView({
     routeState.current =
       activeRoute === null
         ? null
-        : { from: activeRoute.from, picking: activeRoute.to === null };
+        : {
+            from: activeRoute.from,
+            picking: activeRoute.to === null,
+            fromMap: activeRoute.fromMap === true,
+          };
   }, [activeRoute]);
 
   // The sidebar needs the message count even with Text reach off.
@@ -1313,15 +1377,35 @@ export function MapView({
       document.removeEventListener("pointerdown", dismissSpider, true);
       document.removeEventListener("keydown", dismissSpiderOnEscape);
     };
-    // While a route's other end is picked, a node click picks it.
     const chooseNode = (node: MapNode) => {
       closeSpider();
+      setRouteClick(null);
       const routing = routeState.current;
       if (routing?.picking) {
         if (node.node_id !== routing.from)
           setRoute({ from: routing.from, to: node.node_id });
       } else select(node);
       setCollapsed(false);
+    };
+    const nearestRouter = (location: maplibregl.LngLat) => {
+      let nearest: MapNode | null = null;
+      let distance = Infinity;
+      for (const node of nodesById.current.values()) {
+        if (
+          node.role !== "ROUTER" &&
+          node.role !== "ROUTER_LATE" &&
+          node.role !== "ROUTER_CLIENT"
+        )
+          continue;
+        const meters = location.distanceTo(
+          new maplibregl.LngLat(node.longitude, node.latitude),
+        );
+        if (meters < distance) {
+          nearest = node;
+          distance = meters;
+        }
+      }
+      return nearest;
     };
     const openSpider = (nodes: MapNode[]) => {
       closeSpider();
@@ -1387,28 +1471,56 @@ export function MapView({
       if (near) instance.getCanvas().style.cursor = "pointer";
       else if (hoveredId === null) instance.getCanvas().style.cursor = "";
     };
-    // MapLibre sends no click after a drag, so only a still click on empty map
-    // goes back, one step like the sidebar's back button: from a link or cell
-    // to the node selected before, else to nothing selected.
-    // A click on a coverage cell without a marker chooses the cell.
-    const clearSelectionOnEmptyClick = (event: maplibregl.MapMouseEvent) => {
+    // MapLibre sends no click after a drag, so only still clicks count. Like
+    // the sidebar's back button, a click on empty map goes back one step:
+    // from a link or cell to the node selected before, else to nothing
+    // selected. With nothing selected, two clicks draw a route between the
+    // routers nearest them, and one more clears it.
+    const selectMapPoint = (event: maplibregl.MapMouseEvent) => {
+      const start = routeClick.current;
+      setRouteClick(null);
       if (onNodeAt(event.point)) return;
       const cell = cellAt(event.point);
-      if (cell === undefined) {
-        if (linkNear(event.point) !== undefined) return;
-        if (selectedLinkKey.current !== null) setChosenLinkKey(null);
-        else if (cellChosen.current) setSelectedCell(null);
-        else if (routeState.current !== null) setRoute(null);
-        else clearSelection();
+      if (cell !== undefined) {
+        setSelectedCell({
+          level: Number(cell.level),
+          x: Number(cell.x),
+          y: Number(cell.y),
+        });
+        setChosenLinkKey(null);
+        setCollapsed(false);
         return;
       }
-      setSelectedCell({
-        level: Number(cell.level),
-        x: Number(cell.x),
-        y: Number(cell.y),
-      });
-      setChosenLinkKey(null);
-      setCollapsed(false);
+      if (linkNear(event.point) !== undefined) return;
+      if (selectedLinkKey.current !== null) setChosenLinkKey(null);
+      else if (cellChosen.current) setSelectedCell(null);
+      else if (routeState.current?.fromMap === false) setRoute(null);
+      else if (nodeChosen.current) clearSelection();
+      else {
+        // A double-click or double-tap zooms instead.
+        const clicked = event.originalEvent;
+        if (clicked.detail > 1) return;
+        if (start === null || "error" in start) {
+          const router = nearestRouter(event.lngLat);
+          setRouteClick(
+            router === null
+              ? { error: "No routers match the node filters." }
+              : { point: event.lngLat, router, at: clicked.timeStamp },
+          );
+          return;
+        }
+        if (clicked.timeStamp - start.at < DOUBLE_TAP_MS) return;
+        const to = nearestRouter(event.lngLat);
+        if (to === null || to.node_id === start.router.node_id) {
+          setRouteClick({ error: "Click near two different routers." });
+          return;
+        }
+        closeSpider();
+        hideCellPopup();
+        select(start.router);
+        setRoute({ from: start.router.node_id, to: to.node_id, fromMap: true });
+        setCollapsed(false);
+      }
     };
     const expandCluster = (event: maplibregl.MapLayerMouseEvent) => {
       const feature = event.features?.[0];
@@ -1523,7 +1635,7 @@ export function MapView({
       }
       instance.on("click", selectNode);
       instance.on("zoomstart", closeSpider);
-      instance.on("click", clearSelectionOnEmptyClick);
+      instance.on("click", selectMapPoint);
       instance.on("click", "node-clusters", expandCluster);
       instance.on("mouseenter", "node-clusters", onHoverEnter);
       instance.on("mouseleave", "node-clusters", onHoverLeave);
@@ -1536,6 +1648,7 @@ export function MapView({
       updateCoverageView();
     };
     const onStyleLoading = () => {
+      setRouteClick(null);
       closeSpider();
       styleLoading = true;
     };
@@ -1578,7 +1691,7 @@ export function MapView({
       }
       instance.off("click", selectNode);
       instance.off("zoomstart", closeSpider);
-      instance.off("click", clearSelectionOnEmptyClick);
+      instance.off("click", selectMapPoint);
       instance.off("click", "node-clusters", expandCluster);
       instance.off("mouseenter", "node-clusters", onHoverEnter);
       instance.off("mouseleave", "node-clusters", onHoverLeave);
@@ -1711,6 +1824,11 @@ export function MapView({
       selectedLink !== null
     )
       return;
+    // The route fit frames both ends.
+    if (activeRoute !== null) {
+      fittedSelection.current = selection;
+      return;
+    }
     const otherNodes =
       selection?.fit === "view"
         ? [
@@ -1736,11 +1854,25 @@ export function MapView({
     fitSelection();
   }, [selection, fitReady, readyMap, selectedNode, selectedLink, unplacedNode]);
 
+  useEffect(() => {
+    if (readyMap === null || shownRouteClick === null) return;
+    if ("error" in shownRouteClick) return;
+    // Clicks pass through the pin, so a double-click on it still zooms, and it
+    // waits out a double-click so a zoom doesn't flash it.
+    const pin = new maplibregl.Marker().setLngLat(shownRouteClick.point);
+    pin.getElement().style.pointerEvents = "none";
+    const show = window.setTimeout(() => pin.addTo(readyMap), DOUBLE_TAP_MS);
+    return () => {
+      window.clearTimeout(show);
+      pin.remove();
+    };
+  }, [readyMap, shownRouteClick]);
+
   // A route's ends and links are fitted once, or both ends when none is found.
   const routeKey =
     routeTo === null
       ? null
-      : `${routeTo}:${routeSteps?.map((step) => step.key).join() ?? ""}`;
+      : `${activeRoute?.from}:${routeTo}:${routeSteps?.map((step) => step.key).join() ?? ""}`;
   const fitRoute = useEffectEvent(() => {
     if (readyMap === null || selectedNode === null || routeTo === null) return;
     const ends = (
@@ -2033,7 +2165,7 @@ export function MapView({
                     {capitalize(name)} could not load. {error}
                   </StatusPanel>
                 ) : null}
-                {page?.truncated ? (
+                {linkChoice[linkKind] && page?.truncated ? (
                   <StatusPanel>
                     Only the {MAP_LINK_LIMIT.toLocaleString()} most recently
                     seen {name} are shown.
@@ -2065,6 +2197,8 @@ export function MapView({
             </StatusPanel>
           ) : mapMessage !== null ? (
             <StatusPanel tone="error">{mapMessage}</StatusPanel>
+          ) : shownRouteClick !== null && "error" in shownRouteClick ? (
+            <StatusPanel tone="error">{shownRouteClick.error}</StatusPanel>
           ) : null}
         </div>
         <MapFilterPanel
@@ -2149,6 +2283,11 @@ export function MapView({
             />
           )}
           <div ref={lists} className="sidebar-lists" hidden={shown !== null}>
+            <p className="map-route-hint">
+              {shownRouteClick !== null && "point" in shownRouteClick
+                ? `From ${nodeLabel(shownRouteClick.router)}: click a second point.`
+                : "Click two points on the map for a route."}
+            </p>
             <SidebarTabs
               tabs={[
                 {

@@ -1929,6 +1929,76 @@ describe("Map text reach", () => {
     expect(details.scrollTop).toBe(240);
   });
 
+  it("routes over links the Observed at least box hides, and opens them from the route", async () => {
+    // Heard 4 and 6 times both ways together, under the box's 10.
+    const link = (node_a: number, node_b: number, heard: number): MapLink => {
+      const direction = {
+        observations: heard,
+        snr_samples: heard,
+        average_snr: 2,
+        average_rssi: null,
+      };
+      return {
+        node_a,
+        node_b,
+        channel: "LongFast",
+        last_seen_at: "2026-09-25T09:00:00Z",
+        spreading_factor: 11,
+        a_to_b: direction,
+        b_to_a: direction,
+      };
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith("/api/v1/map/nodes")
+              ? {
+                  items: [
+                    mapNode(2, "Origin", "ORIG"),
+                    mapNode(3, "Beta", "BETA"),
+                    mapNode(4, "Gamma", "GAMM"),
+                  ],
+                  truncated: false,
+                }
+              : url.startsWith("/api/v1/map/links?")
+                ? { items: [link(2, 3, 2), link(3, 4, 3)], truncated: false }
+                : url.startsWith("/api/v1/traceroutes/hops")
+                  ? { a_to_b: [], b_to_a: [], nodes: [] }
+                  : url.startsWith("/api/v1/map/text-reach/")
+                    ? { node_id: 2, messages: 0, channel: null, gateways: [] }
+                    : { items: [], truncated: false },
+          ),
+        ),
+      ),
+    );
+    window.location.hash = "#map/2?show=traceroute&channel=LongFast";
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "Origin" });
+    expect(
+      within(side).queryByRole("button", { name: "Show link to Beta" }),
+    ).toBeNull();
+
+    fireEvent.click(within(side).getByRole("button", { name: /Route to/ }));
+    const box = screen.getByRole("combobox", { name: "Route to node" });
+    fireEvent.change(box, { target: { value: "Gamma" } });
+    fireEvent.click(await screen.findByRole("option", { name: /Gamma/ }));
+    await within(side).findByRole("heading", { name: "Origin → Gamma" });
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Show link to Gamma" }),
+    );
+    expect(
+      within(side)
+        .getByRole("link", { name: "All traceroutes" })
+        .getAttribute("href"),
+    ).toBe("#links/traceroutes/3-4");
+  });
+
   it("shows a linked node that the saved filters would hide", async () => {
     mockMap({});
     localStorage.setItem(

@@ -406,6 +406,70 @@ export function withinHops(
   };
 }
 
+// A route's links at most: Meshtastic's highest hop limit, 7 relays.
+const MAX_ROUTE_LINKS = 8;
+
+// −log of the chance of taking a link one way, so the cheapest route is the
+// likeliest. The 0.2 keeps a way never heard usable: the link was heard the
+// other way. Revisit: goal is to predict the route a traceroute takes; on live
+// loranet.pl (links 2026-10-25..28 vs traceroutes 10-28..31), 10 instead of 3
+// or adding the SNR margin did no better.
+function stepCost(observations: number): number {
+  return -Math.log((observations + 0.2) / (observations + 3.2));
+}
+
+/**
+ * The likeliest route from one node to another over the given links, of at
+ * most MAX_ROUTE_LINKS (stepCost). Lists the links from `from` to `to`, or
+ * null when none connects them.
+ */
+export function findRoute<T extends { link: MapLink }>(
+  from: number,
+  to: number,
+  links: readonly T[],
+): T[] | null {
+  if (from === to) return null;
+  const steps = links.flatMap((item) => {
+    const { node_a, node_b, a_to_b, b_to_a } = item.link;
+    return [
+      { from: node_a, to: node_b, item, cost: stepCost(a_to_b.observations) },
+      { from: node_b, to: node_a, item, cost: stepCost(b_to_a.observations) },
+    ];
+  });
+  type Reached = { cost: number; step: (typeof steps)[number] | null };
+  // reached[k]: the cheapest way to each node in k links, by its last step.
+  const reached = [
+    new globalThis.Map<number, Reached>([[from, { cost: 0, step: null }]]),
+  ];
+  let best: { cost: number; links: number } | null = null;
+  for (let count = 1; count <= MAX_ROUTE_LINKS; count++) {
+    const before = reached[count - 1];
+    const now = new globalThis.Map<number, Reached>();
+    for (const step of steps) {
+      const start = before.get(step.from);
+      if (start === undefined) continue;
+      const cost = start.cost + step.cost;
+      const known = now.get(step.to);
+      if (known === undefined || cost < known.cost)
+        now.set(step.to, { cost, step });
+    }
+    reached.push(now);
+    const end = now.get(to);
+    if (end !== undefined && (best === null || end.cost < best.cost))
+      best = { cost: end.cost, links: count };
+  }
+  if (best === null) return null;
+  // Every link costs something, so the cheapest way never visits a node twice.
+  const route: T[] = [];
+  let node = to;
+  for (let count = best.links; count > 0; count--) {
+    const step = reached[count].get(node)!.step!;
+    route.unshift(step.item);
+    node = step.from;
+  }
+  return route;
+}
+
 // Membership by match, which looks each value up instead of scanning the
 // list as "in" does; match needs at least one label.
 export function isOneOf(

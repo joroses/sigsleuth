@@ -593,22 +593,6 @@ thead th {
   padding: 0;
 }
 
-/* Node kinds two to a row. */
-.map-filter-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: var(--space-3);
-}
-
-.map-filter-grid .map-filter-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.map-filter-estimated {
-  grid-column: 1 / -1;
-}
-
 .map-filter-checks label {
   display: flex;
   align-items: center;
@@ -1573,34 +1557,55 @@ thead th {
   margin: 0 0 var(--space-2);
 }
 
-.node-traceroute-links table {
+.hop-table {
+  width: 100%;
   font-size: var(--text-xs);
 }
 
-.node-traceroute-links th,
-.node-traceroute-links td {
+.hop-table th,
+.hop-table td {
   padding: var(--space-2) var(--space-1);
 }
 
-.node-traceroute-links thead th {
+.hop-table thead th {
   font-size: inherit;
 }
 
-.node-traceroute-links th:not(:first-child),
-.node-traceroute-links td:not(:first-child) {
+.hop-table th:not(:first-child),
+.hop-table td:not(:first-child) {
   text-align: center;
 }
 
-.node-traceroute-links tbody tr {
+.hop-table tbody tr {
   cursor: pointer;
 }
 
-.node-traceroute-links tbody tr:hover {
+.hop-table tbody tr:hover {
   background: var(--surface-subtle);
 }
 
-.node-traceroute-links .text-button {
+.hop-table .text-button {
   font-size: inherit;
+}
+
+/* The node card's route button, and a route from the selected node. */
+.map-route-start {
+  margin-top: var(--space-3);
+}
+
+.map-route {
+  display: grid;
+  gap: var(--space-3);
+  overflow-x: auto;
+}
+
+.map-route h3,
+.map-route p {
+  margin: 0;
+}
+
+.map-route > .text-button {
+  justify-self: start;
 }
 
 /* Label and value side by side; a value may stack a few lines, such as a time and its packet link. */

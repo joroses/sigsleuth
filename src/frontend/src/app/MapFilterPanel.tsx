@@ -146,7 +146,7 @@ export function MapFilterPanel({
             onChange={(channel) => onNodeFilter({ ...nodeFilter, channel })}
           />
         </div>
-        <fieldset className="map-filter-checks map-filter-grid">
+        <fieldset className="map-filter-checks">
           <legend className="section-label">Nodes</legend>
           {NODE_CATEGORIES.map((category) => (
             <label key={category}>
@@ -172,10 +172,7 @@ export function MapFilterPanel({
               </span>
             </label>
           ))}
-          <label
-            className="map-filter-estimated"
-            title="No position: placed near the nodes that hear it"
-          >
+          <label title="No position: placed near the nodes that hear it">
             <input
               type="checkbox"
               checked={nodeFilter.estimated}

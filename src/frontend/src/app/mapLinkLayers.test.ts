@@ -4,6 +4,7 @@ import type { MapLink, MapNode } from "./api";
 import {
   buildLinkFeatureCollection,
   drawnLongEnough,
+  findRoute,
   linkTierShown,
   linkKey,
   withinHops,
@@ -255,5 +256,64 @@ describe("drawnLongEnough", () => {
     const one = new Map<number, MapNode>([[1, reported]]);
     expect(drawnLongEnough(link, one, 0)).toBe(true);
     expect(drawnLongEnough(link, one, 5)).toBe(false);
+  });
+});
+
+describe("findRoute", () => {
+  // A link heard `out` times node_a → node_b and `back` times the other way.
+  const heard = (node_a: number, node_b: number, out: number, back = out) => ({
+    link: {
+      ...link,
+      node_a,
+      node_b,
+      a_to_b: { ...link.a_to_b, observations: out },
+      b_to_a: { ...link.b_to_a, observations: back },
+    },
+  });
+  const pairs = (route: { link: MapLink }[] | null) =>
+    route?.map(({ link }) => [link.node_a, link.node_b]) ?? null;
+
+  it("takes a longer way over often heard links rather than one heard once", () => {
+    const longWay = [heard(1, 3, 20), heard(3, 4, 20), heard(4, 5, 20)];
+    expect(
+      pairs(findRoute(1, 5, [heard(1, 2, 1), heard(2, 5, 20), ...longWay])),
+    ).toEqual([
+      [1, 3],
+      [3, 4],
+      [4, 5],
+    ]);
+    // Heard as often, the shorter way wins.
+    expect(
+      pairs(findRoute(1, 5, [heard(1, 2, 20), heard(2, 5, 20), ...longWay])),
+    ).toEqual([
+      [1, 2],
+      [2, 5],
+    ]);
+  });
+
+  it("counts the way travelled, and takes a way never heard only when nothing else connects", () => {
+    // 1 → 2 was never heard; 2 → 1 was, 50 times.
+    const oneWay = heard(1, 2, 0, 50);
+    const around = [heard(1, 3, 10), heard(3, 2, 10)];
+    expect(pairs(findRoute(1, 2, [oneWay, ...around]))).toEqual([
+      [1, 3],
+      [3, 2],
+    ]);
+    expect(pairs(findRoute(2, 1, [oneWay, ...around]))).toEqual([[1, 2]]);
+    expect(pairs(findRoute(1, 2, [oneWay]))).toEqual([[1, 2]]);
+  });
+
+  it("keeps to 8 links, even when a longer route is likelier", () => {
+    // 1 – 2 – … – 10, nine links heard 100 times each.
+    const chain = Array.from({ length: 9 }, (_, index) =>
+      heard(index + 1, index + 2, 100),
+    );
+    expect(findRoute(1, 10, chain)).toBeNull();
+    expect(
+      pairs(findRoute(1, 10, [...chain, heard(1, 11, 1), heard(11, 10, 1)])),
+    ).toEqual([
+      [1, 11],
+      [11, 10],
+    ]);
   });
 });

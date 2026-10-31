@@ -4,6 +4,7 @@ import type { MapNode } from "./api";
 import {
   type NodeFeatureCollection,
   buildNodeFeatureCollection,
+  nodesBounds,
 } from "./mapNodeLayers";
 
 const node: MapNode = {
@@ -94,5 +95,31 @@ describe("buildNodeFeatureCollection", () => {
       3: [true, false, "2×"],
       4: [false, false, ""],
     });
+  });
+});
+
+describe("nodesBounds", () => {
+  const at = (latitude: number, longitude: number) => ({ latitude, longitude });
+
+  it("is null without nodes", () => {
+    expect(nodesBounds([])).toBeNull();
+  });
+
+  it("covers every node when there are few", () => {
+    expect(nodesBounds([at(52, 21), at(50, 19), at(37, -6)])).toEqual([
+      [-6, 37],
+      [21, 52],
+    ]);
+  });
+
+  it("leaves out the outermost 1% on each side", () => {
+    const nodes = Array.from({ length: 100 }, (_, i) =>
+      at(50 + i / 100, 15 + i / 100),
+    );
+    nodes[0] = at(37, -6); // One node far away.
+    expect(nodesBounds(nodes)).toEqual([
+      [15.01, 50.01],
+      [15.98, 50.98],
+    ]);
   });
 });

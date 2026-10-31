@@ -65,6 +65,28 @@ export function nodeCategory(node: MapNode): NodeCategory {
   return node.last_gateway_at ? "gateway" : "other";
 }
 
+/**
+ * The box a first visit fits: where the nodes are, leaving out the outermost
+ * 1% on each side, so a stray position far away does not zoom out to the whole
+ * world. [[west, south], [east, north]], or null with no nodes.
+ */
+export function nodesBounds(
+  nodes: readonly Pick<MapNode, "latitude" | "longitude">[],
+): [[number, number], [number, number]] | null {
+  if (nodes.length === 0) return null;
+  const trim = Math.floor(nodes.length * 0.01);
+  const range = (values: number[]) => {
+    values.sort((a, b) => a - b);
+    return [values[trim], values[values.length - 1 - trim]];
+  };
+  const [west, east] = range(nodes.map((node) => node.longitude));
+  const [south, north] = range(nodes.map((node) => node.latitude));
+  return [
+    [west, south],
+    [east, north],
+  ];
+}
+
 /** What the map shows beyond the nodes themselves. */
 export interface NodeView {
   /**

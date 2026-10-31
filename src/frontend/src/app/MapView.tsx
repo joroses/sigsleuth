@@ -61,8 +61,8 @@ import {
 import { HeardInView } from "./HeardInView";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { MapLinkDetails } from "./MapLinkDetails";
-import { bothWaysObservations } from "./linkQuality";
-import { fromNode, weakerMargin } from "./linkRows";
+import { bothWaysObservations, fadeMargin } from "./linkQuality";
+import { fromNode } from "./linkRows";
 import {
   LINK_KINDS,
   LINK_LAYERS,
@@ -73,6 +73,7 @@ import {
   DEFAULT_MIN_OBSERVATIONS,
   drawnKm,
   drawnLongEnough,
+  findRoute,
   linkKey,
   linkSourceId,
   showLinkFocus,
@@ -90,6 +91,7 @@ import {
 import {
   NODE_LAYERS,
   addNodeLayers,
+  nodesBounds,
   clickableNodeLayers,
   applyNodeView,
   buildNodeFeatureCollection,
@@ -148,9 +150,9 @@ import { formatHours } from "./zones";
 import {
   BothWays,
   CopyValue,
+  DirectionSnr,
   Icon,
   IconButton,
-  MarginValue,
   ShareButton,
   ShortTime,
   SidebarNav,
@@ -184,6 +186,18 @@ function sheetOffset(instance: maplibregl.Map): [number, number] {
 function fitPadding(instance: maplibregl.Map): maplibregl.PaddingOptions {
   const half = -sheetOffset(instance)[1];
   return { top: 60 + half, bottom: 60 + half, left: 60, right: 60 };
+}
+
+// How far the open filter panel reaches over the map's left side.
+function filterPanelWidth(instance: maplibregl.Map): number {
+  const container = instance.getContainer();
+  const panel = container.parentElement?.querySelector(
+    ".map-filter-panel:not(.map-filter-panel-closed)",
+  );
+  if (panel == null) return 0;
+  return (
+    panel.getBoundingClientRect().right - container.getBoundingClientRect().left
+  );
 }
 
 function moveCamera(
@@ -363,19 +377,15 @@ interface Selection {
 
 /**
  * One kind of link, fetched only while url is set (and kept for Back under
- * chosenAt, see useApi), and its map features. Links observed fewer than
- * minObservations times, in both directions together, touching a node the
- * category, role or estimate filter hides (whatever its latest channel), on
- * another channel than the one chosen, with neither half of a chosen quality
- * tier, or drawn shorter than minKm, are left out everywhere: drawn and walked
- * for hop depth (see linkTierShown and drawnLongEnough).
+ * chosenAt, see useApi). Links touching a node the category, role or estimate
+ * filter hides (whatever its latest channel), on another channel than the one
+ * chosen, with neither half of a chosen quality tier, or drawn shorter than
+ * minKm, are left out everywhere (see linkTierShown and drawnLongEnough).
  */
 function useLinkLayer(
-  linkKind: LinkKind,
   url: string | null,
   chosenAt: number,
   nodeMap: ReadonlyMap<number, MapNode>,
-  minObservations: number,
   filteredOut: ReadonlySet<number>,
   channel: string,
   tiers: LinkTierChoice,
@@ -386,32 +396,44 @@ function useLinkLayer(
   const allTiers = Object.values(tiers).every(Boolean);
   const links = useMemo(
     () =>
-      minObservations <= 1 &&
-      filteredOut.size === 0 &&
-      channel === ANY &&
-      allTiers &&
-      minKm <= 0
+      filteredOut.size === 0 && channel === ANY && allTiers && minKm <= 0
         ? loaded
         : loaded.filter(
             (link) =>
-              link.a_to_b.observations + link.b_to_a.observations >=
-                minObservations &&
               !filteredOut.has(link.node_a) &&
               !filteredOut.has(link.node_b) &&
               onChosenChannel(link, channel) &&
               linkTierShown(tiers, link) &&
               drawnLongEnough(link, nodeMap, minKm),
           ),
-    [
-      loaded,
-      minObservations,
-      filteredOut,
-      channel,
-      tiers,
-      allTiers,
-      minKm,
-      nodeMap,
-    ],
+    [loaded, filteredOut, channel, tiers, allTiers, minKm, nodeMap],
+  );
+  return { page, error, loading, links };
+}
+
+/**
+ * A link layer's drawn links, also walked for hop depth, and their map
+ * features: those observed at least minObservations times, in both directions
+ * together, and the route's (kept), which ignores that box.
+ */
+function useDrawnLinks(
+  linkKind: LinkKind,
+  layer: ReturnType<typeof useLinkLayer>,
+  nodeMap: ReadonlyMap<number, MapNode>,
+  minObservations: number,
+  kept: ReadonlySet<MapLink>,
+) {
+  const { page, error, loading, links: filtered } = layer;
+  const links = useMemo(
+    () =>
+      minObservations <= 1
+        ? filtered
+        : filtered.filter(
+            (link) =>
+              link.a_to_b.observations + link.b_to_a.observations >=
+                minObservations || kept.has(link),
+          ),
+    [filtered, minObservations, kept],
   );
   const data = useMemo(
     () => buildLinkFeatureCollection(linkKind, links, nodeMap),
@@ -465,6 +487,8 @@ export function MapView({
   const forgetCellHover = useRef<() => void>(() => {});
   // The only links shown; null shows them all.
   const linkFocus = useRef<string[] | null>(null);
+  // The route shown, for the map's click handlers.
+  const routeState = useRef<{ from: number; picking: boolean } | null>(null);
   const [seenWindow, setSeenWindow] = useSetting<SeenWindow>(
     "seenWindow",
     DEFAULT_SEEN_WINDOW,
@@ -594,38 +618,95 @@ export function MapView({
   // keep up and skips lengths it has already passed.
   const drawnMinKm = useDeferredValue(minKm);
   // Links are optional; a failure leaves the nodes on the map.
-  const tracerouteLayer = useLinkLayer(
-    "traceroute",
+  const tracerouteFiltered = useLinkLayer(
     linkChoice.traceroute ? urls.traceroute : null,
     chosenAt,
     linkableMap,
-    minObservations,
     filteredOut,
     nodeFilter.channel,
     linkTiers,
     drawnMinKm,
   );
-  const directLayer = useLinkLayer(
-    "direct",
+  const directFiltered = useLinkLayer(
     linkChoice.direct ? urls.direct : null,
     chosenAt,
     linkableMap,
-    minObservations,
     filteredOut,
     nodeFilter.channel,
     linkTiers,
     drawnMinKm,
   );
-  const neighborLayer = useLinkLayer(
-    "neighbor",
+  const neighborFiltered = useLinkLayer(
     linkChoice.neighbor ? urls.neighbor : null,
     chosenAt,
     linkableMap,
-    minObservations,
     filteredOut,
     nodeFilter.channel,
     linkTiers,
     drawnMinKm,
+  );
+  const [selection, setSelection] = useState<Selection | null>(() =>
+    nodeId === null ? null : { nodeId, fit: "view", zoomIn: true },
+  );
+  // The chosen link's key; it shows only while the filters keep the link.
+  const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
+  // A route from the selected node: its other end is being picked while `to`
+  // is null.
+  const [route, setRoute] = useState<{
+    from: number;
+    to: number | null;
+  } | null>(null);
+  // The route's links, between placed nodes, whatever "Observed at least" says.
+  const routeFrom =
+    route !== null && route.from === selection?.nodeId ? route.from : null;
+  const routeEnd = routeFrom === null ? null : (route?.to ?? null);
+  const tracerouteFilteredLinks = tracerouteFiltered.links;
+  const directFilteredLinks = directFiltered.links;
+  const neighborFilteredLinks = neighborFiltered.links;
+  const routeFound = useMemo(() => {
+    if (routeFrom === null || routeEnd === null) return null;
+    const placed: SelectedLink[] = [];
+    for (const [linkKind, links] of [
+      ["traceroute", tracerouteFilteredLinks],
+      ["direct", directFilteredLinks],
+      ["neighbor", neighborFilteredLinks],
+    ] as const)
+      for (const link of links)
+        if (linkableMap.has(link.node_a) && linkableMap.has(link.node_b))
+          placed.push({ linkKind, link });
+    return findRoute(routeFrom, routeEnd, placed);
+  }, [
+    routeFrom,
+    routeEnd,
+    tracerouteFilteredLinks,
+    directFilteredLinks,
+    neighborFilteredLinks,
+    linkableMap,
+  ]);
+  const routeKept = useMemo(
+    () => new Set(routeFound?.map(({ link }) => link) ?? []),
+    [routeFound],
+  );
+  const tracerouteLayer = useDrawnLinks(
+    "traceroute",
+    tracerouteFiltered,
+    linkableMap,
+    minObservations,
+    routeKept,
+  );
+  const directLayer = useDrawnLinks(
+    "direct",
+    directFiltered,
+    linkableMap,
+    minObservations,
+    routeKept,
+  );
+  const neighborLayer = useDrawnLinks(
+    "neighbor",
+    neighborFiltered,
+    linkableMap,
+    minObservations,
+    routeKept,
   );
   const linkLayers = {
     traceroute: tracerouteLayer,
@@ -652,11 +733,6 @@ export function MapView({
     () => new Map(items.map((node) => [node.node_id, node])),
     [items],
   );
-  const [selection, setSelection] = useState<Selection | null>(() =>
-    nodeId === null ? null : { nodeId, fit: "view", zoomIn: true },
-  );
-  // The chosen link's key; it shows only while the filters keep the link.
-  const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
   // A selected node the filters hide shows as nothing selected, and comes
   // back when they no longer hide it.
   const selectedNode =
@@ -706,11 +782,13 @@ export function MapView({
     setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
     setChosenLinkKey(null);
     setSelectedCell(null);
+    setRoute(null);
   }, []);
   const clearSelection = useCallback(() => {
     setUnknownCoverage(false);
     setSelection(null);
     setChosenLinkKey(null);
+    setRoute(null);
   }, []);
 
   useEffect(() => {
@@ -798,6 +876,48 @@ export function MapView({
     [focusNodeId, unplacedNode, anyLinkLayer, loadedLinks, hopDepth],
   );
 
+  // The route found, each link turned to face along it, and what the map
+  // keeps of it: every node while its other end is picked, so any can be
+  // clicked, then only the route.
+  const activeRoute =
+    selectedNode !== null && route?.from === selectedNode.node_id
+      ? route
+      : null;
+  const routePicking = activeRoute !== null && activeRoute.to === null;
+  const routeTo = activeRoute?.to ?? null;
+  const routeSteps = useMemo(() => {
+    if (activeRoute === null || routeFound === null) return null;
+    let at = activeRoute.from;
+    return routeFound.map((item) => {
+      const link = fromNode(item.link, at);
+      at = link.node_b;
+      return { key: linkKey(item.linkKind, item.link), link };
+    });
+  }, [activeRoute, routeFound]);
+  const focus = useMemo(
+    () =>
+      activeRoute === null
+        ? hopFocus
+        : routeTo === null
+          ? null
+          : routeSteps === null
+            ? { nodeIds: [activeRoute.from, routeTo], linkKeys: [] }
+            : {
+                nodeIds: [
+                  activeRoute.from,
+                  ...routeSteps.map((step) => step.link.node_b),
+                ],
+                linkKeys: routeSteps.map((step) => step.key),
+              },
+    [activeRoute, routeTo, routeSteps, hopFocus],
+  );
+  useEffect(() => {
+    routeState.current =
+      activeRoute === null
+        ? null
+        : { from: activeRoute.from, picking: activeRoute.to === null };
+  }, [activeRoute]);
+
   // The sidebar needs the message count even with Text reach off.
   const reach = useApi<TextReach>(
     selection === null ? null : textReachUrl(selection.nodeId, urls.since),
@@ -852,9 +972,9 @@ export function MapView({
     (): NodeView =>
       selectedLink === null
         ? {
-            focus: hopFocus === null ? null : new Set(hopFocus.nodeIds),
+            focus: focus === null ? null : new Set(focus.nodeIds),
             selectedId: focusNodeId,
-            shares,
+            shares: activeRoute === null ? shares : NO_SHARES,
           }
         : {
             focus: new Set([
@@ -864,7 +984,7 @@ export function MapView({
             selectedId: focusNodeId,
             shares: NO_SHARES,
           },
-    [selectedLink, hopFocus, focusNodeId, shares],
+    [selectedLink, focus, focusNodeId, shares, activeRoute],
   );
 
   // Coverage cells for the area in view, only where the selected node was
@@ -1040,6 +1160,27 @@ export function MapView({
     [select, clearSelection],
   );
 
+  // A first visit, with no saved camera or linked node, starts on the nodes
+  // once they load instead of the whole world.
+  const fitFirstNodes = useRef(nodeId === null && savedCamera() === null);
+  useEffect(() => {
+    if (!fitFirstNodes.current || readyMap === null || page === null) return;
+    fitFirstNodes.current = false;
+    const bounds = nodesBounds(page.items);
+    if (bounds === null) return;
+    // The sidebar starts closed on a phone, so no room is kept for it.
+    readyMap.fitBounds(bounds, {
+      padding: {
+        top: 40,
+        bottom: 40,
+        right: 40,
+        left: 40 + filterPanelWidth(readyMap),
+      },
+      maxZoom: 12,
+      duration: 0,
+    });
+  }, [readyMap, page]);
+
   // The map's handlers, and the node and link layers, which every style load
   // (the first and each basemap switch) adds again.
   function setUpMap(instance: maplibregl.Map) {
@@ -1172,9 +1313,14 @@ export function MapView({
       document.removeEventListener("pointerdown", dismissSpider, true);
       document.removeEventListener("keydown", dismissSpiderOnEscape);
     };
+    // While a route's other end is picked, a node click picks it.
     const chooseNode = (node: MapNode) => {
       closeSpider();
-      select(node);
+      const routing = routeState.current;
+      if (routing?.picking) {
+        if (node.node_id !== routing.from)
+          setRoute({ from: routing.from, to: node.node_id });
+      } else select(node);
       setCollapsed(false);
     };
     const openSpider = (nodes: MapNode[]) => {
@@ -1252,6 +1398,7 @@ export function MapView({
         if (linkNear(event.point) !== undefined) return;
         if (selectedLinkKey.current !== null) setChosenLinkKey(null);
         else if (cellChosen.current) setSelectedCell(null);
+        else if (routeState.current !== null) setRoute(null);
         else clearSelection();
         return;
       }
@@ -1503,7 +1650,7 @@ export function MapView({
     cellChosen.current = selectedCell !== null;
   }, [selectedCell]);
   // A selected link shows only itself, over any node focus.
-  const hopLinkKeys = hopFocus?.linkKeys ?? null;
+  const hopLinkKeys = focus?.linkKeys ?? null;
   useEffect(() => {
     if (selectedLink === null) {
       selectedLinkKey.current = null;
@@ -1588,6 +1735,25 @@ export function MapView({
     if (!fitReady || fittedSelection.current === selection) return;
     fitSelection();
   }, [selection, fitReady, readyMap, selectedNode, selectedLink, unplacedNode]);
+
+  // A route's ends and links are fitted once, or both ends when none is found.
+  const routeKey =
+    routeTo === null
+      ? null
+      : `${routeTo}:${routeSteps?.map((step) => step.key).join() ?? ""}`;
+  const fitRoute = useEffectEvent(() => {
+    if (readyMap === null || selectedNode === null || routeTo === null) return;
+    const ends = (
+      routeSteps?.map((step) => step.link.node_b) ?? [routeTo]
+    ).flatMap((id) => {
+      const node = nodeMap.get(id);
+      return node === undefined ? [] : [node];
+    });
+    focusTextReach(readyMap, selectedNode, ends);
+  });
+  useEffect(() => {
+    if (routeKey !== null) fitRoute();
+  }, [routeKey]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
@@ -1709,15 +1875,18 @@ export function MapView({
     );
 
   // The sidebar shows the node lists, or else the latest choice in their
-  // place: a link or coverage cell over the selected node, or the node.
-  const shown: "link" | "cell" | "node" | null =
+  // place: a link or coverage cell over the selected node or its route, the
+  // route, or the node.
+  const shown: "link" | "cell" | "route" | "node" | null =
     selectedLinkNodes !== null
       ? "link"
       : showCoverage && selectedCell !== null
         ? "cell"
-        : selectedNode !== null || unplacedNode !== null
-          ? "node"
-          : null;
+        : activeRoute !== null
+          ? "route"
+          : selectedNode !== null || unplacedNode !== null
+            ? "node"
+            : null;
   const activeTab = listTab;
   const listName = activeTab === "heard" ? "Coverage" : "Chatty nodes";
   const viewedId = focusNodeId;
@@ -1733,6 +1902,7 @@ export function MapView({
   function goBack() {
     if (shown === "link") setChosenLinkKey(null);
     else if (shown === "cell") setSelectedCell(null);
+    else if (shown === "route") setRoute(null);
     else clearSelection();
   }
 
@@ -1749,11 +1919,14 @@ export function MapView({
           )
           .map((node) => node.node_id)
       : (shownTextSenders?.items ?? []).map((sender) => sender.node_id);
+  // A link steps through the route's links, else the node's.
+  const stepLinkKeys =
+    routeSteps !== null
+      ? routeSteps.map((step) => step.key)
+      : nodeTracerouteLinks.map((link) => linkKey("traceroute", link));
   const stepIndex =
-    shown === "link"
-      ? nodeTracerouteLinks.findIndex(
-          (link) => linkKey("traceroute", link) === chosenLinkKey,
-        )
+    shown === "link" && chosenLinkKey !== null
+      ? stepLinkKeys.indexOf(chosenLinkKey)
       : shown === "node" && viewedId !== null
         ? stepIds.indexOf(viewedId)
         : -1;
@@ -1782,7 +1955,7 @@ export function MapView({
   }
   function stepTo(index: number) {
     if (shown === "link") {
-      openNodeLink(linkKey("traceroute", nodeTracerouteLinks[index]));
+      openNodeLink(stepLinkKeys[index]);
       return;
     }
     const nodeId = stepIds[index];
@@ -1955,7 +2128,26 @@ export function MapView({
           className="sidebar-content"
           hidden={collapsed}
         >
-          <NodeSearch nodes={items} onSelect={select} keepResults />
+          {routePicking && activeRoute !== null ? (
+            <NodeSearch
+              key="route"
+              nodes={items}
+              onSelect={(node) => {
+                if (node.node_id !== activeRoute.from)
+                  setRoute({ from: activeRoute.from, to: node.node_id });
+              }}
+              label="Route to node"
+              placeholder="Route to: name or node ID"
+              autoFocus
+            />
+          ) : (
+            <NodeSearch
+              key="nodes"
+              nodes={items}
+              onSelect={select}
+              keepResults
+            />
+          )}
           <div ref={lists} className="sidebar-lists" hidden={shown !== null}>
             <SidebarTabs
               tabs={[
@@ -2013,7 +2205,7 @@ export function MapView({
                         index: stepIndex,
                         total:
                           shown === "link"
-                            ? nodeTracerouteLinks.length
+                            ? stepLinkKeys.length
                             : stepIds.length,
                         noun: shown === "link" ? "link" : "node",
                         onStep: stepTo,
@@ -2044,6 +2236,19 @@ export function MapView({
                   detail={cellDetail}
                   isDrawn={(nodeId) => nodeMap.has(nodeId)}
                   onChooseNode={chooseHeardNode}
+                />
+              ) : shown === "route" &&
+                activeRoute !== null &&
+                selectedNode !== null ? (
+                <MapRoute
+                  from={selectedNode}
+                  toId={activeRoute.to}
+                  steps={routeSteps}
+                  nodes={nodeMap}
+                  onOpen={openNodeLink}
+                  onChangeEnd={() =>
+                    setRoute({ from: activeRoute.from, to: null })
+                  }
                 />
               ) : detailNode === null && unplacedNode !== null ? (
                 <>
@@ -2180,6 +2385,23 @@ export function MapView({
                   </dl>
                   {selectedCoverage}
                   {selectedNode === null ? null : (
+                    <button
+                      type="button"
+                      className="text-button map-route-start"
+                      disabled={!anyLinkLayer}
+                      title={
+                        anyLinkLayer
+                          ? "Find a route to another node"
+                          : "Turn on a link layer first"
+                      }
+                      onClick={() =>
+                        setRoute({ from: selectedNode.node_id, to: null })
+                      }
+                    >
+                      <Icon name="route" /> Route to…
+                    </button>
+                  )}
+                  {selectedNode === null ? null : (
                     <NodeTracerouteLinks
                       nodeId={selectedNode.node_id}
                       links={nodeTracerouteLinks}
@@ -2213,66 +2435,193 @@ function NodeTracerouteLinks({
   if (links.length === 0) return null;
   return (
     <div className="node-traceroute-links">
-      <h4 className="section-label">Traceroute hops</h4>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Node</th>
-            <th scope="col" title="Times heard out and in">
-              Seen
-            </th>
-            <th scope="col" title="Weaker direction's signal margin">
-              Margin
-            </th>
-            <th scope="col">km</th>
-          </tr>
-        </thead>
-        <tbody>
-          {links.map((raw) => {
-            const key = linkKey("traceroute", raw);
-            const link = fromNode(raw, nodeId);
-            const other = nodes.get(link.node_b)!;
-            const origin = nodes.get(nodeId)!;
-            const km =
-              origin.estimate === null && other.estimate === null
-                ? drawnKm(origin, other)
-                : null;
-            const margin = weakerMargin(link);
-            return (
-              <tr
-                key={key}
-                onClick={(event) => {
-                  if ((event.target as Element).closest("button")) return;
-                  onOpen(key);
-                }}
-              >
-                <td>
-                  <button
-                    type="button"
-                    className="text-button"
-                    title={nodeLabel(other)}
-                    aria-label={`Show link to ${nodeLabel(other)}`}
-                    onClick={() => onOpen(key)}
-                  >
-                    {shortLabel(other.node_id, other.short_name)}
-                  </button>
-                </td>
-                <td>
-                  <BothWays
-                    left={link.a_to_b.observations.toLocaleString()}
-                    right={link.b_to_a.observations.toLocaleString()}
-                  />
-                </td>
-                <td>
-                  {margin === null ? "—" : <MarginValue value={margin} />}
-                </td>
-                <td>{formatKm(km)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <h4 className="section-label">Traceroute links</h4>
+      <HopTable
+        steps={links.map((link) => ({
+          key: linkKey("traceroute", link),
+          link: fromNode(link, nodeId),
+        }))}
+        nodes={nodes}
+        onOpen={onOpen}
+      />
     </div>
+  );
+}
+
+interface HopStep {
+  key: string;
+  /** Turned so node_a is the near end. */
+  link: MapLink;
+}
+
+// One row per link, named by its far end: times heard and SNR each way,
+// out first, and the length between reported positions.
+function HopTable({
+  steps,
+  nodes,
+  onOpen,
+}: {
+  steps: HopStep[];
+  nodes: ReadonlyMap<number, MapNode>;
+  onOpen: (key: string) => void;
+}) {
+  return (
+    <table className="hop-table">
+      <thead>
+        <tr>
+          <th scope="col">Node</th>
+          <th scope="col" title="Times heard out and in">
+            Seen
+          </th>
+          <th scope="col" title="Average SNR out and in, in dB">
+            SNR
+          </th>
+          <th scope="col">km</th>
+        </tr>
+      </thead>
+      <tbody>
+        {steps.map(({ key, link }) => {
+          const near = nodes.get(link.node_a)!;
+          const far = nodes.get(link.node_b)!;
+          const nearName = shortLabel(near.node_id, near.short_name);
+          const farName = shortLabel(far.node_id, far.short_name);
+          const km =
+            near.estimate === null && far.estimate === null
+              ? drawnKm(near, far)
+              : null;
+          return (
+            <tr
+              key={key}
+              onClick={(event) => {
+                if ((event.target as Element).closest("button")) return;
+                onOpen(key);
+              }}
+            >
+              <td>
+                <button
+                  type="button"
+                  className="text-button"
+                  title={nodeLabel(far)}
+                  aria-label={`Show link to ${nodeLabel(far)}`}
+                  onClick={() => onOpen(key)}
+                >
+                  {farName}
+                </button>
+              </td>
+              <td>
+                <BothWays
+                  left={link.a_to_b.observations.toLocaleString()}
+                  right={link.b_to_a.observations.toLocaleString()}
+                />
+              </td>
+              <td>
+                <BothWays
+                  left={
+                    <DirectionSnr
+                      direction={link.a_to_b}
+                      spreadingFactor={link.spreading_factor}
+                      label={`${nearName} → ${farName}`}
+                    />
+                  }
+                  right={
+                    <DirectionSnr
+                      direction={link.b_to_a}
+                      spreadingFactor={link.spreading_factor}
+                      label={`${farName} → ${nearName}`}
+                    />
+                  }
+                />
+              </td>
+              <td>{formatKm(km)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/**
+ * A route from the selected node: picking its other end, then the route's
+ * links, or why none was found.
+ */
+function MapRoute({
+  from,
+  toId,
+  steps,
+  nodes,
+  onOpen,
+  onChangeEnd,
+}: {
+  from: MapNode;
+  toId: number | null;
+  steps: HopStep[] | null;
+  nodes: ReadonlyMap<number, MapNode>;
+  onOpen: (key: string) => void;
+  onChangeEnd: () => void;
+}) {
+  if (toId === null)
+    return (
+      <section className="map-route" aria-live="polite">
+        <h3>Route from {nodeLabel(from)}</h3>
+        <p className="sidebar-note">
+          Search or select another node to find a likely route.
+        </p>
+      </section>
+    );
+  const to = nodes.get(toId);
+  const heading = (
+    <h3>
+      {nodeLabel(from)} →{" "}
+      {to === undefined ? formatNodeId(toId) : nodeLabel(to)}
+    </h3>
+  );
+  const change = (
+    <button type="button" className="text-button" onClick={onChangeEnd}>
+      <Icon name="route" /> Change destination
+    </button>
+  );
+  if (to === undefined || steps === null)
+    return (
+      <section className="map-route" aria-live="polite">
+        {heading}
+        <p className="sidebar-note">
+          {to === undefined
+            ? "That node is not on the map with the current filters."
+            : "No route over these link layers and filters."}
+        </p>
+        {change}
+      </section>
+    );
+  // The weakest SNR the way travelled, by margin.
+  let weakest: MapLink | null = null;
+  let weakestMargin = Infinity;
+  for (const { link } of steps) {
+    const margin = fadeMargin(link.a_to_b.average_snr, link.spreading_factor);
+    if (margin !== null && margin < weakestMargin) {
+      weakest = link;
+      weakestMargin = margin;
+    }
+  }
+  return (
+    <section className="map-route" aria-live="polite">
+      {heading}
+      <p className="map-route-summary">
+        {steps.length} {steps.length === 1 ? "hop" : "hops"}
+        {weakest === null ? null : (
+          <>
+            {" · weakest "}
+            <DirectionSnr
+              direction={weakest.a_to_b}
+              spreadingFactor={weakest.spreading_factor}
+            />
+            {" dB SNR"}
+          </>
+        )}
+      </p>
+      <HopTable steps={steps} nodes={nodes} onOpen={onOpen} />
+      {change}
+    </section>
   );
 }
 

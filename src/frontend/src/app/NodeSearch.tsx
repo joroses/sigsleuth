@@ -15,6 +15,8 @@ export function NodeSearch({
   onSelectId,
   label = "Search nodes",
   keepResults = false,
+  placeholder = "Search name or node ID",
+  autoFocus = false,
 }: {
   nodes: MapNode[];
   onSelect: (node: MapNode) => void;
@@ -23,6 +25,8 @@ export function NodeSearch({
   label?: string;
   /** Keep the query after a pick; a click in the box shows the results again. */
   keepResults?: boolean;
+  placeholder?: string;
+  autoFocus?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -96,7 +100,8 @@ export function NodeSearch({
         aria-activedescendant={
           open && choices > 0 ? `${listId}-${active}` : undefined
         }
-        placeholder="Search name or node ID"
+        placeholder={placeholder}
+        autoFocus={autoFocus}
         autoComplete="off"
         spellCheck={false}
         value={query}

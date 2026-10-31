@@ -36,6 +36,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 
 - Avoid unnecessary secondary labels and descriptions.
 - Don't restate the implementation in user-facing text.
+- A note or empty state is one short sentence: what to do, or what is missing. Never how a result is chosen, which settings it ignores, or a warning for an edge case. When a change makes a text untrue, shorten it; don't explain the new behaviour. Not "Search for the other end above, or click it on the map. The route takes the links most often heard its way, including those “Observed at least” hides." but "Search or select another node to find a likely route."
 - Hover text (`title`) is one short phrase, under 60 characters, with no full stop. It says what the user sees, not how it is worked out: "Gateways that hear it", not "Gateways that heard it and nodes heard with it directly or as neighbours, with no map rule hiding any".
 - Leave out what the label, heading note or unit already says (time windows, "km"). A hover that adds nothing is removed.
 - Use the page's own words: "traceroute hop", "Heard directly", "relay".
@@ -47,7 +48,7 @@ Short, essential, plain language.
 
 - A comment says what something is, only when its name doesn't.
 - A why only where the obvious change would break observed behaviour (e.g. why grouping ignores payload bytes); a sentence or two.
-- Revisit thresholds sit beside their constant or query, dated, with their dataset.
+- A tuned choice (threshold, weight, formula) states the goal it serves. Its Revisit note sits beside the constant or query, dated, with its dataset and what was measured against that goal, so a later change can be judged by it.
 - Don't restate columns, parameters, call flow or the next line; trim such comments in files you edit.
 
 Docs only for what code cannot say: the README (one screen), `docs/setup.md`, `docs/testing.md`, `docs/deployment.md`, the [glossary](docs/glossary.md), and decision records in `docs/` only for conclusions measured on live data and likely revisited.

@@ -257,6 +257,31 @@ def test_an_interrupted_rederive_starts_again(path: Path, connection: sqlite3.Co
     assert derived(connection) == captured
 
 
+@pytest.mark.parametrize("outcome", ["complete", "stopped", "error"])
+def test_rederive_scopes_its_cache_to_the_rebuild(
+    path: Path, connection: sqlite3.Connection, outcome: str
+) -> None:
+    capture_some_history(connection)
+    connection.execute("UPDATE derived_state SET rebuilt = 0")
+    connection.execute("PRAGMA cache_size = 128")
+    with closing(open_database(path)) as reader:
+        reader_cache = reader.execute("PRAGMA cache_size").fetchone()[0]
+
+        def stopping() -> bool:
+            assert connection.execute("PRAGMA cache_size").fetchone()[0] == -64 * 1024
+            assert reader.execute("PRAGMA cache_size").fetchone()[0] == reader_cache
+            if outcome == "error":
+                raise RuntimeError("rebuild failed")
+            return outcome == "stopped"
+
+        if outcome == "error":
+            with pytest.raises(RuntimeError, match="rebuild failed"):
+                rederive(connection, stopping)
+        else:
+            assert rederive(connection, stopping) == (outcome == "complete")
+    assert connection.execute("PRAGMA cache_size").fetchone()[0] == 128
+
+
 def test_a_row_that_fails_to_derive_skips_only_itself(
     path: Path, connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:

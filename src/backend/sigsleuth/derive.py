@@ -71,6 +71,8 @@ BROADCAST_NODE_ID = 0xFFFFFFFF
 # A node whose valid position is farther than this from its previous one
 # moved (node_current.moved_at).
 MOVED_KM = 25
+# 64 MiB saved 12-22% on 9.8 M receptions (loranet.pl, 2026-10-30).
+REDERIVE_CACHE_KIB = 64 * 1024
 # Receptions per rederive transaction; capture waits for one at most, so one
 # must take well under DATABASE_BUSY_TIMEOUT_MS: 0.28 s on a laptop, about
 # 1.3 s on the server (2026-10-20).
@@ -188,6 +190,17 @@ def rederive(
     begins again."""
     if not rederive_pending(connection):
         return True
+    cache_size = connection.execute("PRAGMA cache_size").fetchone()[0]
+    connection.execute(f"PRAGMA cache_size = -{REDERIVE_CACHE_KIB}")
+    try:
+        return _rederive(connection, stopping, batch_size)
+    finally:
+        connection.execute(f"PRAGMA cache_size = {cache_size}")
+
+
+def _rederive(
+    connection: sqlite3.Connection, stopping: Callable[[], bool], batch_size: int
+) -> bool:
     LOGGER.info("Rebuilding derived tables from saved history while capture saves new deliveries")
     started_at = logged_at = time.monotonic()
     recreate_derived(connection)

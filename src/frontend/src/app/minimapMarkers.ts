@@ -53,12 +53,22 @@ export interface HopLineProperties extends DirectedHop {
   zeroCost: boolean;
 }
 
-/** The `${from}-${to}` keys of the hops that spent none. */
+export function routeHopKey(
+  from: number | null,
+  to: number | null,
+  isReturn: boolean,
+): string {
+  return `${from}-${to}:${isReturn}`;
+}
+
+/** The steps that spent none, kept apart on the outward and return paths. */
 export function zeroCostHops(costs: RouteHopCost[]): Set<string> {
   return new Set(
     costs
       .filter((cost) => cost.spent === 0)
-      .map((cost) => `${cost.from_node_id}-${cost.to_node_id}`),
+      .map((cost) =>
+        routeHopKey(cost.from_node_id, cost.to_node_id, cost.is_return),
+      ),
   );
 }
 
@@ -310,10 +320,16 @@ export function routeMinimap(
     unplacedGateways: 0,
     allHops: drawHops(
       run.spreading_factor,
-      withZeroDbSteps(run.route.path_hops, {
-        forward: run.route.path,
-        return_path: null,
-      }),
+      withZeroDbSteps(
+        run.route.path_hops.map((hop) => ({
+          ...hop,
+          is_return: run.route.is_return,
+        })),
+        {
+          forward: run.route.path,
+          return_path: null,
+        },
+      ),
       positions,
       zeroCostHops(run.route.hop_costs),
     ),
@@ -330,6 +346,18 @@ export function routeMinimap(
 export interface DirectedHop {
   fromNodeId: number;
   toNodeId: number;
+}
+
+export function sameHop(
+  a: DirectedHop | null | undefined,
+  b: DirectedHop | null | undefined,
+): boolean {
+  return (
+    a != null &&
+    b != null &&
+    a.fromNodeId === b.fromNodeId &&
+    a.toNodeId === b.toNodeId
+  );
 }
 
 /** Reports found by reportsThrough or reportsWithHop, before they are drawn. */
@@ -369,6 +397,7 @@ export function reportsWithHop(
 
 interface ListedReport {
   receptionId: number;
+  paths: ReportPaths;
   nodes: (number | null)[];
   /** Its measured hops, as the API sends them. */
   hops: TracerouteHop[];
@@ -384,6 +413,7 @@ function listedReports(detail: PacketDetail): ListedReport[] {
     if (paths === null) continue;
     reports.push({
       receptionId: reception.reception_id,
+      paths,
       nodes: [...paths.forward.nodes, ...(paths.return_path?.nodes ?? [])],
       hops: reception.hops,
       zeroDbSteps: zeroDbSteps(paths),
@@ -391,11 +421,13 @@ function listedReports(detail: PacketDetail): ListedReport[] {
   }
   const reply = detail.reply_route;
   if (reply !== null) {
+    const paths = { forward: reply.path, return_path: null };
     reports.push({
       receptionId: reply.reception_id,
+      paths,
       nodes: reply.path.nodes,
       hops: reply.hops,
-      zeroDbSteps: zeroDbSteps({ forward: reply.path, return_path: null }),
+      zeroDbSteps: zeroDbSteps(paths),
     });
   }
   return reports;
@@ -431,17 +463,24 @@ function foundReports(
  * draw them, as the route text lists them.
  */
 export function zeroDbSteps(paths: ReportPaths): TracerouteHop[] {
-  return [paths.forward, paths.return_path]
-    .filter((path): path is RoutePath => path !== null)
-    .flatMap((path) =>
-      path.snr_db.flatMap((snr, index) => {
-        const from = path.nodes[index];
-        const to = path.nodes[index + 1];
-        return snr === 0 && from !== null && to !== null && from !== to
-          ? [{ from_node_id: from, to_node_id: to, snr_db: snr }]
-          : [];
-      }),
-    );
+  return [paths.forward, paths.return_path].flatMap((path, direction) =>
+    path === null
+      ? []
+      : path.snr_db.flatMap((snr, index) => {
+          const from = path.nodes[index];
+          const to = path.nodes[index + 1];
+          return snr === 0 && from !== null && to !== null && from !== to
+            ? [
+                {
+                  from_node_id: from,
+                  to_node_id: to,
+                  snr_db: snr,
+                  is_return: direction === 1,
+                },
+              ]
+            : [];
+        }),
+  );
 }
 
 function withZeroDbSteps(
@@ -602,7 +641,9 @@ function drawHops(
       twoWay: drawn.has(`${hop.to_node_id}-${hop.from_node_id}`),
       zeroCost:
         hop.snr_db !== 0 &&
-        zeroCost.has(`${hop.from_node_id}-${hop.to_node_id}`),
+        zeroCost.has(
+          routeHopKey(hop.from_node_id, hop.to_node_id, hop.is_return),
+        ),
     };
     features.push({
       type: "Feature",
@@ -686,4 +727,151 @@ export function mercatorMidpoint(
   const y = (mercatorY(start[1]) + mercatorY(end[1])) / 2;
   const latitude = (2 * Math.atan(Math.exp(y)) - Math.PI / 2) * (180 / Math.PI);
   return [(start[0] + end[0]) / 2, latitude];
+}
+
+/** One report of a traceroute drawn on the main map, with its nodes. */
+export interface TracerouteDrawing {
+  /** The report's routes; null when no gateway reported one. */
+  paths: ReportPaths | null;
+  features: HopFeatureCollection;
+  /** S, R and each placed relay numbered along the route, as on the packet page. */
+  markers: MinimapMarker[];
+  /** The route's nodes, which stay on the map whatever the filters say. */
+  nodeIds: number[];
+}
+
+/**
+ * The route of one traceroute packet that crossed hop: of the gateways'
+ * reports, the saved report that also serves the explorer's hop search.
+ */
+export function tracerouteDrawing(
+  detail: PacketDetail,
+  hop: DirectedHop,
+): TracerouteDrawing {
+  const { markers, receptionHops, receptionNumbers } = minimapMarkers(detail);
+  const reports = listedReports(detail);
+  const chosen = detail.hop_routes.find(
+    (route) =>
+      route.from_node_id === hop.fromNodeId &&
+      route.to_node_id === hop.toNodeId,
+  );
+  const best =
+    reports.find((report) => report.receptionId === chosen?.reception_id) ??
+    null;
+  const ends = detail.traceroute;
+  const nodeIds = new Set<number>();
+  if (ends !== null)
+    nodeIds.add(ends.requester_node_id).add(ends.target_node_id);
+  for (const nodeId of best?.nodes ?? [])
+    if (nodeId !== null) nodeIds.add(nodeId);
+  const numbers =
+    best === null ? undefined : receptionNumbers.get(best.receptionId);
+  return {
+    paths: best?.paths ?? null,
+    features:
+      best === null
+        ? { type: "FeatureCollection", features: [] }
+        : receptionHops.get(best.receptionId)!.features,
+    markers: markers
+      .filter((marker) => nodeIds.has(marker.nodeId))
+      .map((marker) =>
+        marker.kind === "relay"
+          ? { ...marker, label: numbers?.get(marker.nodeId) ?? "" }
+          : marker,
+      ),
+    nodeIds: [...nodeIds],
+  };
+}
+
+/** One line of the route list. */
+export type RouteRow =
+  | {
+      kind: "node";
+      /** null: a relay that did not record itself. */
+      nodeId: number | null;
+      /** S, R or its place along the route, as on its map marker. */
+      label: string;
+      /** The hop that reached it, null for the first node. */
+      hop: DirectedHop | null;
+      /** undefined for the first node; null when no SNR was recorded. */
+      snr?: number | null;
+      /** Where the route was going but was not heard to get. */
+      unreached?: boolean;
+    }
+  | { kind: "gap"; text: string }
+  | { kind: "back" };
+
+/**
+ * The report's route node by node: S first, then each node with the SNR it
+ * heard the one before at, numbered as on the map, to R (and back to S on a
+ * reply). A route that does not start at S, or stops short of where it was
+ * going, gets a gap row there.
+ */
+export function routeRows(
+  paths: ReportPaths,
+  requester: number,
+  target: number,
+): RouteRow[] {
+  const rows: RouteRow[] = [];
+  const label = (nodeId: number | null, place: number) =>
+    nodeId === requester ? "S" : nodeId === target ? "R" : String(place);
+  const add = (
+    { nodes, snr_db: snrs, reached }: RoutePath,
+    first: number,
+    start: number,
+    end: number,
+  ) => {
+    let unreported = false;
+    if (first === 0 && nodes[0] !== start) {
+      rows.push({ kind: "node", nodeId: start, label: "S", hop: null });
+      rows.push({ kind: "gap", text: "Not reported" });
+    }
+    nodes.forEach((nodeId, index) => {
+      // A return route starts where the way out ended.
+      if (index === 0 && first > 0) return;
+      const before = index === 0 ? null : nodes[index - 1];
+      if (index > 0 && index - 1 >= snrs.length && !unreported) {
+        unreported = true;
+        rows.push({
+          kind: "gap",
+          text: reached ? "Not reported" : "Not confirmed",
+        });
+      }
+      rows.push({
+        kind: "node",
+        nodeId,
+        label: label(nodeId, first + index),
+        hop:
+          before === null || nodeId === null || unreported
+            ? null
+            : { fromNodeId: before, toNodeId: nodeId },
+        ...(index === 0
+          ? {}
+          : unreported
+            ? { unreached: !reached }
+            : { snr: snrs[index - 1] }),
+      });
+    });
+    if (nodes.at(-1) !== end) {
+      if (!unreported)
+        rows.push({
+          kind: "gap",
+          text: reached ? "Not reported" : "Not confirmed",
+        });
+      rows.push({
+        kind: "node",
+        nodeId: end,
+        label: label(end, 0),
+        hop: null,
+        unreached: !reached,
+      });
+    }
+  };
+  const { forward, return_path: back } = paths;
+  add(forward, 0, requester, target);
+  if (back !== null) {
+    rows.push({ kind: "back" });
+    add(back, forward.nodes.length - 1, target, requester);
+  }
+  return rows;
 }

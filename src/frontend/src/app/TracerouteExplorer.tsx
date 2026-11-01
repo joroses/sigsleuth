@@ -600,6 +600,7 @@ function RunTable({
                     <RouteItem
                       label={`${run.route.is_return ? "Route back" : "Route"}${searchNote}`}
                       path={run.route.path}
+                      isReturn={run.route.is_return}
                       nodeNames={names}
                       matched={matched}
                       ends={{

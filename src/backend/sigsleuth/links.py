@@ -761,12 +761,14 @@ class RouteHopCost:
     traceroute run: 0 or 1, None when unknown. learned is None when the run
     itself shows it: its request's copies (traceroute_hop.free), or a route's
     first hop, which always spends one (firmware). Otherwise spent comes from
-    the direction's HopCost on the run's channel."""
+    the direction's HopCost on the run's channel. Outward and return steps
+    keep separate costs even when they name the same directed pair."""
 
     from_node_id: int
     to_node_id: int
     spent: int | None
     learned: HopCost | None
+    is_return: bool = False
 
 
 _SPENT: dict[HopVerdict, int | None] = {"free": 0, "costly": 1, "never_free": 1, "unknown": None}
@@ -778,19 +780,20 @@ def route_hop_costs(
     own: Mapping[tuple[int, int], bool],
     learned: Mapping[tuple[int, int, str], HopCost],
     channel: str,
+    *,
+    is_return: bool = False,
 ) -> tuple[RouteHopCost, ...]:
     """The cost of each hop (from, to) of a run's routes on channel, whose
-    first nodes are among origins, from the request's own pinned hops (own:
-    free or not), else what hop_costs learned; a hop with neither is left
-    out."""
+    first nodes are among origins. Request pins describe only the forward
+    path; return paths use learned evidence."""
     costs = []
     for hop in dict.fromkeys(hops):
         if hop[0] in origins:
-            costs.append(RouteHopCost(*hop, 1, None))
-        elif hop in own:
-            costs.append(RouteHopCost(*hop, 0 if own[hop] else 1, None))
+            costs.append(RouteHopCost(*hop, 1, None, is_return))
+        elif not is_return and hop in own:
+            costs.append(RouteHopCost(*hop, 0 if own[hop] else 1, None, is_return))
         elif (cost := learned.get((*hop, channel))) is not None:
-            costs.append(RouteHopCost(*hop, _SPENT[cost.verdict], cost))
+            costs.append(RouteHopCost(*hop, _SPENT[cost.verdict], cost, is_return))
     return tuple(costs)
 
 

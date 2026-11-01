@@ -211,6 +211,8 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/map/nodes?seen_since={three_days}&position_since={fortnight}"
     yield f"/api/v1/map/links?link_kind=traceroute&since={three_days}", 250
     yield f"/api/v1/map/text-senders?since={three_days}"
+    # The map opens on its busiest channel, so Chatty nodes asks for it.
+    yield f"/api/v1/map/text-senders?since={three_days}&channel={channel}"
     for kind in ("traceroute", "direct", "neighbor"):
         yield f"/api/v1/map/links?link_kind={kind}&since={day}"
         yield f"/api/v1/links?link_kind={kind}&since={day}"
@@ -225,6 +227,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield "/api/v1/coverage/cells?west=-180&south=-85&east=180&north=85&zoom=6&unknown=true"
     yield "/api/v1/coverage/cells/8/143/83?unknown=true"
     yield f"/api/v1/map/text-reach/{subjects.text_sender}?since={day}"
+    yield f"/api/v1/map/text-reach/{subjects.text_sender}?since={day}&channel={channel}"
     yield "/api/v1/chat"
     yield f"/api/v1/chat?channel={channel}"
     yield f"/api/v1/chat?channel={channel}&after_id=1"

@@ -32,7 +32,11 @@ function report(
     hop_limit: 7 - relays.length,
     relay_byte: null,
     paths: {
-      forward: { nodes: [A, ...relays, T], snr_db: relays.map(() => 5) },
+      forward: {
+        reached: gateway === T,
+        nodes: [A, ...relays, T],
+        snr_db: relays.map(() => 5),
+      },
       return_path: null,
     },
     hops: [],
@@ -51,6 +55,7 @@ function request(
   reply: ReplyRoute | null = null,
 ): PacketDetail {
   return {
+    hop_routes: [],
     packet: {
       packet_row_id: 1,
       first_received_at: "2026-09-19T09:00:00Z",
@@ -129,7 +134,7 @@ describe("tracerouteGroups", () => {
     const reply = {
       packet_row_id: 2,
       reception_id: 50,
-      path: { nodes: [A, B, T], snr_db: [5, 6] },
+      path: { reached: true, nodes: [A, B, T], snr_db: [5, 6] },
       hops: [],
     };
     expect(
@@ -160,10 +165,15 @@ describe("sharedForwardRoute", () => {
     const reception = report(id, relays);
     reception.paths = {
       forward: {
+        reached: true,
         nodes: [A, ...relays, T],
         snr_db: [...relays, T].map(() => 5),
       },
-      return_path: { nodes: [T, ...back, A], snr_db: back.map(() => 3) },
+      return_path: {
+        reached: false,
+        nodes: [T, ...back, A],
+        snr_db: back.map(() => 3),
+      },
     };
     return reception;
   }

@@ -7,7 +7,7 @@ import {
   type TracerouteRoute,
 } from "./api";
 import { distanceMeters, type LatLon } from "./lineOfSight";
-import { type DirectedHop } from "./minimapMarkers";
+import { type DirectedHop, routeHopKey } from "./minimapMarkers";
 import {
   formatKm,
   formatNodeId,
@@ -18,16 +18,7 @@ import {
 } from "./nodeDisplay";
 import { DoubtfulBadge, HopSnr, Icon, NodeLink } from "./ui";
 
-// A traceroute path as this gateway reported it: each arrow carries the SNR at
-// the node it points to, after a dot in its minimap line's tier colour, and a
-// 0 after it when the hop spent none; "?" is a relay that did not record itself, and a
-// dotted arrow is a hop the packet had not made yet. Nodes show their long
-// name when known, else their ID, after a chip with their minimap marker's
-// label; the requester and target are set apart, as on the minimap. Hovering
-// or focusing a node reports it, so its minimap marker can stand out; the
-// highlighted node stands out here too. Searched nodes are ringed wherever
-// they are, and so are both nodes of a hop a link asked for wherever the path
-// measured it.
+// A reported path with the same node labels and colours as its map.
 export function RouteItem({
   label,
   path,
@@ -43,6 +34,7 @@ export function RouteItem({
   highlightedHop = null,
   onNodeHover,
   zeroCostHops,
+  isReturn = false,
 }: {
   label: string;
   path: RoutePath;
@@ -53,6 +45,7 @@ export function RouteItem({
   matched?: ReadonlySet<number>;
   /** The hop to mark. */
   hop?: DirectedHop | null;
+  isReturn?: boolean;
   /** Shown after the requester's and target's names. */
   endExtra?: (nodeId: number) => ReactNode;
 } & RouteMarkers &
@@ -77,7 +70,11 @@ export function RouteItem({
                   index={index - 1}
                   spreadingFactor={spreadingFactor}
                   zeroCost={zeroCostHops.has(
-                    `${path.nodes[index - 1]}-${path.nodes[index]}`,
+                    routeHopKey(
+                      path.nodes[index - 1],
+                      path.nodes[index],
+                      isReturn,
+                    ),
                   )}
                 />
               ) : null}
@@ -136,7 +133,13 @@ export function RouteItem({
 
 // A node's minimap marker label: S, R or its place along the route, dashed
 // when the node has no marker.
-function MarkerChip({ label, placed }: { label: string; placed: boolean }) {
+export function MarkerChip({
+  label,
+  placed,
+}: {
+  label: string;
+  placed: boolean;
+}) {
   const end = label === "S" || label === "R";
   return (
     <span
@@ -184,7 +187,10 @@ function RouteHop({
 }) {
   if (index >= path.snr_db.length) {
     return (
-      <span className="route-hop muted" title="Not reached yet">
+      <span
+        className="route-hop muted"
+        title={path.reached ? "SNR not reported" : "Arrival not confirmed"}
+      >
         ⋯
       </span>
     );

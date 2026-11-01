@@ -18,6 +18,7 @@ from sigsleuth.nodes import NodePosition, node_position, shown_link
 from sigsleuth.opt_out import is_opted_out, shown_sql, unlinkable_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
+from sigsleuth.radio import PRESET_SPREADING_FACTORS
 
 # A chatty sender farther than this from any town of 15,000 people has no region.
 SENDER_PLACE_KM = 50
@@ -37,9 +38,28 @@ _TEXT_CHANNELS_SQL = """
                WHERE own.packet_row_id = packet.id AND own.gateway_node_id = packet.sender_node_id
            )) AS gateways
     FROM packet INDEXED BY {index}
-    WHERE {sender} id >= :since AND portnum = 1 AND recipient_node_id = 4294967295
+    WHERE {sender} id >= :since AND portnum = 1 AND recipient_node_id = 4294967295 {radio}
     GROUP BY sender_node_id, channel
 """
+_PRESETS_SQL = ", ".join(f"'{name.lower()}'" for name in PRESET_SPREADING_FACTORS)
+
+
+def _radio_sql(table: str, radio: str | None) -> str:
+    """Keeps a text of `table` sent on the radio channel :radio, as links name
+    it (link_channels.link_channel): its channel when a preset's, else the
+    sender's latest preset by then, else Unknown. No condition for None."""
+    if radio is None:
+        return ""
+    return f"""AND CASE WHEN lower({table}.channel) IN ({_PRESETS_SQL}) THEN {table}.channel
+        ELSE coalesce((
+            SELECT radio.channel FROM node_channel AS radio
+            WHERE radio.node_id = {table}.sender_node_id
+              AND radio.observed_at <= {table}.first_received_at
+              AND radio.packet_row_id <= {table}.id
+            ORDER BY radio.observed_at DESC, radio.packet_row_id LIMIT 1
+        ), 'Unknown') END = :radio"""
+
+
 # A sender's text reach channel: the one where a text reached the most other
 # gateways, which shows the most of them on the map, then the one it sent most on.
 _REACH_CHANNEL_ORDER = "gateways DESC, messages DESC, channel"
@@ -185,19 +205,26 @@ class TextSenderList:
 
 
 def text_senders(
-    connection: sqlite3.Connection, *, since: datetime | None, limit: int
+    connection: sqlite3.Connection,
+    *,
+    since: datetime | None,
+    limit: int,
+    radio: str | None = None,
 ) -> TextSenderList:
     """Senders of broadcast text messages first received since `since`, most
     messages on their text reach channel first, when one of those reached
-    CHATTY_MIN_GATEWAYS other gateways. The window starts at its whole hour,
-    like text_reach, so both count the same messages."""
+    CHATTY_MIN_GATEWAYS other gateways. radio keeps only texts sent on that
+    radio channel (see _radio_sql). The window starts at its whole hour, like
+    text_reach, so both count the same messages."""
     since_ms = None if since is None else to_epoch_ms(since)
     since_id = (
         0
         if since_ms is None
         else first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
     )
-    channels = _TEXT_CHANNELS_SQL.format(index="text_message", sender="")
+    channels = _TEXT_CHANNELS_SQL.format(
+        index="text_message", sender="", radio=_radio_sql("packet", radio)
+    )
     rows = connection.execute(
         f"""
         SELECT sent.sender_node_id AS node_id, sent.messages, sent.last_sent_at,
@@ -214,7 +241,12 @@ def text_senders(
         ORDER BY sent.messages DESC, sent.last_sent_at DESC
         LIMIT :limit
         """,
-        {"since": since_id, "min_gateways": CHATTY_MIN_GATEWAYS, "limit": limit + 1},
+        {
+            "since": since_id,
+            "radio": radio,
+            "min_gateways": CHATTY_MIN_GATEWAYS,
+            "limit": limit + 1,
+        },
     ).fetchall()
     items = tuple(
         TextSender(
@@ -266,10 +298,15 @@ class TextReach:
 
 
 def text_reach(
-    connection: sqlite3.Connection, node_id: int, *, since: datetime | None
+    connection: sqlite3.Connection,
+    node_id: int,
+    *,
+    since: datetime | None,
+    radio: str | None = None,
 ) -> TextReach:
     """The gateways that reported the node's broadcast text messages on its
-    channel first received since `since`, most receptions first. The window
+    channel first received since `since`, most receptions first. radio keeps
+    only texts sent on that radio channel, as in text_senders. The window
     starts at its whole hour, like text_senders. Reads the sender index from the
     window's first ID, then each message's receptions by their unique key; the
     channel's text index would read every sender's texts."""
@@ -282,25 +319,29 @@ def text_reach(
         else first_packet_row_id_since(connection, since_ms - since_ms % HOUR_MS)
     )
     chosen = connection.execute(
-        _TEXT_CHANNELS_SQL.format(index="packet_sender", sender="sender_node_id = :node AND")
+        _TEXT_CHANNELS_SQL.format(
+            index="packet_sender",
+            sender="sender_node_id = :node AND",
+            radio=_radio_sql("packet", radio),
+        )
         + f"ORDER BY {_REACH_CHANNEL_ORDER} LIMIT 1",
-        {"node": node_id, "since": since_id},
+        {"node": node_id, "since": since_id, "radio": radio},
     ).fetchone()
     if chosen is None:
         return TextReach(node_id, 0, None, ())
     channel = str(chosen["channel"])
     rows = connection.execute(
-        """
+        f"""
         SELECT r.gateway_node_id, count(*) AS receptions
         FROM packet AS t INDEXED BY packet_sender
         JOIN reception AS r ON r.packet_row_id = t.id
         WHERE t.sender_node_id = :node AND t.id >= :since AND t.portnum = 1
           AND t.recipient_node_id = 4294967295 AND t.channel = :channel
-          AND r.gateway_node_id != :node
+          AND r.gateway_node_id != :node {_radio_sql("t", radio)}
         GROUP BY r.gateway_node_id
         ORDER BY receptions DESC, r.gateway_node_id
         """,
-        {"node": node_id, "since": since_id, "channel": channel},
+        {"node": node_id, "since": since_id, "channel": channel, "radio": radio},
     ).fetchall()
     gateways = tuple(
         TextReachGateway(node_id=int(row["gateway_node_id"]), receptions=int(row["receptions"]))

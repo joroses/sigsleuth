@@ -587,13 +587,14 @@ def _with_hop_costs(
     )
     costed = []
     for (packets, route), request in zip(routes, requests, strict=True):
-        own = {} if route.is_return or request is None else pinned.get(request, {})
+        own = {} if request is None else pinned.get(request, {})
         costs = route_hop_costs(
             ((hop.from_node_id, hop.to_node_id) for hop in route.path_hops),
             _route_ends(packets, route),
             own,
             learned,
             str(packets[0]["channel"]),
+            is_return=route.is_return,
         )
         costed.append((packets, replace(route, hop_costs=costs)))
     return costed
@@ -814,7 +815,7 @@ def _saved_route(
         hops=int(shown["route_hops"]),
         km=None if km is None else round(km, 1),
         reached=bool(shown["reached"]),
-        path=path,
+        path=replace(path, reached=bool(shown["reached"])),
         path_hops=tuple(path_hops(path)),
     )
 

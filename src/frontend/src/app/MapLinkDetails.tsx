@@ -17,6 +17,7 @@ import {
   linkTierLabel,
 } from "./linkQuality";
 import type { LinkTierChoice } from "./mapLinkLayers";
+import type { DirectedHop } from "./minimapMarkers";
 import {
   formatKm,
   formatNodeId,
@@ -29,7 +30,7 @@ import {
   tracerouteHopHref,
 } from "./nodeDisplay";
 import { Icon, IconButton, ShortTime } from "./ui";
-import { useApi } from "./useApi";
+import { type ApiState, useApi } from "./useApi";
 
 /** The names MapLinkDetails shows for a node. */
 export interface LinkEnd {
@@ -52,8 +53,11 @@ export function MapLinkDetails({
   selectedNodeId,
   km,
   since,
+  hops: givenHops,
   onClose,
   linkSection = true,
+  onShowTraceroute,
+  traceroutesOpen = false,
 }: {
   linkKind: LinkKind;
   link: MapLink;
@@ -62,19 +66,26 @@ export function MapLinkDetails({
   selectedNodeId?: number | null;
   km: number | null;
   since: string | undefined;
+  /** A traceroute link's latest packets, when the caller loads them. */
+  hops?: ApiState<HopObservations>;
   /** Shows a close button; the map sidebar has its own way back. */
   onClose?: () => void;
   linkSection?: boolean;
+  /** Shows one of a direction's latest traceroutes on the map. */
+  onShowTraceroute?: (hop: DirectedHop, packetRowId: number) => void;
+  /** Opens Latest traceroutes, as when coming back from one. */
+  traceroutesOpen?: boolean;
 }) {
   const [firstNode, secondNode] =
     nodeB.node_id === selectedNodeId ? [nodeB, nodeA] : [nodeA, nodeB];
   const firstDirection = firstNode === nodeA ? "a_to_b" : "b_to_a";
   const secondDirection = firstNode === nodeA ? "b_to_a" : "a_to_b";
-  const hops = useApi<HopObservations>(
-    linkKind === "traceroute"
+  const loadedHops = useApi<HopObservations>(
+    linkKind === "traceroute" && givenHops === undefined
       ? tracerouteHopsUrl(nodeA.node_id, nodeB.node_id, since, link.channel)
       : null,
   );
+  const hops = givenHops ?? loadedHops;
   const name = (nodeId: number) =>
     nodeLabel(nodeId === nodeA.node_id ? nodeA : nodeB);
   const way = (
@@ -152,7 +163,7 @@ export function MapLinkDetails({
         ) : null}
       </section>
       {linkKind === "traceroute" ? (
-        <details className="link-traceroutes">
+        <details className="link-traceroutes" open={traceroutesOpen}>
           <summary>Latest traceroutes</summary>
           {(
             [
@@ -172,6 +183,15 @@ export function MapLinkDetails({
                 spreadingFactor={link.spreading_factor}
                 compact
                 collapsible={false}
+                onShow={
+                  onShowTraceroute === undefined
+                    ? undefined
+                    : (packetRowId) =>
+                        onShowTraceroute(
+                          { fromNodeId: from.node_id, toNodeId: to.node_id },
+                          packetRowId,
+                        )
+                }
               />
             </div>
           ))}

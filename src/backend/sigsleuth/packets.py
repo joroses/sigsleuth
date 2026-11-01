@@ -52,7 +52,6 @@ from sigsleuth.traceroute import (
     path_hops,
     reached_end,
     read_traceroute_report,
-    report_hops,
     requester_and_target,
     without_nodes,
 )
@@ -99,6 +98,16 @@ class TracerouteHop:
     from_node_id: int
     to_node_id: int
     snr_db: float | None
+    is_return: bool = False
+
+
+@dataclass(frozen=True)
+class HopRoute:
+    """The saved report chosen for one directed hop."""
+
+    from_node_id: int
+    to_node_id: int
+    reception_id: int
 
 
 # How a reception's relay was named (_with_relays): heard_directly, else
@@ -215,8 +224,9 @@ class PacketDetail:
     sender_estimated place it as a reception's gateway is placed.
 
     hops are every traceroute hop the packet reported, from all its
-    receptions (empty for other packets); route_nodes are the known nodes in
-    them, in the listed receptions' routes or at the traceroute's ends, so a
+    receptions (empty for other packets); hop_routes names each hop's saved
+    best report. route_nodes are the known nodes in them, in the listed
+    receptions' routes or at the traceroute's ends, so a
     hop or route may name a node missing from route_nodes. They too are
     placed where they were when the packet was heard, else where they are now.
     relay_nodes are the known nodes the receptions' relay_node or relay_maybe
@@ -240,6 +250,7 @@ class PacketDetail:
     unreadable_reason: str | None
     unreadable_reason_description: str | None
     hops: tuple[TracerouteHop, ...]
+    hop_routes: tuple[HopRoute, ...]
     route_nodes: tuple[NodeSummary, ...]
     relay_nodes: tuple[NodeSummary, ...]
     spreading_factor: int | None
@@ -279,13 +290,19 @@ def packet_detail(
     reason = row["unreadable_reason"]
     saved_hops = connection.execute(
         """
-        SELECT from_node_id, to_node_id, snr_db, radio_channel FROM traceroute_hop
+        SELECT from_node_id, to_node_id, snr_db, radio_channel,
+               route_reception_id, route_is_return FROM traceroute_hop
         WHERE packet_row_id = ?
         """,
         (packet_row_id,),
     ).fetchall()
     hops = tuple(
-        TracerouteHop(int(hop["from_node_id"]), int(hop["to_node_id"]), hop["snr_db"])
+        TracerouteHop(
+            int(hop["from_node_id"]),
+            int(hop["to_node_id"]),
+            hop["snr_db"],
+            bool(hop["route_is_return"]),
+        )
         for hop in saved_hops
         if hop["from_node_id"] not in hidden and hop["to_node_id"] not in hidden
     )
@@ -313,6 +330,13 @@ def packet_detail(
         unreadable_reason=reason,
         unreadable_reason_description=None if reason is None else describe_reason(reason),
         hops=hops,
+        hop_routes=tuple(
+            HopRoute(
+                int(hop["from_node_id"]), int(hop["to_node_id"]), int(hop["route_reception_id"])
+            )
+            for hop in saved_hops
+            if hop["from_node_id"] not in hidden and hop["to_node_id"] not in hidden
+        ),
         route_nodes=_route_nodes(
             connection, int(row["first_received_at"]), hops, receptions, traceroute, reply_route
         ),
@@ -329,7 +353,14 @@ def packet_detail(
         hop_costs=()
         if traceroute is None
         else _hop_costs(
-            connection, row, traceroute, (*hops, *(reply_route.hops if reply_route else ()))
+            connection,
+            row,
+            traceroute,
+            (
+                *hops,
+                *(hop for reception in receptions for hop in reception.hops),
+                *(reply_route.hops if reply_route else ()),
+            ),
         ),
     )
 
@@ -452,12 +483,18 @@ def _hop_costs(
     learned = hop_costs(
         connection, {(*pair, channel) for pair in pairs}, at - LINK_WINDOW_MS, at + LINK_WINDOW_MS
     )
-    return route_hop_costs(
-        pairs,
-        (traceroute.requester_node_id, traceroute.target_node_id),
-        {} if request is None else pinned_hops(connection, {request}).get(request, {}),
-        learned,
-        channel,
+    own = {} if request is None else pinned_hops(connection, {request}).get(request, {})
+    return tuple(
+        cost
+        for is_return in (False, True)
+        for cost in route_hop_costs(
+            ((hop.from_node_id, hop.to_node_id) for hop in hops if hop.is_return == is_return),
+            (traceroute.requester_node_id, traceroute.target_node_id),
+            own,
+            learned,
+            channel,
+            is_return=is_return,
+        )
     )
 
 
@@ -799,7 +836,14 @@ def _packet_reception(
     if report is not None:
         detail = replace(
             detail,
-            hops=_hops(report_hops(report.paths)),
+            hops=(
+                *_hops(path_hops(report.paths.forward)),
+                *(
+                    ()
+                    if report.paths.return_path is None
+                    else _hops(path_hops(report.paths.return_path), is_return=True)
+                ),
+            ),
             reached=reached_end(report, is_return=report.is_reply),
         )
     sender_node_id = int(packet["sender_node_id"])
@@ -823,8 +867,10 @@ def _traceroute_report(
     )
 
 
-def _hops(hops: list[Hop]) -> tuple[TracerouteHop, ...]:
-    return tuple(TracerouteHop(hop.from_node_id, hop.to_node_id, hop.snr_db) for hop in hops)
+def _hops(hops: list[Hop], *, is_return: bool = False) -> tuple[TracerouteHop, ...]:
+    return tuple(
+        TracerouteHop(hop.from_node_id, hop.to_node_id, hop.snr_db, is_return) for hop in hops
+    )
 
 
 def _identity_fields(row: sqlite3.Row) -> dict[str, Any]:

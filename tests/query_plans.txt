@@ -713,6 +713,18 @@ map_nodes.text_senders
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
 
+## GET /api/v1/map/text-senders?since=<time>&channel=LongFast
+
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+map_nodes.text_senders
+  SEARCH packet USING INDEX text_message
+  SEARCH node_channel USING PRIMARY KEY
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH node_current USING PRIMARY KEY
+
 ## GET /api/v1/links?link_kind=traceroute&since=<time>
 
 links.unlikely_links
@@ -894,6 +906,24 @@ map_nodes.text_reach
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 map_nodes.text_reach
   SEARCH packet USING INDEX packet_sender
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+
+## GET /api/v1/map/text-reach/168430090?since=<time>&channel=LongFast
+
+opt_out.is_opted_out
+  SEARCH node_opt_out USING PRIMARY KEY
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+map_nodes.text_reach
+  SEARCH packet USING INDEX packet_sender
+  SEARCH node_channel USING PRIMARY KEY
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+map_nodes.text_reach
+  SEARCH packet USING INDEX packet_sender
+  SEARCH node_channel USING PRIMARY KEY
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 
 ## GET /api/v1/chat

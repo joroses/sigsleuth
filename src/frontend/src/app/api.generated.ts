@@ -371,7 +371,9 @@ export interface paths {
      * Text Sender Page
      * @description Nodes whose broadcast text messages first received since `since`
      *     reached a few gateways besides their own, most messages first.
-     *     truncated is true when more senders matched.
+     *     channel counts only texts sent on that radio channel, named as the
+     *     map's links name it (a preset, or Unknown). truncated is true when
+     *     more senders matched.
      */
     get: operations["text_sender_page_api_v1_map_text_senders_get"];
     put?: never;
@@ -393,8 +395,9 @@ export interface paths {
      * Text Reach Page
      * @description The gateways that reported the node's broadcast text messages first
      *     received since `since`, most receptions first. Empty gateways when it
-     *     sent none. since starts the window at its whole hour, like Chatty
-     *     nodes, so the two count the same messages.
+     *     sent none. since starts the window at its whole hour and channel keeps
+     *     the texts sent on that radio channel, like Chatty nodes, so the two
+     *     count the same messages.
      */
     get: operations["text_reach_page_api_v1_map_text_reach__node_id__get"];
     put?: never;
@@ -1485,6 +1488,15 @@ export interface components {
       a_to_b_cost: components["schemas"]["HopCost"] | null;
       b_to_a_cost: components["schemas"]["HopCost"] | null;
     };
+    /**
+     * HopRoute
+     * @description The saved report chosen for one directed hop.
+     */
+    HopRoute: {
+      from_node_id: number;
+      to_node_id: number;
+      reception_id: number;
+    };
     /** HourCount */
     HourCount: {
       /** Format: date-time */
@@ -2082,8 +2094,9 @@ export interface components {
      *     sender_estimated place it as a reception's gateway is placed.
      *
      *     hops are every traceroute hop the packet reported, from all its
-     *     receptions (empty for other packets); route_nodes are the known nodes in
-     *     them, in the listed receptions' routes or at the traceroute's ends, so a
+     *     receptions (empty for other packets); hop_routes names each hop's saved
+     *     best report. route_nodes are the known nodes in them, in the listed
+     *     receptions' routes or at the traceroute's ends, so a
      *     hop or route may name a node missing from route_nodes. They too are
      *     placed where they were when the packet was heard, else where they are now.
      *     relay_nodes are the known nodes the receptions' relay_node or relay_maybe
@@ -2107,6 +2120,7 @@ export interface components {
       unreadable_reason: string | null;
       unreadable_reason_description: string | null;
       hops: components["schemas"]["TracerouteHop"][];
+      hop_routes: components["schemas"]["HopRoute"][];
       route_nodes: components["schemas"]["NodeSummary"][];
       relay_nodes: components["schemas"]["NodeSummary"][];
       spreading_factor: number | null;
@@ -2568,13 +2582,16 @@ export interface components {
      *     traceroute run: 0 or 1, None when unknown. learned is None when the run
      *     itself shows it: its request's copies (traceroute_hop.free), or a route's
      *     first hop, which always spends one (firmware). Otherwise spent comes from
-     *     the direction's HopCost on the run's channel.
+     *     the direction's HopCost on the run's channel. Outward and return steps
+     *     keep separate costs even when they name the same directed pair.
      */
     RouteHopCost: {
       from_node_id: number;
       to_node_id: number;
       spent: number | null;
       learned: components["schemas"]["HopCost"] | null;
+      /** @default false */
+      is_return: boolean;
     };
     /**
      * RoutePath
@@ -2582,11 +2599,14 @@ export interface components {
      *
      *     nodes includes the origin and destination; None marks a gap. snr_db[i] is
      *     the SNR at nodes[i + 1] when it heard nodes[i], None when unknown. snr_db is
-     *     shorter than the path while the packet is still travelling.
+     *     shorter than the path when steps were not reported. reached is known
+     *     arrival, independently of those measurements.
      */
     RoutePath: {
       nodes: (number | null)[];
       snr_db: (number | null)[];
+      /** @default false */
+      reached: boolean;
     };
     /**
      * SenderRadio
@@ -2847,6 +2867,8 @@ export interface components {
       from_node_id: number;
       to_node_id: number;
       snr_db: number | null;
+      /** @default false */
+      is_return: boolean;
     };
     /**
      * TracerouteRoute
@@ -3646,6 +3668,7 @@ export interface operations {
       query?: {
         since?: string | null;
         limit?: number;
+        channel?: string | null;
       };
       header?: never;
       path?: never;
@@ -3677,6 +3700,7 @@ export interface operations {
     parameters: {
       query?: {
         since?: string | null;
+        channel?: string | null;
       };
       header?: never;
       path: {

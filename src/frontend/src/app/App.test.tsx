@@ -116,17 +116,27 @@ describe("Packet detail", () => {
       reception_id,
       gateway_node_id: 0xbbbbbb00 + reception_id,
       paths: {
-        forward: { nodes: [requester, via, target], snr_db: [1, 2] },
+        forward: {
+          reached: false,
+          nodes: [requester, via, target],
+          snr_db: [1, 2],
+        },
         return_path: null,
       },
       hops: [
-        { from_node_id: requester, to_node_id: via, snr_db: 1 },
-        { from_node_id: via, to_node_id: target, snr_db: 2 },
+        {
+          is_return: false,
+          from_node_id: requester,
+          to_node_id: via,
+          snr_db: 1,
+        },
+        { is_return: false, from_node_id: via, to_node_id: target, snr_db: 2 },
       ],
     });
     const fetchMock = vi.fn<(url: string) => Promise<Response>>(() =>
       Promise.resolve(
         jsonResponse({
+          hop_routes: [],
           packet: {
             ...packet,
             channel: "LongFast",
@@ -276,6 +286,7 @@ describe("Packet detail", () => {
       "fetch",
       vi.fn().mockResolvedValueOnce(
         jsonResponse({
+          hop_routes: [],
           packet: {
             ...packet,
             channel: "LongFast",
@@ -299,7 +310,11 @@ describe("Packet detail", () => {
               ...reception,
               received_at: "2026-09-19T09:00:00Z",
               paths: {
-                forward: { nodes: [0x11111111, 0x33333333], snr_db: [4] },
+                forward: {
+                  reached: false,
+                  nodes: [0x11111111, 0x33333333],
+                  snr_db: [4],
+                },
                 return_path: null,
               },
             },
@@ -311,6 +326,7 @@ describe("Packet detail", () => {
               received_at: "2026-09-19T09:00:20Z",
               paths: {
                 forward: {
+                  reached: false,
                   nodes: [0x11111111, 0x33333333, 0x44444444],
                   snr_db: [4, 2],
                 },
@@ -334,6 +350,7 @@ describe("Packet detail", () => {
 
   // A broadcast two gateways reported, one through a relay.
   const relayedPacket = {
+    hop_routes: [],
     packet: {
       ...packet,
       channel: "LongFast",
@@ -443,6 +460,7 @@ describe("Packet detail", () => {
       .fn()
       .mockResolvedValueOnce(
         jsonResponse({
+          hop_routes: [],
           packet: {
             ...packet,
             channel: "LongFast",
@@ -510,6 +528,7 @@ describe("Packet detail", () => {
       "fetch",
       vi.fn().mockResolvedValueOnce(
         jsonResponse({
+          hop_routes: [],
           packet: {
             ...packet,
             channel: "LongFast",
@@ -1811,123 +1830,151 @@ describe("Map text reach", () => {
     );
   });
 
-  it("orders a node's traceroute links, opens and steps through them, then returns to the node", async () => {
-    const link = (
-      node_a: number,
-      node_b: number,
-      out: number,
-      into: number,
-      channel = "LongFast",
-    ): MapLink => ({
-      node_a,
-      node_b,
-      channel,
-      last_seen_at: "2026-09-25T09:00:00Z",
-      spreading_factor: 11,
-      a_to_b: {
-        observations: out,
-        snr_samples: out,
-        average_snr: 2,
-        average_rssi: null,
-      },
-      b_to_a: {
-        observations: into,
-        snr_samples: into,
-        average_snr: 1,
-        average_rssi: null,
-      },
-    });
-    const fetchMock = vi.fn((url: string) => {
-      const body = url.startsWith("/api/v1/map/nodes")
-        ? {
-            items: [
-              mapNode(1, "Alpha", "ALPH"),
-              mapNode(2, "Origin", "ORIG"),
-              mapNode(3, "Beta", "BETA"),
-              mapNode(4, "Gamma", "GAMM"),
-            ],
-            truncated: false,
-          }
-        : url.startsWith("/api/v1/map/links?")
-          ? {
-              items: [
-                link(2, 3, 10, 12),
-                link(1, 2, 40, 30),
-                link(2, 4, 100, 0),
-                link(1, 3, 500, 500),
-                link(2, 5, 80, 80),
-                link(2, 3, 300, 300, "MediumFast"),
-              ],
-              truncated: false,
-            }
-          : url.startsWith("/api/v1/traceroutes/hops")
-            ? { a_to_b: [], b_to_a: [], nodes: [] }
-            : url.startsWith("/api/v1/map/text-reach/")
-              ? { node_id: 2, messages: 0, channel: null, gateways: [] }
-              : { items: [], truncated: false };
-      return Promise.resolve(jsonResponse(body));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    window.location.hash = "#map/2?show=traceroute&channel=LongFast";
-    render(<App />);
+  it.each(["On the Links page", "All traceroutes", "Nodes"])(
+    "restores a chosen link after visiting %s",
+    async (destination) => {
+      const link = (
+        node_a: number,
+        node_b: number,
+        out: number,
+        into: number,
+        channel = "LongFast",
+      ): MapLink => ({
+        node_a,
+        node_b,
+        channel,
+        last_seen_at: "2026-09-25T09:00:00Z",
+        spreading_factor: 11,
+        a_to_b: {
+          observations: out,
+          snr_samples: out,
+          average_snr: 2,
+          average_rssi: null,
+        },
+        b_to_a: {
+          observations: into,
+          snr_samples: into,
+          average_snr: 1,
+          average_rssi: null,
+        },
+      });
+      const fetchMock = vi.fn((url: string) => {
+        const body = url.startsWith("/api/v1/traceroutes/busiest")
+          ? { requesters: [], targets: [], relays: [], channels: [], nodes: [] }
+          : url.startsWith("/api/v1/map/nodes")
+            ? {
+                items: [
+                  mapNode(1, "Alpha", "ALPH"),
+                  mapNode(2, "Origin", "ORIG"),
+                  mapNode(3, "Beta", "BETA"),
+                  mapNode(4, "Gamma", "GAMM"),
+                ],
+                truncated: false,
+              }
+            : url.startsWith("/api/v1/map/links?")
+              ? {
+                  items: [
+                    link(2, 3, 10, 12),
+                    link(1, 2, 40, 30),
+                    link(2, 4, 100, 0),
+                    link(1, 3, 500, 500),
+                    link(2, 5, 80, 80),
+                    link(2, 3, 300, 300, "MediumFast"),
+                  ],
+                  truncated: false,
+                }
+              : url.startsWith("/api/v1/traceroutes/hops")
+                ? { a_to_b: [], b_to_a: [], nodes: [] }
+                : url.startsWith("/api/v1/map/text-reach/")
+                  ? { node_id: 2, messages: 0, channel: null, gateways: [] }
+                  : { items: [], truncated: false };
+        return Promise.resolve(jsonResponse(body));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      window.location.hash = "#map/2?show=traceroute&channel=LongFast";
+      render(<App />);
 
-    const side = await screen.findByRole("complementary", {
-      name: "Map sidebar",
-    });
-    const first = await within(side).findByRole("button", {
-      name: "Show link to Alpha",
-    });
-    const table = first.closest("table")!;
-    const rows = within(table).getAllByRole("row").slice(1);
-    expect(
-      rows.map((row) => within(row).getByRole("button").textContent),
-    ).toEqual(["ALPH", "BETA", "GAMM"]);
-    expect(within(rows[0]).getAllByRole("cell")[1].textContent).toBe("30⇄40");
-
-    const details = side.querySelector<HTMLElement>(".sidebar-details")!;
-    details.scrollTop = 240;
-    fireEvent.click(rows[0]);
-    expect(details.scrollTop).toBe(0);
-    const openHop = () =>
-      within(side)
-        .getByRole("link", { name: "All traceroutes" })
-        .getAttribute("href");
-    expect(openHop()).toBe("#links/traceroutes/1-2");
-    expect(side.querySelector(".sidebar-step")?.textContent).toBe("1 / 3");
-
-    fireEvent.click(within(side).getByRole("button", { name: "Next link" }));
-    expect(openHop()).toBe("#links/traceroutes/2-3");
-    expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 3");
-    fireEvent.click(
-      within(side).getByRole("button", { name: "Previous link" }),
-    );
-    expect(openHop()).toBe("#links/traceroutes/1-2");
-    await waitFor(() =>
+      const side = await screen.findByRole("complementary", {
+        name: "Map sidebar",
+      });
+      const first = await within(side).findByRole("button", {
+        name: "Show link to Alpha",
+      });
+      const table = first.closest("table")!;
+      const rows = within(table).getAllByRole("row").slice(1);
       expect(
-        fetchMock.mock.calls.some(([url]) => {
-          if (!url.startsWith("/api/v1/traceroutes/hops")) return false;
-          const query = new URL(url, "http://localhost").searchParams;
-          return (
-            query.get("node_a") === "1" &&
-            query.get("node_b") === "2" &&
-            query.get("channel") === "LongFast" &&
-            hoursBefore(url, "since") > 71
-          );
-        }),
-      ).toBe(true),
-    );
+        rows.map((row) => within(row).getByRole("button").textContent),
+      ).toEqual(["ALPH", "BETA", "GAMM"]);
+      expect(within(rows[0]).getAllByRole("cell")[1].textContent).toBe("30⇄40");
 
-    fireEvent.click(
-      within(side).getByRole("button", { name: "Back to Origin" }),
-    );
-    expect(
-      within(side).getByRole("heading", { name: "Origin" }),
-    ).not.toBeNull();
-    expect(
-      within(side).getByRole("button", { name: "Show link to Alpha" }),
-    ).not.toBeNull();
-    expect(details.scrollTop).toBe(240);
-  });
+      const details = side.querySelector<HTMLElement>(".sidebar-details")!;
+      details.scrollTop = 240;
+      fireEvent.click(rows[0]);
+      expect(details.scrollTop).toBe(0);
+      const openHop = () =>
+        within(side)
+          .getByRole("link", { name: "All traceroutes" })
+          .getAttribute("href");
+      expect(openHop()).toBe("#links/traceroutes/1-2");
+      expect(side.querySelector(".sidebar-step")?.textContent).toBe("1 / 3");
+
+      fireEvent.click(within(side).getByRole("button", { name: "Next link" }));
+      expect(openHop()).toBe("#links/traceroutes/2-3");
+      expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 3");
+      fireEvent.click(
+        within(side).getByRole("button", { name: "Previous link" }),
+      );
+      expect(openHop()).toBe("#links/traceroutes/1-2");
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(([url]) => {
+            if (!url.startsWith("/api/v1/traceroutes/hops")) return false;
+            const query = new URL(url, "http://localhost").searchParams;
+            return (
+              query.get("node_a") === "1" &&
+              query.get("node_b") === "2" &&
+              query.get("channel") === "LongFast" &&
+              hoursBefore(url, "since") > 71
+            );
+          }),
+        ).toBe(true),
+      );
+
+      const target =
+        destination === "Nodes"
+          ? screen.getByRole("link", { name: "Nodes" })
+          : within(side).getByRole("link", { name: destination });
+      window.location.hash = target.getAttribute("href")!;
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("complementary", { name: "Map sidebar" }),
+        ).toBeNull(),
+      );
+      window.history.back();
+      const restored = await screen.findByRole("complementary", {
+        name: "Map sidebar",
+      });
+      await within(restored).findByRole("link", { name: "All traceroutes" });
+      expect(
+        within(restored)
+          .getByRole("link", { name: "All traceroutes" })
+          .getAttribute("href"),
+      ).toBe("#links/traceroutes/1-2");
+      expect(restored.querySelector(".sidebar-step")?.textContent).toBe(
+        "1 / 3",
+      );
+
+      fireEvent.click(
+        within(restored).getByRole("button", { name: "Back to Origin" }),
+      );
+      expect(
+        within(restored).getByRole("heading", { name: "Origin" }),
+      ).not.toBeNull();
+      expect(
+        within(restored).getByRole("button", { name: "Show link to Alpha" }),
+      ).not.toBeNull();
+    },
+  );
 
   it.each(["traceroute", ""])(
     "shares and reopens a route over hidden links (show=%s)",
@@ -2037,6 +2084,402 @@ describe("Map text reach", () => {
       );
     },
   );
+
+  /**
+   * The API for a shared traceroute, packet 50 from Origin (2) to Gamma (4)
+   * on MediumFast through Beta (3), heard `daysAgo`, with links between
+   * Origin and Beta on two channels, each heard `observations` times, and
+   * packets 51 and 50 its latest over that hop; `packetStatus` other than
+   * 200 answers packet 50 with an error.
+   */
+  function mockSharedTraceroute({
+    daysAgo = 1,
+    observations = 20,
+    packetStatus = 200,
+    packetChannel = "MediumFast",
+  } = {}) {
+    const receivedAt = new Date(
+      Date.now() - daysAgo * 86_400_000,
+    ).toISOString();
+    const link = (channel: string): MapLink => {
+      const direction = {
+        observations,
+        snr_samples: observations,
+        average_snr: 2,
+        average_rssi: null,
+      };
+      return {
+        node_a: 2,
+        node_b: 3,
+        channel,
+        last_seen_at: receivedAt,
+        spreading_factor: 11,
+        a_to_b: direction,
+        b_to_a: direction,
+      };
+    };
+    const heard = (packet_row_id: number) => ({
+      packet_row_id,
+      first_received_at: receivedAt,
+      snr_db: 3,
+      requester_node_id: 2,
+      target_node_id: 4,
+      is_reply: false,
+      free: null,
+    });
+    const placed = (node_id: number, name: string) => ({
+      node_id,
+      long_name: name,
+      short_name: name.slice(0, 4).toUpperCase(),
+      role: null,
+      latitude: 40,
+      longitude: -3 + node_id / 10,
+    });
+    const detail = {
+      hop_routes: [
+        {
+          from_node_id: 2,
+          to_node_id: 3,
+          reception_id: reception.reception_id,
+        },
+        {
+          from_node_id: 3,
+          to_node_id: 4,
+          reception_id: reception.reception_id,
+        },
+      ],
+      packet: {
+        ...packet,
+        packet_row_id: 50,
+        first_received_at: receivedAt,
+        last_received_at: receivedAt,
+        channel: packetChannel,
+        sender_node_id: 2,
+        sender_name: "Origin",
+        recipient_node_id: 4,
+        recipient_name: "Gamma",
+        packet_id: 1234,
+        portnum: "TRACEROUTE_APP",
+      },
+      payload: null,
+      sender_latitude: 40,
+      sender_longitude: -2.8,
+      sender_estimated: false,
+      unreadable_reason: null,
+      unreadable_reason_description: null,
+      hops: [],
+      route_nodes: [placed(2, "Origin"), placed(3, "Beta"), placed(4, "Gamma")],
+      relay_nodes: [],
+      spreading_factor: 11,
+      traceroute: { requester_node_id: 2, target_node_id: 4 },
+      reply_route: null,
+      hop_costs: [],
+      receptions: [
+        {
+          ...reception,
+          own_upload: false,
+          paths: {
+            forward: { reached: false, nodes: [2, 3, 4], snr_db: [3, 4] },
+            return_path: null,
+          },
+          hops: [
+            { is_return: false, from_node_id: 2, to_node_id: 3, snr_db: 3 },
+            { is_return: false, from_node_id: 3, to_node_id: 4, snr_db: 4 },
+          ],
+        },
+      ],
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        url === "/api/v1/packets/50"
+          ? packetStatus === 200
+            ? jsonResponse(detail)
+            : new Response(
+                JSON.stringify({
+                  error: {
+                    code: "packet_not_found",
+                    message: "Packet not found.",
+                  },
+                }),
+                { status: packetStatus },
+              )
+          : jsonResponse(
+              url.startsWith("/api/v1/map/nodes")
+                ? {
+                    items: [
+                      mapNode(2, "Origin", "ORIG"),
+                      mapNode(3, "Beta", "BETA"),
+                      mapNode(4, "Gamma", "GAMM"),
+                    ],
+                    truncated: false,
+                  }
+                : url.startsWith("/api/v1/map/links?")
+                  ? {
+                      items: [link("LongFast"), link("MediumFast")],
+                      truncated: false,
+                    }
+                  : url.startsWith("/api/v1/traceroutes/hops")
+                    ? {
+                        a_to_b: [heard(51), heard(50)],
+                        b_to_a: [],
+                        nodes: [],
+                        a_to_b_cost: null,
+                        b_to_a_cost: null,
+                      }
+                    : url.startsWith("/api/v1/map/text-reach/")
+                      ? { node_id: 2, messages: 0, channel: null, gateways: [] }
+                      : { items: [], truncated: false },
+            ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+  const sharedTraceroute = (window: string) =>
+    `#map/!00000002?show=traceroute&window=${window}&traceroute=50&hop=%2100000002-%2100000003&link_channel=MediumFast`;
+
+  it.each(["MediumFast", "CustomMesh"])(
+    "opens a shared traceroute on its link and shares it back (%s)",
+    async (packetChannel) => {
+      const writeText = stubClipboard();
+      const fetchMock = mockSharedTraceroute({ packetChannel });
+      const shared = sharedTraceroute("3d");
+      window.location.hash = shared;
+      render(<App />);
+
+      const side = await screen.findByRole("complementary", {
+        name: "Map sidebar",
+      });
+      await within(side).findByRole("heading", { name: "ORIG → GAMM" });
+      await waitFor(() =>
+        expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 2"),
+      );
+      const hops = fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith("/api/v1/traceroutes/hops"));
+      expect(
+        hops.map((url) =>
+          new URL(url, "http://localhost").searchParams.get("channel"),
+        ),
+      ).toEqual(["MediumFast"]);
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Share a link to this view" }),
+      );
+      await waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith(
+          new URL(shared, window.location.href).href,
+        ),
+      );
+
+      fireEvent.click(
+        within(side).getByRole("button", { name: "Back to ORIG – BETA" }),
+      );
+      expect(
+        within(side).getByText("Latest traceroutes").closest("details")?.open,
+      ).toBe(true);
+    },
+  );
+
+  it.each([true, false])(
+    "restores the current shared-map selection on Back (traceroute=%s)",
+    async (keepTraceroute) => {
+      mockSharedTraceroute();
+      window.location.hash = sharedTraceroute("3d");
+      render(<App />);
+      const side = await screen.findByRole("complementary", {
+        name: "Map sidebar",
+      });
+      await within(side).findByRole("heading", { name: "ORIG → GAMM" });
+      if (!keepTraceroute)
+        fireEvent.click(
+          within(side).getByRole("button", { name: "Back to ORIG – BETA" }),
+        );
+      const linkName = keepTraceroute
+        ? "All routes for this traceroute"
+        : "On the Links page";
+      window.location.hash = within(side)
+        .getByRole("link", { name: linkName })
+        .getAttribute("href")!;
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("complementary", { name: "Map sidebar" }),
+        ).toBeNull(),
+      );
+      window.history.back();
+      const restored = await screen.findByRole("complementary", {
+        name: "Map sidebar",
+      });
+      await within(restored).findByRole("link", { name: linkName });
+      if (keepTraceroute) {
+        await within(restored).findByRole("heading", { name: "ORIG → GAMM" });
+        fireEvent.click(
+          within(restored).getByRole("button", { name: "Back to ORIG – BETA" }),
+        );
+      }
+      expect(
+        within(restored).getByText("Latest traceroutes").closest("details")
+          ?.open,
+      ).toBe(true);
+    },
+  );
+
+  it("restores node filters when they hide a shown traceroute", async () => {
+    mockSharedTraceroute();
+    window.location.hash = sharedTraceroute("3d");
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "ORIG → GAMM" });
+    fireEvent.click(screen.getByRole("checkbox", { name: /^Other/ }));
+    await within(side).findByRole("heading", { name: "Origin" });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Search nodes" }), {
+      target: { value: "Beta" },
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("option", { name: /Beta/ })).toBeNull(),
+    );
+  });
+
+  it("widens the view's window back to an older shared traceroute", async () => {
+    const writeText = stubClipboard();
+    const fetchMock = mockSharedTraceroute({ daysAgo: 5 });
+    localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("24h"));
+    window.location.hash = sharedTraceroute("3d");
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "ORIG → GAMM" });
+    await waitFor(() =>
+      expect(side.querySelector(".sidebar-step")?.textContent).toBe("2 / 2"),
+    );
+    const links = fetchMock.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url.startsWith("/api/v1/map/links?"));
+    expect(hoursBefore(links.at(-1) ?? "", "since")).toBeCloseTo(7 * 24, 0);
+    expect(
+      (screen.getByLabelText("Last seen within") as HTMLSelectElement).value,
+    ).toBe("7d");
+    // Only this view: the saved window stays.
+    expect(loadSetting("seenWindow")).toBe("24h");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(sharedTraceroute("7d"), window.location.href).href,
+      ),
+    );
+  });
+
+  it("says why a shared traceroute that is no longer kept does not open", async () => {
+    mockSharedTraceroute({ packetStatus: 404 });
+    window.location.hash = sharedTraceroute("3d");
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "Origin" });
+    expect(
+      await within(side).findByText(
+        "The shared traceroute could not load: Packet not found.",
+      ),
+    ).not.toBeNull();
+    expect(side.querySelector(".map-traceroute")).toBeNull();
+  });
+
+  it("says why a shared traceroute whose link is hidden does not open", async () => {
+    mockSharedTraceroute({ observations: 2 });
+    window.location.hash = sharedTraceroute("3d");
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "Origin" });
+    const note = (
+      await within(side).findByText(/^The shared traceroute's link is hidden/)
+    ).closest<HTMLElement>(".status-panel")!;
+    expect(
+      within(note)
+        .getByRole("link", { name: "Open its packet" })
+        .getAttribute("href"),
+    ).toBe("#packets/50/hop/2-3");
+
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Back to Chatty nodes" }),
+    );
+    expect(within(side).queryByText(/The shared traceroute/)).toBeNull();
+  });
+
+  it("opens a shared link on its channel and shares it back", async () => {
+    const writeText = stubClipboard();
+    mockSharedTraceroute();
+    const shared =
+      "#map/!00000002?show=traceroute&window=3d&link=%2100000002-%2100000003&kind=traceroute&link_channel=MediumFast";
+    window.location.hash = shared;
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    const card = await within(side).findByRole("region", {
+      name: "Link summary",
+    });
+    expect(card.querySelector(".link-card-channel")?.textContent).toBe(
+      "MediumFast",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(shared, window.location.href).href,
+      ),
+    );
+
+    fireEvent.click(
+      within(side).getByRole("button", { name: "Back to Origin" }),
+    );
+    await within(side).findByRole("heading", { name: "Origin" });
+    // Still labelled "Copied link" from the first click.
+    fireEvent.click(document.querySelector(".map-share button")!);
+    await waitFor(() =>
+      expect(writeText).toHaveBeenLastCalledWith(
+        new URL(
+          "#map/!00000002?show=traceroute&window=3d",
+          window.location.href,
+        ).href,
+      ),
+    );
+  });
+
+  it("says why a shared link does not open", async () => {
+    mockSharedTraceroute();
+    window.location.hash =
+      "#map/2?show=traceroute&window=3d&link=2-3&kind=traceroute&link_channel=ShortFast";
+    render(<App />);
+
+    const side = await screen.findByRole("complementary", {
+      name: "Map sidebar",
+    });
+    await within(side).findByRole("heading", { name: "Origin" });
+    const note = (
+      await within(side).findByText(/^The shared link is not on the map/)
+    ).closest<HTMLElement>(".status-panel")!;
+    expect(
+      within(note)
+        .getByRole("link", { name: "On the Links page" })
+        .getAttribute("href"),
+    ).toBe("#links/2-3?kind=traceroute");
+  });
 
   it("shows a linked node that the saved filters would hide", async () => {
     mockMap({});
@@ -2160,8 +2603,10 @@ describe("Map text reach", () => {
       await screen.findByRole("heading", { name: "OFF long" })
     ).closest("section")!;
     expect(
-      fetchMock.mock.calls.some(([url]) =>
-        url.startsWith("/api/v1/map/text-reach/9?since="),
+      fetchMock.mock.calls.some(
+        ([url]) =>
+          url.startsWith("/api/v1/map/text-reach/9?since=") &&
+          url.endsWith("&channel=LongFast"),
       ),
     ).toBe(true);
     expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
@@ -2198,9 +2643,14 @@ describe("Map text reach", () => {
 
     await vi.waitFor(() =>
       expect(fetchMock.mock.calls.map(([url]) => url)).toContain(
-        "/api/v1/map/text-senders",
+        "/api/v1/map/text-senders?channel=LongFast",
       ),
     );
+    // A first visit asks only once it opens on the busiest channel.
+    const chatty = fetchMock.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url.startsWith("/api/v1/map/text-senders"));
+    expect(chatty.every((url) => url.includes("channel=LongFast"))).toBe(true);
   });
 
   it("shows the nodes and chatty nodes again on Back without loading them", async () => {
@@ -2680,7 +3130,7 @@ const FARM_TO_MILL = {
     hops: 3,
     km: null,
     reached: false,
-    path: { nodes: [5, 2, 1, 6], snr_db: [3, 4, 5] },
+    path: { reached: false, nodes: [5, 2, 1, 6], snr_db: [3, 4, 5] },
     path_hops: [
       { from_node_id: 5, to_node_id: 2, snr_db: 3 },
       { from_node_id: 2, to_node_id: 1, snr_db: 4 },
@@ -3102,14 +3552,22 @@ describe("Traceroute explorer", () => {
         ...FARM_TO_MILL.route,
         hop: null,
         hop_costs: [
-          { from_node_id: 5, to_node_id: 2, spent: 1, learned: null },
           {
+            is_return: false,
+            from_node_id: 5,
+            to_node_id: 2,
+            spent: 1,
+            learned: null,
+          },
+          {
+            is_return: false,
             from_node_id: 2,
             to_node_id: 1,
             spent: 0,
             learned: learned("free", 3, 1),
           },
           {
+            is_return: false,
             from_node_id: 1,
             to_node_id: 6,
             spent: 1,

@@ -3,21 +3,25 @@ import * as maplibregl from "maplibre-gl";
 
 import { type PacketRelays, relayPositions } from "./packetRelays";
 import { LinkQualityLegend } from "./MapLinkDetails";
-import {
-  ARROW_HALO,
-  ARROW_IMAGE,
-  addArrowImage,
-  zeroCostColor,
-} from "./mapLinkLayers";
+import { ARROW_IMAGE } from "./mapLinkLayers";
 import { nodeHref } from "./nodeDisplay";
 import { useLinkedSetting } from "./remember";
 import type { PacketLinkView } from "./routes";
 import {
-  TWO_WAY_OFFSET,
   type DirectedHop,
   type HopLines,
   type MinimapContents,
+  sameHop,
 } from "./minimapMarkers";
+import {
+  HOPS_SOURCE,
+  HOP_POINTER_LAYERS,
+  HOP_SNR_LAYER,
+  addHopLayers,
+  hopAt,
+  routeMarker,
+  widenHop,
+} from "./hopLayers";
 import { Icon, IconButton, NodeLink, ShareButton } from "./ui";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 
@@ -30,24 +34,6 @@ export type MinimapFocus =
   | { kind: "relay"; nodeId: number }
   | { kind: "hop"; fromNodeId: number; toNodeId: number }
   | null;
-
-const HOPS_SOURCE = "hops";
-const HOP_SNR_LAYER = "hop-snr";
-const HOP_HIT_LAYER = "hop-hit";
-// Each hop is one observation, so unhighlighted lines have the same width.
-const HOP_LINE_WIDTH = 2.5;
-const HOP_LINE_OPACITY = 0.8;
-const isLine: maplibregl.ExpressionSpecification = [
-  "==",
-  ["geometry-type"],
-  "LineString",
-];
-const isMark: maplibregl.ExpressionSpecification = [
-  "==",
-  ["geometry-type"],
-  "Point",
-];
-const hasSnr: maplibregl.ExpressionSpecification = ["!=", ["get", "snr"], null];
 
 const FLOOD_SOURCE = "flood";
 const FLOOD_ROUTE_LINES = "flood-routes";
@@ -233,7 +219,6 @@ export function PacketMinimap({
         // visible under it.
         const elements = markerElements.current;
         for (const marker of [...markers].reverse()) {
-          const isSender = marker.kind === "sender";
           let element: HTMLElement;
           if (
             marker.kind === "gateway" &&
@@ -262,11 +247,6 @@ export function PacketMinimap({
             link.href = nodeHref(marker.nodeId);
             element = link;
           }
-          element.className = `minimap-marker minimap-${marker.kind} ${marker.tone}${
-            marker.estimated ? " estimated" : ""
-          }`;
-          element.title = marker.title;
-          element.textContent = marker.label;
           if (marker.kind === "gateway") {
             const receptionId = Number(marker.key.slice("reception-".length));
             element.addEventListener("mouseenter", () =>
@@ -290,14 +270,7 @@ export function PacketMinimap({
             element.addEventListener("blur", leave);
           }
           elements.set(marker.key, element);
-          new maplibregl.Marker(
-            // The pin's point is 6 px below its box (see .minimap-sender::after).
-            isSender
-              ? { element, anchor: "bottom", offset: [0, -6] }
-              : { element },
-          )
-            .setLngLat([marker.longitude, marker.latitude])
-            .addTo(created);
+          routeMarker(marker, element).addTo(created);
         }
         return () => elements.clear();
       },
@@ -320,29 +293,10 @@ export function PacketMinimap({
 
   useEffect(() => {
     if (map === null || !interactiveHops) return;
-    const layers = [HOP_HIT_LAYER, "hop-arrows", HOP_SNR_LAYER];
     let hovered: DirectedHop | null = null;
-    const hopAt = (
-      event: maplibregl.MapLayerMouseEvent,
-    ): DirectedHop | null => {
-      if (
-        event.originalEvent.target instanceof Element &&
-        event.originalEvent.target.closest(".minimap-marker")
-      )
-        return null;
-      const properties = event.features?.[0]?.properties;
-      return typeof properties?.fromNodeId === "number" &&
-        typeof properties.toNodeId === "number"
-        ? { fromNodeId: properties.fromNodeId, toNodeId: properties.toNodeId }
-        : null;
-    };
     const move = (event: maplibregl.MapLayerMouseEvent) => {
       const hop = hopAt(event);
-      if (
-        hop?.fromNodeId === hovered?.fromNodeId &&
-        hop?.toNodeId === hovered?.toNodeId
-      )
-        return;
+      if (hop === hovered || sameHop(hop, hovered)) return;
       hovered = hop;
       map.getCanvas().style.cursor = hop === null ? "" : "pointer";
       hopHover.current?.(hop);
@@ -356,35 +310,19 @@ export function PacketMinimap({
       const hop = hopAt(event);
       if (hop !== null) hopClick.current?.(hop);
     };
-    map.on("mousemove", layers, move);
-    map.on("mouseleave", layers, leave);
-    map.on("click", layers, click);
+    map.on("mousemove", HOP_POINTER_LAYERS, move);
+    map.on("mouseleave", HOP_POINTER_LAYERS, leave);
+    map.on("click", HOP_POINTER_LAYERS, click);
     return () => {
-      map.off("mousemove", layers, move);
-      map.off("mouseleave", layers, leave);
-      map.off("click", layers, click);
+      map.off("mousemove", HOP_POINTER_LAYERS, move);
+      map.off("mouseleave", HOP_POINTER_LAYERS, leave);
+      map.off("click", HOP_POINTER_LAYERS, click);
       leave();
     };
   }, [map, interactiveHops]);
 
   useEffect(() => {
-    if (map === null) return;
-    const width: maplibregl.ExpressionSpecification | number =
-      highlightedHop === null
-        ? HOP_LINE_WIDTH
-        : [
-            "case",
-            [
-              "all",
-              ["==", ["get", "fromNodeId"], highlightedHop.fromNodeId],
-              ["==", ["get", "toNodeId"], highlightedHop.toNodeId],
-            ],
-            5,
-            HOP_LINE_WIDTH,
-          ];
-    for (const layer of ["hop-lines", "hop-lines-no-snr"]) {
-      map.setPaintProperty(layer, "line-width", width);
-    }
+    if (map !== null) widenHop(map, highlightedHop);
   }, [map, highlightedHop]);
 
   useEffect(() => {
@@ -699,89 +637,6 @@ function undrawnHopsNote({ hops, undrawnHops }: HopLines): string | null {
   return undrawnHops > 0
     ? ` ${undrawnHops} of ${hops} route hops not drawn: a node has no known position.`
     : null;
-}
-
-// Hop lines coloured by SNR as on the map (dashed without one), an arrow at
-// each line's middle pointing the way the packet went, and SNR labels beside
-// the arrows. A pair crossed both ways is drawn as two lines, each offset to
-// its own right like a two-way road.
-function addHopLayers(map: maplibregl.Map, darkBasemap: boolean): void {
-  addArrowImage(map);
-  map.addSource(HOPS_SOURCE, {
-    type: "geojson",
-    data: { type: "FeatureCollection", features: [] },
-  });
-  const halo = darkBasemap ? "#0f172a" : "#ffffff";
-  const linePaint = {
-    "line-color": ["get", "color"],
-    "line-width": HOP_LINE_WIDTH,
-    "line-opacity": HOP_LINE_OPACITY,
-    "line-offset": ["case", ["get", "twoWay"], TWO_WAY_OFFSET, 0],
-  } satisfies maplibregl.LineLayerSpecification["paint"];
-  map.addLayer({
-    id: HOP_HIT_LAYER,
-    type: "line",
-    source: HOPS_SOURCE,
-    filter: isLine,
-    paint: { ...linePaint, "line-width": 10, "line-opacity": 0 },
-  });
-  map.addLayer({
-    id: "hop-lines",
-    type: "line",
-    source: HOPS_SOURCE,
-    filter: ["all", isLine, hasSnr],
-    paint: linePaint,
-  });
-  map.addLayer({
-    id: "hop-lines-no-snr",
-    type: "line",
-    source: HOPS_SOURCE,
-    filter: ["all", isLine, ["!", hasSnr]],
-    paint: { ...linePaint, "line-dasharray": [2, 2] },
-  });
-  map.addLayer({
-    id: "hop-arrows",
-    type: "symbol",
-    source: HOPS_SOURCE,
-    filter: isMark,
-    layout: {
-      "icon-image": ARROW_IMAGE,
-      "icon-rotate": ["get", "rotation"],
-      "icon-rotation-alignment": "map",
-      "icon-offset": ["get", "arrowOffset"],
-      "icon-allow-overlap": true,
-      "icon-ignore-placement": true,
-    },
-    paint: {
-      "icon-color": [
-        "case",
-        ["get", "zeroCost"],
-        zeroCostColor(),
-        ["get", "color"],
-      ],
-      "icon-halo-color": ["case", ["get", "zeroCost"], ARROW_HALO, halo],
-      "icon-halo-width": 1,
-    },
-  });
-  map.addLayer({
-    id: HOP_SNR_LAYER,
-    type: "symbol",
-    source: HOPS_SOURCE,
-    filter: ["all", isMark, hasSnr],
-    layout: {
-      visibility: "none",
-      "text-field": ["get", "label"],
-      "text-font": ["Noto Sans Bold"],
-      "text-size": 11,
-      "text-anchor": ["get", "labelAnchor"],
-      "text-offset": ["get", "labelOffset"],
-    },
-    paint: {
-      "text-color": darkBasemap ? "#f8fafc" : "#1e293b",
-      "text-halo-color": halo,
-      "text-halo-width": 1.5,
-    },
-  });
 }
 
 // Relay connections are dashed when guessed; hollow dots mark estimated positions.

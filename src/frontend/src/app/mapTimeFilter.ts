@@ -1,6 +1,7 @@
 import { type LinkKind, mapLinksUrl, mapNodesUrl, textSendersUrl } from "./api";
 import { DEFAULT_LAYER_CHOICE } from "./mapLinkLayers";
-import { readView, savedSetting, writeView } from "./remember";
+import { ANY, DEFAULT_FILTER, radioChannel } from "./mapNodeFilter";
+import { loadSetting, readView, savedSetting, writeView } from "./remember";
 import type { MapLinkView } from "./routes";
 import { openedAt, startEarly } from "./useApi";
 
@@ -26,6 +27,22 @@ export function isSeenWindow(value: unknown): boolean {
   return SEEN_WINDOWS.some((option) => option.id === value);
 }
 
+/**
+ * The window, or else the narrowest wider one, that reaches back from `now`
+ * to `at` (both in ms).
+ */
+export function windowReaching(
+  window: SeenWindow,
+  now: number,
+  at: number,
+): SeenWindow {
+  const index = SEEN_WINDOWS.findIndex((option) => option.id === window);
+  const reaching = SEEN_WINDOWS.slice(index).find(
+    (option) => option.hours === null || now - option.hours * HOUR_MS <= at,
+  );
+  return reaching?.id ?? "all";
+}
+
 /** The window the map shows and when it was chosen, kept in its history entry. */
 export const SHOWN_WINDOW_VIEW = "map.window";
 export interface ShownWindow {
@@ -48,7 +65,6 @@ export interface MapUrls {
   traceroute: string;
   direct: string;
   neighbor: string;
-  textSenders: string;
 }
 
 /** The map's API URLs for a window ending now; nodes and links share its start. */
@@ -69,16 +85,32 @@ export function mapUrls(window: SeenWindow, now: number): MapUrls {
     traceroute: links("traceroute"),
     direct: links("direct"),
     neighbor: links("neighbor"),
-    textSenders: textSendersUrl(since),
   };
+}
+
+/** Chatty nodes' URL from the window's start, on the channel the node filter chose. */
+export function chattyUrl(since: string | undefined, channel: string): string {
+  return textSendersUrl(since, radioChannel(channel));
+}
+
+/**
+ * The channel filter the map opens on: a shared link's, else the saved one;
+ * undefined on a first visit, which waits for the busiest channel.
+ */
+function openingChannel(linked?: MapLinkView | null): string | undefined {
+  if (linked) return linked.channel ?? ANY;
+  return loadSetting("nodeFilter") === undefined
+    ? undefined
+    : savedSetting("nodeFilter", DEFAULT_FILTER).channel;
 }
 
 /**
  * Starts the map's requests when the app opens on it, while the map's code
  * and MapLibre still load: the window shown, kept in this history entry (and
  * kept there now for a new one, the `linked` window of a shared link if
- * given), and the link layers chosen, as MapView will read them, so it finds
- * its requests already on their way (useApi's startEarly).
+ * given), Chatty nodes on the channel it opens on and the link layers chosen,
+ * as MapView will read them, so it finds its requests already on their way
+ * (useApi's startEarly).
  */
 export function startMapRequests(linked?: MapLinkView | null): void {
   let shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow | undefined;
@@ -95,7 +127,9 @@ export function startMapRequests(linked?: MapLinkView | null): void {
   }
   const urls = mapUrls(shown.window, shown.chosenAt);
   startEarly(urls.nodes, shown.chosenAt);
-  startEarly(urls.textSenders, shown.chosenAt);
+  const channel = openingChannel(linked);
+  if (channel !== undefined)
+    startEarly(chattyUrl(urls.since, channel), shown.chosenAt);
   const layers = savedSetting("linkLayers", DEFAULT_LAYER_CHOICE);
   for (const kind of ["traceroute", "direct", "neighbor"] as const) {
     if (linked ? linked.show.includes(kind) : layers[kind])

@@ -119,6 +119,65 @@ def test_a_request_and_its_reply_make_one_run(path: Path) -> None:
     ]
 
 
+def test_a_packets_hop_chooses_the_explorers_saved_route_by_distance(path: Path) -> None:
+    for node, latitude in ((A, 40.0), (R1, 40.1), (R2, 40.2), (R3, 40.3), (OTHER, 42.0)):
+        place(path, node, latitude, 2.0)
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1, OTHER],
+        snr=[20, 16],
+    )
+    traceroute(
+        path,
+        "!bbbbbbbb",
+        NOW,
+        sender=A,
+        recipient=B,
+        packet_id=7,
+        route=[R1, R2, R3],
+        snr=[20, 16, 12],
+    )
+
+    [run] = get(path, "/api/v1/traceroutes", node=A, next_to=R1)["items"]
+    packet = get(path, f"/api/v1/packets/{run['request_packet_row_id']}")
+    chosen = next(
+        h for h in packet["hop_routes"] if (h["from_node_id"], h["to_node_id"]) == (A, R1)
+    )
+    report = next(r for r in packet["receptions"] if r["reception_id"] == chosen["reception_id"])
+
+    assert report["paths"]["forward"] == run["route"]["path"]
+    assert report["paths"]["forward"]["nodes"] == [A, R1, OTHER, B]
+
+
+@pytest.mark.parametrize("reply", [False, True])
+def test_known_arrival_survives_a_missing_final_snr(path: Path, reply: bool) -> None:
+    traceroute(
+        path,
+        f"!{B:08x}",
+        NOW,
+        sender=B if reply else A,
+        recipient=A if reply else B,
+        packet_id=8 if reply else 7,
+        request_id=7 if reply else 0,
+        route=[R1],
+        snr=[20],
+    )
+
+    [run] = get(path, "/api/v1/traceroutes")["items"]
+    packet = get(path, f"/api/v1/packets/{run['route']['packet_row_id']}")
+    [report] = packet["receptions"]
+
+    assert report["paths"]["forward"] == run["route"]["path"]
+    assert report["paths"]["forward"]["reached"] is True
+    assert len(report["paths"]["forward"]["snr_db"]) == 1
+    assert len(report["hops"]) == 1
+
+
 def test_a_shared_run_is_found_by_its_packet_with_or_without_a_hop(
     sample_client: TestClient,
 ) -> None:
@@ -1001,6 +1060,38 @@ def test_a_packets_hops_spent_count_its_requests_copies_and_return_first_hop(
     assert spent(reply["hop_costs"])[R2, R3] == (0, None)
     assert spent(reply["hop_costs"])[B, R2] == (1, None)
     assert spent(reply["hop_costs"])[R2, A] == (None, "unknown")
+
+
+def test_request_pins_do_not_become_return_costs_for_the_same_directed_hop(path: Path) -> None:
+    free_request(path)
+    hop_cost(path, R1, R2, 0, 10, hour_start=to_epoch_ms(NOW) // HOUR_MS * HOUR_MS - HOUR_MS)
+    traceroute(
+        path,
+        "!aaaaaaaa",
+        NOW + timedelta(seconds=5),
+        sender=B,
+        recipient=A,
+        packet_id=8,
+        request_id=7,
+        route=[R1, R2, R3],
+        snr=[20, 16, 12, 8],
+        route_back=[R1, R2, OTHER],
+        snr_back=[20, 16, 12, 8],
+    )
+
+    [run] = get(path, "/api/v1/traceroutes", node=OTHER)["items"]
+    reply = get(path, f"/api/v1/packets/{run['reply_packet_row_id']}")
+    costs_by_path = {
+        cost["is_return"]: cost
+        for cost in reply["hop_costs"]
+        if (cost["from_node_id"], cost["to_node_id"]) == (R1, R2)
+    }
+
+    assert costs_by_path[False]["spent"] == 0
+    assert costs_by_path[False]["learned"] is None
+    assert costs_by_path[True]["spent"] == 1
+    assert costs_by_path[True]["learned"]["verdict"] == "costly"
+    assert costs_by_path[True] in run["route"]["hop_costs"]
 
 
 def test_a_broadcast_runs_return_route_starts_at_its_replier(path: Path) -> None:

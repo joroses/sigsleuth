@@ -70,11 +70,13 @@ class RoutePath:
 
     nodes includes the origin and destination; None marks a gap. snr_db[i] is
     the SNR at nodes[i + 1] when it heard nodes[i], None when unknown. snr_db is
-    shorter than the path while the packet is still travelling.
+    shorter than the path when steps were not reported. reached is known
+    arrival, independently of those measurements.
     """
 
     nodes: tuple[int | None, ...]
     snr_db: tuple[float | None, ...]
+    reached: bool = False
 
 
 @dataclass(frozen=True)
@@ -158,8 +160,17 @@ def read_traceroute_report(
     if discovery is None:
         return None
     requester, target = requester_and_target(sender, recipient, request_id)
-    return TracerouteReport(
+    report = TracerouteReport(
         report_paths(discovery, sender, recipient, request_id), requester, target, gateway
+    )
+    return replace(
+        report,
+        paths=ReportPaths(
+            replace(report.paths.forward, reached=reached_end(report, False)),
+            None
+            if report.paths.return_path is None
+            else replace(report.paths.return_path, reached=reached_end(report, True)),
+        ),
     )
 
 

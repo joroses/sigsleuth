@@ -25,7 +25,11 @@ import {
   MapNode,
   MapNodeList,
   type NodeOverview,
+  type HopObservations,
+  type PacketDetail,
   nodeUrl,
+  packetUrl,
+  tracerouteHopsUrl,
   type TextReach,
   type TextSender,
   type TextSenderList,
@@ -63,12 +67,28 @@ import {
   filterPanelWidth,
   focusCoverage,
   focusLink,
+  focusPoints,
   focusTextReach,
   inView,
 } from "./mapCamera";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { MapLinkDetails } from "./MapLinkDetails";
 import { HopTable, MapRoute } from "./MapRoute";
+import {
+  MapTraceroute,
+  type RouteHover,
+  type ShownTraceroute,
+} from "./MapTraceroute";
+import {
+  HOPS_SOURCE,
+  HOP_POINTER_LAYERS,
+  HOP_SNR_LAYER,
+  addHopLayers,
+  hopAt,
+  routeMarker,
+  widenHop,
+} from "./hopLayers";
+import { type DirectedHop, sameHop, tracerouteDrawing } from "./minimapMarkers";
 import { bothWaysObservations } from "./linkQuality";
 import { fromNode } from "./linkRows";
 import {
@@ -114,8 +134,11 @@ import {
   formatRole,
   nodeHref,
   nodeLabel,
+  linkDetailsHref,
   nodeMarkerLabel,
+  packetHopHref,
   positionSource,
+  shortLabel,
 } from "./nodeDisplay";
 import {
   ANY,
@@ -125,9 +148,11 @@ import {
   linkableNodes,
   NOT_REPORTED,
   onChosenChannel,
+  radioChannel,
   shownNodes,
 } from "./mapNodeFilter";
 import {
+  chattyUrl,
   DEFAULT_SEEN_WINDOW,
   isSeenWindow,
   mapUrls,
@@ -135,6 +160,7 @@ import {
   SHOWN_WINDOW_VIEW,
   type SeenWindow,
   type ShownWindow,
+  windowReaching,
 } from "./mapTimeFilter";
 import { NodeSearch } from "./NodeSearch";
 import {
@@ -146,7 +172,7 @@ import {
   useViewState,
   writeView,
 } from "./remember";
-import { type MapLinkView, mapViewHref } from "./routes";
+import { type MapLinkView, type SharedLink, mapViewHref } from "./routes";
 import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 import { formatHours } from "./zones";
@@ -164,6 +190,10 @@ import {
 const NO_NODES: MapNode[] = [];
 const NO_LINKS: MapLink[] = [];
 const NO_SHARES: TextShare[] = [];
+const NO_FEATURES: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
 
 declare global {
   interface Window {
@@ -183,7 +213,7 @@ interface SelectedLink {
 }
 
 const CAMERA_KEY = "map.camera";
-const SELECTED_VIEW_KEY = "map.selected";
+const SELECTED_VIEW_KEY = "map.selection";
 
 interface Camera {
   center: [number, number];
@@ -316,6 +346,18 @@ function measureNodeLayersIdle(instance: maplibregl.Map) {
   instance.once("idle", () => performance.measure("map: node layers idle"));
 }
 
+/** A shared link waiting to be chosen, and the traceroute to show on it. */
+type PendingLink = SharedLink & { traceroute?: MapLinkView["traceroute"] };
+
+/** The key of the link a share link names (see linkKey). */
+function sharedLinkKey(link: SharedLink): string {
+  return linkKey(link.kind, {
+    node_a: link.nodeA,
+    node_b: link.nodeB,
+    channel: link.channel,
+  });
+}
+
 /**
  * nodeId, from #map/<node number>, is selected once nodes load; `linkView`,
  * from a shared link's query, says what the map shows of it (see MapLinkView).
@@ -356,6 +398,13 @@ export function MapView({
     fromMap: boolean;
   } | null>(null);
   const nodeChosen = useRef(false);
+  // The shown traceroute's channel, whose links its hops choose on the map.
+  const tracerouteChannel = useRef<string | null>(null);
+  // The traceroute layer's latest data, for the next style load.
+  const pendingTraceroute = useRef<{
+    features: GeoJSON.FeatureCollection;
+    hop: DirectedHop | null;
+  }>({ features: NO_FEATURES, hop: null });
   const routeClick = useRef<RouteClick | null>(null);
   const [shownRouteClick, setShownRouteClick] = useState<RouteClick | null>(
     null,
@@ -511,18 +560,70 @@ export function MapView({
     linkTiers,
     drawnMinKm,
   );
-  const [selection, setSelection] = useState<Selection | null>(() =>
-    nodeId === null ? null : { nodeId, fit: "view", zoomIn: true },
+  const [restoringView] = useState(
+    () => readView(SELECTED_VIEW_KEY) !== undefined,
   );
+  const [selection, setSelection] = useState<Selection | null>(() => {
+    const saved = readView(SELECTED_VIEW_KEY) as Selection | null | undefined;
+    if (saved !== undefined)
+      return saved === null ? null : { ...saved, fit: "none" };
+    return nodeId === null ? null : { nodeId, fit: "view", zoomIn: true };
+  });
   // The chosen link's key; it shows only while the filters keep the link.
-  const [chosenLinkKey, setChosenLinkKey] = useState<string | null>(null);
+  const [chosenLinkKey, setChosenLinkKey] = useViewState<string | null>(
+    "map.link",
+    null,
+  );
+  // A traceroute opened from the chosen link's sidebar, drawn on its own;
+  // choosing anything else drops it.
+  const [traceroute, setTraceroute] = useViewState<ShownTraceroute | null>(
+    "map.traceroute",
+    null,
+  );
+  const [routeHover, setRouteHover] = useState<RouteHover | null>(null);
+  // The link a traceroute was last opened from, whose list Back reopens.
+  const [tracedLinkKey, setTracedLinkKey] = useViewState<string | null>(
+    "map.tracedLink",
+    null,
+  );
+  if (traceroute !== null && traceroute.linkKey !== chosenLinkKey)
+    setTraceroute(null);
+  // A shared traceroute, waiting for its packet to widen the window.
+  const [sharedTraceroute, setSharedTraceroute] = useState(
+    restoringView ? null : (linkView?.traceroute ?? null),
+  );
+  const [nodeLinked, setNodeLinked] = useState(false);
+  // A shared link, chosen once the node the link named has been selected
+  // (nodeLinked) and its layer has loaded (see loadedByKey).
+  const [sharedLink, setSharedLink] = useState<PendingLink | null>(
+    restoringView ? null : (linkView?.link ?? null),
+  );
+  const traceroutePacket = traceroute?.packet ?? null;
+  const tracerouteHop = traceroute?.hop ?? null;
+  const detailPacket =
+    traceroutePacket ??
+    sharedTraceroute?.packet ??
+    sharedLink?.traceroute?.packet ??
+    null;
+  const tracerouteDetail = useApi<PacketDetail>(
+    detailPacket === null ? null : packetUrl(detailPacket),
+  );
+  const drawing = useMemo(
+    () =>
+      tracerouteDetail.data === null ||
+      tracerouteHop === null ||
+      tracerouteDetail.data.packet.packet_row_id !== traceroutePacket
+        ? null
+        : tracerouteDrawing(tracerouteDetail.data, tracerouteHop),
+    [tracerouteDetail.data, traceroutePacket, tracerouteHop],
+  );
   // A route from the selected node: its other end is being picked while `to`
   // is null. One drawn by two map clicks (fromMap) clears with its node.
-  const [route, setRoute] = useState<{
+  const [route, setRoute] = useViewState<{
     from: number;
     to: number | null;
     fromMap?: boolean;
-  } | null>(null);
+  } | null>("map.route", null);
   // The route's links, between placed nodes, whatever "Observed at least" and
   // the length filter say.
   const routeFrom =
@@ -600,6 +701,75 @@ export function MapView({
   const tracerouteLinks = tracerouteLayer.links;
   const directLinks = directLayer.links;
   const neighborLinks = neighborLayer.links;
+  // An older shared traceroute first widens this view's window back to it;
+  // the saved window stays.
+  const [sharedFailure, setSharedFailure] = useState<{
+    selection: Selection | null;
+    text: string;
+    page?: { href: string; label: string };
+  } | null>(null);
+  if (sharedTraceroute !== null) {
+    const detail =
+      tracerouteDetail.data?.packet.packet_row_id === sharedTraceroute.packet
+        ? tracerouteDetail.data
+        : null;
+    if (detail !== null) {
+      const reaching = windowReaching(
+        shownWindow.window,
+        chosenAt,
+        Date.parse(detail.packet.first_received_at),
+      );
+      if (reaching !== shownWindow.window)
+        setShownWindow(mapWindowStart(reaching));
+      else {
+        setSharedTraceroute(null);
+        const { fromNodeId, toNodeId } = sharedTraceroute.hop;
+        setSharedLink({
+          kind: "traceroute",
+          nodeA: Math.min(fromNodeId, toNodeId),
+          nodeB: Math.max(fromNodeId, toNodeId),
+          channel: sharedTraceroute.channel,
+          traceroute: sharedTraceroute,
+        });
+      }
+    } else if (tracerouteDetail.error !== null && nodeLinked) {
+      setSharedTraceroute(null);
+      setSharedFailure({
+        selection,
+        text: `The shared traceroute could not load: ${tracerouteDetail.error}`,
+      });
+    }
+  }
+
+  // Links of the layers switched on, including those without both positions.
+  const loadedLinks = useMemo(
+    (): SelectedLink[] => [
+      ...tracerouteLinks.map((link) => ({
+        linkKind: "traceroute" as const,
+        link,
+      })),
+      ...directLinks.map((link) => ({ linkKind: "direct" as const, link })),
+      ...neighborLinks.map((link) => ({
+        linkKind: "neighbor" as const,
+        link,
+      })),
+    ],
+    [tracerouteLinks, directLinks, neighborLinks],
+  );
+  const loadedByKey = useMemo(
+    () =>
+      new Map(
+        loadedLinks.map((item) => [linkKey(item.linkKind, item.link), item]),
+      ),
+    [loadedLinks],
+  );
+  // A chosen link the filters hide shows as nothing chosen, and comes back
+  // when they no longer hide it, as a node does.
+  const selectedLink =
+    chosenLinkKey === null ? null : (loadedByKey.get(chosenLinkKey) ?? null);
+  const tracerouteShown = selectedLink !== null && traceroute !== null;
+  const shownDrawing = tracerouteShown ? drawing : null;
+
   // Only links with both ends placed are drawn, so only they bring their nodes.
   const linkEnds = useMemo(() => {
     const ends = new Set<number>();
@@ -609,10 +779,28 @@ export function MapView({
           ends.add(link.node_a).add(link.node_b);
     return ends;
   }, [tracerouteLinks, directLinks, neighborLinks, linkableMap]);
-  const items = useMemo(
-    () => shownNodes(loadedNodes, nodeFilter, requestedId, linkEnds),
-    [loadedNodes, nodeFilter, requestedId, linkEnds],
-  );
+  // A drawn traceroute keeps its nodes whatever the filters say, placed where
+  // they were when it was heard, under its markers.
+  const items = useMemo(() => {
+    const shown = shownNodes(loadedNodes, nodeFilter, requestedId, linkEnds);
+    if (shownDrawing === null) return shown;
+    const route = new Set(shownDrawing.nodeIds);
+    const kept = new Set(shown.map((node) => node.node_id));
+    const heardAt = new Map(
+      shownDrawing.markers.map((marker) => [marker.nodeId, marker]),
+    );
+    return [
+      ...shown,
+      ...loadedNodes.filter(
+        (node) => route.has(node.node_id) && !kept.has(node.node_id),
+      ),
+    ].map((node) => {
+      const marker = heardAt.get(node.node_id);
+      return marker === undefined
+        ? node
+        : { ...node, latitude: marker.latitude, longitude: marker.longitude };
+    });
+  }, [loadedNodes, nodeFilter, requestedId, linkEnds, shownDrawing]);
   const nodeMap = useMemo(
     () => new Map(items.map((node) => [node.node_id, node])),
     [items],
@@ -661,19 +849,22 @@ export function MapView({
 
   // The only ways the node selection changes. The sidebar shows the latest
   // choice, so a node replaces a chosen link or cell.
-  const select = useCallback((node: MapNode) => {
-    setUnknownCoverage(false);
-    setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
-    setChosenLinkKey(null);
-    setSelectedCell(null);
-    setRoute(null);
-  }, []);
+  const select = useCallback(
+    (node: MapNode) => {
+      setUnknownCoverage(false);
+      setSelection({ nodeId: node.node_id, fit: "view", zoomIn: true });
+      setChosenLinkKey(null);
+      setSelectedCell(null);
+      setRoute(null);
+    },
+    [setChosenLinkKey, setRoute],
+  );
   const clearSelection = useCallback(() => {
     setUnknownCoverage(false);
     setSelection(null);
     setChosenLinkKey(null);
     setRoute(null);
-  }, []);
+  }, [setChosenLinkKey, setRoute]);
 
   // A new choice or filter cancels a half-made route.
   const routeClickFor = [
@@ -717,35 +908,80 @@ export function MapView({
     if (anything && isNarrowScreen()) setCollapsed(false);
   }
 
-  // Links of the layers switched on, including those without both positions.
-  const loadedLinks = useMemo(
-    (): SelectedLink[] => [
-      ...tracerouteLinks.map((link) => ({
-        linkKind: "traceroute" as const,
-        link,
-      })),
-      ...directLinks.map((link) => ({ linkKind: "direct" as const, link })),
-      ...neighborLinks.map((link) => ({
-        linkKind: "neighbor" as const,
-        link,
-      })),
-    ],
-    [tracerouteLinks, directLinks, neighborLinks],
-  );
-  const loadedByKey = useMemo(
-    () =>
-      new Map(
-        loadedLinks.map((item) => [linkKey(item.linkKind, item.link), item]),
-      ),
-    [loadedLinks],
-  );
   useEffect(() => {
     linksByKey.current = loadedByKey;
   }, [loadedByKey]);
-  // A chosen link the filters hide shows as nothing chosen, and comes back
-  // when they no longer hide it, as a node does.
-  const selectedLink =
-    chosenLinkKey === null ? null : (loadedByKey.get(chosenLinkKey) ?? null);
+  if (
+    sharedLink !== null &&
+    nodeLinked &&
+    !linkLayers[sharedLink.kind].loading
+  ) {
+    setSharedLink(null);
+    const key = sharedLinkKey(sharedLink);
+    const shown = sharedLink.traceroute;
+    if (loadedByKey.has(key)) {
+      setChosenLinkKey(key);
+      if (shown !== undefined) {
+        setTracedLinkKey(key);
+        setTraceroute({ linkKey: key, ...shown });
+      }
+    } else
+      setSharedFailure(
+        shown === undefined
+          ? {
+              selection,
+              text: "The shared link is not on the map: not heard in this window, or filtered out.",
+              page: {
+                href: linkDetailsHref(
+                  sharedLink.kind,
+                  sharedLink.nodeA,
+                  sharedLink.nodeB,
+                ),
+                label: "On the Links page",
+              },
+            }
+          : {
+              selection,
+              text: "The shared traceroute's link is hidden by the map's filters.",
+              page: {
+                href: packetHopHref(
+                  shown.packet,
+                  shown.hop.fromNodeId,
+                  shown.hop.toNodeId,
+                ),
+                label: "Open its packet",
+              },
+            },
+      );
+  }
+  useEffect(() => {
+    tracerouteChannel.current =
+      selectedLink !== null && traceroute !== null
+        ? selectedLink.link.channel
+        : null;
+  }, [selectedLink, traceroute]);
+  // A traceroute link's latest traceroutes, listed in its sidebar.
+  const linkHops = useApi<HopObservations>(
+    selectedLink?.linkKind === "traceroute"
+      ? tracerouteHopsUrl(
+          selectedLink.link.node_a,
+          selectedLink.link.node_b,
+          urls.since,
+          selectedLink.link.channel,
+        )
+      : null,
+  );
+  const listedTraceroutes = (() => {
+    if (traceroute === null || selectedLink === null) return [];
+    const direction =
+      traceroute.hop.fromNodeId === selectedLink.link.node_a
+        ? "a_to_b"
+        : "b_to_a";
+    const listed = (linkHops.data?.[direction] ?? []).map(
+      (item) => item.packet_row_id,
+    );
+    return listed.includes(traceroute.packet) ? listed : [traceroute.packet];
+  })();
   const nodeTracerouteLinks = useMemo(
     () =>
       selectedNode === null
@@ -825,9 +1061,16 @@ export function MapView({
           };
   }, [activeRoute]);
 
-  // The sidebar needs the message count even with Text reach off.
+  // The sidebar needs the message count even with Text reach off. Like
+  // Chatty nodes, it counts the texts sent on the chosen channel.
   const reach = useApi<TextReach>(
-    selection === null ? null : textReachUrl(selection.nodeId, urls.since),
+    selection === null
+      ? null
+      : textReachUrl(
+          selection.nodeId,
+          urls.since,
+          radioChannel(nodeFilter.channel),
+        ),
   );
   const reachShown = selectedNode !== null || unplacedNode !== null;
   const textReach = reachShown && showTextReach ? reach.data : null;
@@ -840,7 +1083,14 @@ export function MapView({
       : reach.data.messages === 0
         ? "None"
         : reach.data.messages.toLocaleString();
-  const textSenders = useApi<TextSenderList>(urls.textSenders, chosenAt);
+  // Senders count only their texts on the chosen channel, whatever channel
+  // their node last reported. A first visit waits for its busiest channel.
+  const textSenders = useApi<TextSenderList>(
+    channelPending && error === null
+      ? null
+      : chattyUrl(urls.since, nodeFilter.channel),
+    chosenAt,
+  );
   // Senders the map draws are listed, and so are senders with no recent
   // position, whose gateways still show; a sender a filter hides is left out.
   const loadedIds = useMemo(
@@ -871,27 +1121,33 @@ export function MapView({
           })),
     [textReach],
   );
-  // A selected link shows only its two nodes, over any node focus; its card
-  // replaces the node's, so the badges go too. Otherwise the gateways that
-  // reported the selected node's texts stay beside the nodes the hop depth
-  // keeps; a sender with no position keeps only its gateways.
+  // A selected link shows only its two nodes, over any node focus, and a
+  // traceroute opened from it only its route's; its card replaces the
+  // node's, so the badges go too. Otherwise the gateways that reported the
+  // selected node's texts stay beside the nodes the hop depth keeps; a
+  // sender with no position keeps only its gateways.
   const view = useMemo(
-    (): NodeView =>
-      selectedLink === null
-        ? {
-            focus: focus === null ? null : new Set(focus.nodeIds),
-            selectedId: focusNodeId,
-            shares: activeRoute === null ? shares : NO_SHARES,
-          }
-        : {
-            focus: new Set([
-              selectedLink.link.node_a,
-              selectedLink.link.node_b,
-            ]),
-            selectedId: focusNodeId,
-            shares: NO_SHARES,
-          },
-    [selectedLink, focus, focusNodeId, shares, activeRoute],
+    (): NodeView => ({
+      focus: tracerouteShown
+        ? new Set(shownDrawing?.nodeIds ?? [])
+        : selectedLink !== null
+          ? new Set([selectedLink.link.node_a, selectedLink.link.node_b])
+          : focus === null
+            ? null
+            : new Set(focus.nodeIds),
+      selectedId: focusNodeId,
+      shares:
+        selectedLink === null && activeRoute === null ? shares : NO_SHARES,
+    }),
+    [
+      tracerouteShown,
+      shownDrawing,
+      selectedLink,
+      focus,
+      focusNodeId,
+      shares,
+      activeRoute,
+    ],
   );
 
   // Coverage cells for the area in view, only where the selected node was
@@ -996,31 +1252,22 @@ export function MapView({
     if (page !== null) performance.measure("map: data received");
   }, [page]);
 
-  // Back to the map selects again the node it had selected, where the map
-  // already is.
   useEffect(() => {
-    writeView(SELECTED_VIEW_KEY, selection?.nodeId ?? null);
+    writeView(SELECTED_VIEW_KEY, selection);
   }, [selection]);
-  const restoredNodeId = useRef(
-    nodeId === null ? readView(SELECTED_VIEW_KEY) : null,
-  );
-  useEffect(() => {
-    const wanted = restoredNodeId.current;
-    if (typeof wanted !== "number" || page === null) return;
-    restoredNodeId.current = null;
-    if (page.items.some((node) => node.node_id === wanted))
-      setSelection({ nodeId: wanted, fit: "none" });
-  }, [page]);
 
   // Select the node from #map/<node number> once, when the first nodes arrive;
   // a node the window leaves out is fetched on its own.
-  const pendingNodeId = useRef(nodeId);
+  const pendingNodeId = useRef(
+    restoringView ? (selection?.nodeId ?? null) : nodeId,
+  );
   useEffect(() => {
     const wanted = pendingNodeId.current;
     if (wanted === null || page === null) return;
     const selectLinked = (node: MapNode) => {
-      select(node);
-      if (linkView?.to !== undefined)
+      if (!restoringView) select(node);
+      setNodeLinked(true);
+      if (!restoringView && linkView?.to !== undefined)
         setRoute({ from: wanted, to: linkView.to, fromMap: true });
     };
     const loaded = page.items.find((node) => node.node_id === wanted);
@@ -1034,16 +1281,19 @@ export function MapView({
       .then((linked) => {
         if (controller.signal.aborted) return;
         pendingNodeId.current = null;
+        setNodeLinked(true);
         if (linked === null) return;
         setLinkedNode(linked);
         selectLinked(linked);
       })
       .catch(() => {
         // The map still works without the linked node.
-        if (!controller.signal.aborted) pendingNodeId.current = null;
+        if (controller.signal.aborted) return;
+        pendingNodeId.current = null;
+        setNodeLinked(true);
       });
     return () => controller.abort();
-  }, [page, select, linkView]);
+  }, [page, select, linkView, restoringView, setRoute]);
 
   // Once another node is chosen or the selection is cleared, the hash no
   // longer names the linked node and the filters apply to it again.
@@ -1121,6 +1371,28 @@ export function MapView({
       })[0]?.properties;
     const linkNear = (point: maplibregl.Point) =>
       nearestLine(instance, point, LINK_LAYERS);
+    // The link a click takes: the nearest line's, or a shown traceroute's
+    // hop's, when that link is drawn.
+    const linkAt = (point: maplibregl.Point): string | undefined => {
+      const line = linkNear(point)?.properties?.linkKey;
+      if (typeof line === "string") return line;
+      const channel = tracerouteChannel.current;
+      if (channel === null) return undefined;
+      const hop = instance.queryRenderedFeatures(point, {
+        layers: HOP_POINTER_LAYERS,
+      })[0]?.properties;
+      if (
+        typeof hop?.fromNodeId !== "number" ||
+        typeof hop.toNodeId !== "number"
+      )
+        return undefined;
+      const key = linkKey("traceroute", {
+        node_a: Math.min(hop.fromNodeId, hop.toNodeId),
+        node_b: Math.max(hop.fromNodeId, hop.toNodeId),
+        channel,
+      });
+      return linksByKey.current.has(key) ? key : undefined;
+    };
     let linkHovered = false;
     // Cells are fetched again when the map stops outside the area fetched.
     // A newer request replaces an unfinished one, so no delay is needed.
@@ -1302,11 +1574,12 @@ export function MapView({
     // Markers and coverage cells take priority over links.
     const selectLink = (event: maplibregl.MapMouseEvent) => {
       if (onNodeAt(event.point) || cellAt(event.point) !== undefined) return;
-      const key = linkNear(event.point)?.properties?.linkKey;
-      if (typeof key !== "string") return;
+      const key = linkAt(event.point);
+      if (key === undefined) return;
       const selected = linksByKey.current.get(key);
       if (selected === undefined) return;
       setChosenLinkKey(key);
+      setTraceroute(null);
       setSelectedCell(null);
       setCollapsed(false);
       const a = nodesById.current.get(selected.link.node_a);
@@ -1345,8 +1618,9 @@ export function MapView({
         setCollapsed(false);
         return;
       }
-      if (linkNear(event.point) !== undefined) return;
-      if (selectedLinkKey.current !== null) setChosenLinkKey(null);
+      if (linkAt(event.point) !== undefined) return;
+      if (tracerouteChannel.current !== null) setTraceroute(null);
+      else if (selectedLinkKey.current !== null) setChosenLinkKey(null);
       else if (cellChosen.current) setSelectedCell(null);
       else if (routeState.current?.fromMap === false) setRoute(null);
       else if (nodeChosen.current) clearSelection();
@@ -1444,6 +1718,14 @@ export function MapView({
         "node-clusters",
       );
       addZeroCostLayer(instance, pendingArrows.current, "node-clusters");
+      addHopLayers(
+        instance,
+        findBasemap(shownBasemap.current).darkLabels === false,
+        "node-clusters",
+      );
+      setSourceData(instance, HOPS_SOURCE, pendingTraceroute.current.features);
+      widenHop(instance, pendingTraceroute.current.hop);
+      instance.setLayoutProperty(HOP_SNR_LAYER, "visibility", "visible");
       addLinkLayers(
         instance,
         "neighbor",
@@ -1511,6 +1793,7 @@ export function MapView({
         event.sourceId === "nodes" ||
         COVERAGE_SOURCES.includes(event.sourceId ?? "") ||
         event.sourceId === ZERO_COST_LAYER ||
+        event.sourceId === HOPS_SOURCE ||
         LINK_KINDS.some(
           (linkKind) => event.sourceId === linkSourceId(linkKind),
         );
@@ -1614,7 +1897,10 @@ export function MapView({
   // A selected link shows only itself, over any node focus.
   const hopLinkKeys = focus?.linkKeys ?? null;
   useEffect(() => {
-    if (selectedLink === null) {
+    if (tracerouteShown) {
+      selectedLinkKey.current = null;
+      linkFocus.current = [];
+    } else if (selectedLink === null) {
       selectedLinkKey.current = null;
       linkFocus.current = hopLinkKeys;
     } else {
@@ -1631,7 +1917,92 @@ export function MapView({
         linkFocus.current,
         selectedLinkKey.current,
       );
-  }, [selectedLink, hopLinkKeys]);
+  }, [selectedLink, hopLinkKeys, tracerouteShown]);
+
+  // The camera fits each traceroute as it loads.
+  const tracerouteFeatures = shownDrawing?.features ?? NO_FEATURES;
+  const widenedHop = routeHover?.hop ?? tracerouteHop;
+  useEffect(() => {
+    pendingTraceroute.current = {
+      features: tracerouteFeatures,
+      hop: widenedHop,
+    };
+    const instance = map.current;
+    if (instance?.getSource(HOPS_SOURCE) === undefined) return;
+    setSourceData(instance, HOPS_SOURCE, tracerouteFeatures);
+    widenHop(instance, widenedHop);
+  }, [tracerouteFeatures, widenedHop]);
+  const routeMarkers = shownDrawing?.markers ?? null;
+  // A shared traceroute is fitted whatever the view when it opens.
+  const fitSharedTraceroute = useRef(
+    restoringView ? null : (linkView?.traceroute?.packet ?? null),
+  );
+  const restoredTraceroute = useRef(restoringView ? traceroute : null);
+  useEffect(() => {
+    if (readyMap === null || routeMarkers === null) return;
+    if (restoredTraceroute.current !== null) {
+      const restored = restoredTraceroute.current;
+      restoredTraceroute.current = null;
+      if (restored.packet === traceroutePacket) return;
+    }
+    focusPoints(
+      readyMap,
+      routeMarkers.map((marker) => [marker.longitude, marker.latitude]),
+      fitSharedTraceroute.current === traceroutePacket,
+    );
+    fitSharedTraceroute.current = null;
+  }, [readyMap, routeMarkers, traceroutePacket]);
+  const routeMarkerElements = useRef(new Map<number, HTMLElement>());
+  useEffect(() => {
+    if (readyMap === null || routeMarkers === null) return;
+    const added = routeMarkers.map((marker) => {
+      const element = document.createElement("div");
+      element.addEventListener("mouseenter", () =>
+        setRouteHover({ nodeId: marker.nodeId, hop: null }),
+      );
+      element.addEventListener("mouseleave", () => setRouteHover(null));
+      routeMarkerElements.current.set(marker.nodeId, element);
+      return routeMarker(marker, element).addTo(readyMap);
+    });
+    const elements = routeMarkerElements.current;
+    return () => {
+      for (const marker of added) marker.remove();
+      elements.clear();
+      // A removed marker sends no mouseleave.
+      setRouteHover(null);
+    };
+  }, [readyMap, routeMarkers]);
+  useEffect(() => {
+    for (const [nodeId, element] of routeMarkerElements.current)
+      element.classList.toggle(
+        "highlighted",
+        routeHover !== null &&
+          (nodeId === routeHover.nodeId ||
+            nodeId === routeHover.hop?.fromNodeId ||
+            nodeId === routeHover.hop?.toNodeId),
+      );
+  }, [routeHover, routeMarkers]);
+  useEffect(() => {
+    if (readyMap === null || routeMarkers === null) return;
+    const move = (event: maplibregl.MapLayerMouseEvent) => {
+      const hop = hopAt(event);
+      if (hop === null) return;
+      readyMap.getCanvas().style.cursor = "pointer";
+      setRouteHover((hover) =>
+        sameHop(hover?.hop, hop) ? hover : { nodeId: null, hop },
+      );
+    };
+    const leave = () => {
+      readyMap.getCanvas().style.cursor = "";
+      setRouteHover(null);
+    };
+    readyMap.on("mousemove", HOP_POINTER_LAYERS, move);
+    readyMap.on("mouseleave", HOP_POINTER_LAYERS, leave);
+    return () => {
+      readyMap.off("mousemove", HOP_POINTER_LAYERS, move);
+      readyMap.off("mouseleave", HOP_POINTER_LAYERS, leave);
+    };
+  }, [readyMap, routeMarkers]);
 
   // Wait for enabled layers, then fit once per choice; filters and Back keep
   // the camera where the user left it.
@@ -1670,7 +2041,9 @@ export function MapView({
     if (
       instance === null ||
       (selectedNode === null && unplacedNode === null) ||
-      selectedLink !== null
+      selectedLink !== null ||
+      sharedTraceroute !== null ||
+      sharedLink !== null
     )
       return;
     // The route fit frames both ends.
@@ -1701,7 +2074,16 @@ export function MapView({
   useEffect(() => {
     if (!fitReady || fittedSelection.current === selection) return;
     fitSelection();
-  }, [selection, fitReady, readyMap, selectedNode, selectedLink, unplacedNode]);
+  }, [
+    selection,
+    fitReady,
+    readyMap,
+    selectedNode,
+    selectedLink,
+    unplacedNode,
+    sharedTraceroute,
+    sharedLink,
+  ]);
 
   useEffect(() => {
     if (readyMap === null || shownRouteClick === null) return;
@@ -1721,8 +2103,19 @@ export function MapView({
     routeTo === null
       ? null
       : `${activeRoute?.from}:${routeTo}:${routeSteps?.map((step) => step.key).join() ?? ""}`;
+  // Back restores the camera, so a restored route is not fitted again, even
+  // once its links load.
+  const restoredRoute = useRef(restoringView ? route : null);
   const fitRoute = useEffectEvent(() => {
     if (readyMap === null || selectedNode === null || routeTo === null) return;
+    const restored = restoredRoute.current;
+    if (restored !== null) {
+      if (restored.from === activeRoute?.from && restored.to === routeTo) {
+        if (routeSteps !== null) restoredRoute.current = null;
+        return;
+      }
+      restoredRoute.current = null;
+    }
     const ends = (
       routeSteps?.map((step) => step.link.node_b) ?? [routeTo]
     ).flatMap((id) => {
@@ -1843,6 +2236,23 @@ export function MapView({
     selectedLinkB !== undefined
       ? { ...selectedLink, a: selectedLinkA, b: selectedLinkB }
       : null;
+  // A shared link is fitted whatever the view when it opens.
+  const fitSharedLink = useRef(
+    restoringView || linkView?.link === undefined
+      ? null
+      : sharedLinkKey(linkView.link),
+  );
+  useEffect(() => {
+    if (
+      readyMap === null ||
+      selectedLinkA === undefined ||
+      selectedLinkB === undefined ||
+      fitSharedLink.current !== chosenLinkKey
+    )
+      return;
+    fitSharedLink.current = null;
+    focusLink(readyMap, selectedLinkA, selectedLinkB, true);
+  }, [readyMap, selectedLinkA, selectedLinkB, chosenLinkKey]);
   const shownPosition =
     detailNode === null ||
     (detailNode.position === null && detailNode.estimate === null)
@@ -1864,16 +2274,18 @@ export function MapView({
   // The sidebar shows the node lists, or else the latest choice in their
   // place: a link or coverage cell over the selected node or its route, the
   // route, or the node.
-  const shown: "link" | "cell" | "route" | "node" | null =
-    selectedLinkNodes !== null
-      ? "link"
-      : showCoverage && selectedCell !== null
-        ? "cell"
-        : activeRoute !== null
-          ? "route"
-          : selectedNode !== null || unplacedNode !== null
-            ? "node"
-            : null;
+  const shown: "traceroute" | "link" | "cell" | "route" | "node" | null =
+    selectedLinkNodes !== null && traceroute !== null
+      ? "traceroute"
+      : selectedLinkNodes !== null
+        ? "link"
+        : showCoverage && selectedCell !== null
+          ? "cell"
+          : activeRoute !== null
+            ? "route"
+            : selectedNode !== null || unplacedNode !== null
+              ? "node"
+              : null;
   const activeTab = listTab;
   const listName = activeTab === "heard" ? "Coverage" : "Chatty nodes";
   const viewedId = focusNodeId;
@@ -1883,11 +2295,48 @@ export function MapView({
       : unplacedNode !== null
         ? (unplacedNode.long_name ?? formatNodeId(unplacedNode.node_id))
         : null;
-  // Back goes one step: from a link or cell to the node under it, if any.
+  // Back goes one step: from a traceroute to its link, from a link or cell
+  // to the node under it, if any.
+  const linkName =
+    selectedLinkNodes === null
+      ? null
+      : `${shortLabel(selectedLinkNodes.a.node_id, selectedLinkNodes.a.short_name)} – ${shortLabel(selectedLinkNodes.b.node_id, selectedLinkNodes.b.short_name)}`;
   const backTo =
-    shown === "node" || viewedName === null ? listName : viewedName;
+    shown === "traceroute" && linkName !== null
+      ? linkName
+      : shown === "node" || viewedName === null
+        ? listName
+        : viewedName;
+  // The share button links to the node, or to a link or a traceroute over
+  // it (from the node, else from one of its ends, which then opens under it).
+  const sharedTracerouteView =
+    shown === "traceroute" && traceroute !== null && selectedLinkNodes !== null
+      ? {
+          packet: traceroute.packet,
+          hop: traceroute.hop,
+          channel: selectedLinkNodes.link.channel,
+        }
+      : null;
+  const sharedLinkView: SharedLink | null =
+    shown === "link" && selectedLinkNodes !== null
+      ? {
+          kind: selectedLinkNodes.linkKind,
+          nodeA: selectedLinkNodes.link.node_a,
+          nodeB: selectedLinkNodes.link.node_b,
+          channel: selectedLinkNodes.link.channel,
+        }
+      : null;
+  const sharedNodeId =
+    sharedTracerouteView !== null
+      ? (selectedNode?.node_id ?? sharedTracerouteView.hop.fromNodeId)
+      : sharedLinkView !== null
+        ? (selectedNode?.node_id ?? sharedLinkView.nodeA)
+        : selectedNode !== null && selectedLinkNodes === null
+          ? selectedNode.node_id
+          : null;
   function goBack() {
-    if (shown === "link") setChosenLinkKey(null);
+    if (shown === "traceroute") setTraceroute(null);
+    else if (shown === "link") setChosenLinkKey(null);
     else if (shown === "cell") setSelectedCell(null);
     else if (shown === "route") setRoute(null);
     else clearSelection();
@@ -2085,10 +2534,10 @@ export function MapView({
           nearbyShown={focusNodeId === null ? null : nearbyShown}
         />
         <BasemapSwitcher value={basemap} onChange={setBasemap} />
-        {selectedNode !== null && selectedLinkNodes === null ? (
+        {sharedNodeId !== null ? (
           <div className="map-share">
             <ShareButton
-              hash={mapViewHref(selectedNode.node_id, {
+              hash={mapViewHref(sharedNodeId, {
                 show: [
                   ...LINK_KINDS.filter((kind) => linkChoice[kind]),
                   ...(showTextReach ? (["reach"] as const) : []),
@@ -2097,8 +2546,20 @@ export function MapView({
                 window: shownWindow.window,
                 channel: nodeFilter.channel === ANY ? null : nodeFilter.channel,
                 ...(routeTo === null ? {} : { to: routeTo }),
+                ...(sharedTracerouteView === null
+                  ? {}
+                  : { traceroute: sharedTracerouteView }),
+                ...(sharedLinkView === null ? {} : { link: sharedLinkView }),
               })}
-              title={nodeLabel(selectedNode)}
+              title={
+                sharedTracerouteView !== null
+                  ? `Traceroute ${linkName}`
+                  : sharedLinkView !== null
+                    ? `Link ${linkName}`
+                    : selectedNode !== null
+                      ? nodeLabel(selectedNode)
+                      : ""
+              }
             />
           </div>
         ) : null}
@@ -2194,20 +2655,56 @@ export function MapView({
                 backTo={backTo}
                 onBack={goBack}
                 step={
-                  stepIndex < 0
-                    ? undefined
-                    : {
-                        index: stepIndex,
-                        total:
-                          shown === "link"
-                            ? stepLinkKeys.length
-                            : stepIds.length,
-                        noun: shown === "link" ? "link" : "node",
-                        onStep: stepTo,
+                  shown === "traceroute" && traceroute !== null
+                    ? {
+                        index: listedTraceroutes.indexOf(traceroute.packet),
+                        total: listedTraceroutes.length,
+                        noun: "traceroute",
+                        onStep: (index) =>
+                          setTraceroute({
+                            ...traceroute,
+                            packet: listedTraceroutes[index],
+                          }),
                       }
+                    : stepIndex < 0
+                      ? undefined
+                      : {
+                          index: stepIndex,
+                          total:
+                            shown === "link"
+                              ? stepLinkKeys.length
+                              : stepIds.length,
+                          noun: shown === "link" ? "link" : "node",
+                          onStep: stepTo,
+                        }
                 }
               />
-              {shown === "link" && selectedLinkNodes !== null ? (
+              {sharedFailure !== null &&
+              sharedFailure.selection === selection &&
+              (shown === "node" || shown === "route") ? (
+                <StatusPanel>
+                  {sharedFailure.text}
+                  {sharedFailure.page === undefined ? null : (
+                    <>
+                      {" "}
+                      <a className="text-button" href={sharedFailure.page.href}>
+                        {sharedFailure.page.label}
+                      </a>
+                    </>
+                  )}
+                </StatusPanel>
+              ) : null}
+              {shown === "traceroute" && traceroute !== null ? (
+                <MapTraceroute
+                  detail={tracerouteDetail.data}
+                  drawing={drawing}
+                  error={tracerouteDetail.error}
+                  hop={traceroute.hop}
+                  packetRowId={traceroute.packet}
+                  hover={routeHover}
+                  onHover={setRouteHover}
+                />
+              ) : shown === "link" && selectedLinkNodes !== null ? (
                 <section className="selected-node" aria-live="polite">
                   <MapLinkDetails
                     linkKind={selectedLinkNodes.linkKind}
@@ -2224,6 +2721,15 @@ export function MapView({
                         : null
                     }
                     since={urls.since}
+                    hops={linkHops}
+                    traceroutesOpen={tracedLinkKey === chosenLinkKey}
+                    onShowTraceroute={(hop, packet) => {
+                      if (details.current !== null)
+                        details.current.scrollTop = 0;
+                      setTracedLinkKey(chosenLinkKey);
+                      if (chosenLinkKey !== null)
+                        setTraceroute({ linkKey: chosenLinkKey, hop, packet });
+                    }}
                   />
                 </section>
               ) : shown === "cell" ? (

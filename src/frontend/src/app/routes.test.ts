@@ -70,6 +70,58 @@ describe("routeFromHash", () => {
       });
   });
 
+  it("reads a shared traceroute and ignores an invalid packet or hop", () => {
+    expect(
+      routeFromHash(
+        "#map/2?traceroute=50&hop=!00000002-3&link_channel=MediumFast",
+      ),
+    ).toMatchObject({
+      nodeId: 2,
+      view: {
+        traceroute: {
+          packet: 50,
+          hop: { fromNodeId: 2, toNodeId: 3 },
+          channel: "MediumFast",
+        },
+      },
+    });
+    for (const query of [
+      "traceroute=50&link_channel=MediumFast",
+      "traceroute=0&hop=2-3&link_channel=MediumFast",
+      "traceroute=5x&hop=2-3&link_channel=MediumFast",
+      "traceroute=50&hop=2-2&link_channel=MediumFast",
+      "traceroute=50&hop=2-4294967296&link_channel=MediumFast",
+      "traceroute=50&hop=2&link_channel=MediumFast",
+      "traceroute=50&hop=2-3",
+    ])
+      expect(routeFromHash(`#map/2?${query}`), query).toEqual({
+        page: "map",
+        nodeId: 2,
+        view: { show: [], window: "3d", channel: null },
+      });
+  });
+
+  it("reads a shared link and ignores an invalid one", () => {
+    expect(
+      routeFromHash("#map/2?link=!00000003-2&kind=direct&link_channel=A%3AB"),
+    ).toMatchObject({
+      nodeId: 2,
+      view: { link: { kind: "direct", nodeA: 2, nodeB: 3, channel: "A:B" } },
+    });
+    for (const query of [
+      "link=2-3&kind=direct",
+      "link=2-3&kind=other&link_channel=LongFast",
+      "link=2-3&link_channel=LongFast",
+      "link=2-2&kind=direct&link_channel=LongFast",
+      "link=2&kind=direct&link_channel=LongFast",
+    ])
+      expect(routeFromHash(`#map/2?${query}`), query).toEqual({
+        page: "map",
+        nodeId: 2,
+        view: { show: [], window: "3d", channel: null },
+      });
+  });
+
   it("reads a shared node page", () => {
     expect(
       routeFromHash("#nodes/!00000002?map=expanded&show=gateways,coverage"),
@@ -164,6 +216,23 @@ describe("view links", () => {
       { show: ["reach", "coverage"], window: "24h", channel: "A, B & C?" },
       { show: [], window: "all", channel: null },
       { show: [], window: "24h", channel: "LongFast", to: 0xffffffff },
+      {
+        show: ["traceroute"],
+        window: "7d",
+        channel: null,
+        to: 3,
+        traceroute: {
+          packet: 50,
+          hop: { fromNodeId: 0xffffffff, toNodeId: 1 },
+          channel: "MediumFast",
+        },
+      },
+      {
+        show: ["neighbor"],
+        window: "24h",
+        channel: "LongFast",
+        link: { kind: "neighbor", nodeA: 1, nodeB: 0xffffffff, channel: "L&F" },
+      },
     ];
     for (const view of maps)
       expect(routeFromHash(mapViewHref(0xa1b2c3d4, view))).toEqual({

@@ -195,3 +195,36 @@ def test_first_id_since_finds_the_window_start_across_gaps(path: Path) -> None:
         assert ids_from(5) == [7, 8, 9, 10]
         assert ids_from(0) == [1, 2, 3, 7, 8, 9, 10]
         assert ids_from(60) == []
+
+
+def test_a_radio_channel_keeps_the_texts_sent_on_it(path: Path) -> None:
+    def heard_by_three(packet_id: int, sender: int, channel_id: str) -> None:
+        for gateway in (NEAR, FAR, THIRD):
+            report(path, packet_id, gateway, sender=sender, minute=packet_id, channel_id=channel_id)
+
+    # A private channel's texts go out on the radio the sender last used.
+    report(path, 1, NEAR, sender=0x22222222, minute=1, channel_id="MediumFast")
+    heard_by_three(2, 0x22222222, "Test")
+    report(path, 3, NEAR, sender=0x33333333, minute=1, channel_id="ShortFast")
+    heard_by_three(4, 0x33333333, "Test")
+    heard_by_three(5, 0x44444444, "ShortFast")
+    # It switched to MediumFast: only its texts sent there count.
+    heard_by_three(6, 0x55555555, "ShortFast")
+    heard_by_three(7, 0x55555555, "ShortFast")
+    heard_by_three(8, 0x55555555, "MediumFast")
+    # Before it reported a radio channel: Unknown.
+    heard_by_three(9, 0x66666666, "Test")
+
+    def listed(channel: str) -> list[tuple[int, int]]:
+        page = get(path, "/api/v1/map/text-senders", since=since(0), channel=channel)
+        return [(item["node_id"], item["messages"]) for item in page["items"]]
+
+    assert listed("MediumFast") == [(0x55555555, 1), (0x22222222, 1)]
+    assert listed("ShortFast") == [(0x55555555, 2), (0x44444444, 1), (0x33333333, 1)]
+    assert listed("Unknown") == [(0x66666666, 1)]
+
+    reach = get(path, f"/api/v1/map/text-reach/{0x55555555}", channel="MediumFast")
+    assert (reach["messages"], reach["channel"]) == (1, "MediumFast")
+    assert {g["node_id"] for g in reach["gateways"]} == {0xAAAAAAAA, 0xBBBBBBBB, 0xCCCCCCCC}
+    reach = get(path, f"/api/v1/map/text-reach/{0x33333333}", channel="MediumFast")
+    assert reach == {"node_id": 0x33333333, "messages": 0, "channel": None, "gateways": []}

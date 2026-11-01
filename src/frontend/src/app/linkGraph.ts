@@ -63,7 +63,7 @@ function stepCost(observations: number): number {
 
 /**
  * The likeliest route (stepCost) a packet sent with the highest hop limit can
- * take, with its hops as Meshtastic counts them: each relay spends one, except
+ * take on one radio channel, with its hops as Meshtastic counts them: each relay spends one, except
  * a relay over a 0-hop direction after the first. A relay needs a hop left,
  * even a 0-hop one. Null when none connects them.
  */
@@ -101,16 +101,19 @@ export function findRoute<T extends { link: MapLink }>(
     node: number;
     spent: number;
     free: boolean;
+    channel: string | null;
     cost: number;
     item: T | null;
     back: Way | null;
   };
-  const state = (way: Way) => `${way.node}:${way.spent}:${way.free}`;
+  const state = (way: Way) =>
+    `${way.node}:${way.spent}:${way.free}:${way.channel}`;
   const best = new Map<string, Way>();
   const start: Way = {
     node: from,
     spent: 0,
     free: false,
+    channel: null,
     cost: 0,
     item: null,
     back: null,
@@ -124,10 +127,13 @@ export function findRoute<T extends { link: MapLink }>(
       if (way.spent >= MAX_ROUTE_HOPS) continue;
       const spent = way === start ? 0 : way.spent + (way.free ? 0 : 1);
       for (const step of steps.get(way.node) ?? []) {
+        if (way.channel !== null && step.item.link.channel !== way.channel)
+          continue;
         const reached: Way = {
           node: step.to,
           spent,
           free: way !== start && step.free,
+          channel: step.item.link.channel,
           cost: way.cost + step.cost,
           item: step.item,
           back: way,

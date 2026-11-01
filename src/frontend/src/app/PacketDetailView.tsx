@@ -912,6 +912,7 @@ function ReceptionRows({
               {paths.return_path !== null ? (
                 <RouteItem
                   label="Route back"
+                  isReturn
                   path={paths.return_path}
                   nodeNames={nodeNames}
                   firstNumber={paths.forward.nodes.length - 1}

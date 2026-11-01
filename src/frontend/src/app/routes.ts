@@ -66,11 +66,24 @@ const MAP_LAYERS: readonly MapLayer[] = [
  */
 export interface MapLinkView {
   to?: number;
+  /** A traceroute drawn on the map, and its link's hop and radio channel. */
+  traceroute?: { packet: number; hop: DirectedHop; channel: string };
+  /** A link chosen on the map, between nodeA < nodeB on channel. */
+  link?: SharedLink;
   show: MapLayer[];
   window: SeenWindow;
   /** The node filter's channel; null for every channel. */
   channel: string | null;
 }
+
+export interface SharedLink {
+  kind: LinkKind;
+  nodeA: number;
+  nodeB: number;
+  channel: string;
+}
+
+const LINK_KINDS: readonly LinkKind[] = ["traceroute", "direct", "neighbor"];
 
 /** What a node page's position minimap shows besides the positions. */
 export type MinimapLayer = "traceroutes" | "gateways" | "coverage";
@@ -268,19 +281,60 @@ function listed<T extends string>(
 
 /** A map link's view; null when it names nothing but the node. */
 function mapLinkView(query: URLSearchParams): MapLinkView | null {
-  if (!["show", "window", "channel", "to"].some((name) => query.has(name)))
+  if (
+    !["show", "window", "channel", "to", "traceroute", "link"].some((name) =>
+      query.has(name),
+    )
+  )
     return null;
   const window = query.get("window");
   const to = query.get("to") ?? "";
   const destination = new RegExp(`^${NODE}$`).test(to) ? nodeNumber(to) : null;
+  const packet = query.get("traceroute") ?? "";
+  const hopEnds = nodePair(query.get("hop"));
+  const linkChannel = query.get("link_channel") ?? "";
+  const traceroute =
+    /^[1-9]\d*$/.test(packet) &&
+    Number.isSafeInteger(Number(packet)) &&
+    hopEnds !== null &&
+    linkChannel !== ""
+      ? {
+          packet: Number(packet),
+          hop: { fromNodeId: hopEnds[0], toNodeId: hopEnds[1] },
+          channel: linkChannel,
+        }
+      : null;
+  const linkEnds = nodePair(query.get("link"));
+  const kind = query.get("kind") as LinkKind;
+  const link =
+    linkEnds !== null && LINK_KINDS.includes(kind) && linkChannel !== ""
+      ? {
+          kind,
+          nodeA: Math.min(...linkEnds),
+          nodeB: Math.max(...linkEnds),
+          channel: linkChannel,
+        }
+      : null;
   return {
     ...(destination !== null && destination <= 0xffffffff
       ? { to: destination }
       : {}),
+    ...(traceroute === null ? {} : { traceroute }),
+    ...(link === null ? {} : { link }),
     show: listed(query, MAP_LAYERS),
     window: isSeenWindow(window) ? (window as SeenWindow) : DEFAULT_SEEN_WINDOW,
     channel: query.get("channel") || null,
   };
+}
+
+/** Two different nodes written `<node>-<node>`; null for anything else. */
+function nodePair(text: string | null): [number, number] | null {
+  const pair = new RegExp(`^${NODE}-${NODE}$`).exec(text ?? "");
+  if (pair === null) return null;
+  const ends: [number, number] = [nodeNumber(pair[1]), nodeNumber(pair[2])];
+  return ends[0] !== ends[1] && ends.every((id) => id <= 0xffffffff)
+    ? ends
+    : null;
 }
 
 /** A node or packet link's minimap; null when it names neither part. */
@@ -301,6 +355,21 @@ export function mapViewHref(nodeId: number, view: MapLinkView): string {
   query.set("window", view.window);
   if (view.channel !== null) query.set("channel", view.channel);
   if (view.to !== undefined) query.set("to", formatNodeId(view.to));
+  if (view.traceroute !== undefined) {
+    const { packet, hop, channel } = view.traceroute;
+    query.set("traceroute", String(packet));
+    query.set(
+      "hop",
+      `${formatNodeId(hop.fromNodeId)}-${formatNodeId(hop.toNodeId)}`,
+    );
+    query.set("link_channel", channel);
+  }
+  if (view.link !== undefined) {
+    const { kind, nodeA, nodeB, channel } = view.link;
+    query.set("link", `${formatNodeId(nodeA)}-${formatNodeId(nodeB)}`);
+    query.set("kind", kind);
+    query.set("link_channel", channel);
+  }
   return `#map/${formatNodeId(nodeId)}?${decodeCommas(query)}`;
 }
 

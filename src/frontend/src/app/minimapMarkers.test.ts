@@ -5,6 +5,7 @@ import type {
   TracerouteHop,
   PacketDetail,
   PacketReception,
+  ReportPaths,
 } from "./api";
 import {
   routeMinimap,
@@ -12,6 +13,8 @@ import {
   routeNumbers,
   reportsThrough,
   reportsWithHop,
+  routeRows,
+  tracerouteDrawing,
 } from "./minimapMarkers";
 
 const reception: PacketReception = {
@@ -46,6 +49,7 @@ function detail(
   traceroute: PacketDetail["traceroute"] = null,
 ): PacketDetail {
   return {
+    hop_routes: [],
     packet: {
       packet_row_id: 7,
       first_received_at: "2026-09-19T09:00:00Z",
@@ -162,6 +166,7 @@ describe("minimapMarkers", () => {
       estimated: false,
     });
     const hop = (from: number, to: number, snr: number | null = 1) => ({
+      is_return: false,
       from_node_id: from,
       to_node_id: to,
       snr_db: snr,
@@ -229,7 +234,11 @@ describe("minimapMarkers", () => {
 
     it("keeps each reception's own route apart from all hops", () => {
       const paths = {
-        forward: { nodes: [requester, relay, target], snr_db: [1] },
+        forward: {
+          reached: false,
+          nodes: [requester, relay, target],
+          snr_db: [1],
+        },
         return_path: null,
       };
       const { allHops, receptionHops, receptionNumbers } = minimapMarkers(
@@ -260,8 +269,12 @@ describe("minimapMarkers", () => {
         ...reception,
         reception_id,
         paths: {
-          forward: { nodes: [requester, relay, target], snr_db: [1, 2] },
-          return_path: { nodes: returned, snr_db: [] },
+          forward: {
+            reached: false,
+            nodes: [requester, relay, target],
+            snr_db: [1, 2],
+          },
+          return_path: { reached: false, nodes: returned, snr_db: [] },
         },
         hops,
       });
@@ -299,8 +312,12 @@ describe("minimapMarkers", () => {
         ...reception,
         reception_id: 1,
         paths: {
-          forward: { nodes: [requester, target], snr_db: [1] },
-          return_path: { nodes: [target, relay, requester], snr_db: [2, 3] },
+          forward: { reached: false, nodes: [requester, target], snr_db: [1] },
+          return_path: {
+            reached: false,
+            nodes: [target, relay, requester],
+            snr_db: [2, 3],
+          },
         },
         hops: [
           hop(requester, target),
@@ -312,7 +329,7 @@ describe("minimapMarkers", () => {
         ...reception,
         reception_id: 2,
         paths: {
-          forward: { nodes: [requester, relay], snr_db: [4] },
+          forward: { reached: false, nodes: [requester, relay], snr_db: [4] },
           return_path: null,
         },
         hops: [hop(requester, relay)],
@@ -322,7 +339,11 @@ describe("minimapMarkers", () => {
         reply_route: {
           packet_row_id: 8,
           reception_id: 9,
-          path: { nodes: [requester, relay, target], snr_db: [4, 5] },
+          path: {
+            reached: false,
+            nodes: [requester, relay, target],
+            snr_db: [4, 5],
+          },
           hops: [hop(requester, relay, 4), hop(relay, target, 5)],
         },
       };
@@ -340,10 +361,12 @@ describe("minimapMarkers", () => {
       const numbers = routeNumbers(
         {
           forward: {
+            reached: false,
             nodes: [requester, relay, null, target],
             snr_db: [1, null, 2],
           },
           return_path: {
+            reached: false,
             nodes: [target, otherRelay, relay, requester],
             snr_db: [],
           },
@@ -395,6 +418,7 @@ describe("minimapMarkers", () => {
             reached: false,
             // Back from the target: otherRelay is heard first, then relay.
             path: {
+              reached: false,
               nodes: [target, otherRelay, relay, requester],
               snr_db: [4, null, 6],
             },
@@ -408,12 +432,14 @@ describe("minimapMarkers", () => {
             // The relay passed the copy on to the requester for free.
             hop_costs: [
               {
+                is_return: true,
                 from_node_id: relay,
                 to_node_id: requester,
                 spent: 0,
                 learned: null,
               },
               {
+                is_return: true,
                 from_node_id: target,
                 to_node_id: otherRelay,
                 spent: 1,
@@ -451,6 +477,202 @@ describe("minimapMarkers", () => {
         { snr: 6, zeroCost: true },
       ]);
       expect(contents.labelAllHops).toBe(true);
+    });
+
+    it("draws the saved report for a hop without ranking its reports again", () => {
+      const report = (
+        reception_id: number,
+        nodes: number[],
+      ): PacketReception => ({
+        ...reception,
+        reception_id,
+        paths: {
+          forward: {
+            nodes,
+            snr_db: nodes.slice(1).map(() => 2),
+            reached: false,
+          },
+          return_path: null,
+        },
+        hops: nodes.slice(1).map((to, index) => hop(nodes[index], to, 2)),
+      });
+      const shortest = report(1, [requester, relay, target]);
+      const longest = report(2, [requester, relay, otherRelay, target]);
+      const packet = detail(
+        [longest, shortest],
+        null,
+        [],
+        [
+          node(requester, 51.3),
+          node(relay, 51.35),
+          node(otherRelay, 51.37),
+          node(target, 51.4),
+        ],
+        ends,
+      );
+      packet.hop_routes = [
+        { from_node_id: requester, to_node_id: relay, reception_id: 1 },
+      ];
+      const selected = { fromNodeId: requester, toNodeId: relay };
+      const drawn = tracerouteDrawing(packet, selected);
+      expect(drawn.paths?.forward.nodes).toEqual(shortest.paths!.forward.nodes);
+      expect(lines(drawn)).toHaveLength(2);
+      expect(
+        drawn.markers.map((marker) => [marker.label, marker.nodeId]),
+      ).toEqual([
+        ["S", requester],
+        ["R", target],
+        ["1", relay],
+      ]);
+      packet.hop_routes = [];
+      expect(tracerouteDrawing(packet, selected).paths).toBeNull();
+    });
+
+    it("keeps known arrival when a path has no final SNR", () => {
+      const paths: ReportPaths = {
+        forward: {
+          nodes: [requester, relay, target],
+          snr_db: [2],
+          reached: true,
+        },
+        return_path: { nodes: [target, requester], snr_db: [], reached: false },
+      };
+      const rows = routeRows(paths, requester, target);
+      expect(
+        rows.find((row) => row.kind === "node" && row.nodeId === target),
+      ).toMatchObject({ unreached: false });
+      expect(rows.at(-1)).toMatchObject({ nodeId: requester, unreached: true });
+    });
+
+    it("keeps a return hop's cost separate from the same outward hop", () => {
+      const packet = detail(
+        [],
+        null,
+        [],
+        [node(relay, 51.35), node(otherRelay, 51.4)],
+        ends,
+      );
+      packet.hop_costs = [
+        {
+          from_node_id: relay,
+          to_node_id: otherRelay,
+          spent: 0,
+          learned: null,
+          is_return: false,
+        },
+        {
+          from_node_id: relay,
+          to_node_id: otherRelay,
+          spent: 1,
+          learned: null,
+          is_return: true,
+        },
+      ];
+      packet.receptions = [
+        {
+          ...reception,
+          reception_id: 1,
+          paths: {
+            forward: {
+              nodes: [requester, relay, otherRelay, target],
+              snr_db: [2, 3],
+              reached: true,
+            },
+            return_path: {
+              nodes: [target, requester],
+              snr_db: [],
+              reached: false,
+            },
+          },
+          hops: [hop(requester, relay, 2), hop(relay, otherRelay, 3)],
+        },
+        {
+          ...reception,
+          reception_id: 2,
+          paths: {
+            forward: { nodes: [requester, target], snr_db: [], reached: true },
+            return_path: {
+              nodes: [target, relay, otherRelay, requester],
+              snr_db: [2, 3],
+              reached: false,
+            },
+          },
+          hops: [hop(target, relay, 2), hop(relay, otherRelay, 3)].map(
+            (hop) => ({ ...hop, is_return: true }),
+          ),
+        },
+      ];
+      const contents = minimapMarkers(packet);
+      expect(
+        lines(contents.receptionHops.get(1)!).map((line) => line.properties),
+      ).toMatchObject([{ zeroCost: true }]);
+      expect(
+        lines(contents.receptionHops.get(2)!).map((line) => line.properties),
+      ).toMatchObject([{ zeroCost: false }]);
+    });
+
+    it("lists a route node by node from S, with gaps where it is not known", () => {
+      const rows = (paths: ReportPaths) =>
+        routeRows(paths, requester, target).map((row) =>
+          row.kind === "node"
+            ? `${row.label}${row.unreached ? " unreached" : ""}${
+                row.snr === undefined ? "" : ` ${row.snr}`
+              }`
+            : row.kind === "gap"
+              ? row.text
+              : "Back",
+        );
+      // Out through a relay that did not record itself; R not reached yet.
+      expect(
+        rows({
+          forward: {
+            reached: false,
+            nodes: [requester, null, relay, target],
+            snr_db: [3, 4],
+          },
+          return_path: null,
+        }),
+      ).toEqual(["S", "1 3", "2 4", "Not confirmed", "R unreached"]);
+      // A route ending short of R, and one not starting at S.
+      expect(
+        rows({
+          forward: { reached: false, nodes: [relay, otherRelay], snr_db: [5] },
+          return_path: null,
+        }),
+      ).toEqual([
+        "S",
+        "Not reported",
+        "0",
+        "1 5",
+        "Not confirmed",
+        "R unreached",
+      ]);
+      // A reply: out to R and back to S, numbered through the round trip.
+      expect(
+        rows({
+          forward: {
+            reached: false,
+            nodes: [requester, relay, target],
+            snr_db: [1, 2],
+          },
+          return_path: {
+            reached: false,
+            nodes: [target, otherRelay, requester],
+            snr_db: [6, 7],
+          },
+        }),
+      ).toEqual(["S", "1 1", "R 2", "Back", "3 6", "S 7"]);
+      // The hop reaching a node, for hovering.
+      expect(
+        routeRows(
+          {
+            forward: { reached: false, nodes: [requester, relay], snr_db: [1] },
+            return_path: null,
+          },
+          requester,
+          relay,
+        )[1],
+      ).toMatchObject({ hop: { fromNodeId: requester, toNodeId: relay } });
     });
   });
 });

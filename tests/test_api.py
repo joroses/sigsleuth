@@ -167,17 +167,33 @@ def test_detail_shows_the_route_each_gateway_reported(tmp_path: Path) -> None:
         detail = client.get(f"/api/v1/packets/{packet_row_id}").json()
 
     paths = {item["reception_id"]: item["paths"] for item in detail["receptions"]}
-    assert paths[at_target]["forward"] == {"nodes": [requester, target], "snr_db": [6.0]}
-    assert paths[at_target]["return_path"] == {"nodes": [target, requester], "snr_db": []}
-    assert paths[at_relay]["return_path"] == {"nodes": [target, relay, requester], "snr_db": [None]}
+    assert paths[at_target]["forward"] == {
+        "nodes": [requester, target],
+        "snr_db": [6.0],
+        "reached": True,
+    }
+    assert paths[at_target]["return_path"] == {
+        "nodes": [target, requester],
+        "snr_db": [],
+        "reached": False,
+    }
+    assert paths[at_relay]["return_path"] == {
+        "nodes": [target, relay, requester],
+        "snr_db": [None],
+        "reached": False,
+    }
+    assert paths[at_requester]["return_path"]["reached"] is True
+    assert paths[elsewhere]["return_path"]["reached"] is False
     # The relay's name reaches the route text even though it has no position.
     nodes = {node["node_id"]: node for node in detail["route_nodes"]}
     assert (nodes[relay]["long_name"], nodes[relay]["latitude"]) == ("Hilltop Relay", None)
     hops = {item["reception_id"]: item["hops"] for item in detail["receptions"]}
-    assert hops[at_target] == [{"from_node_id": requester, "to_node_id": target, "snr_db": 6.0}]
+    assert hops[at_target] == [
+        {"from_node_id": requester, "to_node_id": target, "snr_db": 6.0, "is_return": False}
+    ]
     assert hops[at_relay] == [
-        {"from_node_id": requester, "to_node_id": target, "snr_db": 6.0},
-        {"from_node_id": target, "to_node_id": relay, "snr_db": None},
+        {"from_node_id": requester, "to_node_id": target, "snr_db": 6.0, "is_return": False},
+        {"from_node_id": target, "to_node_id": relay, "snr_db": None, "is_return": True},
     ]
     reached = {item["reception_id"]: item["reached"] for item in detail["receptions"]}
     assert reached == {at_target: False, at_relay: False, at_requester: True, elsewhere: False}
@@ -216,10 +232,11 @@ def test_a_request_shows_the_route_its_reply_says_reached_the_target(tmp_path: P
     assert answered["reply_route"]["path"] == {
         "nodes": [requester, relay, target],
         "snr_db": [10.0, 6.0],
+        "reached": True,
     }
     assert answered["reply_route"]["hops"] == [
-        {"from_node_id": requester, "to_node_id": relay, "snr_db": 10.0},
-        {"from_node_id": relay, "to_node_id": target, "snr_db": 6.0},
+        {"from_node_id": requester, "to_node_id": relay, "snr_db": 10.0, "is_return": False},
+        {"from_node_id": relay, "to_node_id": target, "snr_db": 6.0, "is_return": False},
     ]
     assert alone["reply_route"] is None
     assert of_reply["reply_route"] is None

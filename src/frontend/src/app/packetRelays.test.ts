@@ -61,6 +61,7 @@ function detail(
   changes: Partial<PacketDetail> = {},
 ): PacketDetail {
   return {
+    hop_routes: [],
     packet: {
       packet_row_id: 7,
       first_received_at: "2026-09-19T09:00:00Z",

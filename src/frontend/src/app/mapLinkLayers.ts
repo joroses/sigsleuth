@@ -86,7 +86,10 @@ const LINE_STYLES: Record<
  * Unique across all link kinds and every channel, so a selection
  * names one line.
  */
-export function linkKey(linkKind: LinkKind, link: MapLink): string {
+export function linkKey(
+  linkKind: LinkKind,
+  link: Pick<MapLink, "node_a" | "node_b" | "channel">,
+): string {
   return `${linkKind}:${link.node_a}-${link.node_b}:${link.channel}`;
 }
 

@@ -537,23 +537,28 @@ def create_app(
         connection: Connection,
         since: datetime | None = None,
         limit: Annotated[int, Query(ge=1, le=MAX_TEXT_SENDERS)] = MAX_TEXT_SENDERS,
+        channel: Annotated[str | None, Query(max_length=1024)] = None,
     ) -> TextSenderList:
         """Nodes whose broadcast text messages first received since `since`
         reached a few gateways besides their own, most messages first.
-        truncated is true when more senders matched."""
-        return text_senders(connection, since=_utc(since), limit=limit)
+        channel counts only texts sent on that radio channel, named as the
+        map's links name it (a preset, or Unknown). truncated is true when
+        more senders matched."""
+        return text_senders(connection, since=_utc(since), limit=limit, radio=channel)
 
     @app.get("/api/v1/map/text-reach/{node_id}")
     def text_reach_page(
         connection: Connection,
         node_id: Annotated[int, ApiPath(ge=1, le=0xFFFFFFFF)],
         since: datetime | None = None,
+        channel: Annotated[str | None, Query(max_length=1024)] = None,
     ) -> TextReach:
         """The gateways that reported the node's broadcast text messages first
         received since `since`, most receptions first. Empty gateways when it
-        sent none. since starts the window at its whole hour, like Chatty
-        nodes, so the two count the same messages."""
-        return text_reach(connection, node_id, since=_utc(since))
+        sent none. since starts the window at its whole hour and channel keeps
+        the texts sent on that radio channel, like Chatty nodes, so the two
+        count the same messages."""
+        return text_reach(connection, node_id, since=_utc(since), radio=channel)
 
     @app.get("/api/v1/chat")
     def chat_page(

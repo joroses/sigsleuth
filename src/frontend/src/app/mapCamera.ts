@@ -84,24 +84,45 @@ function focusNode(instance: maplibregl.Map, node: MapNode) {
 }
 
 // Zoom out, if either node is off screen, until both are in view, but not below
-// the zoom where links are drawn; a very long link may still be cut off.
-export function focusLink(instance: maplibregl.Map, a: MapNode, b: MapNode) {
-  const ends: [number, number][] = [a, b].map((node) => [
-    node.longitude,
-    node.latitude,
-  ]);
-  const bounds = instance.getBounds();
-  if (ends.every((end) => bounds.contains(end))) return;
-  const camera = instance.cameraForBounds(
-    new maplibregl.LngLatBounds(ends[0], ends[0]).extend(ends[1]),
-    { padding: fitPadding(instance) },
+// the zoom where links are drawn; a very long link may still be cut off. zoomIn
+// fits them whatever the view.
+export function focusLink(
+  instance: maplibregl.Map,
+  a: MapNode,
+  b: MapNode,
+  zoomIn = false,
+) {
+  focusPoints(
+    instance,
+    [a, b].map((node) => [node.longitude, node.latitude]),
+    zoomIn,
   );
+}
+
+// The same for every place a traceroute drawn on the map passes; zoomIn fits
+// them whatever the view, as when a shared link opens one.
+export function focusPoints(
+  instance: maplibregl.Map,
+  points: [number, number][],
+  zoomIn = false,
+) {
+  const bounds = instance.getBounds();
+  if (
+    points.length === 0 ||
+    (!zoomIn && points.every((point) => bounds.contains(point)))
+  )
+    return;
+  const fitted = new maplibregl.LngLatBounds(points[0], points[0]);
+  for (const point of points) fitted.extend(point);
+  const camera = instance.cameraForBounds(fitted, {
+    padding: fitPadding(instance),
+  });
   if (camera === undefined) return;
   moveCamera(instance, {
     center: camera.center,
     zoom: Math.min(
       Math.max(camera.zoom ?? 0, LINK_MIN_ZOOM),
-      instance.getZoom(),
+      zoomIn ? 14 : instance.getZoom(),
     ),
     offset: sheetOffset(instance),
   });

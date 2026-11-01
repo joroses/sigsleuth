@@ -178,6 +178,57 @@ describe("A selected traceroute link", () => {
       expect.anything(),
     );
   });
+  it("shows a listed traceroute on the map", async () => {
+    const packet = (packet_row_id: number, at: string) => ({
+      packet_row_id,
+      first_received_at: at,
+      snr_db: 6,
+      requester_node_id: 2,
+      target_node_id: 1,
+      is_reply: false,
+      free: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              a_to_b: [],
+              b_to_a: [
+                packet(10, "2026-09-25T09:00:00Z"),
+                packet(11, "2026-09-25T08:00:00Z"),
+              ],
+              a_to_b_cost: null,
+              b_to_a_cost: null,
+              nodes: [],
+            }),
+            { status: 200 },
+          ),
+        ),
+      ),
+    );
+    const onShow = vi.fn();
+    render(
+      <MapLinkDetails
+        linkKind="traceroute"
+        link={link}
+        nodeA={node(1, "Madrid")}
+        nodeB={node(2, "Valencia")}
+        km={null}
+        since={undefined}
+        onShowTraceroute={onShow}
+      />,
+    );
+
+    const second = (await screen.findAllByRole("listitem"))[1];
+    within(second).getByRole("button").click();
+    // Valencia transmitting and Madrid hearing it, the second packet.
+    expect(onShow).toHaveBeenCalledExactlyOnceWith(
+      { fromNodeId: 2, toNodeId: 1 },
+      11,
+    );
+  });
 });
 
 describe("The link quality legend", () => {

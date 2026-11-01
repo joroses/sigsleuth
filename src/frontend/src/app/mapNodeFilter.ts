@@ -7,14 +7,21 @@ import { formatRole } from "./nodeDisplay";
 export const ANY = "*";
 export const NOT_REPORTED = "-";
 
+/**
+ * The radio channel a chosen channel filter keeps, as links and texts name it:
+ * Unknown for nodes that reported none; undefined for every channel.
+ */
+export function radioChannel(channel: string): string | undefined {
+  if (channel === ANY) return undefined;
+  return channel === NOT_REPORTED ? "Unknown" : channel;
+}
+
 export function onChosenChannel(
   link: Pick<MapLink, "channel">,
   channel: string,
 ): boolean {
-  return (
-    channel === ANY ||
-    link.channel === (channel === NOT_REPORTED ? "Unknown" : channel)
-  );
+  const radio = radioChannel(channel);
+  return radio === undefined || link.channel === radio;
 }
 
 /**

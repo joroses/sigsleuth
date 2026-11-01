@@ -242,18 +242,25 @@ export function mapLinksUrl(linkKind: LinkKind, since?: string): string {
   return `/api/v1/map/links?${query}`;
 }
 
-export function textSendersUrl(since?: string): string {
+/** channel is a radio channel as links name it; undefined counts every channel. */
+export function textSendersUrl(since?: string, channel?: string): string {
   const query = new URLSearchParams();
   setQuery(query, "since", since);
+  setQuery(query, "channel", channel);
   const search = query.toString();
   return search === ""
     ? "/api/v1/map/text-senders"
     : `/api/v1/map/text-senders?${search}`;
 }
 
-export function textReachUrl(nodeId: number, since?: string): string {
+export function textReachUrl(
+  nodeId: number,
+  since?: string,
+  channel?: string,
+): string {
   const query = new URLSearchParams();
   setQuery(query, "since", since);
+  setQuery(query, "channel", channel);
   const search = query.toString();
   const url = `/api/v1/map/text-reach/${nodeId}`;
   return search === "" ? url : `${url}?${search}`;

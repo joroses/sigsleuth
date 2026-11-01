@@ -4208,6 +4208,68 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   font-variant-numeric: tabular-nums;
 }
 
+.hop-observations button.text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+/* A traceroute drawn on the map, one node a row. */
+.map-traceroute-heading h3 {
+  margin: 0;
+}
+
+.map-traceroute-route {
+  display: grid;
+  margin: var(--space-2) 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  list-style: none;
+}
+
+.map-traceroute-route li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 3px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.map-traceroute-route li.map-traceroute-gap {
+  display: block;
+  padding-left: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.map-traceroute-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-traceroute-route li.unreached {
+  opacity: 0.6;
+}
+
+.map-traceroute-route li.unreached .route-chip {
+  background: transparent;
+  color: var(--hop-colour);
+}
+
+.map-traceroute-route li.map-traceroute-ours {
+  font-weight: 600;
+}
+
+.map-traceroute-route li.highlighted {
+  background: var(--marker-ring);
+  color: var(--marker-ring-edge);
+}
+
+.map-traceroute-route li.highlighted .muted {
+  color: inherit;
+}
+
 /* A Links table row's two directions side by side, stacked when narrow; as
    wide as the page, not the scrolling table. */
 .hop-lists {

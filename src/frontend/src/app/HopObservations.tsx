@@ -6,7 +6,7 @@ import {
   packetHopHref,
 } from "./nodeDisplay";
 import { type ApiState } from "./useApi";
-import { Badge, HopSnr, ShortTime } from "./ui";
+import { Badge, HopSnr, Icon, ShortTime } from "./ui";
 
 /**
  * What a link direction's hop cost says, with a hover title for some;
@@ -116,7 +116,8 @@ export function HopCostTag({
  * only the reports with this hop. Loading, an empty window and an error each
  * show as one muted line, so the rest of the page stays. Compact, for the
  * narrow map sidebar, is just the time and SNR, collapsed unless
- * collapsible is false (when the caller collapses it).
+ * collapsible is false (when the caller collapses it). With onShow, the time
+ * shows that traceroute on the map instead; its page opens from there.
  */
 export function HopObservationList({
   hops,
@@ -126,6 +127,7 @@ export function HopObservationList({
   spreadingFactor,
   compact = false,
   collapsible = compact,
+  onShow,
 }: {
   hops: ApiState<HopObservations>;
   direction: "a_to_b" | "b_to_a";
@@ -136,6 +138,7 @@ export function HopObservationList({
   spreadingFactor?: number | null;
   compact?: boolean;
   collapsible?: boolean;
+  onShow?: (packetRowId: number) => void;
 }) {
   if (hops.error !== null) return <p className="muted">{hops.error}</p>;
   if (hops.data === null) return <p className="muted">Loading…</p>;
@@ -148,12 +151,24 @@ export function HopObservationList({
     <ul className="hop-observations" aria-label="Packets with this hop">
       {items.map((item) => (
         <li key={item.packet_row_id}>
-          <a
-            className="text-button"
-            href={packetHopHref(item.packet_row_id, fromNodeId, toNodeId)}
-          >
-            <ShortTime value={item.first_received_at} />
-          </a>
+          {onShow === undefined ? (
+            <a
+              className="text-button"
+              href={packetHopHref(item.packet_row_id, fromNodeId, toNodeId)}
+            >
+              <ShortTime value={item.first_received_at} />
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="text-button"
+              title="Show on the map"
+              onClick={() => onShow(item.packet_row_id)}
+            >
+              <ShortTime value={item.first_received_at} />
+              <Icon name="map" />
+            </button>
+          )}
           <HopSnr
             className="number"
             snr={item.snr_db}

@@ -129,6 +129,26 @@ describe("findRoute", () => {
     expect(pairs(findRoute(1, 2, [oneWay]))).toEqual([[1, 2]]);
   });
 
+  it("keeps one radio channel, including a quieter way through the same relay", () => {
+    const on = (channel: string, a: number, b: number, count: number) => {
+      const item = heard(a, b, count);
+      item.link.channel = channel;
+      return item;
+    };
+    const first = on("ShortFast", 1, 2, 100);
+    const last = on("LongFast", 2, 3, 100);
+    expect(findRoute(1, 3, [first, last])).toBeNull();
+    const sameChannel = on("LongFast", 1, 2, 1);
+    expect(findRoute(1, 3, [first, last, sameChannel])?.links).toEqual([
+      sameChannel,
+      last,
+    ]);
+    expect(findRoute(3, 1, [first, last, sameChannel])?.links).toEqual([
+      last,
+      sameChannel,
+    ]);
+  });
+
   // 1 – 2 – … – 10, nine links heard 100 times each: eight relays.
   const chain = Array.from({ length: 9 }, (_, index) =>
     heard(index + 1, index + 2, 100),

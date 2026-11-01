@@ -1,11 +1,14 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_FILTER, NOT_REPORTED } from "./mapNodeFilter";
 import {
+  chattyUrl,
   type ShownWindow,
   SHOWN_WINDOW_VIEW,
   mapUrls,
   startMapRequests,
+  windowReaching,
 } from "./mapTimeFilter";
 import { readView } from "./remember";
 import { forgetKept, useApi } from "./useApi";
@@ -26,6 +29,22 @@ function stubFetch() {
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
+
+describe("windowReaching", () => {
+  const now = Date.parse("2026-09-25T12:00:00Z");
+  const ago = (hours: number) => now - hours * 3_600_000;
+
+  it("keeps a window that reaches the time, else takes the narrowest wider one", () => {
+    expect(windowReaching("3d", now, ago(70))).toBe("3d");
+    expect(windowReaching("3d", now, ago(72))).toBe("3d");
+    expect(windowReaching("3d", now, ago(73))).toBe("7d");
+    expect(windowReaching("1h", now, ago(5))).toBe("6h");
+    expect(windowReaching("7d", now, ago(10 * 24))).toBe("all");
+    expect(windowReaching("all", now, ago(100 * 24))).toBe("all");
+    // A narrower window than the one shown is never chosen.
+    expect(windowReaching("7d", now, ago(1))).toBe("7d");
+  });
+});
 
 describe("mapUrls", () => {
   it.each([
@@ -55,8 +74,12 @@ describe("mapUrls", () => {
 });
 
 describe("startMapRequests", () => {
-  it("asks for the saved window and link layers, which the map then reuses", async () => {
+  it("asks for the saved window, channel and link layers, which the map then reuses", async () => {
     localStorage.setItem("sigsleuth.seenWindow", JSON.stringify("24h"));
+    localStorage.setItem(
+      "sigsleuth.nodeFilter",
+      JSON.stringify({ ...DEFAULT_FILTER, channel: NOT_REPORTED }),
+    );
     localStorage.setItem(
       "sigsleuth.linkLayers",
       JSON.stringify({ traceroute: false, direct: true }),
@@ -68,9 +91,11 @@ describe("startMapRequests", () => {
     const shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow;
     expect(shown.window).toBe("24h");
     const urls = mapUrls(shown.window, shown.chosenAt);
+    const chatty = chattyUrl(urls.since, NOT_REPORTED);
+    expect(chatty).toContain("channel=Unknown");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       urls.nodes,
-      urls.textSenders,
+      chatty,
       urls.direct,
     ]);
     const { result } = renderHook(() => useApi(urls.nodes, shown.chosenAt));
@@ -99,7 +124,7 @@ describe("startMapRequests", () => {
     startMapRequests({
       show: ["direct", "neighbor"],
       window: "all",
-      channel: null,
+      channel: "MediumFast",
     });
 
     const shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow;
@@ -107,9 +132,22 @@ describe("startMapRequests", () => {
     const urls = mapUrls(shown.window, shown.chosenAt);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       urls.nodes,
-      urls.textSenders,
+      "/api/v1/map/text-senders?channel=MediumFast",
       urls.direct,
       urls.neighbor,
+    ]);
+  });
+
+  it("leaves Chatty nodes to a first visit, which opens on the busiest channel", () => {
+    const fetchMock = stubFetch();
+
+    startMapRequests();
+
+    const shown = readView(SHOWN_WINDOW_VIEW) as ShownWindow;
+    const urls = mapUrls(shown.window, shown.chosenAt);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      urls.nodes,
+      urls.traceroute,
     ]);
   });
 });

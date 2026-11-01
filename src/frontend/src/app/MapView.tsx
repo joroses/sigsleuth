@@ -43,7 +43,6 @@ import {
   addCoverageLayers,
   buildCoverageFeatureCollection,
   buildCoverageLines,
-  cellBounds,
   cellText,
   coverageCellUrl,
   coverageCellsUrl,
@@ -59,28 +58,34 @@ import {
   type CoverageView,
 } from "./coverageLayer";
 import { HeardInView } from "./HeardInView";
+import { findRoute, withinHops } from "./linkGraph";
+import {
+  filterPanelWidth,
+  focusCoverage,
+  focusLink,
+  focusTextReach,
+  inView,
+} from "./mapCamera";
 import { MapFilterPanel } from "./MapFilterPanel";
 import { MapLinkDetails } from "./MapLinkDetails";
-import { bothWaysObservations, fadeMargin } from "./linkQuality";
+import { HopTable, MapRoute } from "./MapRoute";
+import { bothWaysObservations } from "./linkQuality";
 import { fromNode } from "./linkRows";
 import {
   LINK_KINDS,
   LINK_LAYERS,
-  LINK_MIN_ZOOM,
   addLinkLayers,
   buildLinkFeatureCollection,
   DEFAULT_LAYER_CHOICE,
   DEFAULT_MIN_OBSERVATIONS,
   drawnKm,
   drawnLongEnough,
-  findRoute,
   linkKey,
   linkSourceId,
   showLinkFocus,
   linkTierShown,
   ALL_LINK_TIERS,
   MAX_LINK_KM,
-  withinHops,
   ZERO_COST_LAYER,
   addZeroCostLayer,
   zeroCostArrows,
@@ -105,14 +110,12 @@ import { nearestLine } from "./lineHit";
 import { isNarrowScreen } from "./narrowScreen";
 import {
   formatHardware,
-  formatKm,
   formatNodeId,
   formatRole,
   nodeHref,
   nodeLabel,
   nodeMarkerLabel,
   positionSource,
-  shortLabel,
 } from "./nodeDisplay";
 import {
   ANY,
@@ -148,9 +151,7 @@ import { useApi } from "./useApi";
 import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 import { formatHours } from "./zones";
 import {
-  BothWays,
   CopyValue,
-  DirectionSnr,
   Icon,
   IconButton,
   ShareButton,
@@ -168,166 +169,6 @@ declare global {
   interface Window {
     sigsleuthMap?: maplibregl.Map;
   }
-}
-
-// A second click this soon after the first is a double-tap zoom.
-const DOUBLE_TAP_MS = 400;
-// Half the side of the square kept in view around a chosen node: about 300 × 300 km.
-const FOCUS_HALF_SIDE_KM = 150;
-const KM_PER_DEGREE_LATITUDE = 111.32;
-
-// On a phone the sidebar sheet covers up to 55% of the map's bottom (see
-// styles.css), so a chosen place is centred in the part above it.
-function sheetOffset(instance: maplibregl.Map): [number, number] {
-  if (!isNarrowScreen()) return [0, 0];
-  return [0, -instance.getContainer().clientHeight * 0.275];
-}
-
-// Room around places fitted in view: a margin, and on a phone the sheet's
-// height, split above and below since sheetOffset then lifts them above it.
-function fitPadding(instance: maplibregl.Map): maplibregl.PaddingOptions {
-  const half = -sheetOffset(instance)[1];
-  return { top: 60 + half, bottom: 60 + half, left: 60, right: 60 };
-}
-
-// How far the open filter panel reaches over the map's left side.
-function filterPanelWidth(instance: maplibregl.Map): number {
-  const container = instance.getContainer();
-  const panel = container.parentElement?.querySelector(
-    ".map-filter-panel:not(.map-filter-panel-closed)",
-  );
-  if (panel == null) return 0;
-  return (
-    panel.getBoundingClientRect().right - container.getBoundingClientRect().left
-  );
-}
-
-function moveCamera(
-  instance: maplibregl.Map,
-  options: maplibregl.FlyToOptions,
-) {
-  // flyTo drops the sheet offset when reduced motion is enabled.
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-    instance.easeTo({ ...options, duration: 0 });
-  else instance.flyTo(options);
-}
-
-// Centre an unconnected node with about 300 km around it.
-function focusNode(instance: maplibregl.Map, node: MapNode) {
-  const { latitude, longitude } = node;
-  const latitudeDelta = FOCUS_HALF_SIDE_KM / KM_PER_DEGREE_LATITUDE;
-  // Clamped so the box stays finite near the poles.
-  const longitudeDelta =
-    latitudeDelta / Math.max(Math.cos((latitude * Math.PI) / 180), 0.05);
-  const camera = instance.cameraForBounds([
-    [longitude - longitudeDelta, latitude - latitudeDelta],
-    [longitude + longitudeDelta, latitude + latitudeDelta],
-  ]);
-  moveCamera(instance, {
-    center: [longitude, latitude],
-    zoom: Math.max(camera?.zoom ?? 0, instance.getZoom()),
-    offset: sheetOffset(instance),
-  });
-}
-
-// Zoom out, if either node is off screen, until both are in view, but not below
-// the zoom where links are drawn; a very long link may still be cut off.
-function focusLink(instance: maplibregl.Map, a: MapNode, b: MapNode) {
-  const ends: [number, number][] = [a, b].map((node) => [
-    node.longitude,
-    node.latitude,
-  ]);
-  const bounds = instance.getBounds();
-  if (ends.every((end) => bounds.contains(end))) return;
-  const camera = instance.cameraForBounds(
-    new maplibregl.LngLatBounds(ends[0], ends[0]).extend(ends[1]),
-    { padding: fitPadding(instance) },
-  );
-  if (camera === undefined) return;
-  moveCamera(instance, {
-    center: camera.center,
-    zoom: Math.min(
-      Math.max(camera.zoom ?? 0, LINK_MIN_ZOOM),
-      instance.getZoom(),
-    ),
-    offset: sheetOffset(instance),
-  });
-}
-
-// Fit a sender and the gateways that reported its texts, but not below the zoom
-// where clusters split, as nodes inside a cluster stay hidden during a selection.
-const TEXT_REACH_MIN_ZOOM = 5;
-
-// A sender without a position (null) is fitted to its gateways alone.
-function focusTextReach(
-  instance: maplibregl.Map,
-  sender: MapNode | null,
-  gateways: MapNode[],
-) {
-  if (gateways.length === 0) {
-    if (sender !== null) focusNode(instance, sender);
-    return;
-  }
-  const bounds = new maplibregl.LngLatBounds();
-  for (const node of sender === null ? gateways : [sender, ...gateways])
-    bounds.extend([node.longitude, node.latitude]);
-  const camera = instance.cameraForBounds(bounds, {
-    padding: fitPadding(instance),
-  });
-  if (camera === undefined) return;
-  moveCamera(instance, {
-    center: camera.center,
-    zoom: Math.max(camera.zoom ?? 0, TEXT_REACH_MIN_ZOOM),
-    offset: sheetOffset(instance),
-  });
-}
-
-// Show a node, its coverage and other nodes: only when some are out of
-// view, and without zooming in, unless zoomIn fits them whatever the view.
-function focusCoverage(
-  instance: maplibregl.Map,
-  node: MapNode | null,
-  extent: CoverageExtent | null,
-  zoomIn: boolean,
-  otherNodes: MapNode[] = NO_NODES,
-  cell?: CellAddress,
-) {
-  if (extent === null && cell === undefined) {
-    focusTextReach(instance, node, otherNodes);
-    return;
-  }
-  const bounds = new maplibregl.LngLatBounds();
-  if (extent !== null) {
-    bounds.extend([extent.west, extent.south]);
-    bounds.extend([extent.east, extent.north]);
-  }
-  if (cell !== undefined) {
-    const [west, south, east, north] = cellBounds(cell);
-    bounds.extend([west, south]);
-    bounds.extend([east, north]);
-  }
-  if (node !== null) bounds.extend([node.longitude, node.latitude]);
-  for (const other of otherNodes)
-    bounds.extend([other.longitude, other.latitude]);
-  const view = instance.getBounds();
-  if (
-    !zoomIn &&
-    view.contains(bounds.getSouthWest()) &&
-    view.contains(bounds.getNorthEast())
-  )
-    return;
-  const camera = instance.cameraForBounds(bounds, {
-    padding: fitPadding(instance),
-  });
-  if (camera === undefined) return;
-  moveCamera(instance, {
-    center: camera.center,
-    zoom: Math.min(
-      Math.max(camera.zoom ?? 0, otherNodes.length > 0 ? LINK_MIN_ZOOM : 0),
-      zoomIn ? 14 : instance.getZoom(),
-    ),
-    offset: sheetOffset(instance),
-  });
 }
 
 const LINK_NAMES: Record<LinkKind, string> = {
@@ -366,7 +207,7 @@ function savedCamera(): Camera | null {
 
 // The two-click route on empty map: its first point, or why it failed.
 type RouteClick =
-  { point: maplibregl.LngLat; router: MapNode; at: number } | { error: string };
+  { point: maplibregl.LngLat; router: MapNode } | { error: string };
 
 /** A new selection fits again and drops any pending fit. */
 interface Selection {
@@ -701,6 +542,7 @@ export function MapView({
   const tracerouteRoutable = tracerouteFiltered.routable;
   const directRoutable = directFiltered.routable;
   const neighborRoutable = neighborFiltered.routable;
+  const zeroCostHops = tracerouteFiltered.page?.zero_cost_hops ?? NO_ZERO_COST;
   const routeFound = useMemo(() => {
     if (routeFrom === null || routeEnd === null) return null;
     const placed: SelectedLink[] = [];
@@ -712,7 +554,7 @@ export function MapView({
       for (const link of links)
         if (linkableMap.has(link.node_a) && linkableMap.has(link.node_b))
           placed.push({ linkKind, link });
-    return findRoute(routeFrom, routeEnd, placed);
+    return findRoute(routeFrom, routeEnd, placed, zeroCostHops);
   }, [
     routeFrom,
     routeEnd,
@@ -720,9 +562,10 @@ export function MapView({
     directRoutable,
     neighborRoutable,
     linkableMap,
+    zeroCostHops,
   ]);
   const routeKept = useMemo(
-    () => new Set(routeFound?.map(({ link }) => link) ?? []),
+    () => new Set(routeFound?.links.map(({ link }) => link) ?? []),
     [routeFound],
   );
   const tracerouteLayer = useDrawnLinks(
@@ -948,7 +791,7 @@ export function MapView({
   const routeSteps = useMemo(() => {
     if (activeRoute === null || routeFound === null) return null;
     let at = activeRoute.from;
-    return routeFound.map((item) => {
+    return routeFound.links.map((item) => {
       const link = fromNode(item.link, at);
       at = link.node_b;
       return { key: linkKey(item.linkKind, item.link), link };
@@ -1175,10 +1018,15 @@ export function MapView({
   useEffect(() => {
     const wanted = pendingNodeId.current;
     if (wanted === null || page === null) return;
+    const selectLinked = (node: MapNode) => {
+      select(node);
+      if (linkView?.to !== undefined)
+        setRoute({ from: wanted, to: linkView.to, fromMap: true });
+    };
     const loaded = page.items.find((node) => node.node_id === wanted);
     if (loaded !== undefined) {
       pendingNodeId.current = null;
-      select(loaded);
+      selectLinked(loaded);
       return;
     }
     const controller = new AbortController();
@@ -1188,14 +1036,14 @@ export function MapView({
         pendingNodeId.current = null;
         if (linked === null) return;
         setLinkedNode(linked);
-        select(linked);
+        selectLinked(linked);
       })
       .catch(() => {
         // The map still works without the linked node.
         if (!controller.signal.aborted) pendingNodeId.current = null;
       });
     return () => controller.abort();
-  }, [page, select]);
+  }, [page, select, linkView]);
 
   // Once another node is chosen or the selection is cleared, the hash no
   // longer names the linked node and the filters apply to it again.
@@ -1217,7 +1065,11 @@ export function MapView({
     failure,
   } = useBasemapMap(
     {
-      view: () => savedCamera() ?? { center: [0, 20], zoom: 1 },
+      view: () => ({
+        ...(savedCamera() ?? { center: [0, 20], zoom: 1 }),
+        // Two clicks on empty map draw a route.
+        doubleClickZoom: false,
+      }),
       basemap,
       setup: setUpMap,
     },
@@ -1477,6 +1329,8 @@ export function MapView({
     // selected. With nothing selected, two clicks draw a route between the
     // routers nearest them, and one more clears it.
     const selectMapPoint = (event: maplibregl.MapMouseEvent) => {
+      // A double-click counts as one click.
+      if (event.originalEvent.detail > 1) return;
       const start = routeClick.current;
       setRouteClick(null);
       if (onNodeAt(event.point)) return;
@@ -1497,22 +1351,17 @@ export function MapView({
       else if (routeState.current?.fromMap === false) setRoute(null);
       else if (nodeChosen.current) clearSelection();
       else {
-        // A double-click or double-tap zooms instead.
-        const clicked = event.originalEvent;
-        if (clicked.detail > 1) return;
-        if (start === null || "error" in start) {
-          const router = nearestRouter(event.lngLat);
-          setRouteClick(
-            router === null
-              ? { error: "No routers match the node filters." }
-              : { point: event.lngLat, router, at: clicked.timeStamp },
-          );
+        const to = nearestRouter(event.lngLat);
+        if (to === null) {
+          setRouteClick({ error: "No routers match the node filters." });
           return;
         }
-        if (clicked.timeStamp - start.at < DOUBLE_TAP_MS) return;
-        const to = nearestRouter(event.lngLat);
-        if (to === null || to.node_id === start.router.node_id) {
-          setRouteClick({ error: "Click near two different routers." });
+        if (
+          start === null ||
+          "error" in start ||
+          to.node_id === start.router.node_id
+        ) {
+          setRouteClick({ point: event.lngLat, router: to });
           return;
         }
         closeSpider();
@@ -1857,18 +1706,17 @@ export function MapView({
   useEffect(() => {
     if (readyMap === null || shownRouteClick === null) return;
     if ("error" in shownRouteClick) return;
-    // Clicks pass through the pin, so a double-click on it still zooms, and it
-    // waits out a double-click so a zoom doesn't flash it.
+    // Clicks reach the nodes under the pin.
     const pin = new maplibregl.Marker().setLngLat(shownRouteClick.point);
     pin.getElement().style.pointerEvents = "none";
-    const show = window.setTimeout(() => pin.addTo(readyMap), DOUBLE_TAP_MS);
+    pin.addTo(readyMap);
     return () => {
-      window.clearTimeout(show);
       pin.remove();
     };
   }, [readyMap, shownRouteClick]);
 
-  // A route's ends and links are fitted once, or both ends when none is found.
+  // A route's ends and links are fitted once. Without a route, the camera only
+  // brings its ends into view.
   const routeKey =
     routeTo === null
       ? null
@@ -1881,11 +1729,18 @@ export function MapView({
       const node = nodeMap.get(id);
       return node === undefined ? [] : [node];
     });
-    focusTextReach(readyMap, selectedNode, ends);
+    const found = routeSteps !== null;
+    if (
+      !found &&
+      !readyMap.isMoving() &&
+      [selectedNode, ...ends].every((node) => inView(readyMap, node))
+    )
+      return;
+    focusTextReach(readyMap, selectedNode, ends, found);
   });
   useEffect(() => {
     if (routeKey !== null) fitRoute();
-  }, [routeKey]);
+  }, [routeKey, readyMap]);
 
   // Choosing a chatty node is asking for its text reach.
   function chooseTextSender(sender: TextSender) {
@@ -2241,6 +2096,7 @@ export function MapView({
                 ],
                 window: shownWindow.window,
                 channel: nodeFilter.channel === ANY ? null : nodeFilter.channel,
+                ...(routeTo === null ? {} : { to: routeTo }),
               })}
               title={nodeLabel(selectedNode)}
             />
@@ -2383,11 +2239,21 @@ export function MapView({
                   from={selectedNode}
                   toId={activeRoute.to}
                   steps={routeSteps}
+                  hops={routeFound?.hops ?? 0}
                   nodes={nodeMap}
                   onOpen={openNodeLink}
                   onChangeEnd={() =>
                     setRoute({ from: activeRoute.from, to: null })
                   }
+                  onReverse={(to) => {
+                    // A route starts at the selected node.
+                    select(to);
+                    setRoute({
+                      from: to.node_id,
+                      to: activeRoute.from,
+                      fromMap: activeRoute.fromMap,
+                    });
+                  }}
                 />
               ) : detailNode === null && unplacedNode !== null ? (
                 <>
@@ -2527,12 +2393,7 @@ export function MapView({
                     <button
                       type="button"
                       className="text-button map-route-start"
-                      disabled={!anyLinkLayer}
-                      title={
-                        anyLinkLayer
-                          ? "Find a route to another node"
-                          : "Turn on a link layer first"
-                      }
+                      title="Find a route to another node"
                       onClick={() =>
                         setRoute({ from: selectedNode.node_id, to: null })
                       }
@@ -2584,183 +2445,6 @@ function NodeTracerouteLinks({
         onOpen={onOpen}
       />
     </div>
-  );
-}
-
-interface HopStep {
-  key: string;
-  /** Turned so node_a is the near end. */
-  link: MapLink;
-}
-
-// One row per link, named by its far end: times heard and SNR each way,
-// out first, and the length between reported positions.
-function HopTable({
-  steps,
-  nodes,
-  onOpen,
-}: {
-  steps: HopStep[];
-  nodes: ReadonlyMap<number, MapNode>;
-  onOpen: (key: string) => void;
-}) {
-  return (
-    <table className="hop-table">
-      <thead>
-        <tr>
-          <th scope="col">Node</th>
-          <th scope="col" title="Times heard out and in">
-            Seen
-          </th>
-          <th scope="col" title="Average SNR out and in, in dB">
-            SNR
-          </th>
-          <th scope="col">km</th>
-        </tr>
-      </thead>
-      <tbody>
-        {steps.map(({ key, link }) => {
-          const near = nodes.get(link.node_a)!;
-          const far = nodes.get(link.node_b)!;
-          const nearName = shortLabel(near.node_id, near.short_name);
-          const farName = shortLabel(far.node_id, far.short_name);
-          const km =
-            near.estimate === null && far.estimate === null
-              ? drawnKm(near, far)
-              : null;
-          return (
-            <tr
-              key={key}
-              onClick={(event) => {
-                if ((event.target as Element).closest("button")) return;
-                onOpen(key);
-              }}
-            >
-              <td>
-                <button
-                  type="button"
-                  className="text-button"
-                  title={nodeLabel(far)}
-                  aria-label={`Show link to ${nodeLabel(far)}`}
-                  onClick={() => onOpen(key)}
-                >
-                  {farName}
-                </button>
-              </td>
-              <td>
-                <BothWays
-                  left={link.a_to_b.observations.toLocaleString()}
-                  right={link.b_to_a.observations.toLocaleString()}
-                />
-              </td>
-              <td>
-                <BothWays
-                  left={
-                    <DirectionSnr
-                      direction={link.a_to_b}
-                      spreadingFactor={link.spreading_factor}
-                      label={`${nearName} → ${farName}`}
-                    />
-                  }
-                  right={
-                    <DirectionSnr
-                      direction={link.b_to_a}
-                      spreadingFactor={link.spreading_factor}
-                      label={`${farName} → ${nearName}`}
-                    />
-                  }
-                />
-              </td>
-              <td>{formatKm(km)}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
-  );
-}
-
-/**
- * A route from the selected node: picking its other end, then the route's
- * links, or why none was found.
- */
-function MapRoute({
-  from,
-  toId,
-  steps,
-  nodes,
-  onOpen,
-  onChangeEnd,
-}: {
-  from: MapNode;
-  toId: number | null;
-  steps: HopStep[] | null;
-  nodes: ReadonlyMap<number, MapNode>;
-  onOpen: (key: string) => void;
-  onChangeEnd: () => void;
-}) {
-  if (toId === null)
-    return (
-      <section className="map-route" aria-live="polite">
-        <h3>Route from {nodeLabel(from)}</h3>
-        <p className="sidebar-note">
-          Search or select another node to find a likely route.
-        </p>
-      </section>
-    );
-  const to = nodes.get(toId);
-  const heading = (
-    <h3>
-      {nodeLabel(from)} →{" "}
-      {to === undefined ? formatNodeId(toId) : nodeLabel(to)}
-    </h3>
-  );
-  const change = (
-    <button type="button" className="text-button" onClick={onChangeEnd}>
-      <Icon name="route" /> Change destination
-    </button>
-  );
-  if (to === undefined || steps === null)
-    return (
-      <section className="map-route" aria-live="polite">
-        {heading}
-        <p className="sidebar-note">
-          {to === undefined
-            ? "That node is not on the map with the current filters."
-            : "No route over these link layers and filters."}
-        </p>
-        {change}
-      </section>
-    );
-  // The weakest SNR the way travelled, by margin.
-  let weakest: MapLink | null = null;
-  let weakestMargin = Infinity;
-  for (const { link } of steps) {
-    const margin = fadeMargin(link.a_to_b.average_snr, link.spreading_factor);
-    if (margin !== null && margin < weakestMargin) {
-      weakest = link;
-      weakestMargin = margin;
-    }
-  }
-  return (
-    <section className="map-route" aria-live="polite">
-      {heading}
-      <p className="map-route-summary">
-        {steps.length} {steps.length === 1 ? "hop" : "hops"}
-        {weakest === null ? null : (
-          <>
-            {" · weakest "}
-            <DirectionSnr
-              direction={weakest.a_to_b}
-              spreadingFactor={weakest.spreading_factor}
-            />
-            {" dB SNR"}
-          </>
-        )}
-      </p>
-      <HopTable steps={steps} nodes={nodes} onOpen={onOpen} />
-      {change}
-    </section>
   );
 }
 

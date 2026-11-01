@@ -3,8 +3,8 @@ import type { Map, MapGeoJSONFeature, PointLike } from "maplibre-gl";
 
 // How far from a line, in pixels, a click or hover still takes it: wider on
 // touch screens, where a finger covers more than a mouse pointer.
-const MOUSE_REACH_PX = 6;
-const TOUCH_REACH_PX = 12;
+const MOUSE_REACH_PX = 4;
+const TOUCH_REACH_PX = 8;
 
 function reachPx(): number {
   return typeof window.matchMedia === "function" &&
@@ -42,7 +42,7 @@ export function nearestLine(
         ),
       ),
     );
-    if (distance < nearestDistance) {
+    if (distance <= reach && distance < nearestDistance) {
       nearest = feature;
       nearestDistance = distance;
     }

@@ -237,15 +237,13 @@ export function zeroCostArrows(
   hops: ZeroCostHop[],
   nodesById: ReadonlyMap<number, Pick<MapNode, "latitude" | "longitude">>,
 ): ZeroCostArrows {
-  const free = new Set(
-    hops.map((hop) => `${hop.from_node_id}-${hop.to_node_id}:${hop.channel}`),
-  );
+  const free = zeroCostSet(hops);
   const features: ZeroCostArrows["features"] = [];
   for (const link of links) {
     const ways = [
       [link.node_a, link.node_b],
       [link.node_b, link.node_a],
-    ].filter(([from, to]) => free.has(`${from}-${to}:${link.channel}`));
+    ].filter(([from, to]) => free.has(zeroCostKey(from, to, link.channel)));
     const a = nodesById.get(link.node_a);
     const b = nodesById.get(link.node_b);
     if (ways.length === 0 || a === undefined || b === undefined) continue;
@@ -271,6 +269,18 @@ export function zeroCostArrows(
     }
   }
   return { type: "FeatureCollection", features };
+}
+
+export function zeroCostKey(from: number, to: number, channel: string): string {
+  return `${from}-${to}:${channel}`;
+}
+
+export function zeroCostSet(hops: readonly ZeroCostHop[]): Set<string> {
+  return new Set(
+    hops.map((hop) =>
+      zeroCostKey(hop.from_node_id, hop.to_node_id, hop.channel),
+    ),
+  );
 }
 
 /**
@@ -355,119 +365,6 @@ function arrowImage(): {
     }
   }
   return { width: ARROW_SIZE, height: ARROW_SIZE, data };
-}
-
-export const MAX_HOP_DEPTH = 7;
-
-/**
- * The nodes and links within `depth` relays of a node, walking the given links
- * both ways, whatever their direction or link kind. Depth 0 keeps the node's own
- * links and the nodes at their other end; each step adds one relay, so nodes up
- * to depth + 1 links away are kept. Chained links need not be one real path:
- * they may come from different hours and directions.
- */
-export function withinHops(
-  nodeId: number,
-  links: { linkKind: LinkKind; link: MapLink }[],
-  depth: number,
-): { nodeIds: number[]; linkKeys: string[] } {
-  // globalThis.Map, because Map in this file is MapLibre's map.
-  const neighbours = new globalThis.Map<number, number[]>();
-  const connect = (from: number, to: number) => {
-    const list = neighbours.get(from);
-    if (list === undefined) neighbours.set(from, [to]);
-    else list.push(to);
-  };
-  for (const { link } of links) {
-    connect(link.node_a, link.node_b);
-    connect(link.node_b, link.node_a);
-  }
-  // Breadth-first, so each node's distance is its fewest links from nodeId.
-  const distance = new globalThis.Map([[nodeId, 0]]);
-  let frontier = [nodeId];
-  for (let step = 1; step <= depth + 1 && frontier.length > 0; step++) {
-    const next: number[] = [];
-    for (const node of frontier)
-      for (const neighbour of neighbours.get(node) ?? [])
-        if (!distance.has(neighbour)) {
-          distance.set(neighbour, step);
-          next.push(neighbour);
-        }
-    frontier = next;
-  }
-  // A link from a node within depth relays reaches one step further, so its
-  // other end was reached too; links between the outermost nodes are left out.
-  const inside = (node: number) => (distance.get(node) ?? Infinity) <= depth;
-  return {
-    nodeIds: [...distance.keys()],
-    linkKeys: links
-      .filter(({ link }) => inside(link.node_a) || inside(link.node_b))
-      .map(({ linkKind, link }) => linkKey(linkKind, link)),
-  };
-}
-
-// A route's links at most: Meshtastic's highest hop limit, 7 relays.
-const MAX_ROUTE_LINKS = 8;
-
-// −log of the chance of taking a link one way, so the cheapest route is the
-// likeliest. The 0.2 keeps a way never heard usable: the link was heard the
-// other way. Revisit: goal is to predict the route a traceroute takes; on live
-// loranet.pl (links 2026-10-25..28 vs traceroutes 10-28..31), 10 instead of 3
-// or adding the SNR margin did no better.
-function stepCost(observations: number): number {
-  return -Math.log((observations + 0.2) / (observations + 3.2));
-}
-
-/**
- * The likeliest route from one node to another over the given links, of at
- * most MAX_ROUTE_LINKS (stepCost). Lists the links from `from` to `to`, or
- * null when none connects them.
- */
-export function findRoute<T extends { link: MapLink }>(
-  from: number,
-  to: number,
-  links: readonly T[],
-): T[] | null {
-  if (from === to) return null;
-  const steps = links.flatMap((item) => {
-    const { node_a, node_b, a_to_b, b_to_a } = item.link;
-    return [
-      { from: node_a, to: node_b, item, cost: stepCost(a_to_b.observations) },
-      { from: node_b, to: node_a, item, cost: stepCost(b_to_a.observations) },
-    ];
-  });
-  type Reached = { cost: number; step: (typeof steps)[number] | null };
-  // reached[k]: the cheapest way to each node in k links, by its last step.
-  const reached = [
-    new globalThis.Map<number, Reached>([[from, { cost: 0, step: null }]]),
-  ];
-  let best: { cost: number; links: number } | null = null;
-  for (let count = 1; count <= MAX_ROUTE_LINKS; count++) {
-    const before = reached[count - 1];
-    const now = new globalThis.Map<number, Reached>();
-    for (const step of steps) {
-      const start = before.get(step.from);
-      if (start === undefined) continue;
-      const cost = start.cost + step.cost;
-      const known = now.get(step.to);
-      if (known === undefined || cost < known.cost)
-        now.set(step.to, { cost, step });
-    }
-    reached.push(now);
-    const end = now.get(to);
-    if (end !== undefined && (best === null || end.cost < best.cost))
-      best = { cost: end.cost, links: count };
-  }
-  if (best === null) return null;
-  // Every link costs something, so the cheapest way never visits a node twice.
-  const route: T[] = [];
-  let node = to;
-  for (let count = best.links; count > 0; count--) {
-    const step = reached[count].get(node)!.step!;
-    route.unshift(step.item);
-    node = step.from;
-  }
-  return route;
 }
 
 // Membership by match, which looks each value up instead of scanning the

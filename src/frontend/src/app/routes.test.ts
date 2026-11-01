@@ -56,6 +56,20 @@ describe("routeFromHash", () => {
     expect(routeFromHash("#map/2?ref=chat")).toMatchObject({ view: null });
   });
 
+  it("reads a route destination and ignores invalid node numbers", () => {
+    for (const to of ["!ffffffff", "4294967295"])
+      expect(routeFromHash(`#map/2?to=${to}`)).toMatchObject({
+        nodeId: 2,
+        view: { to: 0xffffffff },
+      });
+    for (const to of ["0", "!00000000", "4294967296", "-1", "2x", ""])
+      expect(routeFromHash(`#map/2?to=${to}`)).toEqual({
+        page: "map",
+        nodeId: 2,
+        view: { show: [], window: "3d", channel: null },
+      });
+  });
+
   it("reads a shared node page", () => {
     expect(
       routeFromHash("#nodes/!00000002?map=expanded&show=gateways,coverage"),
@@ -149,6 +163,7 @@ describe("view links", () => {
       },
       { show: ["reach", "coverage"], window: "24h", channel: "A, B & C?" },
       { show: [], window: "all", channel: null },
+      { show: [], window: "24h", channel: "LongFast", to: 0xffffffff },
     ];
     for (const view of maps)
       expect(routeFromHash(mapViewHref(0xa1b2c3d4, view))).toEqual({

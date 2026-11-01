@@ -1608,6 +1608,12 @@ thead th {
   justify-self: start;
 }
 
+.map-route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
 /* Label and value side by side; a value may stack a few lines, such as a time and its packet link. */
 .node-summary {
   margin: 0 0 var(--space-5);

@@ -1,11 +1,11 @@
 import type { LinkKind } from "./api";
 import { MARGIN_STOPS } from "./coverageLayer";
+import { MAX_HOP_DEPTH } from "./linkGraph";
 import { demodulationFloor } from "./linkQuality";
 import { LinkQualityLegend, LinkSwatch } from "./MapLinkDetails";
 import {
   type LinkLayerChoice,
   type LinkTierChoice,
-  MAX_HOP_DEPTH,
   MAX_LINK_KM,
 } from "./mapLinkLayers";
 import { ANY, type FilterOption, type NodeFilter } from "./mapNodeFilter";

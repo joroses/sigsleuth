@@ -63,7 +63,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Route | One direction of a traceroute as one gateway reported it ("route to target", "route back"). |
 | Traceroute run | A request and its reply, matched by requester and request packet ID. A window lists the runs whose first packet it holds, with all their packets. |
 | Reached | A route known to have reached its end (`traceroute.reached_end`); others are "not confirmed", not failed. |
-| Hop | One step of a route: X transmitted, Y heard it. A request and its reply reporting that transmission on the same radio channel count once. |
+| Hop | A single relay step where an intermediate node receives and rebroadcasts a packet. A 0-hop relay after the first is discounted. |
 | Direct reception | A reception where the gateway heard the sender with no relay, by a strict rule (`derive.is_direct_reception`) that misses some. |
 | Neighbour info | A node's list of up to 10 nodes it heard directly in the last few hours. |
 | Link | A node pair with radio evidence in the window, per kind (traceroute, direct, neighbour) and per radio channel, never added together. A traceroute's consistent known radio channel applies when a hop is first counted; later reports leave earlier counts unchanged. Otherwise a packet on another channel uses the transmitter's preceding radio channel, else `Unknown`, which has no signal quality. |

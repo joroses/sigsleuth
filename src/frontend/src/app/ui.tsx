@@ -67,6 +67,7 @@ export type IconName =
   | "radio"
   | "route"
   | "share"
+  | "swap"
   | "table";
 
 const iconPaths: Record<IconName, ReactNode> = {
@@ -210,6 +211,8 @@ const iconPaths: Record<IconName, ReactNode> = {
       <path d="m5 16.3 4-7.6M11 8.8l3 5.4M16 14.2l3-7.4" />
     </>
   ),
+  // Two opposite arrows: the same thing the other way round.
+  swap: <path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4" />,
   radio: (
     <>
       <circle cx="12" cy="12" r="2" />

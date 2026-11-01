@@ -60,11 +60,12 @@ const MAP_LAYERS: readonly MapLayer[] = [
 ];
 
 /**
- * A shared map view of one node. It applies to the history entry the link
+ * A shared map view. It applies to the history entry the link
  * opens, never to the saved settings: a layer is on only when `show` lists
  * it, and the nodes are filtered by `channel` alone.
  */
 export interface MapLinkView {
+  to?: number;
   show: MapLayer[];
   window: SeenWindow;
   /** The node filter's channel; null for every channel. */
@@ -267,10 +268,15 @@ function listed<T extends string>(
 
 /** A map link's view; null when it names nothing but the node. */
 function mapLinkView(query: URLSearchParams): MapLinkView | null {
-  if (!["show", "window", "channel"].some((name) => query.has(name)))
+  if (!["show", "window", "channel", "to"].some((name) => query.has(name)))
     return null;
   const window = query.get("window");
+  const to = query.get("to") ?? "";
+  const destination = new RegExp(`^${NODE}$`).test(to) ? nodeNumber(to) : null;
   return {
+    ...(destination !== null && destination <= 0xffffffff
+      ? { to: destination }
+      : {}),
     show: listed(query, MAP_LAYERS),
     window: isSeenWindow(window) ? (window as SeenWindow) : DEFAULT_SEEN_WINDOW,
     channel: query.get("channel") || null,
@@ -289,12 +295,12 @@ function minimapLinkView<T extends string>(
   };
 }
 
-/** The map with the node selected and the view's layers, window and channel. */
 export function mapViewHref(nodeId: number, view: MapLinkView): string {
   const query = new URLSearchParams();
   if (view.show.length > 0) query.set("show", view.show.join(","));
   query.set("window", view.window);
   if (view.channel !== null) query.set("channel", view.channel);
+  if (view.to !== undefined) query.set("to", formatNodeId(view.to));
   return `#map/${formatNodeId(nodeId)}?${decodeCommas(query)}`;
 }
 

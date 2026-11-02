@@ -357,7 +357,7 @@ def report_again(path: Path, node_id: int, hours_later: int, *, moved: bool = Fa
         )
 
 
-def test_a_long_distance_is_pending_until_both_ends_report_again(path: Path) -> None:
+def test_a_long_distance_is_unconfirmed_until_both_ends_report_again(path: Path) -> None:
     d = 0x0D0D0D0D
     for node, name, latitude in (
         (A, "NA", 40.0),
@@ -373,31 +373,33 @@ def test_a_long_distance_is_pending_until_both_ends_report_again(path: Path) -> 
     add_link_hour(path, 3, d, A, observations=1, snr=[-4.0], km=150.1)
     add_link_hour(path, 0, A, d, observations=1, snr=[-4.0], km=150.1)
 
-    def pending() -> dict[tuple[int, int], bool]:
+    def unconfirmed() -> dict[tuple[int, int], bool]:
         return {
-            (item["node_a"], item["node_b"]): "pending" in item["doubts"]
+            (item["node_a"], item["node_b"]): "unconfirmed" in item["doubts"]
             for item in links(path, "/api/v1/links")["items"]
         }
 
     def diagnostics() -> dict[tuple[int, int], bool]:
         return {
-            (item["node_a"]["node"]["node_id"], item["node_b"]["node"]["node_id"]): item["pending"]
+            (item["node_a"]["node"]["node_id"], item["node_b"]["node"]["node_id"]): item[
+                "unconfirmed"
+            ]
             for item in links(path, "/api/v1/diagnostics/longest-links")["items"]
         }
 
-    assert pending() == {(A, B): True, (A, C): False, (A, d): False}
+    assert unconfirmed() == {(A, B): True, (A, C): False, (A, d): False}
     assert diagnostics()[A, B] is True  # the map still draws it
-    pending_only = links(path, "/api/v1/diagnostics/longest-links", only="pending")["items"]
-    assert [item["longest_km"] for item in pending_only] == [111.2]
+    unconfirmed_only = links(path, "/api/v1/diagnostics/longest-links", only="unconfirmed")["items"]
+    assert [item["longest_km"] for item in unconfirmed_only] == [111.2]
 
     report_again(path, A, 2)
     report_again(path, B, 2)
-    assert pending()[A, B] is False
+    assert unconfirmed()[A, B] is False
     assert diagnostics()[A, B] is False
 
     # D then reports a new place: it moved since both hours.
     report_again(path, d, 2, moved=True)
-    assert pending()[A, d] is True
+    assert unconfirmed()[A, d] is True
 
 
 def test_the_map_leaves_out_unmeasured_long_links_but_the_link_table_keeps_them(
@@ -751,18 +753,44 @@ def traced(path: Path, requester: int, target: int, request_id: int) -> None:
     )
 
 
+def test_diagnostics_badges_each_kind_as_the_links_page_does(path: Path) -> None:
+    # A traceroute hop from a wrong position far away, then a neighbour report
+    # from nearer: one link in Diagnostics, two rows on the Links page.
+    add_link_hour(path, 5, A, B, observations=1, snr=[-7.0], km=11_682.0)
+    add_link_hour(path, 0, A, B, observations=1, snr=[-11.5], link_kind="neighbor", km=120.0)
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute(
+            """
+            INSERT INTO long_link (node_a, node_b, km, sea_share, above_meters, confirmed, unlikely)
+            VALUES (?, ?, 11682.0, 0.59, 900.0, 0, 1)
+            """,
+            (A, B),
+        )
+        refresh_estimates(connection)
+    rows = {
+        kind: set(links(path, "/api/v1/links", link_kind=kind)["items"][0]["doubts"])
+        for kind in ("traceroute", "neighbor")
+    }
+    assert rows == {"traceroute": {"terrain", "unconfirmed"}, "neighbor": {"unconfirmed"}}
+
+    [link] = links(path, "/api/v1/diagnostics/longest-links")["items"]
+    # The headline is the row holding the longest hour, the one terrain judged.
+    assert (link["latest_km"], link["doubt"]["reason"]) == (11_682.0, "terrain")
+    assert {item["link_kind"]: set(item["doubts"]) for item in link["evidence"]} == rows
+
+
 @dataclass(frozen=True)
 class Scenario:
     """Where B was when heard (None: unplaced), and the positions it reports
     after, ten minutes apart up to REPORTED_AGAIN, when A reports again too;
-    by default where it was heard. With pending, neither reports again.
+    by default where it was heard. With unconfirmed, neither reports again.
     unlikely is the pair's terrain verdict, None when not judged. G, heard
     directly by B, is doubted_km away when heard (doubting both), or placed
     at g_at."""
 
     b_heard: tuple[float, float] | None = (50.0, 19.2)  # 300 km east of A
     b_later: tuple[tuple[float, float], ...] | None = None
-    pending: bool = False
+    unconfirmed: bool = False
     unlikely: bool | None = False
     doubted_km: float | None = None
     g_at: tuple[float, float] | None = None
@@ -780,7 +808,7 @@ SCENARIOS = {
     # 34 km farther, in steps too short to count as a move.
     "drifted": Scenario(b_later=((50.0, 19.45), (50.0, 19.7))),
     "zones cap": Scenario(b_heard=(50.0, 21.3)),  # 450 km
-    "pending": Scenario(pending=True),
+    "unconfirmed": Scenario(unconfirmed=True),
 }
 
 
@@ -790,13 +818,13 @@ def build(path: Path, scenario: Scenario) -> None:
     places = {A: A_AT, X: (48.0, 10.0), Y: (48.5, 10.0)}
     for node_id, at in places.items():
         reported(path, node_id, before, *at)
-        if not scenario.pending:
+        if not scenario.unconfirmed:
             reported(path, node_id, REPORTED_AGAIN, *at)
     if scenario.b_heard is not None:
         reported(path, B, before, *scenario.b_heard)
     later = scenario.b_later
     if later is None:
-        later = () if scenario.pending or scenario.b_heard is None else (scenario.b_heard,)
+        later = () if scenario.unconfirmed or scenario.b_heard is None else (scenario.b_heard,)
     for steps_left, at in enumerate(reversed(later)):
         reported(path, B, REPORTED_AGAIN - timedelta(minutes=10 * steps_left), *at)
     if scenario.g_at is not None:
@@ -885,7 +913,7 @@ def what_pages_say(path: Path) -> dict[str, object]:
             diagnostics = (
                 evidence["map_hidden_because"],
                 link["doubt"],
-                link["pending"],
+                link["unconfirmed"],
                 link["shown"],
             )
     return {
@@ -920,7 +948,7 @@ EXPECTED: dict[str, dict[str, object]] = {
     "moved": {
         "map": False,
         "zones": False,
-        "links": {"pending"},
+        "links": {"unconfirmed"},
         "explorer": "apart",
         "diagnostics": (because("before NB last moved"), None, True, "hidden"),
     },
@@ -976,10 +1004,10 @@ EXPECTED: dict[str, dict[str, object]] = {
         "explorer": "measured",
         "diagnostics": (None, None, False, "long"),
     },
-    "pending": {
+    "unconfirmed": {
         "map": True,
         "zones": True,
-        "links": {"pending"},
+        "links": {"unconfirmed"},
         "explorer": "apart",
         "diagnostics": (None, None, True, "long"),
     },

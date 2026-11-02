@@ -344,10 +344,10 @@ def test_the_route_sort_puts_a_single_hop_with_a_doubted_distance_last(path: Pat
 
     def order() -> list[tuple[int, bool]]:
         runs = get(path, "/api/v1/traceroutes", sort="route")["items"]
-        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
+        return [(run["target_node_id"], "unconfirmed" in run["doubts"]) for run in runs]
 
-    # B's single hop is its run's distance, pending until B reports again.
-    # R1's pending distance is not the km of its two-hop route.
+    # B's single hop is its run's distance, unconfirmed until B reports again.
+    # R1's unconfirmed distance is not the km of its two-hop route.
     assert order() == [(R1, True), (OTHER, False), (B, True)]
     place(path, B, 41.0, 2.0, NOW + timedelta(hours=2))
     assert order() == [(R1, True), (B, False), (OTHER, False)]
@@ -375,9 +375,9 @@ def test_the_route_sort_keeps_a_single_hop_away_from_the_ends_by_its_km(path: Pa
 
     runs = get(path, "/api/v1/traceroutes", sort="route")["items"]
 
-    # The 133 km between A and B is pending, but it is not the route's km.
+    # The 133 km between A and B is unconfirmed, but it is not the route's km.
     assert [(run["target_node_id"], run["doubts"]) for run in runs] == [
-        (B, ["pending"]),
+        (B, ["unconfirmed"]),
         (OTHER, []),
     ]
     assert (runs[0]["route"]["hops"], runs[0]["route"]["reached"]) == (1, True)
@@ -467,7 +467,7 @@ def heard_only_far_away(path: Path, node_id: int) -> None:
         refresh_estimates(connection)
 
 
-def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Path) -> None:
+def test_the_distance_sort_puts_an_unconfirmed_distance_after_measured_ones(path: Path) -> None:
     place(path, A, 40.0, 2.0)
     place(path, B, 41.0, 2.0)
     place(path, OTHER, 40.5, 2.0)
@@ -476,7 +476,7 @@ def test_the_distance_sort_puts_a_pending_distance_after_measured_ones(path: Pat
 
     def order() -> list[tuple[int, bool]]:
         runs = get(path, "/api/v1/traceroutes", sort="distance")["items"]
-        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
+        return [(run["target_node_id"], "unconfirmed" in run["doubts"]) for run in runs]
 
     # B has not reported a position since its 111 km run; OTHER's 56 km is
     # too short to wait for.
@@ -520,9 +520,9 @@ def test_a_broadcast_run_is_measured_and_ranked_by_its_reply(path: Path) -> None
 
     def order(sort: str) -> list[tuple[int, bool]]:
         runs = get(path, "/api/v1/traceroutes", sort=sort)["items"]
-        return [(run["target_node_id"], "pending" in run["doubts"]) for run in runs]
+        return [(run["target_node_id"], "unconfirmed" in run["doubts"]) for run in runs]
 
-    # The run's distance is B's reply's 111 km, pending until B reports
+    # The run's distance is B's reply's 111 km, unconfirmed until B reports
     # again; its single hop joins A and B, so it is that distance.
     for sort in ("distance", "route"):
         assert order(sort) == [(OTHER, False), (BROADCAST, True)]

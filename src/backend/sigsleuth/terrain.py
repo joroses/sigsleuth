@@ -227,12 +227,13 @@ def check_long_link(a: End, b: End, terrain: Terrain, confirmed: bool = False) -
         terrain.height(lat, lon, PATH_ZOOM) for lat, lon in path_points(a[0], a[1], b[0], b[1])
     ]
     between = heights[1:-1] or heights
-    sea_share = sum(height < SEA_M for height in between) / len(between)
+    # Decided on the rounded figures it saves, so they always explain the verdict.
+    sea_share = round(sum(height < SEA_M for height in between) / len(between), 2)
     ground = statistics.median(max(height, 0.0) for height in between)
-    above = max(_end_height(end, terrain) for end in (a, b)) - ground
+    above = round(max(_end_height(end, terrain) for end in (a, b)) - ground)
     return LongLinkCheck(
-        sea_share=round(sea_share, 2),
-        above_meters=round(above),
+        sea_share=sea_share,
+        above_meters=above,
         confirmed=confirmed,
         unlikely=not confirmed
         and (

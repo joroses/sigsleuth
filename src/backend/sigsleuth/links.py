@@ -20,8 +20,8 @@ Two views of where a link's nodes are, each decided here once:
   from current positions, which would mix two moments. link_doubts says why
   such a distance is doubted (Doubt): a suspect signal distance, a shared or
   doubtful end, unlikely by terrain,
-  or pending until both ends have reported a position since it was heard,
-  without moving (confirmed_sql). Pages badge those and rank them apart from
+  or unconfirmed: an end has not reported a position since it was heard, or
+  moved since (confirmed_sql). Pages badge those and rank them apart from
   measured links; links with no distance come last.
 
 Both views share the terrain test (_unlikely_far). Diagnostics explains the
@@ -62,13 +62,13 @@ MAX_ESTIMATED_LINK_KM = 150
 LONG_LINK_KM = 250
 
 # Distance rankings (Links page, Traceroute explorer, Diagnostics): a distance
-# heard this far apart or more ranks apart while pending. It is confirmed once
+# heard this far apart or more ranks apart while unconfirmed. It is confirmed once
 # both ends have reported a position since it was heard and neither has moved
 # since (confirmed_sql): a node that moved and has not reported yet is
 # measured from where it was. On live, 14 days to 2026-10-15, 94% of
 # link hours of 100 km or more were confirmed within a day and 99% within
 # three; 45 of 8,909 had an end that moved since.
-PENDING_KM = 100
+UNCONFIRMED_KM = 100
 
 
 def confirmed_sql(node: str, at: str) -> str:
@@ -104,12 +104,16 @@ def trusted_sql(node: str, at: str) -> str:
             AND {at} >= (SELECT moved_at FROM node_current WHERE node_id = {node})))"""
 
 
-# 2026-10-28 signal study: a conservative heuristic, not a physical bound.
+# 2026-10-28 signal study: a conservative heuristic, not a physical bound. A
+# direct reception SUSPECT_MIN_KM or more apart is suspect when its signal
+# would need over SUSPECT_POWER_DBM of transmit power in free space.
+SUSPECT_MIN_KM = 10
+SUSPECT_POWER_DBM = 80
 # Skip coordinate changes, including the transition from before the hour:
 # hourly signal means can otherwise mix a nearby reading with a distant one.
-SUSPECT_DISTANCE = f"""CASE WHEN link_kind = 'direct' AND km >= 10 AND rssi_count > 0
+SUSPECT_DISTANCE = f"""CASE WHEN link_kind = 'direct' AND km >= {SUSPECT_MIN_KM} AND rssi_count > 0
     AND rssi_sum / rssi_count + min(coalesce(snr_sum / nullif(snr_count, 0), 0), 0)
-        + {32.45 + 20 * math.log10(869.5)} + 20 * log10(km) > 80
+        + {32.45 + 20 * math.log10(869.5)} + 20 * log10(km) > {SUSPECT_POWER_DBM}
     THEN NOT EXISTS (
         SELECT 1 FROM node_position AS signal_position
         JOIN node_position AS previous_position
@@ -276,8 +280,8 @@ def _fits_now(
 Misfit = Literal["terrain", "unmeasured", "estimated_far", "too_far", "drifted"]
 # Why link pages badge a distance when heard and rank it apart (link_doubts):
 # a suspect signal distance, an end that is a shared node number, a doubtful
-# end, unlikely terrain, or pending.
-Doubt = Literal["shared", "doubtful", "terrain", "pending", "signal"]
+# end, unlikely terrain, or unconfirmed.
+Doubt = Literal["shared", "doubtful", "terrain", "unconfirmed", "signal"]
 
 
 def _unlikely_far(heard_km: float | None, unlikely: bool) -> bool:
@@ -337,8 +341,8 @@ def link_doubts(
         doubts.append("doubtful")
     if _unlikely_far(heard_km, unlikely):
         doubts.append("terrain")
-    if heard_km >= PENDING_KM and not confirmed:
-        doubts.append("pending")
+    if heard_km >= UNCONFIRMED_KM and not confirmed:
+        doubts.append("unconfirmed")
     return tuple(doubts)
 
 
@@ -354,7 +358,7 @@ def _hourly_links(
 ) -> list[sqlite3.Row]:
     """map_links' rows, one more than limit when there are more, with each
     link's distance when last heard: km of its newest hour in link_hour. With
-    confirmed, confirmed_hours counts its confirmed hours of PENDING_KM or more
+    confirmed, confirmed_hours counts its confirmed hours of UNCONFIRMED_KM or more
     (CONFIRMED_HOUR). With node, only that node's links."""
     since_ms = 0 if since is None else to_epoch_ms(since)
     # The output limit does not bound this sum: a window sums every hourly row
@@ -373,7 +377,7 @@ def _hourly_links(
     # Only long hours look node_current up. total, not max: a second max would
     # stop km coming from the newest hour.
     confirmed_hours = (
-        f"total(CASE WHEN km >= :pending_km THEN {CONFIRMED_HOUR} END)" if confirmed else "0"
+        f"total(CASE WHEN km >= :unconfirmed_km THEN {CONFIRMED_HOUR} END)" if confirmed else "0"
     )
     return connection.execute(
         f"""
@@ -414,7 +418,7 @@ def _hourly_links(
             "since": since_ms - since_ms % HOUR_MS,
             "channel": channel,
             "limit": limit + 1,
-            "pending_km": PENDING_KM,
+            "unconfirmed_km": UNCONFIRMED_KM,
             "node": node,
         },
     ).fetchall()
@@ -554,7 +558,7 @@ class LinkRow(MapLink):
     positions when the link was last heard in the window (last_seen_at),
     None when either had none then, and why that distance is doubted
     (link_doubts): by distance a doubted link ranks apart. It is confirmed
-    when any hour PENDING_KM or more in the window is. On a shared node
+    when any hour UNCONFIRMED_KM or more in the window is. On a shared node
     number's own table, radio_names are the radios sorted packets show on
     the link (shared_numbers.link_radios), none when none do."""
 

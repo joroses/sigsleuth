@@ -29,7 +29,7 @@ from sigsleuth.derive import HOUR_MS
 from sigsleuth.link_channels import packet_radio_channel
 from sigsleuth.links import (
     LONG_LINK_KM,
-    PENDING_KM,
+    UNCONFIRMED_KM,
     Doubt,
     HopCost,
     RouteHopCost,
@@ -295,7 +295,7 @@ def traceroute_runs(
             "channel": channel,
             "min_hops": min_hops,
             "long_km": LONG_LINK_KM,
-            "pending_km": PENDING_KM,
+            "unconfirmed_km": UNCONFIRMED_KM,
             "limit": limit,
             "offset": offset,
             "packet": packet_row_id,
@@ -308,7 +308,7 @@ def traceroute_runs(
         f"""
         SELECT tr.*, t.first_received_at, t.channel, t.reception_count,
                t.sender_node_id, t.recipient_node_id,
-               CASE WHEN tr.ends_km >= :pending_km THEN
+               CASE WHEN tr.ends_km >= :unconfirmed_km THEN
                    {confirmed_sql("tr.requester_node_id", "t.first_received_at")}
                    AND {confirmed_sql("tr.target_node_id", "t.first_received_at")}
                END AS ends_confirmed
@@ -319,7 +319,7 @@ def traceroute_runs(
         ORDER BY tr.packet_row_id
         """,
         {
-            "pending_km": PENDING_KM,
+            "unconfirmed_km": UNCONFIRMED_KM,
             "runs": json.dumps(
                 [[row["requester_node_id"], row["request_packet_id"]] for row in shown]
             ),
@@ -535,7 +535,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
             k.requester_node_id {_IN_DOUBTFUL} OR k.target_node_id {_IN_DOUBTFUL}
             OR (k.ends_km >= :long_km
                 AND {_UNLIKELY_PAIR.format(a="k.requester_node_id", b="k.target_node_id")})
-            OR (k.ends_km >= :pending_km AND NOT (
+            OR (k.ends_km >= :unconfirmed_km AND NOT (
                 SELECT {confirmed_sql("e.requester_node_id", "t.first_received_at")}
                    AND {confirmed_sql("e.target_node_id", "t.first_received_at")}
                 FROM traceroute_packet AS e JOIN packet AS t ON t.id = e.packet_row_id

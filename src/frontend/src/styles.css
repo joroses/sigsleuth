@@ -1938,9 +1938,18 @@ thead th {
   margin-bottom: 0;
 }
 
-.section-intro p {
+.section-intro p,
+.section-intro ul {
   color: var(--muted);
   margin-top: var(--space-2);
+}
+
+.section-intro ul {
+  padding-left: 1.25rem;
+}
+
+.section-intro > p:first-child {
+  margin-top: 0;
 }
 
 .table-wrap {
@@ -2113,6 +2122,135 @@ button.text-button:hover:not(:disabled) {
 .diagnostics-page h4 {
   margin: 1.25rem 0 0.65rem;
   color: var(--text);
+}
+
+/* An open long link: a card per factor its flags weigh. */
+.long-link-factors {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.diagnostics-page .long-link-factor {
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.long-link-factor > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.diagnostics-page .long-link-factor > header > h4 {
+  margin: 0 var(--space-2) 0 0;
+  font-size: var(--text-lg);
+}
+
+.long-link-factor .longest-link-checks {
+  margin-top: var(--space-3);
+}
+
+.long-link-factor .table-wrap {
+  background: var(--canvas);
+}
+
+.long-link-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  align-items: baseline;
+  margin: 0;
+}
+
+.long-link-facts > div,
+.long-link-help > div {
+  display: contents;
+}
+
+.long-link-facts dt {
+  color: var(--muted);
+}
+
+.long-link-facts dd,
+.long-link-help dd {
+  margin: 0;
+}
+
+.long-link-ends tbody th {
+  color: var(--muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.long-link-context {
+  margin-bottom: var(--space-2);
+  color: var(--muted);
+}
+
+.long-link-context.long-link-result {
+  margin: var(--space-3) 0 0;
+}
+
+.long-link-help {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-4) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.long-link-help dt,
+.long-link-help strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.long-link-help .longest-link-actions {
+  margin-top: var(--space-2);
+}
+
+.long-link-pass {
+  color: var(--accent);
+}
+
+.long-link-fail {
+  color: var(--amber);
+}
+
+@media (max-width: 700px) {
+  .diagnostics-page .long-link-factor {
+    padding: var(--space-3);
+  }
+
+  .long-link-factor :is(th, td) {
+    padding: var(--space-2);
+  }
+
+  .long-link-ends tbody th {
+    white-space: normal;
+  }
+
+  .long-link-facts,
+  .long-link-help {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .long-link-facts > div + div > dt,
+  .long-link-help > div + div > dt {
+    margin-top: var(--space-2);
+  }
 }
 
 .reason-link {

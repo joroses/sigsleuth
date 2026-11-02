@@ -4956,6 +4956,7 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     node_b:
       node:
         node_id: 2718938342
@@ -4977,12 +4978,13 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 161
+      over_limit: false
     longest_km: 204.1
     longest_at: "2026-10-11T16:22:08.338000Z"
     long_heard_at: null
     shortest_km: 204.1
     latest_km: 204.1
-    pending: true
+    unconfirmed: true
     now_km: 204.1
     drawn_km: 204.1
     shown: "long"
@@ -4999,8 +5001,34 @@ items: 30 items
         last_seen_at: "2026-10-11T16:22:08.338000Z"
         longest_km: 204.1
         map_hidden_because: null
+        doubts: ["unconfirmed"]
     terrain: null
-    checks: ["Heard only once."]
+    checks: 1 items
+      - kind: "heard_once"
+        node_id: null
+    reach:
+      link_kind: "neighbor"
+      channel: "ShortFast"
+      before_at: "2026-10-11T16:00:00Z"
+      ends: 2 items
+        - node_id: 173442116
+          partners: 13
+          hours: 15
+          days: 4
+          first_hour_at: "2026-10-08T20:00:00Z"
+          last_seen_at: "2026-10-11T15:10:45.192000Z"
+          median_km: 1.5
+          iqr_km: 2.3
+          threshold_km: 161.4
+        - node_id: 2718938342
+          partners: 21
+          hours: 11
+          days: 4
+          first_hour_at: "2026-10-08T19:00:00Z"
+          last_seen_at: "2026-10-11T13:13:10.260000Z"
+          median_km: 79
+          iqr_km: 70.1
+          threshold_km: 597.3
   - node_a:
       node:
         node_id: 2718938342
@@ -5022,6 +5050,7 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 161
+      over_limit: false
     node_b:
       node:
         node_id: 3288624448
@@ -5043,12 +5072,13 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     longest_km: 202.6
     longest_at: "2026-10-10T16:21:57.277000Z"
     long_heard_at: null
     shortest_km: 202.6
     latest_km: 202.6
-    pending: false
+    unconfirmed: false
     now_km: 202.6
     drawn_km: 202.6
     shown: "long"
@@ -5065,8 +5095,34 @@ items: 30 items
         last_seen_at: "2026-10-10T16:21:57.277000Z"
         longest_km: 202.6
         map_hidden_because: null
+        doubts: []
     terrain: null
-    checks: ["Heard only once."]
+    checks: 1 items
+      - kind: "heard_once"
+        node_id: null
+    reach:
+      link_kind: "neighbor"
+      channel: "ShortFast"
+      before_at: "2026-10-10T16:00:00Z"
+      ends: 2 items
+        - node_id: 2718938342
+          partners: 16
+          hours: 9
+          days: 3
+          first_hour_at: "2026-10-08T19:00:00Z"
+          last_seen_at: "2026-10-10T07:13:01.478000Z"
+          median_km: 82
+          iqr_km: 29.575
+          threshold_km: 484.725
+        - node_id: 3288624448
+          partners: 6
+          hours: 6
+          days: 3
+          first_hour_at: "2026-10-08T20:00:00Z"
+          last_seen_at: "2026-10-10T04:22:00.382000Z"
+          median_km: 1.5
+          iqr_km: 1.05
+          threshold_km: 157.65
   - node_a:
       node:
         node_id: 2933499666
@@ -5088,6 +5144,7 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     node_b:
       node:
         node_id: 3596185440
@@ -5109,12 +5166,13 @@ items: 30 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     longest_km: 171.3
     longest_at: "2026-10-11T07:00:58.905000Z"
     long_heard_at: null
     shortest_km: 171.3
     latest_km: 171.3
-    pending: false
+    unconfirmed: false
     now_km: 171.3
     drawn_km: 171.3
     shown: "long"
@@ -5131,6 +5189,7 @@ items: 30 items
         last_seen_at: "2026-10-11T03:10:44.666000Z"
         longest_km: 171.3
         map_hidden_because: null
+        doubts: []
       - link_kind: "traceroute"
         a_to_b: 0
         b_to_a: 11
@@ -5141,12 +5200,55 @@ items: 30 items
         last_seen_at: "2026-10-11T07:00:58.905000Z"
         longest_km: 171.3
         map_hidden_because: null
+        doubts: []
     terrain: null
     checks: []
+    reach:
+      link_kind: "traceroute"
+      channel: "ShortFast"
+      before_at: "2026-10-11T07:00:00Z"
+      ends: 2 items
+        - node_id: 2933499666
+          partners: 13
+          hours: 52
+          days: 4
+          first_hour_at: "2026-10-08T18:00:00Z"
+          last_seen_at: "2026-10-11T06:46:27.870000Z"
+          median_km: 50.4
+          iqr_km: 20.1
+          threshold_km: 361.5
+        - node_id: 3596185440
+          partners: 22
+          hours: 25
+          days: 3
+          first_hour_at: "2026-10-09T13:00:00Z"
+          last_seen_at: "2026-10-11T06:39:45.331000Z"
+          median_km: 70.35
+          iqr_km: 43.1
+          threshold_km: 490.35
 looked_through: 30
 lowest_km: 110.8
 oldest_hour_at: null
 next_offset: 30
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=30&order=latest
 
@@ -5155,6 +5257,25 @@ looked_through: 0
 lowest_km: null
 oldest_hour_at: null
 next_offset: null
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
 
 ## GET /api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely
 
@@ -5163,6 +5284,25 @@ looked_through: 330
 lowest_km: 16.4
 oldest_hour_at: null
 next_offset: 330
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=300&only=signal
 
@@ -5171,6 +5311,290 @@ looked_through: 300
 lowest_km: 18.9
 oldest_hour_at: null
 next_offset: 300
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=300&only=unconfirmed
+
+items: 5 items
+  - node_a:
+      node:
+        node_id: 173442116
+        long_name: "Node 8444"
+        short_name: "8444"
+        role: "CLIENT_BASE"
+        latitude: 51.3606
+        longitude: 19.3528
+        estimated: false
+      altitude_meters: 219
+      position_observed_at: "2026-10-11T14:35:41.545000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+      over_limit: false
+    node_b:
+      node:
+        node_id: 2718938342
+        long_name: "Node b4e6"
+        short_name: "b4e6"
+        role: "ROUTER"
+        latitude: 49.5256
+        longitude: 19.3135
+        estimated: false
+      altitude_meters: 1539
+      position_observed_at: "2026-10-11T16:22:57.964000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 161
+      over_limit: false
+    longest_km: 204.1
+    longest_at: "2026-10-11T16:22:08.338000Z"
+    long_heard_at: null
+    shortest_km: 204.1
+    latest_km: 204.1
+    unconfirmed: true
+    now_km: 204.1
+    drawn_km: 204.1
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "neighbor"
+        a_to_b: 0
+        b_to_a: 1
+        hours: 1
+        average_snr: -4.75
+        zero_snr: false
+        first_hour_at: "2026-10-11T16:00:00Z"
+        last_seen_at: "2026-10-11T16:22:08.338000Z"
+        longest_km: 204.1
+        map_hidden_because: null
+        doubts: ["unconfirmed"]
+    terrain: null
+    checks: 1 items
+      - kind: "heard_once"
+        node_id: null
+    reach:
+      link_kind: "neighbor"
+      channel: "ShortFast"
+      before_at: "2026-10-11T16:00:00Z"
+      ends: 2 items
+        - node_id: 173442116
+          partners: 13
+          hours: 15
+          days: 4
+          first_hour_at: "2026-10-08T20:00:00Z"
+          last_seen_at: "2026-10-11T15:10:45.192000Z"
+          median_km: 1.5
+          iqr_km: 2.3
+          threshold_km: 161.4
+        - node_id: 2718938342
+          partners: 21
+          hours: 11
+          days: 4
+          first_hour_at: "2026-10-08T19:00:00Z"
+          last_seen_at: "2026-10-11T13:13:10.260000Z"
+          median_km: 79
+          iqr_km: 70.1
+          threshold_km: 597.3
+  - node_a:
+      node:
+        node_id: 2593780688
+        long_name: "Node f3d0"
+        short_name: "f3d0"
+        role: "CLIENT_MUTE"
+        latitude: 49.2372
+        longitude: 19.9819
+        estimated: false
+      altitude_meters: 1982
+      position_observed_at: "2026-10-11T15:19:57.965000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 183
+      over_limit: false
+    node_b:
+      node:
+        node_id: 2997305080
+        long_name: "Node 3ef8"
+        short_name: "3ef8"
+        role: "CLIENT_BASE"
+        latitude: 50.2071
+        longitude: 19.1037
+        estimated: false
+      altitude_meters: 321
+      position_observed_at: "2026-10-11T13:05:38.072000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+      over_limit: false
+    longest_km: 125
+    longest_at: "2026-10-11T15:21:49.297000Z"
+    long_heard_at: null
+    shortest_km: 125
+    latest_km: 125
+    unconfirmed: true
+    now_km: 125
+    drawn_km: 125
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "traceroute"
+        a_to_b: 2
+        b_to_a: 0
+        hours: 1
+        average_snr: 11.38
+        zero_snr: false
+        first_hour_at: "2026-10-11T15:00:00Z"
+        last_seen_at: "2026-10-11T15:21:49.297000Z"
+        longest_km: 125
+        map_hidden_because: null
+        doubts: ["unconfirmed"]
+    terrain: null
+    checks: 1 items
+      - kind: "traceroute_only"
+        node_id: null
+    reach: null
+  - node_a:
+      node:
+        node_id: 2483997066
+        long_name: "Node c98a"
+        short_name: "c98a"
+        role: "ROUTER"
+        latitude: 49.5649
+        longitude: 19.2479
+        estimated: false
+      altitude_meters: 1366
+      position_observed_at: "2026-10-11T09:41:20.113000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 152
+      over_limit: false
+    node_b:
+      node:
+        node_id: 3806451940
+        long_name: "Node d8e4"
+        short_name: "d8e4"
+        role: "ROUTER"
+        latitude: 50.4562
+        longitude: 20.2179
+        estimated: false
+      altitude_meters: 375
+      position_observed_at: "2026-10-09T08:10:56.205000Z"
+      position_from_map_report: false
+      moved_at: null
+      doubtful: false
+      shared: false
+      direct_partners: 0
+      blamed_partners: 0
+      traceroute_corroborated: false
+      nearest_partner_km: null
+      median_partner_km: null
+      doubt_limit_km: 150
+      over_limit: false
+    longest_km: 120.9
+    longest_at: "2026-10-11T15:21:55.991000Z"
+    long_heard_at: null
+    shortest_km: 120.9
+    latest_km: 120.9
+    unconfirmed: true
+    now_km: 120.9
+    drawn_km: 120.9
+    shown: "long"
+    doubt: null
+    channels: ["ShortFast"]
+    evidence: 1 items
+      - link_kind: "traceroute"
+        a_to_b: 5
+        b_to_a: 0
+        hours: 5
+        average_snr: -7
+        zero_snr: false
+        first_hour_at: "2026-10-09T19:00:00Z"
+        last_seen_at: "2026-10-11T15:21:55.991000Z"
+        longest_km: 120.9
+        map_hidden_because: null
+        doubts: ["unconfirmed"]
+    terrain: null
+    checks: 1 items
+      - kind: "traceroute_only"
+        node_id: null
+    reach: null
+looked_through: 300
+lowest_km: 18.9
+oldest_hour_at: null
+next_offset: 300
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=300&node=3655149723
 
@@ -5196,6 +5620,7 @@ items: 25 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     node_b:
       node:
         node_id: 3655149723
@@ -5217,12 +5642,13 @@ items: 25 items
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150
+      over_limit: false
     longest_km: 135.5
     longest_at: "2026-10-11T13:56:10.833000Z"
     long_heard_at: null
     shortest_km: 135.5
     latest_km: 135.5
-    pending: false
+    unconfirmed: false
     now_km: 135.5
     drawn_km: 135.5
     shown: "long"
@@ -5239,8 +5665,12 @@ items: 25 items
         last_seen_at: "2026-10-11T13:56:10.833000Z"
         longest_km: 135.5
         map_hidden_because: null
+        doubts: []
     terrain: null
-    checks: ["Only traceroutes report it: no direct reception or neighbour report."]
+    checks: 1 items
+      - kind: "traceroute_only"
+        node_id: null
+    reach: null
   - node_a:
       node:
         node_id: 2933499666
@@ -5262,6 +5692,7 @@ items: 25 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     node_b:
       node:
         node_id: 3655149723
@@ -5283,12 +5714,13 @@ items: 25 items
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150
+      over_limit: false
     longest_km: 64.4
     longest_at: "2026-10-11T16:21:06.845000Z"
     long_heard_at: null
     shortest_km: 64.4
     latest_km: 64.4
-    pending: false
+    unconfirmed: false
     now_km: 64.4
     drawn_km: 64.4
     shown: "long"
@@ -5305,6 +5737,7 @@ items: 25 items
         last_seen_at: "2026-10-11T15:10:45.192000Z"
         longest_km: 64.4
         map_hidden_because: null
+        doubts: []
       - link_kind: "traceroute"
         a_to_b: 577
         b_to_a: 3
@@ -5315,8 +5748,10 @@ items: 25 items
         last_seen_at: "2026-10-11T16:21:06.845000Z"
         longest_km: 64.4
         map_hidden_because: null
+        doubts: []
     terrain: null
     checks: []
+    reach: null
   - node_a:
       node:
         node_id: 1130037880
@@ -5338,6 +5773,7 @@ items: 25 items
       nearest_partner_km: null
       median_partner_km: null
       doubt_limit_km: 150
+      over_limit: false
     node_b:
       node:
         node_id: 3655149723
@@ -5359,12 +5795,13 @@ items: 25 items
       nearest_partner_km: 1.5
       median_partner_km: 2
       doubt_limit_km: 150
+      over_limit: false
     longest_km: 44.6
     longest_at: "2026-10-11T07:46:48.599000Z"
     long_heard_at: null
     shortest_km: 44.6
     latest_km: 44.6
-    pending: false
+    unconfirmed: false
     now_km: 44.6
     drawn_km: 44.6
     shown: "long"
@@ -5381,12 +5818,35 @@ items: 25 items
         last_seen_at: "2026-10-11T07:46:48.599000Z"
         longest_km: 44.6
         map_hidden_because: null
+        doubts: []
     terrain: null
-    checks: ["Only traceroutes report it: no direct reception or neighbour report."]
+    checks: 1 items
+      - kind: "traceroute_only"
+        node_id: null
+    reach: null
 looked_through: 25
 lowest_km: 0.9
 oldest_hour_at: null
 next_offset: null
+rules:
+  long_link_km: 250
+  unconfirmed_km: 100
+  moved_km: 25
+  partner_days: 7
+  doubtful_partner_km: 150
+  local_partner_km: 60
+  stale_position_hours: 6
+  terrain_above_meters: 300
+  terrain_sea_share: 0.5
+  terrain_max_land_km: 600
+  confirming_partner_km: 60
+  signal_min_km: 10
+  signal_power_dbm: 80
+  reach_review_km: 150
+  reach_factor: 3
+  reach_partners: 3
+  reach_hours: 3
+  reach_days: 2
 
 ## GET /api/v1/diagnostics/relay-checks?count=25
 

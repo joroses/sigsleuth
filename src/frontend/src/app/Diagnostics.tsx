@@ -35,12 +35,11 @@ import {
   diagnosticsPacketsHref,
   formatKm,
   formatNodeId,
-  lineOfSightHref,
   nodeLabel,
   nodeName,
   relayChecksHref,
-  tracerouteHopHref,
 } from "./nodeDisplay";
+import { LongLinkItem, ShownBadge } from "./LongLinks";
 import { NodeSearch } from "./NodeSearch";
 import { PagedPacketTable, PortSelect } from "./PacketTable";
 import {
@@ -61,14 +60,13 @@ import {
   IconName,
   NodeLink,
   OpenedAt,
-  PendingBadge,
   ShortTime,
   StatusPanel,
   WideTable,
 } from "./ui";
 
 export type DiagnosticsTab =
-  "overview" | "doubtful" | "devices" | "links" | "relays" | "packets";
+  "overview" | "links" | "doubtful" | "devices" | "relays" | "packets";
 
 const TABS: {
   tab: DiagnosticsTab;
@@ -83,22 +81,22 @@ const TABS: {
     href: "#diagnostics",
   },
   {
+    tab: "links",
+    icon: "links",
+    label: "Long links",
+    href: diagnosticsLinksHref(),
+  },
+  {
     tab: "doubtful",
     icon: "locate",
-    label: "Doubtful nodes",
+    label: "Positions to check",
     href: "#diagnostics/doubtful",
   },
   {
     tab: "devices",
     icon: "nodes",
-    label: "Device reports",
+    label: "ID conflicts",
     href: "#diagnostics/devices",
-  },
-  {
-    tab: "links",
-    icon: "links",
-    label: "Long links",
-    href: diagnosticsLinksHref(),
   },
   {
     tab: "relays",
@@ -164,12 +162,6 @@ export function Diagnostics({
     opened.includes(which) ? <div hidden={tab !== which}>{content}</div> : null;
   return (
     <div className="diagnostics-page">
-      <div className="detail-heading">
-        <div>
-          <p className="eyebrow">Operator tool</p>
-          <h2>Diagnostics</h2>
-        </div>
-      </div>
       <nav className="page-tabs" aria-label="Diagnostics views">
         {TABS.map((item) => (
           <a
@@ -318,10 +310,7 @@ function SummarySection({ state }: { state: ApiState<DiagnosticsSummary> }) {
   const summary = state.data;
   const database = summary.database;
   return (
-    <section aria-labelledby="overview-heading">
-      <div className="section-intro compact">
-        <h3 id="overview-heading">Overview</h3>
-      </div>
+    <section aria-label="Overview">
       <div className="diagnostic-facts">
         <dl>
           <DataItem
@@ -418,8 +407,9 @@ function SkippedSection({ state }: { state: ApiState<DiagnosticsSummary> }) {
       <div className="section-intro compact">
         <h3 id="diagnostic-skipped-heading">Skipped deliveries</h3>
         <p>
-          MQTT deliveries capture did not save, by reason, since capture
-          started. They are not in the database.
+          Messages from MQTT that SigSleuth threw away instead of saving,
+          counted by reason since capture last started. They were never saved,
+          so they don&apos;t appear anywhere else.
         </p>
       </div>
       {capture === null ? (
@@ -475,12 +465,13 @@ function PacketsSection({
   };
 
   return (
-    <section aria-labelledby="diagnostic-packets-heading">
+    <section aria-label="Packets">
       <div className="section-intro compact">
-        <h3 id="diagnostic-packets-heading">Packets</h3>
         <p>
-          Saved packets, newest first. Choose a sender, then a gateway, to see
-          the packets that gateway heard from it with no relay.
+          Every saved packet, newest first. To see what a gateway hears straight
+          from a node, with no relay in between, pick the node under{" "}
+          <strong>From</strong>, then the gateway under{" "}
+          <strong>Heard directly by</strong>.
         </p>
       </div>
       <div className="nodes-toolbar">
@@ -516,40 +507,6 @@ function PacketsSection({
   );
 }
 
-const KIND_LABELS = {
-  direct: "Direct receptions",
-  neighbor: "Neighbour reports",
-  traceroute: "Traceroute hops",
-} as const;
-
-const KIND_TAGS = {
-  direct: "direct",
-  neighbor: "neighbour",
-  traceroute: "traceroute",
-} as const;
-
-const SHOWN = {
-  long: {
-    label: "still shown long",
-    tone: "red",
-    // eslint-disable-next-line local/hover-text -- names both pages and the distance they use
-    title:
-      "The map draws it, or the Links page ranks it without a badge, at about its longest distance.",
-  },
-  shorter: {
-    label: "now shorter",
-    tone: "green",
-    // eslint-disable-next-line local/hover-text -- says what shortened it
-    title:
-      "Pages now show a newer, shorter distance: an end moved back or its position was corrected.",
-  },
-  hidden: {
-    label: "hidden",
-    tone: "neutral",
-    title: "Hidden from the map, ranked apart on Links",
-  },
-} as const;
-
 const LINK_FILTERS: { value: LongLinkFilter | "all"; label: string }[] = [
   { value: "all", label: "All links" },
   { value: "long", label: "Still shown long" },
@@ -559,7 +516,7 @@ const LINK_FILTERS: { value: LongLinkFilter | "all"; label: string }[] = [
   { value: "position", label: "Doubtful position" },
   { value: "unlikely", label: "Unlikely by terrain" },
   { value: "signal", label: "Signal mismatch" },
-  { value: "pending", label: "Pending" },
+  { value: "unconfirmed", label: "Unconfirmed" },
   { value: "checks", label: "With checks to review" },
 ];
 
@@ -602,10 +559,15 @@ function LongestLinksSection({
   for (const item of state.data?.items ?? []) counts[item.shown] += 1;
   const data = state.data;
   return (
-    <section aria-labelledby="diagnostic-longest-heading">
+    <section aria-label="Long links">
       <div className="section-intro compact">
-        <h3 id="diagnostic-longest-heading">Long links</h3>
-        <p>Long links for review.</p>
+        <p>
+          The longest distances between two nodes that heard each other. A long
+          link can be real, or a sign that one end&apos;s position is wrong.
+          Each one shows whether the map still draws it, now draws a shorter,
+          newer distance, or hides it. Open a link to see why, and what to check
+          to decide whether it&apos;s real.
+        </p>
       </div>
       <div className="nodes-toolbar">
         <select
@@ -652,13 +614,12 @@ function LongestLinksSection({
           {only === null && data.items.length > 0 ? (
             <p className="longest-links-counts">
               {(["long", "shorter", "hidden"] as const).map((kind) => (
-                <Badge
+                <ShownBadge
                   key={kind}
-                  tone={SHOWN[kind].tone}
-                  title={SHOWN[kind].title}
-                >
-                  {counts[kind]} {SHOWN[kind].label}
-                </Badge>
+                  shown={kind}
+                  rules={data.rules}
+                  count={counts[kind]}
+                />
               ))}
             </p>
           ) : null}
@@ -670,6 +631,7 @@ function LongestLinksSection({
                   <LongLinkItem
                     key={key}
                     link={item}
+                    rules={data.rules}
                     latest={order === "latest"}
                     open={opened.includes(key)}
                     onToggle={(open) =>
@@ -867,20 +829,22 @@ const LONG_LINKS_VIEW = "diagnostics.longLinks";
 function DoubtfulNodesSection() {
   const state = useApi<DoubtfulNodeList>(doubtfulNodesUrl);
   return (
-    <section aria-labelledby="diagnostic-doubtful-heading">
+    <section aria-label="Positions to check">
       <div className="section-intro compact">
-        <h3 id="diagnostic-doubtful-heading">Doubtful nodes</h3>
         <p>
-          Nodes whose position looks wrong: their links don&apos;t fit it, they
-          were in the air, or their links are too long for the terrain.
+          Nodes that may not be where the map puts them. A node is listed when
+          the nodes that hear it directly are mostly too far away, when its
+          altitude says it was flying, or when two or more of its long links are
+          unlikely over the terrain. The map hides links from nodes marked
+          doubtful.
         </p>
       </div>
       {state.error !== null ? (
         <StatusPanel tone="error">{state.error}</StatusPanel>
       ) : state.data === null ? (
-        <StatusPanel>Loading doubtful nodes…</StatusPanel>
+        <StatusPanel>Loading positions to check…</StatusPanel>
       ) : state.data.items.length === 0 ? (
-        <p className="empty-inline">No node is doubted.</p>
+        <p className="empty-inline">No position to check.</p>
       ) : (
         <WideTable>
           <table>
@@ -954,15 +918,27 @@ function DeviceConflictsSection() {
       ? 0
       : Object.values(counts).reduce((sum, count) => sum + count, 0);
   return (
-    <section aria-labelledby="diagnostic-devices-heading">
+    <section aria-label="ID conflicts">
       <div className="section-intro compact">
-        <h3 id="diagnostic-devices-heading">Conflicting device reports</h3>
         <p>
-          IDs reporting different MAC addresses or public keys. Shared by two
-          radios: both were on air at once, one's NodeInfo sent inside the
-          other's packet counter run. New MAC: a replaced radio, or two radios
-          not caught on air together.
+          Node IDs that have reported more than one MAC address or public key.
+          There are three cases:
         </p>
+        <ul>
+          <li>
+            <strong>Shared by two radios:</strong> two radios use this ID at the
+            same time, so SigSleuth can&apos;t tell them apart and hides their
+            links.
+          </li>
+          <li>
+            <strong>New MAC:</strong> the radio was probably replaced, or two
+            radios used the ID but never at the same moment.
+          </li>
+          <li>
+            <strong>New key only:</strong> the same radio got a new key, for
+            example after a reset.
+          </li>
+        </ul>
       </div>
       {counts === null ? null : (
         <div
@@ -989,9 +965,11 @@ function DeviceConflictsSection() {
       {state.error !== null ? (
         <StatusPanel tone="error">{state.error}</StatusPanel>
       ) : state.data === null ? (
-        <StatusPanel>Loading device reports…</StatusPanel>
+        <StatusPanel>Loading ID conflicts…</StatusPanel>
       ) : state.data.items.length === 0 ? (
-        <p className="empty-inline">No conflicting device reports.</p>
+        <p className="empty-inline">
+          No node ID reports conflicting MACs or keys.
+        </p>
       ) : (
         state.data.items.map((item) => (
           <div key={item.node_id}>
@@ -1085,245 +1063,6 @@ function SharedProofLine({
   );
 }
 
-function LongLinkItem({
-  link,
-  latest = false,
-  open,
-  onToggle,
-}: {
-  link: LongLink;
-  /** Ranked by when last heard 250 km+ apart, so say when in the summary. */
-  latest?: boolean;
-  open: boolean;
-  onToggle: (open: boolean) => void;
-}) {
-  const a = link.node_a;
-  const b = link.node_b;
-  const direct = link.evidence.find((kind) => kind.link_kind === "direct");
-  const shown = SHOWN[link.shown];
-  const drawn = link.evidence.some((kind) => kind.map_hidden_because === null);
-  const leftOutBecause = link.evidence.find(
-    (kind) => kind.map_hidden_because !== null,
-  )?.map_hidden_because;
-  return (
-    <li>
-      <details
-        className="longest-link"
-        open={open}
-        onToggle={(event) => {
-          if (event.currentTarget.open !== open) {
-            onToggle(event.currentTarget.open);
-          }
-        }}
-      >
-        <summary>
-          <span className="longest-link-km">
-            {formatKm(link.longest_km)} km
-          </span>
-          <span className="longest-link-names">
-            {endName(a)} ⇄ {endName(b)}
-          </span>
-          {latest && link.long_heard_at !== null ? (
-            <span className="muted">
-              <ShortTime value={link.long_heard_at} />
-            </span>
-          ) : null}
-          <Badge tone={shown.tone} title={shown.title}>
-            {shown.label}
-          </Badge>
-          {link.doubt !== null ? <DoubtBadge link={link} /> : null}
-          {link.pending ? <PendingBadge /> : null}
-          {link.evidence.map((kind) => (
-            <Badge key={kind.link_kind} title={KIND_LABELS[kind.link_kind]}>
-              {KIND_TAGS[kind.link_kind]} {kind.a_to_b + kind.b_to_a}
-              {kind.zero_snr ? " · 0 dB" : ""}
-            </Badge>
-          ))}
-          {link.checks.length > 0 ? (
-            <Badge tone="amber">
-              {link.checks.length}{" "}
-              {link.checks.length === 1 ? "check" : "checks"}
-            </Badge>
-          ) : null}
-        </summary>
-
-        <div className="diagnostic-facts">
-          <dl>
-            <DataItem
-              label="Longest when heard"
-              value={
-                <>
-                  {formatKm(link.longest_km)} km,{" "}
-                  <ShortTime value={link.longest_at} />
-                </>
-              }
-            />
-            {link.long_heard_at !== null ? (
-              <DataItem
-                label="Last heard 250 km+ apart"
-                value={<ShortTime value={link.long_heard_at} />}
-              />
-            ) : null}
-            <DataItem
-              label="Shortest when heard"
-              value={`${formatKm(link.shortest_km)} km`}
-            />
-            <DataItem
-              label="Links page (all history)"
-              value={
-                <>
-                  {formatKm(link.latest_km)} km{" "}
-                  {link.doubt !== null || link.pending ? (
-                    <span className="muted">ranked apart</span>
-                  ) : null}
-                </>
-              }
-            />
-            <DataItem
-              label="Map (all history)"
-              value={
-                drawn
-                  ? `drawn at ${formatKm(link.drawn_km)} km`
-                  : `left out: ${leftOutBecause}`
-              }
-            />
-            <DataItem
-              label="Reported positions now"
-              value={`${formatKm(link.now_km)} km apart`}
-            />
-            <DataItem label="Channels" value={link.channels.join(", ")} />
-            {link.terrain !== null ? (
-              <DataItem
-                label="Terrain check when longest"
-                value={`${link.terrain.unlikely ? "unlikely" : link.terrain.confirmed ? "possible, a near direct partner confirms both ends" : "possible"}: higher end ${Math.round(link.terrain.above_meters).toLocaleString()} m above the land between, ${Math.round(link.terrain.sea_share * 100)}% sea`}
-              />
-            ) : null}
-          </dl>
-        </div>
-
-        <p className="longest-link-actions">
-          <a
-            className="text-button"
-            href={lineOfSightHref(
-              a.node.node_id,
-              b.node.node_id,
-              link.longest_at,
-            )}
-          >
-            Line of sight when longest
-          </a>
-          {link.evidence.some((kind) => kind.link_kind === "traceroute") ? (
-            <a
-              className="text-button"
-              href={tracerouteHopHref(a.node.node_id, b.node.node_id)}
-            >
-              Traceroutes with this hop
-            </a>
-          ) : null}
-          {direct !== undefined && direct.a_to_b > 0 ? (
-            <DirectPacketsLink from={a} to={b} />
-          ) : null}
-          {direct !== undefined && direct.b_to_a > 0 ? (
-            <DirectPacketsLink from={b} to={a} />
-          ) : null}
-        </p>
-
-        {link.checks.length > 0 ? (
-          <ul className="longest-link-checks">
-            {link.checks.map((check) => (
-              <li key={check}>{check}</li>
-            ))}
-          </ul>
-        ) : null}
-
-        <h4>What heard it</h4>
-        <WideTable>
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Kind</th>
-                <th scope="col">
-                  {endName(a)} → {endName(b)}
-                </th>
-                <th scope="col">
-                  {endName(b)} → {endName(a)}
-                </th>
-                <th scope="col">Hours</th>
-                <th scope="col">Average SNR</th>
-                <th scope="col">First hour</th>
-                <th scope="col">Last heard</th>
-                <th scope="col">Longest km</th>
-                <th scope="col">Map</th>
-              </tr>
-            </thead>
-            <tbody>
-              {link.evidence.map((kind) => (
-                <tr key={kind.link_kind}>
-                  <th scope="row">{KIND_LABELS[kind.link_kind]}</th>
-                  <td>{kind.a_to_b}</td>
-                  <td>{kind.b_to_a}</td>
-                  <td>{kind.hours}</td>
-                  <td>
-                    {kind.average_snr === null
-                      ? "—"
-                      : `${kind.average_snr.toFixed(1)} dB`}
-                    {kind.zero_snr ? (
-                      <span className="muted"> (all 0 dB)</span>
-                    ) : null}
-                  </td>
-                  <td>
-                    <ShortTime value={kind.first_hour_at} />
-                  </td>
-                  <td>
-                    <ShortTime value={kind.last_seen_at} />
-                  </td>
-                  <td>{formatKm(kind.longest_km)}</td>
-                  <td>
-                    {kind.map_hidden_because === null
-                      ? "drawn"
-                      : `left out: ${kind.map_hidden_because}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </WideTable>
-
-        <h4>Its ends now</h4>
-        <WideTable>
-          <table>
-            <EndHeadings />
-            <tbody>
-              {[a, b].map((end) => (
-                <EndRow key={end.node.node_id} end={end} />
-              ))}
-            </tbody>
-          </table>
-        </WideTable>
-      </details>
-    </li>
-  );
-}
-
-/** Packets `from` sent that `to` heard with no relay, in the packet list. */
-function DirectPacketsLink({
-  from,
-  to,
-}: {
-  from: LongLinkEnd;
-  to: LongLinkEnd;
-}) {
-  return (
-    <a
-      className="text-button"
-      href={diagnosticsPacketsHref(from.node.node_id, to.node.node_id)}
-      title={`Packets ${endName(from)} sent that ${endName(to)} heard with no relay`}
-    >
-      Packets {endName(from)} → {endName(to)}
-    </a>
-  );
-}
-
 /** The headings of a table of EndRows, with `children` before the last. */
 function EndHeadings({ children }: { children?: ReactNode }) {
   return (
@@ -1354,7 +1093,11 @@ function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
           name={nodeName(node)}
           title={formatNodeId(node.node_id)}
         />{" "}
-        {end.doubtful ? <DoubtfulBadge suspects={[endName(end)]} /> : null}
+        {end.doubtful ? (
+          <DoubtfulBadge
+            suspects={[nodeName(node) ?? formatNodeId(node.node_id)]}
+          />
+        ) : null}
       </th>
       <td>
         {node.latitude === null || node.longitude === null ? (
@@ -1408,59 +1151,6 @@ function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
       </td>
     </tr>
   );
-}
-
-/**
- * Why the Links page ranks a long link apart (LongLink.doubt), naming the end
- * to blame: the same doubtful badge the pages show, with the
- * reason and suspect written out.
- */
-function DoubtBadge({ link }: { link: LongLink }) {
-  const doubt = link.doubt!;
-  const ends = [link.node_a, link.node_b];
-  const suspects = doubt.suspects.map((nodeId) =>
-    endName(ends.find((end) => end.node.node_id === nodeId)!),
-  );
-  const named = suspects.join(" and ");
-  if (doubt.reason === "shared") {
-    return (
-      <Badge tone="amber" title="Several radios use this node number">
-        shared node number: {named}
-      </Badge>
-    );
-  }
-  if (doubt.reason === "signal") {
-    return (
-      <Badge tone="amber" title="Signal unusually strong for this distance">
-        signal mismatch
-      </Badge>
-    );
-  }
-  if (doubt.reason === "position") {
-    return (
-      <Badge
-        tone="amber"
-        // eslint-disable-next-line local/hover-text -- explains why the position is doubted
-        title="Its own direct links are far from its reported position (see its ends below), so it is probably not where it says."
-      >
-        doubtful position: {named}
-      </Badge>
-    );
-  }
-  return (
-    <Badge
-      tone="amber"
-      // eslint-disable-next-line local/hover-text -- explains which end is doubted
-      title="Too far for radio over this terrain, so one end's position is probably wrong."
-    >
-      doubtful by terrain
-      {suspects.length > 0 ? `: probably ${named}` : ""}
-    </Badge>
-  );
-}
-
-function endName(end: LongLinkEnd): string {
-  return nodeName(end.node) ?? formatNodeId(end.node.node_id);
 }
 
 function formatOptionalTime(value: string | null): ReactNode {

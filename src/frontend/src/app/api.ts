@@ -37,6 +37,8 @@ export type DiagnosticsSummary = Schemas["DiagnosticsSummary"];
 export type LongLink = Schemas["LongLink"];
 export type LongLinkEnd = Schemas["LongLinkEnd"];
 export type LongLinkList = Schemas["LongLinkList"];
+export type LongLinkRules = Schemas["LongLinkRules"];
+export type ReviewCheck = Schemas["ReviewCheck"];
 export type DoubtfulNode = Schemas["DoubtfulNode"];
 export type DoubtfulNodeList = Schemas["DoubtfulNodeList"];
 export type DeviceConflictList = Schemas["DeviceConflictList"];
@@ -296,7 +298,7 @@ export type LongLinkFilter =
   | "position"
   | "unlikely"
   | "signal"
-  | "pending"
+  | "unconfirmed"
   | "checks";
 
 /** How a page of long links is ranked; see LongLinkOrder in diagnostics.py. */

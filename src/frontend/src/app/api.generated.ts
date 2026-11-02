@@ -791,7 +791,8 @@ export interface paths {
      *     the map or Links page hides or ranks any apart, only those of `node`
      *     when given, and keeps those matching `only`. Each comes with its
      *     evidence: where its ends are, what heard it, whether the map draws it
-     *     and warnings for a review by hand.
+     *     and warnings for a review by hand; the page also carries the
+     *     thresholds behind those flags.
      */
     get: operations["longest_links_page_api_v1_diagnostics_longest_links_get"];
     put?: never;
@@ -1566,7 +1567,7 @@ export interface components {
      *     positions when the link was last heard in the window (last_seen_at),
      *     None when either had none then, and why that distance is doubted
      *     (link_doubts): by distance a doubted link ranks apart. It is confirmed
-     *     when any hour PENDING_KM or more in the window is. On a shared node
+     *     when any hour UNCONFIRMED_KM or more in the window is. On a shared node
      *     number's own table, radio_names are the radios sorted packets show on
      *     the link (shared_numbers.link_radios), none when none do.
      */
@@ -1582,7 +1583,7 @@ export interface components {
       /** @enum {string} */
       link_kind: "traceroute" | "direct" | "neighbor";
       distance_km: number | null;
-      doubts: ("shared" | "doubtful" | "terrain" | "pending" | "signal")[];
+      doubts: ("shared" | "doubtful" | "terrain" | "unconfirmed" | "signal")[];
       /** @default [] */
       radio_names: string[];
     };
@@ -1608,20 +1609,20 @@ export interface components {
      *
      *     longest_at is when its longest hour was last heard, long_heard_at when
      *     its newest hour links.LONG_LINK_KM or more apart was (None when never
-     *     that far). shortest_km and
-     *     latest_km are its shortest and newest distances when heard, so a wide
-     *     spread says an end moved or its position jumped; the Links page, showing
-     *     all history, gives latest_km, and pending says it ranks that apart until
-     *     confirmed (links.LinkRow). now_km is between the ends' current reported
-     *     positions (db.reported_km) and drawn_km where the map draws them, estimates
-     *     included. shown is what pages make of it now: 'long' when the map draws it,
-     *     or the Links page ranks it unbadged, within derive.MOVED_KM of longest_km;
-     *     'hidden' when the map leaves it out and the Links page badges it (doubt or
-     *     pending); 'shorter' when they show a newer, shorter distance. doubt is why
-     *     the Links page badges it doubtful, None when it does not. terrain is the terrain check of a
-     *     link of links.LONG_LINK_KM or more (long_link), None when shorter or not
-     *     judged yet. checks are warnings for a review by hand that the map's rules
-     *     do not act on.
+     *     that far). shortest_km is its shortest distance when heard, so a wide
+     *     spread says an end moved or its position jumped. The Links page shows a row
+     *     per kind and channel (links.LinkRow); the row holding the longest hour,
+     *     showing all history, gives latest_km, doubt and unconfirmed. now_km is
+     *     between the ends' current reported positions (db.reported_km) and drawn_km
+     *     where the map draws them, estimates included. shown is what pages make of
+     *     it now: 'long' when the map draws it, or that row is unbadged, within
+     *     derive.MOVED_KM of longest_km; 'hidden' when the map leaves it out and that
+     *     row is badged (doubt or unconfirmed); 'shorter' when they show a newer,
+     *     shorter distance. doubt is why that row is badged doubtful, None when it is
+     *     not. terrain is the terrain check of a link of links.LONG_LINK_KM or more
+     *     (long_link), None when shorter or not judged yet. checks are warnings for a
+     *     review by hand that the map's rules do not act on. reach compares other
+     *     contacts before the longest hour.
      */
     LongLink: {
       node_a: components["schemas"]["LongLinkEnd"];
@@ -1632,7 +1633,7 @@ export interface components {
       long_heard_at: string | null;
       shortest_km: number;
       latest_km: number | null;
-      pending: boolean;
+      unconfirmed: boolean;
       now_km: number | null;
       drawn_km: number | null;
       /** @enum {string} */
@@ -1641,7 +1642,8 @@ export interface components {
       channels: string[];
       evidence: components["schemas"]["LongLinkEvidence"][];
       terrain: components["schemas"]["LongLinkCheck"] | null;
-      checks: string[];
+      checks: components["schemas"]["ReviewCheck"][];
+      reach: components["schemas"]["ReachComparison"] | null;
     };
     /**
      * LongLinkCheck
@@ -1661,8 +1663,8 @@ export interface components {
      * LongLinkDoubt
      * @description Why the Links page badges a long link and ranks it apart: 'shared'
      *     when an end is a shared node number, else 'position'
-     *     when an end has a doubtful position, else 'terrain' when its newest km is
-     *     LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
+     *     when an end has a doubtful position, else 'terrain' when its row's newest
+     *     km is LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
      *     'signal' for a suspect signal distance. suspects
      *     are the ends to blame: the shared or doubtful ones. The terrain check judges the pair,
      *     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
@@ -1689,7 +1691,8 @@ export interface components {
      *     contradict their positions.
      *     traceroute_corroborated means measured hops support its position around
      *     every counted far direct hour, despite its direct median.
-     *     doubt_limit_km is the altitude-aware direct median limit, before corroboration.
+     *     doubt_limit_km is the altitude-aware direct median limit, before corroboration;
+     *     over_limit compares the unrounded median with it, as positions does.
      */
     LongLinkEnd: {
       node: components["schemas"]["NodeSummary"];
@@ -1705,6 +1708,7 @@ export interface components {
       nearest_partner_km: number | null;
       median_partner_km: number | null;
       doubt_limit_km: number;
+      over_limit: boolean;
     };
     /**
      * LongLinkEvidence
@@ -1714,7 +1718,8 @@ export interface components {
      *     an SNR added up to exactly 0 dB, which traceroutes report for a hop over
      *     MQTT. longest_km is its longest distance when heard. map_hidden_because is
      *     why the map, showing all history, leaves this kind of link out (the first
-     *     channel's reason when there are several); None when it draws it.
+     *     channel's reason when there are several); None when it draws it. doubts are
+     *     the badges the Links page gives its rows of this kind (links.link_doubts).
      */
     LongLinkEvidence: {
       /** @enum {string} */
@@ -1730,6 +1735,7 @@ export interface components {
       last_seen_at: string;
       longest_km: number | null;
       map_hidden_because: string | null;
+      doubts: ("shared" | "doubtful" | "terrain" | "unconfirmed" | "signal")[];
     };
     /**
      * LongLinkList
@@ -1746,6 +1752,50 @@ export interface components {
       lowest_km: number | null;
       oldest_hour_at: string | null;
       next_offset: number | null;
+      rules: components["schemas"]["LongLinkRules"];
+    };
+    /**
+     * LongLinkRules
+     * @description The thresholds behind long links' flags and checks, so the page can
+     *     say how each is decided.
+     */
+    LongLinkRules: {
+      /** @default 250 */
+      long_link_km: number;
+      /** @default 100 */
+      unconfirmed_km: number;
+      /** @default 25 */
+      moved_km: number;
+      /** @default 7 */
+      partner_days: number;
+      /** @default 150 */
+      doubtful_partner_km: number;
+      /** @default 60 */
+      local_partner_km: number;
+      /** @default 6 */
+      stale_position_hours: number;
+      /** @default 300 */
+      terrain_above_meters: number;
+      /** @default 0.5 */
+      terrain_sea_share: number;
+      /** @default 600 */
+      terrain_max_land_km: number;
+      /** @default 60 */
+      confirming_partner_km: number;
+      /** @default 10 */
+      signal_min_km: number;
+      /** @default 80 */
+      signal_power_dbm: number;
+      /** @default 150 */
+      reach_review_km: number;
+      /** @default 3 */
+      reach_factor: number;
+      /** @default 3 */
+      reach_partners: number;
+      /** @default 3 */
+      reach_hours: number;
+      /** @default 2 */
+      reach_days: number;
     };
     /**
      * MapLink
@@ -2263,6 +2313,34 @@ export interface components {
       longitude: number;
       packet_row_id: number;
     };
+    /** ReachComparison */
+    ReachComparison: {
+      /** @enum {string} */
+      link_kind: "traceroute" | "direct" | "neighbor";
+      channel: string;
+      /** Format: date-time */
+      before_at: string;
+      ends: [
+        components["schemas"]["ReachProfile"],
+        components["schemas"]["ReachProfile"],
+      ];
+    };
+    /**
+     * ReachProfile
+     * @description One end's earlier contacts with other partners and the review threshold
+     *     they give; None when its history is too sparse.
+     */
+    ReachProfile: {
+      node_id: number;
+      partners: number;
+      hours: number;
+      days: number;
+      first_hour_at: string | null;
+      last_seen_at: string | null;
+      median_km: number | null;
+      iqr_km: number | null;
+      threshold_km: number | null;
+    };
     /**
      * RelayAnswer
      * @description What one receiver names: relay and how, None when none; outcome
@@ -2583,6 +2661,26 @@ export interface components {
     ReportPaths: {
       forward: components["schemas"]["RoutePath"];
       return_path: components["schemas"]["RoutePath"] | null;
+    };
+    /**
+     * ReviewCheck
+     * @description A warning for a review by hand that the map's rules do not act on;
+     *     node_id is the end it is about, None when it is about the link.
+     */
+    ReviewCheck: {
+      /** @enum {string} */
+      kind:
+        | "distance_range"
+        | "heard_once"
+        | "traceroute_only"
+        | "mqtt_hop"
+        | "far_partners"
+        | "map_report"
+        | "stale_position"
+        | "terrain_unchecked"
+        | "reach_long"
+        | "reach_unknown";
+      node_id: number | null;
     };
     /**
      * RouteHopCost
@@ -2938,7 +3036,7 @@ export interface components {
       reply_packet_row_id: number | null;
       reply_receptions: number | null;
       distance_km: number | null;
-      doubts: ("shared" | "doubtful" | "terrain" | "pending" | "signal")[];
+      doubts: ("shared" | "doubtful" | "terrain" | "unconfirmed" | "signal")[];
       route: components["schemas"]["TracerouteRoute"];
       positions: components["schemas"]["HeardPosition"][];
     };
@@ -4278,7 +4376,7 @@ export interface operations {
               | "position"
               | "unlikely"
               | "signal"
-              | "pending"
+              | "unconfirmed"
               | "checks"
             )
           | null;

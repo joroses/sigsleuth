@@ -36,7 +36,7 @@ import {
   DoubtfulBadge,
   ErrorPanel,
   Icon,
-  PendingBadge,
+  UnconfirmedBadge,
   ShortTime,
   ShareButton,
   SortHeading,
@@ -651,7 +651,9 @@ function RunTable({
                       unlikely={run.doubts.includes("terrain")}
                     />
                     {run.doubts.includes("shared") ? <SharedBadge /> : null}
-                    {run.doubts.includes("pending") ? <PendingBadge /> : null}
+                    {run.doubts.includes("unconfirmed") ? (
+                      <UnconfirmedBadge />
+                    ) : null}
                   </span>
                 </td>
                 <td>

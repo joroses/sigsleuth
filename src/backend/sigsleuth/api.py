@@ -910,7 +910,8 @@ def create_app(
         the map or Links page hides or ranks any apart, only those of `node`
         when given, and keeps those matching `only`. Each comes with its
         evidence: where its ends are, what heard it, whether the map draws it
-        and warnings for a review by hand."""
+        and warnings for a review by hand; the page also carries the
+        thresholds behind those flags."""
         return longest_links(
             connection, offset=offset, count=count, only=only, node=node, order=order
         )

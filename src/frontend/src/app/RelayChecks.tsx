@@ -230,12 +230,11 @@ function CheckList({
   return (
     <>
       <div className="section-intro compact">
-        <h3>Relay checks</h3>
         <p>
-          Traceroute copies whose own route names their relay: the node before
-          the gateway, when it sends the copy&apos;s relay byte. Each is checked
-          against the relay SigSleuth names. Open one to see each
-          candidate&apos;s score, term by term.
+          A traceroute carries its own route, so when a gateway hears one, we
+          know which node passed it on. Only copies that also carry a relay byte
+          are used. Each check compares that true relay with the one SigSleuth
+          guessed. Open one to see how every possible relay scored.
         </p>
       </div>
       <div className="nodes-toolbar">

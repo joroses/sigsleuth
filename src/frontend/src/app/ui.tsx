@@ -515,17 +515,17 @@ export function DoubtfulBadge({
 }
 
 /**
- * Beside a long distance not confirmed yet (links.PENDING_KM): an end has not
+ * Beside a long distance not confirmed yet (links.UNCONFIRMED_KM): an end has not
  * reported its position since it was heard, or moved since. Pages rank these
  * last by km.
  */
-export function PendingBadge() {
+export function UnconfirmedBadge() {
   return (
     <Badge
       tone="neutral"
-      title="Pending until both ends report their position again"
+      title="An end moved or hasn't reported since it was heard"
     >
-      pending
+      unconfirmed
     </Badge>
   );
 }

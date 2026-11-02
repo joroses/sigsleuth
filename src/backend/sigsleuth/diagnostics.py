@@ -1,15 +1,16 @@
 """Bounded reads for the operator diagnostics page."""
 
 import base64
+import bisect
 import json
 import sqlite3
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 from sigsleuth.config import Settings
 from sigsleuth.db import (
@@ -21,14 +22,16 @@ from sigsleuth.db import (
     reported_km,
     utc_now,
 )
-from sigsleuth.derive import MOVED_KM
+from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.links import (
     CONFIRMED_HOUR,
     LONG_LINK_KM,
     MAX_ESTIMATED_LINK_KM,
-    PENDING_KM,
     SUSPECT_DISTANCE,
+    SUSPECT_MIN_KM,
+    SUSPECT_POWER_DBM,
     TRUSTED_HOUR,
+    UNCONFIRMED_KM,
     Doubt,
     LinkKind,
     Misfit,
@@ -38,10 +41,22 @@ from sigsleuth.links import (
 )
 from sigsleuth.mqtt import CaptureStatus
 from sigsleuth.opt_out import opted_out, shown_sql, unlinkable_packets
-from sigsleuth.positions import direct_partners, doubt_limit_km, estimate_since_ms
-from sigsleuth.radio import distance_km
+from sigsleuth.positions import (
+    DOUBTFUL_PARTNER_KM,
+    ESTIMATE_DAYS,
+    direct_partners,
+    doubt_limit_km,
+    estimate_since_ms,
+)
+from sigsleuth.radio import distance_km, great_circle_km
 from sigsleuth.shared_numbers import shared_nodes
-from sigsleuth.terrain import LongLinkCheck
+from sigsleuth.terrain import (
+    ABOVE_LAND_M,
+    CONFIRMING_PARTNER_KM,
+    MAX_LAND_KM,
+    SEA_SHARE,
+    LongLinkCheck,
+)
 
 TABLES = ("reception", "packet", "node_current", "map_report")
 
@@ -350,6 +365,20 @@ LOCAL_PARTNER_KM = 60
 # A node that has moved before, heard on a position at least this old, may
 # have travelled again without reporting it.
 STALE_POSITION_HOURS = 6
+# Review unusually long contacts without rejecting exceptional radio paths:
+# a link REACH_REVIEW_KM or longer is compared with each end's threshold,
+# REACH_REVIEW_KM + REACH_FACTOR x (median + IQR) of its other partners'
+# distances, once it has REACH_PARTNERS of them in REACH_HOURS hours on
+# REACH_DAYS days, starting a day before.
+# Revisit 2026-11-02: on perf.db (14 days of loranet.pl), flagged 20 of 22
+# pairs judged wrong by hand and none of those judged real; early exceptional
+# contacts still need review.
+REACH_REVIEW_KM = 150
+REACH_FACTOR = 3
+REACH_PARTNERS = 3
+REACH_HOURS = 3
+REACH_DAYS = 2
+DAY_MS = 24 * HOUR_MS
 LINK_KINDS: tuple[LinkKind, ...] = ("direct", "neighbor", "traceroute")
 
 
@@ -368,7 +397,8 @@ class LongLinkEnd:
     contradict their positions.
     traceroute_corroborated means measured hops support its position around
     every counted far direct hour, despite its direct median.
-    doubt_limit_km is the altitude-aware direct median limit, before corroboration."""
+    doubt_limit_km is the altitude-aware direct median limit, before corroboration;
+    over_limit compares the unrounded median with it, as positions does."""
 
     node: NodeSummary
     altitude_meters: int | None
@@ -383,6 +413,7 @@ class LongLinkEnd:
     nearest_partner_km: float | None
     median_partner_km: float | None
     doubt_limit_km: float
+    over_limit: bool
 
 
 @dataclass(frozen=True)
@@ -393,7 +424,9 @@ class LongLinkEvidence:
     an SNR added up to exactly 0 dB, which traceroutes report for a hop over
     MQTT. longest_km is its longest distance when heard. map_hidden_because is
     why the map, showing all history, leaves this kind of link out (the first
-    channel's reason when there are several); None when it draws it."""
+    channel's reason when there are several); None when it draws it. doubts are
+    the badges the Links page gives its rows of this kind (links.link_doubts).
+    """
 
     link_kind: LinkKind
     a_to_b: int
@@ -405,14 +438,15 @@ class LongLinkEvidence:
     last_seen_at: datetime
     longest_km: float | None
     map_hidden_because: str | None
+    doubts: tuple[Doubt, ...]
 
 
 @dataclass(frozen=True)
 class LongLinkDoubt:
     """Why the Links page badges a long link and ranks it apart: 'shared'
     when an end is a shared node number, else 'position'
-    when an end has a doubtful position, else 'terrain' when its newest km is
-    LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
+    when an end has a doubtful position, else 'terrain' when its row's newest
+    km is LONG_LINK_KM or more on a pair the terrain check finds unlikely, or
     'signal' for a suspect signal distance. suspects
     are the ends to blame: the shared or doubtful ones. The terrain check judges the pair,
     so for 'terrain' the suspect is a guess: the end in more unlikely pairs,
@@ -423,6 +457,54 @@ class LongLinkDoubt:
     suspects: tuple[int, ...]
 
 
+# Warnings for a review by hand (ReviewCheck).
+CheckKind = Literal[
+    "distance_range",
+    "heard_once",
+    "traceroute_only",
+    "mqtt_hop",
+    "far_partners",
+    "map_report",
+    "stale_position",
+    "terrain_unchecked",
+    "reach_long",
+    "reach_unknown",
+]
+
+
+@dataclass(frozen=True)
+class ReviewCheck:
+    """A warning for a review by hand that the map's rules do not act on;
+    node_id is the end it is about, None when it is about the link."""
+
+    kind: CheckKind
+    node_id: int | None = None
+
+
+@dataclass(frozen=True)
+class ReachProfile:
+    """One end's earlier contacts with other partners and the review threshold
+    they give; None when its history is too sparse."""
+
+    node_id: int
+    partners: int
+    hours: int
+    days: int
+    first_hour_at: datetime | None
+    last_seen_at: datetime | None
+    median_km: float | None
+    iqr_km: float | None
+    threshold_km: float | None
+
+
+@dataclass(frozen=True)
+class ReachComparison:
+    link_kind: LinkKind
+    channel: str
+    before_at: datetime
+    ends: tuple[ReachProfile, ReachProfile]
+
+
 @dataclass(frozen=True)
 class LongLink:
     """A link among the longest by distance when heard, every kind and channel
@@ -430,20 +512,20 @@ class LongLink:
 
     longest_at is when its longest hour was last heard, long_heard_at when
     its newest hour links.LONG_LINK_KM or more apart was (None when never
-    that far). shortest_km and
-    latest_km are its shortest and newest distances when heard, so a wide
-    spread says an end moved or its position jumped; the Links page, showing
-    all history, gives latest_km, and pending says it ranks that apart until
-    confirmed (links.LinkRow). now_km is between the ends' current reported
-    positions (db.reported_km) and drawn_km where the map draws them, estimates
-    included. shown is what pages make of it now: 'long' when the map draws it,
-    or the Links page ranks it unbadged, within derive.MOVED_KM of longest_km;
-    'hidden' when the map leaves it out and the Links page badges it (doubt or
-    pending); 'shorter' when they show a newer, shorter distance. doubt is why
-    the Links page badges it doubtful, None when it does not. terrain is the terrain check of a
-    link of links.LONG_LINK_KM or more (long_link), None when shorter or not
-    judged yet. checks are warnings for a review by hand that the map's rules
-    do not act on."""
+    that far). shortest_km is its shortest distance when heard, so a wide
+    spread says an end moved or its position jumped. The Links page shows a row
+    per kind and channel (links.LinkRow); the row holding the longest hour,
+    showing all history, gives latest_km, doubt and unconfirmed. now_km is
+    between the ends' current reported positions (db.reported_km) and drawn_km
+    where the map draws them, estimates included. shown is what pages make of
+    it now: 'long' when the map draws it, or that row is unbadged, within
+    derive.MOVED_KM of longest_km; 'hidden' when the map leaves it out and that
+    row is badged (doubt or unconfirmed); 'shorter' when they show a newer,
+    shorter distance. doubt is why that row is badged doubtful, None when it is
+    not. terrain is the terrain check of a link of links.LONG_LINK_KM or more
+    (long_link), None when shorter or not judged yet. checks are warnings for a
+    review by hand that the map's rules do not act on. reach compares other
+    contacts before the longest hour."""
 
     node_a: LongLinkEnd
     node_b: LongLinkEnd
@@ -452,7 +534,7 @@ class LongLink:
     long_heard_at: datetime | None
     shortest_km: float
     latest_km: float | None
-    pending: bool
+    unconfirmed: bool
     now_km: float | None
     drawn_km: float | None
     shown: Literal["long", "shorter", "hidden"]
@@ -460,7 +542,33 @@ class LongLink:
     channels: tuple[str, ...]
     evidence: tuple[LongLinkEvidence, ...]
     terrain: LongLinkCheck | None
-    checks: tuple[str, ...]
+    checks: tuple[ReviewCheck, ...]
+    reach: ReachComparison | None
+
+
+@dataclass(frozen=True)
+class LongLinkRules:
+    """The thresholds behind long links' flags and checks, so the page can
+    say how each is decided."""
+
+    long_link_km: float = LONG_LINK_KM
+    unconfirmed_km: float = UNCONFIRMED_KM
+    moved_km: float = MOVED_KM
+    partner_days: int = ESTIMATE_DAYS
+    doubtful_partner_km: float = DOUBTFUL_PARTNER_KM
+    local_partner_km: float = LOCAL_PARTNER_KM
+    stale_position_hours: float = STALE_POSITION_HOURS
+    terrain_above_meters: float = ABOVE_LAND_M
+    terrain_sea_share: float = SEA_SHARE
+    terrain_max_land_km: float = MAX_LAND_KM
+    confirming_partner_km: float = CONFIRMING_PARTNER_KM
+    signal_min_km: float = SUSPECT_MIN_KM
+    signal_power_dbm: float = SUSPECT_POWER_DBM
+    reach_review_km: float = REACH_REVIEW_KM
+    reach_factor: float = REACH_FACTOR
+    reach_partners: int = REACH_PARTNERS
+    reach_hours: int = REACH_HOURS
+    reach_days: int = REACH_DAYS
 
 
 @dataclass(frozen=True)
@@ -477,14 +585,15 @@ class LongLinkList:
     lowest_km: float | None
     oldest_hour_at: datetime | None
     next_offset: int | None
+    rules: LongLinkRules
 
 
 # What a page of long links can keep: links shown that way (LongLink.shown),
 # badged for that reason (LongLinkDoubt.reason), judged unlikely by the
-# terrain check whatever the pages make of it, pending, or with checks to
+# terrain check whatever the pages make of it, unconfirmed, or with checks to
 # review.
 LongLinkFilter = Literal[
-    "long", "shorter", "hidden", "shared", "position", "unlikely", "signal", "pending", "checks"
+    "long", "shorter", "hidden", "shared", "position", "unlikely", "signal", "unconfirmed", "checks"
 ]
 # How a page of long links is ranked: by longest distance when heard, or only
 # the links heard links.LONG_LINK_KM or more apart, newest such hour first, to
@@ -540,6 +649,7 @@ def longest_links(
         lowest_km=last if order == "longest" else None,
         oldest_hour_at=optional_from_epoch_ms(last) if order == "latest" else None,
         next_offset=offset + count if len(rows) > count else None,
+        rules=LongLinkRules(),
     )
 
 
@@ -550,8 +660,8 @@ def _matches(link: LongLink, only: LongLinkFilter) -> bool:
         return link.terrain is not None and link.terrain.unlikely
     if only == "checks":
         return bool(link.checks)
-    if only == "pending":
-        return link.pending
+    if only == "unconfirmed":
+        return link.unconfirmed
     return link.doubt is not None and link.doubt.reason == only
 
 
@@ -570,10 +680,10 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
         )
         SELECT link_hour.*, {TRUSTED_HOUR} AS trusted,
                {SUSPECT_DISTANCE} AS suspect_distance,
-               km >= :pending_km AND {CONFIRMED_HOUR} AS confirmed
+               km >= :unconfirmed_km AND {CONFIRMED_HOUR} AS confirmed
         FROM heard JOIN link_hour USING (from_node_id, to_node_id)
         """,
-        {"pairs": json.dumps(pairs), "since": 0, "pending_km": PENDING_KM},
+        {"pairs": json.dumps(pairs), "since": 0, "unconfirmed_km": UNCONFIRMED_KM},
     ):
         heard = (row["from_node_id"], row["to_node_id"])
         hours[min(heard), max(heard)].append(row)
@@ -598,10 +708,142 @@ def _long_links(connection: sqlite3.Connection, pairs: list[tuple[int, int]]) ->
             {"ids": json.dumps(ids)},
         )
     }
-    return [
-        _long_link(ends[a], ends[b], hours[a, b], checks.get((a, b)), unlikely_pairs)
-        for a, b in pairs
-    ]
+    reach = _reach_comparisons(connection, hours)
+    result = []
+    for a, b in pairs:
+        link = _long_link(ends[a], ends[b], hours[a, b], checks.get((a, b)), unlikely_pairs)
+        comparison = reach.get((a, b))
+        warnings: tuple[ReviewCheck, ...] = ()
+        if comparison is not None:
+            thresholds = [
+                end.threshold_km for end in comparison.ends if end.threshold_km is not None
+            ]
+            if not thresholds:
+                warnings = (ReviewCheck("reach_unknown"),)
+            elif link.longest_km > max(thresholds):
+                warnings = (ReviewCheck("reach_long"),)
+        result.append(replace(link, reach=comparison, checks=link.checks + warnings))
+    return result
+
+
+def _reach_comparisons(
+    connection: sqlite3.Connection, hours: Mapping[tuple[int, int], Sequence[sqlite3.Row]]
+) -> dict[tuple[int, int], ReachComparison]:
+    """A ReachComparison for each pair whose longest hour is REACH_REVIEW_KM or more."""
+    targets = {}
+    for pair, rows in hours.items():
+        measured = [row for row in rows if row["km"] is not None]
+        if measured:
+            longest = max(measured, key=lambda row: (row["km"], row["last_seen_at"]))
+            if longest["km"] >= REACH_REVIEW_KM:
+                targets[pair] = longest
+    if not targets:
+        return {}
+    ids = sorted({n for pair in targets for n in pair})
+    profiles: dict[tuple[int, str, str], int] = {}
+    for pair, row in targets.items():
+        for n in pair:
+            key = (n, row["link_kind"], row["channel"])
+            profiles[key] = max(profiles.get(key, 0), row["hour_start"])
+    refs: dict[tuple[int, str, str], list[tuple[int, int, int, float]]] = defaultdict(list)
+    # Discover incoming partners on the covering pair index, then seek their hours.
+    for row in connection.execute(
+        f"""
+        WITH peers AS MATERIALIZED (
+            SELECT DISTINCT from_node_id, to_node_id FROM link_hour INDEXED BY link_hour_pair
+            WHERE (from_node_id IN (SELECT value FROM json_each(:ids))
+                OR to_node_id IN (SELECT value FROM json_each(:ids)))
+              AND from_node_id != 0 AND to_node_id != 0 AND from_node_id != to_node_id
+              AND {shown_sql("from_node_id")} AND {shown_sql("to_node_id")}
+        )
+        , contexts AS MATERIALIZED (
+            SELECT value ->> 0 AS node, value ->> 1 AS kind, value ->> 2 AS channel,
+                   value ->> 3 AS cutoff FROM json_each(:profiles)
+        )
+        SELECT c.node, h.from_node_id, h.to_node_id, h.link_kind, h.channel,
+               h.hour_start, h.last_seen_at, h.km
+        FROM peers CROSS JOIN contexts c CROSS JOIN link_hour h INDEXED BY link_hour_pair
+        WHERE h.from_node_id = peers.from_node_id AND h.to_node_id = peers.to_node_id
+          AND (c.node = peers.from_node_id OR c.node = peers.to_node_id)
+          AND h.link_kind = c.kind AND h.channel = c.channel
+          AND h.km IS NOT NULL AND h.hour_start < c.cutoff
+        """,
+        {
+            "ids": json.dumps(ids),
+            "profiles": json.dumps([(*key, at) for key, at in profiles.items()]),
+        },
+    ):
+        a, b = row["from_node_id"], row["to_node_id"]
+        n = row["node"]
+        other = b if n == a else a
+        refs[n, row["link_kind"], row["channel"]].append(
+            (other, row["hour_start"], row["last_seen_at"], row["km"])
+        )
+    moves: dict[int, list[int]] = defaultdict(list)
+    previous: dict[int, tuple[float, float]] = {}
+    for n, at, lat, lon in connection.execute(
+        "SELECT node_id, at, latitude, longitude FROM node_position "
+        "WHERE node_id IN (SELECT value FROM json_each(?)) ORDER BY node_id, at",
+        (json.dumps(ids),),
+    ):
+        if n in previous and great_circle_km(*previous[n], lat, lon) > MOVED_KM:
+            moves[n].append(at)
+        previous[n] = (lat, lon)
+    result = {}
+    for pair, row in targets.items():
+        ends = []
+        for n, other in (pair, pair[::-1]):
+            epoch = bisect.bisect_right(moves[n], row["last_seen_at"])
+            since = moves[n][epoch - 1] if epoch else 0
+            partners: dict[int, list[float]] = defaultdict(list)
+            occupied = set()
+            last_seen = None
+            for peer, hour, last, km in refs[n, row["link_kind"], row["channel"]]:
+                if peer != other and since <= last and hour < row["hour_start"]:
+                    partners[peer].append(km)
+                    occupied.add(hour)
+                    last_seen = max(last_seen or 0, last)
+            supported = not (
+                len(partners) < REACH_PARTNERS
+                or len(occupied) < REACH_HOURS
+                or len({hour // DAY_MS for hour in occupied}) < REACH_DAYS
+                or row["hour_start"] - min(occupied) < DAY_MS
+            )
+            xs = sorted(statistics.median(kms) for kms in partners.values())
+            median = statistics.median(xs) if xs else None
+            iqr = None
+            if xs:
+                q25, _, q75 = (
+                    statistics.quantiles(xs, n=4, method="inclusive")
+                    if len(xs) > 1
+                    else (xs[0], xs[0], xs[0])
+                )
+                iqr = q75 - q25
+            threshold = (
+                REACH_REVIEW_KM + REACH_FACTOR * (median + iqr)
+                if supported and median is not None and iqr is not None
+                else None
+            )
+            ends.append(
+                ReachProfile(
+                    node_id=n,
+                    partners=len(partners),
+                    hours=len(occupied),
+                    days=len({hour // DAY_MS for hour in occupied}),
+                    first_hour_at=from_epoch_ms(min(occupied)) if occupied else None,
+                    last_seen_at=optional_from_epoch_ms(last_seen),
+                    median_km=median,
+                    iqr_km=iqr,
+                    threshold_km=threshold,
+                )
+            )
+        result[pair] = ReachComparison(
+            link_kind=row["link_kind"],
+            channel=row["channel"],
+            before_at=from_epoch_ms(row["hour_start"]),
+            ends=(ends[0], ends[1]),
+        )
+    return result
 
 
 @dataclass(frozen=True)
@@ -670,6 +912,8 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
         row = current.get(node_id)
         assessment = partners.get(node_id)
         found = sorted(assessment.counted.values()) if assessment else []
+        median = statistics.median(found) if found else None
+        limit = doubt_limit_km(None if row is None else row["altitude_meters"])
         ends[node_id] = LongLinkEnd(
             node=nodes.get(node_id)
             or NodeSummary(node_id, None, None, None, None, None, estimated=False),
@@ -687,8 +931,9 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             blamed_partners=assessment.blamed if assessment else 0,
             traceroute_corroborated=assessment.corroborated if assessment else False,
             nearest_partner_km=found[0] if found else None,
-            median_partner_km=round(statistics.median(found), 1) if found else None,
-            doubt_limit_km=round(doubt_limit_km(None if row is None else row["altitude_meters"])),
+            median_partner_km=None if median is None else round(median, 1),
+            doubt_limit_km=round(limit),
+            over_limit=median is not None and median > limit,
         )
     return ends
 
@@ -703,38 +948,49 @@ def _long_link(
     measured = [row for row in rows if row["km"] is not None]
     # Among hours as long, the latest, whatever order they were read in.
     longest = max(measured, key=lambda row: (row["km"], row["last_seen_at"]))
-    newest = max(rows, key=lambda row: row["last_seen_at"])
+    links_page_rows: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
+    for row in rows:
+        links_page_rows[row["link_kind"], row["channel"]].append(row)
+    shown_row = links_page_rows[longest["link_kind"], longest["channel"]]
+    newest = max(shown_row, key=lambda row: row["last_seen_at"])
     long_hours = [row for row in measured if row["km"] >= LONG_LINK_KM]
     longest_km = longest["km"]
     unlikely = terrain is not None and terrain.unlikely
+    badges = {
+        key: _links_page_doubts(a, b, key_rows, unlikely)
+        for key, key_rows in links_page_rows.items()
+    }
     evidence = tuple(
-        _evidence(kind, kind_rows, a, b, unlikely)
+        _evidence(
+            kind,
+            kind_rows,
+            a,
+            b,
+            unlikely,
+            tuple(
+                doubt
+                for doubt in get_args(Doubt)
+                if any(doubt in badges[key] for key in badges if key[0] == kind)
+            ),
+        )
         for kind in LINK_KINDS
         if (kind_rows := [row for row in rows if row["link_kind"] == kind])
     )
     drawn_km = distance_km(a.node, b.node)
     drawn = any(kind.map_hidden_because is None for kind in evidence)
-    # As the Links page badges it, over all history (links.link_table).
-    doubts = link_doubts(
-        a.doubtful or b.doubtful,
-        newest["km"],
-        unlikely,
-        any(row["confirmed"] for row in rows),
-        bool(newest["suspect_distance"]),
-        a.shared or b.shared,
-    )
+    doubts = badges[longest["link_kind"], longest["channel"]]
     doubt = _doubt(a, b, doubts, unlikely_pairs)
-    pending = "pending" in doubts
+    unconfirmed = "unconfirmed" in doubts
 
     def still_long(km: float | None) -> bool:
         return km is not None and abs(longest_km - km) <= MOVED_KM
 
     shown: Literal["long", "shorter", "hidden"] = "shorter"
     if (drawn and still_long(drawn_km)) or (
-        doubt is None and not pending and still_long(newest["km"])
+        doubt is None and not unconfirmed and still_long(newest["km"])
     ):
         shown = "long"
-    elif not drawn and (doubt is not None or pending):
+    elif not drawn and (doubt is not None or unconfirmed):
         shown = "hidden"
     link = LongLink(
         node_a=a,
@@ -746,7 +1002,7 @@ def _long_link(
         else None,
         shortest_km=min(row["km"] for row in measured),
         latest_km=newest["km"],
-        pending=pending,
+        unconfirmed=unconfirmed,
         now_km=reported_km(a.node, b.node),
         drawn_km=drawn_km,
         shown=shown,
@@ -755,8 +1011,25 @@ def _long_link(
         evidence=evidence,
         terrain=terrain if longest_km >= LONG_LINK_KM else None,
         checks=(),
+        reach=None,
     )
     return LongLink(**{**vars(link), "checks": _checks(link)})
+
+
+def _links_page_doubts(
+    a: LongLinkEnd, b: LongLinkEnd, rows: Sequence[sqlite3.Row], unlikely: bool
+) -> tuple[Doubt, ...]:
+    """The badges of the Links page's row of these hours, one kind and channel,
+    over all history (links.link_table)."""
+    newest = max(rows, key=lambda row: row["last_seen_at"])
+    return link_doubts(
+        a.doubtful or b.doubtful,
+        newest["km"],
+        unlikely,
+        any(row["confirmed"] for row in rows),
+        bool(newest["suspect_distance"]),
+        a.shared or b.shared,
+    )
 
 
 def _doubt(
@@ -783,6 +1056,7 @@ def _evidence(
     a: LongLinkEnd,
     b: LongLinkEnd,
     unlikely: bool,
+    doubts: tuple[Doubt, ...],
 ) -> LongLinkEvidence:
     snr_count = sum(row["snr_count"] for row in rows)
     snr_sum = sum(row["snr_sum"] for row in rows)
@@ -798,6 +1072,7 @@ def _evidence(
         last_seen_at=from_epoch_ms(max(row["last_seen_at"] for row in rows)),
         longest_km=max(measured) if measured else None,
         map_hidden_because=_map_hidden_because(rows, a, b, unlikely),
+        doubts=doubts,
     )
 
 
@@ -866,39 +1141,27 @@ def _distrusted_because(a: LongLinkEnd, b: LongLinkEnd, last_seen_ms: int) -> st
     return "it was heard before an end last moved"
 
 
-def _checks(link: LongLink) -> tuple[str, ...]:
+def _checks(link: LongLink) -> tuple[ReviewCheck, ...]:
     checks = []
-    ends = (link.node_a, link.node_b)
-    if link.terrain is None and link.longest_km >= LONG_LINK_KM:
-        checks.append(
-            "Not checked against terrain yet: the check runs every few minutes "
-            "and needs terrain tiles."
-        )
     if link.longest_km - link.shortest_km > MOVED_KM:
-        checks.append(
-            f"Its distance when heard ranged {link.shortest_km:g}-{link.longest_km:g} km: "
-            "an end moved or its position jumped while it was heard."
-        )
+        checks.append(ReviewCheck("distance_range"))
     kinds = {evidence.link_kind: evidence for evidence in link.evidence}
     if sum(evidence.a_to_b + evidence.b_to_a for evidence in link.evidence) == 1:
-        checks.append("Heard only once.")
+        checks.append(ReviewCheck("heard_once"))
     if "direct" not in kinds and "neighbor" not in kinds:
-        checks.append("Only traceroutes report it: no direct reception or neighbour report.")
+        checks.append(ReviewCheck("traceroute_only"))
     if "traceroute" in kinds and kinds["traceroute"].zero_snr:
-        checks.append("Every route step's SNR is exactly 0 dB, the mark of a hop over MQTT.")
-    for end in ends:
-        name = _name(end)
+        checks.append(ReviewCheck("mqtt_hop"))
+    for end in (link.node_a, link.node_b):
+        node_id = end.node.node_id
         if (
             not end.traceroute_corroborated
             and end.direct_partners >= 2
             and (end.nearest_partner_km or 0) > LOCAL_PARTNER_KM
         ):
-            checks.append(
-                f"{name}'s nearest of {end.direct_partners} direct partners was "
-                f"{end.nearest_partner_km:g} km away: its position may be wrong."
-            )
+            checks.append(ReviewCheck("far_partners", node_id))
         if end.position_from_map_report:
-            checks.append(f"{name}'s position is from a map report, which may be rounded.")
+            checks.append(ReviewCheck("map_report", node_id))
         if (
             end.moved_at is not None
             and end.moved_at <= link.longest_at
@@ -907,11 +1170,9 @@ def _checks(link: LongLink) -> tuple[str, ...]:
             and (link.longest_at - end.position_observed_at).total_seconds()
             > STALE_POSITION_HOURS * 3600
         ):
-            age = (link.longest_at - end.position_observed_at).total_seconds() / 3600
-            checks.append(
-                f"{name} has moved before and its position was {age:.0f} h old when heard: "
-                "it may have travelled again."
-            )
+            checks.append(ReviewCheck("stale_position", node_id))
+    if link.terrain is None and link.longest_km >= LONG_LINK_KM:
+        checks.append(ReviewCheck("terrain_unchecked"))
     return tuple(checks)
 
 

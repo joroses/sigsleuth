@@ -37,7 +37,7 @@ import sigsleuth
 from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope
 from page_requests import Subjects, page_requests
-from sigsleuth import api
+from sigsleuth import api, diagnostics
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
@@ -72,6 +72,7 @@ ALLOWED_SCANS = {
     # Reads the link_hour_pair index, not the table: 56 ms on 14 days of
     # loranet.pl (2026-10-12).
     "diagnostics.longest_links": "operator page, long links",
+    "diagnostics._reach_comparisons": "operator reach references",
     # Texts are about 2% of packets; the partial text index scans in 0.3 ms.
     "chat.chat_channels": "text messages only",
 }
@@ -189,6 +190,8 @@ def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) ->
     with closing(statements.watch(open_current_database(path))) as connection:
         link_hour(connection, REQUESTER, RELAY, to_epoch_ms(now), km=200.0)
         refresh_estimates(connection)
+        statements.section = "reach review"
+        diagnostics.longest_links(connection)
 
     statements.section = "retention and estimates"
     with closing(statements.watch(open_current_database(path))) as connection:

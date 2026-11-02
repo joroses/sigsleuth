@@ -15,7 +15,7 @@ import {
   DoubtfulBadge,
   Icon,
   MarginValue,
-  PendingBadge,
+  UnconfirmedBadge,
   ShareButton,
   ShortTime,
   SortHeading,
@@ -101,7 +101,7 @@ export function LinkCells({
           unlikely={link.doubts.includes("terrain")}
           signal={link.doubts.includes("signal")}
         />
-        {link.doubts.includes("pending") ? <PendingBadge /> : null}
+        {link.doubts.includes("unconfirmed") ? <UnconfirmedBadge /> : null}
         {link.distance_km !== null && !link.doubts.includes("shared") ? (
           <a
             className="los-link"

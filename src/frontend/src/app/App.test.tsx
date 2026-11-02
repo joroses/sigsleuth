@@ -1451,44 +1451,49 @@ describe("Diagnostics", () => {
     );
   });
 
-  it("requests and remembers signal mismatch long links", async () => {
-    const first = "/api/v1/diagnostics/longest-links?offset=0&count=30";
-    const filtered =
-      "/api/v1/diagnostics/longest-links?offset=0&count=300&only=signal";
-    const fetch = vi.fn((url: string) =>
-      Promise.resolve(
-        jsonResponse(
-          url.startsWith(first.split("?")[0])
-            ? {
-                items: [],
-                looked_through: 0,
-                lowest_km: null,
-                oldest_hour_at: null,
-                next_offset: null,
-              }
-            : summary,
+  it.each(["signal", "unconfirmed"])(
+    "requests and remembers %s long links",
+    async (only) => {
+      const first = "/api/v1/diagnostics/longest-links?offset=0&count=30";
+      const filtered = `/api/v1/diagnostics/longest-links?offset=0&count=300&only=${only}`;
+      const fetch = vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith(first.split("?")[0])
+              ? {
+                  items: [],
+                  looked_through: 0,
+                  lowest_km: null,
+                  oldest_hour_at: null,
+                  next_offset: null,
+                }
+              : summary,
+          ),
         ),
-      ),
-    );
-    vi.stubGlobal("fetch", fetch);
-    window.location.hash = "#diagnostics/links";
-    const view = render(<App />);
+      );
+      vi.stubGlobal("fetch", fetch);
+      window.location.hash = "#diagnostics/links";
+      const view = render(<App />);
 
-    fireEvent.change(await screen.findByRole("combobox", { name: "Show" }), {
-      target: { value: "signal" },
-    });
-    await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(filtered, expect.anything()),
-    );
-    expect(loadSetting("diagnostics.longLinks")).toBe("signal");
+      fireEvent.change(await screen.findByRole("combobox", { name: "Show" }), {
+        target: { value: only },
+      });
+      await waitFor(() =>
+        expect(fetch).toHaveBeenCalledWith(filtered, expect.anything()),
+      );
+      expect(loadSetting("diagnostics.longLinks")).toBe(only);
 
-    view.unmount();
-    render(<App />);
-    expect(
-      (await screen.findByRole<HTMLSelectElement>("combobox", { name: "Show" }))
-        .value,
-    ).toBe("signal");
-  });
+      view.unmount();
+      render(<App />);
+      expect(
+        (
+          await screen.findByRole<HTMLSelectElement>("combobox", {
+            name: "Show",
+          })
+        ).value,
+      ).toBe(only);
+    },
+  );
 
   it("loads a tab once opened, and a hidden tab keeps its filter", async () => {
     const pages: Record<string, object> = {
@@ -1615,7 +1620,7 @@ describe("Diagnostics", () => {
     );
   });
 
-  it("loads device reports on demand and pages by node ID", async () => {
+  it("loads ID conflicts on demand and pages by node ID", async () => {
     const first = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
     const next = "/api/v1/diagnostics/device-conflicts?after_node=17&count=30";
     const fetch = vi.fn((url: string) =>
@@ -3144,7 +3149,7 @@ describe("Links", () => {
       node_a: number,
       node_b: number,
       distance_km: number | null,
-      doubts: ("doubtful" | "terrain" | "pending")[] = [],
+      doubts: ("doubtful" | "terrain" | "unconfirmed")[] = [],
     ) => ({
       node_a,
       node_b,
@@ -3170,7 +3175,7 @@ describe("Links", () => {
                     link(3, 4, 40),
                     link(9, 10, 12),
                     link(11, 12, 300, ["terrain"]),
-                    link(13, 14, 500, ["pending"]),
+                    link(13, 14, 500, ["unconfirmed"]),
                   ],
                   nodes: [
                     { node_id: 1, long_name: "Hilltop", short_name: null },

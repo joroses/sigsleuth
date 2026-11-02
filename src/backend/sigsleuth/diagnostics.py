@@ -244,6 +244,7 @@ class DatabaseInfo:
 @dataclass(frozen=True)
 class DiagnosticsSummary:
     capture: CaptureStatus | None
+    revision: str | None
     api_started_at: datetime
     api_uptime_seconds: float
     database: DatabaseInfo
@@ -256,6 +257,7 @@ def diagnostics_summary(
     *,
     capture: CaptureStatus | None,
     api_started_at: datetime,
+    revision: str | None,
 ) -> DiagnosticsSummary:
     current_time = utc_now()
     # IDs grow with time, near enough, so the ends of the primary key give the
@@ -282,6 +284,7 @@ def diagnostics_summary(
     )
     return DiagnosticsSummary(
         capture=capture,
+        revision=revision,
         api_started_at=api_started_at,
         api_uptime_seconds=max(0.0, (current_time - api_started_at).total_seconds()),
         database=database,

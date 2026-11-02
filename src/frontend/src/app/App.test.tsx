@@ -1315,6 +1315,7 @@ describe("Diagnostics", () => {
       skipped: { map_report: 4 },
     },
     api_started_at: "2026-09-19T09:00:00Z",
+    revision: null,
     api_uptime_seconds: 60,
     database: {
       facts_version: 10,

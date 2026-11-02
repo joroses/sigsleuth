@@ -352,6 +352,20 @@ function SummarySection({ state }: { state: ApiState<DiagnosticsSummary> }) {
             label="API uptime"
             value={formatDuration(summary.api_uptime_seconds)}
           />
+          <DataItem
+            label="Commit"
+            value={
+              summary.revision === null ? (
+                "Unknown"
+              ) : (
+                <a
+                  href={`https://github.com/joroses/sigsleuth/commit/${summary.revision}`}
+                >
+                  {summary.revision.slice(0, 7)}
+                </a>
+              )
+            }
+          />
         </dl>
         <dl>
           <DataItem

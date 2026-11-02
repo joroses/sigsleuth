@@ -4841,6 +4841,7 @@ nodes: 244 items
 ## GET /api/v1/diagnostics/summary
 
 capture: null
+revision: null
 api_started_at: "2026-10-11T16:25:30.812000Z"
 api_uptime_seconds: 0
 database:

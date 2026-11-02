@@ -1316,6 +1316,7 @@ export interface components {
     /** DiagnosticsSummary */
     DiagnosticsSummary: {
       capture: components["schemas"]["CaptureStatus"] | null;
+      revision: string | null;
       /** Format: date-time */
       api_started_at: string;
       api_uptime_seconds: number;
@@ -2644,6 +2645,7 @@ export interface components {
      */
     Status: {
       capture: components["schemas"]["CaptureStatus"] | null;
+      revision: string | null;
       /**
        * @default ok
        * @constant

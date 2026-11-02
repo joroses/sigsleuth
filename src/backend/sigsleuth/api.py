@@ -140,6 +140,7 @@ from sigsleuth.survey_checks import (
 from sigsleuth.zones import NetworkZones, network_zones
 
 LOGGER = logging.getLogger(__name__)
+REVISION_PATH = Path(__file__).resolve().parents[3] / "REVISION"
 
 MAX_PAGE_SIZE = 200
 # Live has a few thousand placed map nodes; revisit viewport requests if
@@ -156,6 +157,7 @@ class Status:
     """capture is null when the app was started without capture."""
 
     capture: CaptureStatus | None
+    revision: str | None
     status: Literal["ok"] = "ok"
 
 
@@ -179,6 +181,12 @@ def create_app(
     capture: bool = False,
 ) -> FastAPI:
     """Create the API; with `capture`, it also records MQTT deliveries while running."""
+
+    # Keep the running revision when a deploy replaces the mounted files.
+    try:
+        revision = REVISION_PATH.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        revision = None
 
     @asynccontextmanager
     async def run_background_work(app: FastAPI) -> AsyncIterator[None]:
@@ -280,7 +288,7 @@ def create_app(
 
     @app.get("/api/v1/status")
     def status() -> Status:
-        return Status(capture=capture_status())
+        return Status(capture=capture_status(), revision=revision)
 
     @app.get("/api/v1/packets")
     def packet_list_page(
@@ -883,6 +891,7 @@ def create_app(
             settings,
             capture=capture_status(),
             api_started_at=app.state.api_started_at,
+            revision=revision,
         )
 
     @app.get("/api/v1/diagnostics/longest-links", dependencies=[Admin])

@@ -295,6 +295,7 @@ export type LongLinkFilter =
   | "shared"
   | "position"
   | "unlikely"
+  | "signal"
   | "pending"
   | "checks";
 
@@ -320,8 +321,18 @@ export function longestLinksUrl(request: {
 
 export const doubtfulNodesUrl = "/api/v1/diagnostics/doubtful-nodes";
 
-export function deviceConflictsUrl(afterNode = 0): string {
-  return `/api/v1/diagnostics/device-conflicts?after_node=${afterNode}&count=30`;
+export type DeviceConflictFilter = "shared" | "one_at_a_time" | "keys";
+
+export function deviceConflictsUrl(
+  afterNode = 0,
+  only: DeviceConflictFilter | null = null,
+): string {
+  const query = new URLSearchParams({
+    after_node: String(afterNode),
+    count: "30",
+  });
+  if (only !== null) query.set("only", only);
+  return `/api/v1/diagnostics/device-conflicts?${query}`;
 }
 
 /** The relay checks of the `count` newest traceroute packets. */

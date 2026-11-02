@@ -10,6 +10,7 @@ import {
 
 import {
   DiagnosticsSummary,
+  DeviceConflictFilter,
   DeviceConflictList,
   DoubtfulNodeList,
   LongLink,
@@ -557,6 +558,7 @@ const LINK_FILTERS: { value: LongLinkFilter | "all"; label: string }[] = [
   { value: "shared", label: "Shared node number" },
   { value: "position", label: "Doubtful position" },
   { value: "unlikely", label: "Unlikely by terrain" },
+  { value: "signal", label: "Signal mismatch" },
   { value: "pending", label: "Pending" },
   { value: "checks", label: "With checks to review" },
 ];
@@ -903,21 +905,87 @@ function DoubtfulNodesSection() {
   );
 }
 
+const DEVICE_CASES: Record<
+  DeviceConflictFilter,
+  { label: string; tone: "neutral" | "amber" | "blue" }
+> = {
+  shared: { label: "shared by two radios", tone: "amber" },
+  one_at_a_time: { label: "new MAC", tone: "blue" },
+  keys: { label: "new key only", tone: "neutral" },
+};
+
+const DEVICE_FILTERS = [
+  { value: "all" as const, label: "IDs", tone: "neutral" as const },
+  ...(Object.keys(DEVICE_CASES) as DeviceConflictFilter[]).map((value) => ({
+    value,
+    ...DEVICE_CASES[value],
+  })),
+];
+
+function DeviceCaseBadge({ kind }: { kind: DeviceConflictFilter }) {
+  const { label, tone } = DEVICE_CASES[kind];
+  return (
+    <Badge tone={tone}>
+      {label.charAt(0).toUpperCase()}
+      {label.slice(1)}
+    </Badge>
+  );
+}
+
 function DeviceConflictsSection() {
+  const [shown, setShown] = useSetting<DeviceConflictFilter | "all">(
+    "diagnostics.devices",
+    "all",
+    (value) => DEVICE_FILTERS.some((item) => item.value === value),
+  );
   const [afterNode, setAfterNode] = useState(0);
-  const state = useApi<DeviceConflictList>(deviceConflictsUrl(afterNode));
+  const state = useApi<DeviceConflictList>(
+    deviceConflictsUrl(afterNode, shown === "all" ? null : shown),
+  );
   const nextNode = state.data?.next_node_id;
+  const [counts, setCounts] = useState<DeviceConflictList["counts"] | null>(
+    null,
+  );
+  if (state.data !== null && counts !== state.data.counts) {
+    setCounts(state.data.counts);
+  }
+  const total =
+    counts === null
+      ? 0
+      : Object.values(counts).reduce((sum, count) => sum + count, 0);
   return (
     <section aria-labelledby="diagnostic-devices-heading">
       <div className="section-intro compact">
         <h3 id="diagnostic-devices-heading">Conflicting device reports</h3>
         <p>
-          IDs reporting different MAC addresses or public keys. Shared: two
-          radios were on air at once, one's NodeInfo sent inside the other's
-          packet counter run. One at a time: a replacement or key change can
-          also explain these reports.
+          IDs reporting different MAC addresses or public keys. Shared by two
+          radios: both were on air at once, one's NodeInfo sent inside the
+          other's packet counter run. New MAC: a replaced radio, or two radios
+          not caught on air together.
         </p>
       </div>
+      {counts === null ? null : (
+        <div
+          className="longest-links-counts device-filters"
+          role="group"
+          aria-label="Show"
+        >
+          {DEVICE_FILTERS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={`badge badge-${item.tone}`}
+              aria-pressed={shown === item.value}
+              onClick={() => {
+                setShown(item.value);
+                setAfterNode(0);
+              }}
+            >
+              {item.value === "all" ? total : counts[item.value]} {item.label}
+            </button>
+          ))}
+        </div>
+      )}
       {state.error !== null ? (
         <StatusPanel tone="error">{state.error}</StatusPanel>
       ) : state.data === null ? (
@@ -929,11 +997,7 @@ function DeviceConflictsSection() {
           <div key={item.node_id}>
             <h4>
               <NodeLink nodeId={item.node_id} />{" "}
-              {item.kind === null ? null : (
-                <Badge tone={item.kind === "shared" ? "amber" : "neutral"}>
-                  {item.kind === "shared" ? "Shared" : "One at a time"}
-                </Badge>
-              )}
+              <DeviceCaseBadge kind={item.kind ?? "keys"} />
             </h4>
             {item.proof === null ? null : (
               <SharedProofLine proof={item.proof} />
@@ -1367,8 +1431,8 @@ function DoubtBadge({ link }: { link: LongLink }) {
   }
   if (doubt.reason === "signal") {
     return (
-      <Badge tone="amber" title="Signal suggests a suspect distance">
-        suspect distance
+      <Badge tone="amber" title="Signal unusually strong for this distance">
+        signal mismatch
       </Badge>
     );
   }

@@ -271,10 +271,14 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield "/api/v1/diagnostics/doubtful-nodes"
     yield "/api/v1/diagnostics/device-conflicts?after_node=0&count=30"
     yield f"/api/v1/diagnostics/device-conflicts?after_node={node}&count=30"
+    for only in ("shared", "one_at_a_time", "keys"):
+        yield f"/api/v1/diagnostics/device-conflicts?after_node=0&count=30&only={only}"
+        yield f"/api/v1/diagnostics/device-conflicts?after_node={node}&count=30&only={only}"
     # perf.db 2026-10-30: 163-243 ms to assess long links on this operator page.
     yield "/api/v1/diagnostics/longest-links?offset=0&count=30", 300
     yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest", 300
     yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely", 300
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=300&only=signal", 300
     yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}", 300
     # An operator page over 25 traceroutes
     # (perf.db 2026-10-27: 0.9 s warm, 2.5 s cold).

@@ -40,7 +40,7 @@ from sigsleuth.mqtt import CaptureStatus
 from sigsleuth.opt_out import opted_out, shown_sql, unlinkable_packets
 from sigsleuth.positions import direct_partners, doubt_limit_km, estimate_since_ms
 from sigsleuth.radio import distance_km
-from sigsleuth.shared_numbers import radio_profiles, shared_nodes
+from sigsleuth.shared_numbers import shared_nodes
 from sigsleuth.terrain import LongLinkCheck
 
 TABLES = ("reception", "packet", "node_current", "map_report")
@@ -86,14 +86,24 @@ class DeviceConflict:
     limited: bool
 
 
+DeviceConflictFilter = Literal["shared", "one_at_a_time", "keys"]
+
+
 @dataclass(frozen=True)
 class DeviceConflictList:
+    """Counts span all retained IDs, including other pages and cases."""
+
     items: tuple[DeviceConflict, ...]
     next_node_id: int | None
+    counts: dict[DeviceConflictFilter, int]
 
 
 def device_conflicts(
-    connection: sqlite3.Connection, *, after_node: int = 0, count: int = 30
+    connection: sqlite3.Connection,
+    *,
+    after_node: int = 0,
+    count: int = 30,
+    only: DeviceConflictFilter | None = None,
 ) -> DeviceConflictList:
     """IDs with differing nonempty MACs or keys in retained NodeInfo reports.
     A change can be a replacement or key reset; these are reports to inspect,
@@ -101,15 +111,30 @@ def device_conflicts(
     shown = f"{shown_sql('d.node_id')} AND {shown_sql('p.recipient_node_id')}"
     nodes = connection.execute(
         f"""
-        SELECT d.node_id FROM node_device AS d JOIN packet AS p ON p.id = d.packet_row_id
-        WHERE d.node_id > ? AND {shown}
+        SELECT d.node_id,
+               CASE WHEN s.node_id IS NOT NULL THEN 'shared'
+                    WHEN count(DISTINCT nullif(d.mac_address, x'')) > 1 THEN 'one_at_a_time'
+                    ELSE NULL END AS kind
+        FROM node_device AS d JOIN packet AS p ON p.id = d.packet_row_id
+        LEFT JOIN node_shared AS s ON s.node_id = d.node_id
+        WHERE {shown}
         GROUP BY d.node_id
-        HAVING count(DISTINCT nullif(d.mac_address, x'')) > 1
-            OR count(DISTINCT nullif(d.public_key, x'')) > 1
-        ORDER BY d.node_id LIMIT ?
+        HAVING (count(DISTINCT nullif(d.mac_address, x'')) > 1
+            OR count(DISTINCT nullif(d.public_key, x'')) > 1)
+        ORDER BY d.node_id
         """,
-        (after_node, count + 1),
     ).fetchall()
+    totals = Counter(row["kind"] or "keys" for row in nodes)
+    counts: dict[DeviceConflictFilter, int] = {
+        "shared": totals["shared"],
+        "one_at_a_time": totals["one_at_a_time"],
+        "keys": totals["keys"],
+    }
+    nodes = [
+        row
+        for row in nodes
+        if row["node_id"] > after_node and (only is None or (row["kind"] or "keys") == only)
+    ][: count + 1]
     hidden = opted_out(connection)
     items = []
     for node in nodes[:count]:
@@ -137,13 +162,9 @@ def device_conflicts(
             for row in rows[:20]
         )
         proof = _shared_proof(connection, node_id)
-        radios = len(radio_profiles(connection, {node_id}).get(node_id, ()))
-        kind: Literal["shared", "one_at_a_time"] | None = (
-            "shared" if proof is not None else "one_at_a_time" if radios > 1 else None
-        )
-        items.append(DeviceConflict(node_id, kind, proof, reports, len(rows) > 20))
+        items.append(DeviceConflict(node_id, node["kind"], proof, reports, len(rows) > 20))
     return DeviceConflictList(
-        tuple(items), int(nodes[count - 1]["node_id"]) if len(nodes) > count else None
+        tuple(items), int(nodes[count - 1]["node_id"]) if len(nodes) > count else None, counts
     )
 
 
@@ -463,7 +484,7 @@ class LongLinkList:
 # terrain check whatever the pages make of it, pending, or with checks to
 # review.
 LongLinkFilter = Literal[
-    "long", "shorter", "hidden", "shared", "position", "unlikely", "pending", "checks"
+    "long", "shorter", "hidden", "shared", "position", "unlikely", "signal", "pending", "checks"
 ]
 # How a page of long links is ranked: by longest distance when heard, or only
 # the links heard links.LONG_LINK_KM or more apart, newest such hour first, to
@@ -796,7 +817,7 @@ def _map_hidden_because(
         trusted = [row for row in heard if row["trusted"]]
         if not trusted:
             if all(row["suspect_distance"] for row in heard):
-                reasons.append("the signal suggests a suspect distance")
+                reasons.append("the signal is unusually strong for the distance")
             else:
                 reasons.append(_distrusted_because(a, b, max(row["last_seen_at"] for row in heard)))
             continue

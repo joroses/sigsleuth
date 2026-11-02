@@ -12,7 +12,6 @@ import {
 import {
   BothWays,
   DirectionSnr,
-  Badge,
   DoubtfulBadge,
   Icon,
   MarginValue,
@@ -100,12 +99,8 @@ export function LinkCells({
               : []
           }
           unlikely={link.doubts.includes("terrain")}
+          signal={link.doubts.includes("signal")}
         />
-        {link.doubts.includes("signal") ? (
-          <Badge tone="amber" title="Signal suggests a suspect distance">
-            suspect distance
-          </Badge>
-        ) : null}
         {link.doubts.includes("pending") ? <PendingBadge /> : null}
         {link.distance_km !== null && !link.doubts.includes("shared") ? (
           <a

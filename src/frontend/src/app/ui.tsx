@@ -478,45 +478,40 @@ export function Badge({
   );
 }
 
-/**
- * Beside a distance that is probably wrong, with why in its tooltip: an end
- * the backend doubts (links.doubtful_positions), named in suspects, or a link
- * the terrain check finds unlikely (links.unlikely_links). Pages rank these
- * last by km. Nothing when neither applies.
- */
+/** A distance's position, terrain and signal concerns. */
 export function DoubtfulBadge({
   suspects,
   unlikely = false,
+  signal = false,
 }: {
   /** The names of the doubted nodes. */
   suspects: readonly string[];
   unlikely?: boolean;
+  signal?: boolean;
 }) {
-  if (suspects.length === 0 && !unlikely) return null;
+  if (suspects.length === 0 && !unlikely && !signal) return null;
   const reasons = [];
-  if (suspects.length === 1) {
-    reasons.push(
-      `${suspects[0]} is probably not where it says: its own direct links are far from its position. It may have moved, typed a wrong position, or share its node number with another device.`,
-    );
-  } else if (suspects.length > 1) {
-    reasons.push(
-      `${joinNames(suspects)} are probably not where they say: their own direct links are far from their positions.`,
-    );
+  if (suspects.length > 0) {
+    reasons.push(`Doubtful position: ${suspects.join(" and ")}`);
   }
   if (unlikely) {
-    reasons.push(
-      "Too far for radio over this terrain: an end's position is probably wrong.",
-    );
+    reasons.push("unlikely terrain");
+  }
+  if (signal) {
+    reasons.push("unusually strong signal");
   }
   return (
-    <Badge tone="amber" title={`Doubtful distance: ${reasons.join(" ")}`}>
+    <Badge
+      tone="amber"
+      title={
+        signal && reasons.length === 1
+          ? "Signal unusually strong for this distance"
+          : reasons.join(", ")
+      }
+    >
       doubtful
     </Badge>
   );
-}
-
-function joinNames(names: readonly string[]): string {
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /**

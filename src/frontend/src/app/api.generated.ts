@@ -1290,10 +1290,16 @@ export interface components {
       reports: components["schemas"]["DeviceReport"][];
       limited: boolean;
     };
-    /** DeviceConflictList */
+    /**
+     * DeviceConflictList
+     * @description Counts span all retained IDs, including other pages and cases.
+     */
     DeviceConflictList: {
       items: components["schemas"]["DeviceConflict"][];
       next_node_id: number | null;
+      counts: {
+        [key: string]: number;
+      };
     };
     /**
      * DeviceReport
@@ -4271,6 +4277,7 @@ export interface operations {
               | "shared"
               | "position"
               | "unlikely"
+              | "signal"
               | "pending"
               | "checks"
             )
@@ -4329,6 +4336,7 @@ export interface operations {
       query?: {
         after_node?: number;
         count?: number;
+        only?: ("shared" | "one_at_a_time" | "keys") | null;
       };
       header?: never;
       path?: never;

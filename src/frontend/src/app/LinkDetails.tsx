@@ -118,8 +118,11 @@ export function LinkDetails({
               />
             )}
             {hours.data?.[direction].some((hour) => hour.suspect_distance) ? (
-              <Badge tone="amber" title="Signal suggests a suspect distance">
-                suspect distance
+              <Badge
+                tone="amber"
+                title="Signal unusually strong for this distance"
+              >
+                signal mismatch
               </Badge>
             ) : null}
             {traceroutes && hops.data !== null ? (

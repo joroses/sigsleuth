@@ -71,6 +71,7 @@ from sigsleuth.db import (
 from sigsleuth.diagnostics import (
     LONGEST_LINKS,
     MAX_LONG_LINK_SCAN,
+    DeviceConflictFilter,
     DeviceConflictList,
     DiagnosticsSummary,
     DoubtfulNodeList,
@@ -925,8 +926,9 @@ def create_app(
         connection: Connection,
         after_node: Annotated[int, Query(ge=0, le=0xFFFFFFFF)] = 0,
         count: Annotated[int, Query(ge=1, le=100)] = 30,
+        only: DeviceConflictFilter | None = None,
     ) -> DeviceConflictList:
-        return device_conflicts(connection, after_node=after_node, count=count)
+        return device_conflicts(connection, after_node=after_node, count=count, only=only)
 
     @app.get("/api/v1/diagnostics/relay-checks", dependencies=[Admin])
     def relay_checks_page(

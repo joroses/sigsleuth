@@ -1451,6 +1451,45 @@ describe("Diagnostics", () => {
     );
   });
 
+  it("requests and remembers signal mismatch long links", async () => {
+    const first = "/api/v1/diagnostics/longest-links?offset=0&count=30";
+    const filtered =
+      "/api/v1/diagnostics/longest-links?offset=0&count=300&only=signal";
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url.startsWith(first.split("?")[0])
+            ? {
+                items: [],
+                looked_through: 0,
+                lowest_km: null,
+                oldest_hour_at: null,
+                next_offset: null,
+              }
+            : summary,
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    window.location.hash = "#diagnostics/links";
+    const view = render(<App />);
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "Show" }), {
+      target: { value: "signal" },
+    });
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(filtered, expect.anything()),
+    );
+    expect(loadSetting("diagnostics.longLinks")).toBe("signal");
+
+    view.unmount();
+    render(<App />);
+    expect(
+      (await screen.findByRole<HTMLSelectElement>("combobox", { name: "Show" }))
+        .value,
+    ).toBe("signal");
+  });
+
   it("loads a tab once opened, and a hidden tab keeps its filter", async () => {
     const pages: Record<string, object> = {
       "/api/v1/packets/ports": { ports: [] },
@@ -1583,9 +1622,17 @@ describe("Diagnostics", () => {
       Promise.resolve(
         jsonResponse(
           url === first
-            ? { items: [], next_node_id: 17 }
+            ? {
+                items: [],
+                next_node_id: 17,
+                counts: { shared: 1, one_at_a_time: 2, keys: 3 },
+              }
             : url === next
-              ? { items: [], next_node_id: null }
+              ? {
+                  items: [],
+                  next_node_id: null,
+                  counts: { shared: 1, one_at_a_time: 2, keys: 3 },
+                }
               : summary,
         ),
       ),
@@ -1605,6 +1652,62 @@ describe("Diagnostics", () => {
     await screen.findByRole("button", { name: "Next IDs" });
   });
 
+  it("remembers the device case and resets pagination when it changes", async () => {
+    const first = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url.startsWith(first.split("?")[0])
+            ? {
+                items: [],
+                next_node_id: 17,
+                counts: { shared: 1, one_at_a_time: 2, keys: 3 },
+              }
+            : summary,
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    window.location.hash = "#diagnostics/devices";
+    const view = render(<App />);
+
+    let previous = "";
+    for (const [only, label] of [
+      ["shared", "1 shared by two radios"],
+      ["one_at_a_time", "2 new MAC"],
+      ["keys", "3 new key only"],
+    ]) {
+      fireEvent.click(await screen.findByRole("button", { name: "Next IDs" }));
+      await waitFor(() =>
+        expect(fetch.mock.calls.map(([url]) => url)).toContain(
+          `/api/v1/diagnostics/device-conflicts?after_node=17&count=30${previous}`,
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      await waitFor(() =>
+        expect(fetch.mock.calls.map(([url]) => url)).toContain(
+          `${first}&only=${only}`,
+        ),
+      );
+      expect(screen.queryByRole("button", { name: "First IDs" })).toBeNull();
+      previous = `&only=${only}`;
+    }
+    expect(loadSetting("diagnostics.devices")).toBe("keys");
+    view.unmount();
+    render(<App />);
+    expect(
+      await screen.findByRole("button", {
+        name: "3 new key only",
+        pressed: true,
+      }),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "6 IDs" }));
+    expect(loadSetting("diagnostics.devices")).toBe("all");
+    expect(
+      screen.getByRole("button", { name: "6 IDs", pressed: true }),
+    ).not.toBeNull();
+  });
+
   it("marks a shared node number and links the packets that show it", async () => {
     const url = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
     const report = {
@@ -1619,6 +1722,7 @@ describe("Diagnostics", () => {
       other_node_ids: [0x13579bdf],
     };
     const conflicts = {
+      counts: { shared: 1, one_at_a_time: 0, keys: 0 },
       items: [
         {
           node_id: 0x11111111,
@@ -1654,7 +1758,11 @@ describe("Diagnostics", () => {
       ["from", "#packets/1"],
       ["to", "#packets/2"],
     ]);
-    expect(screen.getByText("Shared")).not.toBeNull();
+    expect(
+      within(screen.getByRole("heading", { level: 4 })).getByText(
+        "Shared by two radios",
+      ),
+    ).not.toBeNull();
     expect(screen.getByRole("link", { name: "!13579bdf" })).not.toBeNull();
   });
 

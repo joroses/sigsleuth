@@ -4864,11 +4864,73 @@ items: []
 
 items: []
 next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
 
 ## GET /api/v1/diagnostics/device-conflicts?after_node=3655149723&count=30
 
 items: []
 next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=shared
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=3655149723&count=30&only=shared
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=one_at_a_time
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=3655149723&count=30&only=one_at_a_time
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=keys
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=3655149723&count=30&only=keys
+
+items: []
+next_node_id: null
+counts:
+  shared: 0
+  one_at_a_time: 0
+  keys: 0
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=30
 
@@ -5101,6 +5163,14 @@ looked_through: 330
 lowest_km: 16.4
 oldest_hour_at: null
 next_offset: 330
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=300&only=signal
+
+items: []
+looked_through: 300
+lowest_km: 18.9
+oldest_hour_at: null
+next_offset: 300
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=300&node=3655149723
 

@@ -82,6 +82,7 @@ def test_missing_zero_and_malformed_fields_do_not_create_conflicts(path: Path) -
     send(path, 3, macaddr=b"\0" * 6, public_key=b"\0" * 32)
     send(path, 4, macaddr=b"bad", public_key=b"bad")
     assert page(path)["items"] == []
+    assert page(path)["counts"] == {"shared": 0, "one_at_a_time": 0, "keys": 0}
 
 
 def test_key_changes_are_listed_even_when_the_mac_is_unchanged(path: Path) -> None:
@@ -131,6 +132,37 @@ def test_ids_are_paginated_and_profiles_are_bounded(path: Path) -> None:
     item = page(path)["items"][0]
     assert len(item["reports"]) == 20
     assert item["limited"]
+
+
+@pytest.mark.parametrize(
+    ("only", "expected", "kind"),
+    [
+        ("shared", [NODE], "shared"),
+        ("one_at_a_time", [NODE + 1, NODE + 3], "one_at_a_time"),
+        ("keys", [NODE + 2, NODE + 4], None),
+    ],
+)
+def test_filters_select_cases_before_paginating(
+    path: Path, only: str, expected: list[int], kind: str | None
+) -> None:
+    for node in [NODE, NODE + 1, NODE + 3]:
+        send(path, 0, node=node, macaddr=MAC_A, public_key=KEY)
+        send(path, 1, node=node, macaddr=MAC_B, public_key=KEY)
+    send(path, 2, macaddr=MAC_A, public_key=KEY)
+    for node, mac in [(NODE + 2, MAC_A), (NODE + 4, b"")]:
+        send(path, 0, node=node, macaddr=mac, public_key=KEY)
+        send(path, 1, node=node, macaddr=mac, public_key=KEY[::-1])
+    with closing(open_current_database(path)) as connection:
+        refresh_shared_numbers(connection)
+
+    after_node = 0
+    for index, node in enumerate(expected):
+        result = page(path, f"?only={only}&count=1&after_node={after_node}")
+        assert result["counts"] == {"shared": 1, "one_at_a_time": 2, "keys": 2}
+        assert [(item["node_id"], item["kind"]) for item in result["items"]] == [(node, kind)]
+        assert result["next_node_id"] == (node if index < len(expected) - 1 else None)
+        after_node = node
+    assert page(path, f"?only={only}&after_node={after_node}")["items"] == []
 
 
 def test_conflicts_require_diagnostics_access(path: Path) -> None:

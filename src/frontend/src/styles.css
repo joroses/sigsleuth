@@ -2027,6 +2027,14 @@ button.text-button:hover:not(:disabled) {
   margin: 0 0 var(--space-3);
 }
 
+.device-filters .badge {
+  border: 1px solid transparent;
+}
+
+.device-filters .badge[aria-pressed="true"] {
+  border-color: currentColor;
+}
+
 .longest-links {
   margin: 0;
   padding-left: 2rem;

@@ -1000,6 +1000,7 @@ def test_every_page_applies_its_trust_rules_to_a_link(
 def test_suspect_signal_distance_keeps_history_and_other_evidence(
     path: Path, movement: str
 ) -> None:
+    from sigsleuth.diagnostics import longest_links
     from sigsleuth.links import link_hours, link_table, map_links
     from sigsleuth.positions import own_reach
 
@@ -1037,12 +1038,17 @@ def test_suspect_signal_distance_keeps_history_and_other_evidence(
             connection, link_kind="direct", node_a=A, node_b=B, channel="LongFast", since=None
         )
         assert history.a_to_b[0].suspect_distance is suspect
+        filtered = longest_links(connection, only="signal").items
+        assert [(item.node_a.node.node_id, item.node_b.node.node_id) for item in filtered] == (
+            [(A, B)] if suspect else []
+        )
         assert not connection.execute("SELECT * FROM node_doubtful").fetchall()
         # Reverse and independent route evidence remain available.
         link_hour(connection, B, A, at + 60_001, snr=[5], km=55.6)
         link_hour(connection, A, B, at + 60_002, link_kind="traceroute", snr=[5], km=55.6)
         assert own_reach(connection, {A, B}) == {A: 55.6, B: 55.6}
         assert map_links(connection, **args, trusted=True).items[0].b_to_a.observations == 1
+        assert not longest_links(connection, only="signal").items
 
 
 @pytest.mark.parametrize("rssi,snr,km", [(-80, 8, 55.6), (-20, -30, 10), (-20, 8, 9.9)])

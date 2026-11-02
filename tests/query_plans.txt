@@ -1675,16 +1675,72 @@ positions.direct_partners
 ## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
 
 diagnostics.device_conflicts
-  SEARCH node_device USING PRIMARY KEY
+  SCAN node_device
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 
 ## GET /api/v1/diagnostics/device-conflicts?after_node=168430090&count=30
 
 diagnostics.device_conflicts
-  SEARCH node_device USING PRIMARY KEY
+  SCAN node_device
   SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=shared
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=168430090&count=30&only=shared
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=one_at_a_time
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=168430090&count=30&only=one_at_a_time
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30&only=keys
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
+
+## GET /api/v1/diagnostics/device-conflicts?after_node=168430090&count=30&only=keys
+
+diagnostics.device_conflicts
+  SCAN node_device
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_shared USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 
@@ -1765,6 +1821,74 @@ diagnostics.longest_links
 
 diagnostics.longest_links
   SCAN link_hour USING INDEX link_hour_pair
+
+## GET /api/v1/diagnostics/longest-links?offset=0&count=300&only=signal
+
+diagnostics.longest_links
+  SCAN link_hour USING INDEX link_hour_pair
+diagnostics._long_links
+  SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH link_hour USING INDEX link_hour_pair
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+diagnostics._long_link_ends
+  SEARCH node_current USING PRIMARY KEY
+links.doubtful_nodes
+  SCAN node_doubtful
+shared_numbers.shared_nodes
+  SCAN node_shared
+positions.estimate_since_ms.<locals>.<genexpr>
+  SEARCH link_hour USING PRIMARY KEY
+positions.direct_partners
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SEARCH node_current USING PRIMARY KEY
+positions.direct_partners
+  SCAN node_current
+diagnostics._long_links
+  SCAN long_link
+diagnostics._long_links
+  SEARCH long_link USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/longest-links?offset=0&count=300&node=168430090
 

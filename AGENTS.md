@@ -27,7 +27,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 ## Code
 
 - One backend, one frontend, direct function and database calls. Split code only when it makes a feature clearer or easier to test. No interfaces, repositories, service classes, empty folders, caches, queues, extra databases or services without a measured need.
-- Shared interpretations (grouping, links, traceroutes) live in the backend; presentation-only maths may stay in the frontend. API and frontend change together, no backward compatibility.
+- Shared interpretations (grouping, links, traceroutes) live in the backend; presentation-only maths may stay in the frontend. The page shows a backend verdict; it never decides it again from the rounded numbers it displays. API and frontend change together, no backward compatibility.
 - Rule changes apply to new traffic; keep existing derived rows when usable. Raise `DERIVED_VERSION` only for incompatible derived-table changes or requested historical recalculation. No upgrade code, calculation versions, provenance tables or integrity checks.
 - A failed part degrades its own section, never the whole page or response.
 - Add files, dependencies and processes only when behaviour needs them. Setup and checks stay behind `scripts/setup.sh` and `scripts/verify.sh`.
@@ -37,6 +37,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 - Avoid unnecessary secondary labels and descriptions.
 - Don't restate the implementation in user-facing text.
 - A note, description or empty state is one short sentence: what to do, what it shows, or what is missing. Never how a result is chosen, what a picture beside it already shows, which settings it ignores, or a warning for an edge case. When a change makes a text untrue, shorten it; don't explain the new behaviour. Not "Search for the other end above, or click it on the map. The route takes the links most often heard its way, including those “Observed at least” hides." but "Search or select another node to find a likely route."
+- Exception: Diagnostics is an operator tool. Its descriptions, notes and hovers may take plain sentences saying what it lists, what each case means and how it is decided.
 - Hover text (`title`) is one short phrase, under 60 characters, with no full stop. It says what the user sees, not how it is worked out: "Gateways that hear it", not "Gateways that heard it and nodes heard with it directly or as neighbours, with no map rule hiding any".
 - Leave out what the label, heading note or unit already says (time windows, "km"). A hover that adds nothing is removed.
 - Use the page's own words: "traceroute hop", "Heard directly", "relay". README captions and alt text may name a feature loosely; only a wrong name is a problem.

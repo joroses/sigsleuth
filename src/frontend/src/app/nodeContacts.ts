@@ -12,10 +12,23 @@ import {
   linkHalves,
   zeroCostArrows,
 } from "./mapLinkLayers";
+import { SEEN_WINDOWS, type SeenWindow } from "./mapTimeFilter";
 import { formatKm, formatWindow } from "./nodeDisplay";
 
-/** The node page's contacts cover this many days. */
-export const CONTACT_DAYS = 7;
+/** The window a node page's links and contacts open on. */
+export const CONTACT_WINDOW: SeenWindow = "7d";
+
+/** The window's start, `now` in ms; null for all history. */
+export function windowSince(window: SeenWindow, now: number): Date | null {
+  const hours = SEEN_WINDOWS.find((option) => option.id === window)?.hours;
+  return hours == null ? null : new Date(now - hours * 60 * 60 * 1000);
+}
+
+export function windowText(window: SeenWindow): string {
+  const option = SEEN_WINDOWS.find((item) => item.id === window);
+  if (option?.hours == null) return "all history";
+  return option.hours === 1 ? "last hour" : `last ${option.label}`;
+}
 
 type Place = { latitude: number; longitude: number };
 

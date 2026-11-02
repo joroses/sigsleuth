@@ -25,13 +25,18 @@ export function nodeTraceroutesHref(nodeId: number): string {
   return `#links/traceroutes/${nodeId}`;
 }
 
-/** The Links page with this link's row expanded. */
+/**
+ * The Links page with this link's row expanded; with `lastSeenAt`, on a
+ * window that reaches it.
+ */
 export function linkDetailsHref(
   linkKind: LinkKind,
   nodeA: number,
   nodeB: number,
+  lastSeenAt?: string,
 ): string {
-  return `#links/${nodeA}-${nodeB}?kind=${linkKind}`;
+  const time = lastSeenAt === undefined ? "" : `@${Date.parse(lastSeenAt)}`;
+  return `#links/${nodeA}-${nodeB}${time}?kind=${linkKind}`;
 }
 
 /**

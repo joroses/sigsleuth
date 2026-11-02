@@ -811,6 +811,112 @@ describe("Node detail", () => {
     );
   });
 
+  it("loads a node's links and contacts over the window chosen, for this visit only", async () => {
+    const node = {
+      node_id: 0x11111111,
+      long_name: "Hilltop",
+      short_name: "HILL",
+      role: null,
+      hardware_model: null,
+      last_sent_at: null,
+      last_sent_packet_row_id: null,
+      last_seen_at: "2026-09-19T09:00:00Z",
+      channel: "LongFast",
+      last_gateway_at: null,
+      node_info_observed_at: null,
+      node_info_packet_row_id: null,
+      position: null,
+      location_source: null,
+      estimate: null,
+      firmware: null,
+      map_report: null,
+      contact_url: null,
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/nodes/286331153"
+            ? { node, ports: [], ...NO_RADIOS }
+            : url.startsWith("/api/v1/nodes/286331153/charts")
+              ? { node_id: node.node_id, hours: [], utilization: [] }
+              : url.startsWith("/api/v1/nodes/286331153/links")
+                ? {
+                    items: [],
+                    nodes: [],
+                    doubtful_node_ids: [],
+                    shared_node_ids: [],
+                    zero_cost_hops: [],
+                    truncated: false,
+                  }
+                : url.startsWith("/api/v1/nodes/286331153/contacts")
+                  ? {
+                      node_id: node.node_id,
+                      since: null,
+                      moved_at: null,
+                      items: [],
+                      packets: 0,
+                      limited: false,
+                    }
+                  : { items: [], packets: [], next_before_id: null },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    localStorage.setItem("sigsleuth.node.contacts.gateways", "true");
+    window.location.hash = "#nodes/286331153";
+    render(<App />);
+
+    const requested = (path: string) =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith(`/api/v1/nodes/286331153/${path}`));
+    await vi.waitFor(() => expect(requested("contacts")).toHaveLength(1));
+    for (const path of ["links", "contacts"])
+      expect(hoursBefore(requested(path)[0], "since")).toBeCloseTo(7 * 24, 1);
+
+    fireEvent.change(await screen.findByLabelText("Window"), {
+      target: { value: "all" },
+    });
+    await vi.waitFor(() =>
+      expect(requested("contacts")).toContain(
+        "/api/v1/nodes/286331153/contacts",
+      ),
+    );
+    expect(requested("links")).toContain("/api/v1/nodes/286331153/links");
+    const writeText = stubClipboard();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Share a link to this view" }),
+    );
+    const shared = "#nodes/!11111111?show=gateways&window=all";
+    await vi.waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        new URL(shared, window.location.href).href,
+      ),
+    );
+
+    // The shared link opens on its window.
+    cleanup();
+    fetchMock.mockClear();
+    window.location.hash = "#nodes";
+    window.location.hash = shared;
+    render(<App />);
+    expect(
+      ((await screen.findByLabelText("Window")) as HTMLSelectElement).value,
+    ).toBe("all");
+    await vi.waitFor(() =>
+      expect(requested("links")).toEqual(["/api/v1/nodes/286331153/links"]),
+    );
+
+    // Another visit opens on 7 days again.
+    cleanup();
+    window.location.hash = "#nodes";
+    window.location.hash = "#nodes/286331153";
+    render(<App />);
+    expect(
+      ((await screen.findByLabelText("Window")) as HTMLSelectElement).value,
+    ).toBe("7d");
+  });
+
   it("searches a node's links by their other end, ten at a time", async () => {
     const direction = {
       observations: 3,
@@ -2936,6 +3042,184 @@ describe("Links", () => {
     ).toEqual(["1", "0"]);
     // Neither node has a position, so there is no map to draw.
     expect(await screen.findByText(/has no known position/)).toBeTruthy();
+  });
+
+  it.each(["traceroute", "direct"] as const)(
+    "shares a %s link from its details",
+    async (kind) => {
+      const direction = {
+        observations: 3,
+        snr_samples: 3,
+        average_snr: 2,
+        average_rssi: -100,
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) =>
+          Promise.resolve(
+            jsonResponse(
+              url.startsWith("/api/v1/links/positions")
+                ? { items: [], unplaced_node_ids: [] }
+                : url.startsWith("/api/v1/links/hours")
+                  ? { a_to_b: [], b_to_a: [] }
+                  : {
+                      items: [
+                        {
+                          node_a: 1,
+                          node_b: 2,
+                          last_seen_at: "2026-09-25T09:00:00Z",
+                          channel: "LongFast",
+                          spreading_factor: 11,
+                          a_to_b: direction,
+                          b_to_a: direction,
+                          link_kind: kind,
+                          distance_km: null,
+                          doubts: [],
+                          radio_names: [],
+                        },
+                      ],
+                      nodes: [],
+                      truncated: false,
+                    },
+            ),
+          ),
+        ),
+      );
+      const writeText = stubClipboard();
+      localStorage.setItem("sigsleuth.links.kind", JSON.stringify(kind));
+      window.location.hash = "#links";
+      render(<App />);
+
+      fireEvent.click(await screen.findByText("LongFast"));
+      const details = document.querySelector<HTMLElement>(".link-details")!;
+      expect(
+        within(details).queryByRole("link", {
+          name: "All traceroutes with this hop",
+        }) !== null,
+      ).toBe(kind === "traceroute");
+      fireEvent.click(
+        within(details).getByRole("button", {
+          name: "Share a link to this view",
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(writeText).toHaveBeenLastCalledWith(
+          new URL(
+            `#links/1-2@${Date.parse("2026-09-25T09:00:00Z")}?kind=${kind}`,
+            window.location.href,
+          ).href,
+        ),
+      );
+    },
+  );
+
+  it("shows a shared link's row first among its node's many links", async () => {
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
+    // Node 1's link to 2 is the shortest, so last by distance.
+    const items = Array.from({ length: 150 }, (_, index) => ({
+      node_a: 1,
+      node_b: 2 + index,
+      last_seen_at: "2026-09-25T09:00:00Z",
+      channel: "LongFast",
+      spreading_factor: 11,
+      a_to_b: direction,
+      b_to_a: direction,
+      link_kind: "traceroute",
+      distance_km: 1 + index,
+      doubts: [],
+      radio_names: [],
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith("/api/v1/links/positions")
+              ? { items: [], unplaced_node_ids: [] }
+              : url.startsWith("/api/v1/links/hours")
+                ? { a_to_b: [], b_to_a: [] }
+                : url.startsWith("/api/v1/traceroutes/hops")
+                  ? { a_to_b: [], b_to_a: [], nodes: [] }
+                  : { items, nodes: [], truncated: false },
+          ),
+        ),
+      ),
+    );
+    window.location.hash = "#links/1-2?kind=traceroute";
+    render(<App />);
+
+    const open = await screen.findByRole("button", {
+      name: "Hide this link's details",
+    });
+    const rows = document.querySelectorAll(
+      ".links-table tbody tr.clickable-row",
+    );
+    expect(rows[0].contains(open)).toBe(true);
+    expect(rows[1].querySelector(".number")?.textContent).toMatch(/^150/);
+  });
+
+  it("opens a shared link on a window that reaches its last hearing", async () => {
+    const direction = {
+      observations: 3,
+      snr_samples: 3,
+      average_snr: 2,
+      average_rssi: null,
+    };
+    const lastSeen = Date.now() - 10 * 24 * 3_600_000;
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url.startsWith("/api/v1/links/positions")
+            ? { items: [], unplaced_node_ids: [] }
+            : url.startsWith("/api/v1/links/hours")
+              ? { a_to_b: [], b_to_a: [] }
+              : url.startsWith("/api/v1/traceroutes/hops")
+                ? { a_to_b: [], b_to_a: [], nodes: [] }
+                : {
+                    items: [
+                      {
+                        node_a: 1,
+                        node_b: 2,
+                        last_seen_at: new Date(lastSeen).toISOString(),
+                        channel: "LongFast",
+                        spreading_factor: 11,
+                        a_to_b: direction,
+                        b_to_a: direction,
+                        link_kind: "traceroute",
+                        distance_km: null,
+                        doubts: [],
+                        radio_names: [],
+                      },
+                    ],
+                    nodes: [],
+                    truncated: false,
+                  },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = `#links/1-2@${lastSeen}?kind=traceroute`;
+    render(<App />);
+
+    const row = await screen.findByRole("button", {
+      name: "Hide this link's details",
+    });
+    expect(row.getAttribute("aria-expanded")).toBe("true");
+    expect((screen.getByLabelText("Window") as HTMLSelectElement).value).toBe(
+      "all",
+    );
+    expect(
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith("/api/v1/links?")),
+    ).toEqual(["/api/v1/links?link_kind=traceroute"]);
+    // Not kept for the next visit.
+    expect(loadSetting("links.window")).not.toBe("all");
   });
 
   it("opens on a node's links from the hash, over 7 days and without the kept filters", async () => {

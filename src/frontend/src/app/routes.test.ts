@@ -128,10 +128,13 @@ describe("routeFromHash", () => {
     ).toEqual({
       page: "node",
       id: 2,
-      view: { expanded: true, show: ["gateways", "coverage"] },
+      view: { expanded: true, show: ["gateways", "coverage"], window: null },
     });
     expect(routeFromHash("#nodes/2?show=traceroutes")).toMatchObject({
       view: { expanded: false, show: ["traceroutes"] },
+    });
+    expect(routeFromHash("#nodes/2?window=all")).toMatchObject({
+      view: { expanded: false, show: [], window: "all" },
     });
     expect(routeFromHash("#nodes/2")).toMatchObject({ view: null });
   });
@@ -241,8 +244,12 @@ describe("view links", () => {
         view,
       });
     const nodes: NodeLinkView[] = [
-      { expanded: true, show: ["traceroutes", "gateways", "coverage"] },
-      { expanded: false, show: ["coverage"] },
+      {
+        expanded: true,
+        show: ["traceroutes", "gateways", "coverage"],
+        window: null,
+      },
+      { expanded: false, show: ["coverage"], window: "all" },
     ];
     for (const view of nodes)
       expect(routeFromHash(nodeViewHref(0xa1b2c3d4, view))).toEqual({

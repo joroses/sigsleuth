@@ -376,17 +376,6 @@ a.icon-button {
   color: var(--accent);
 }
 
-.link-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-1);
-}
-
-.link-actions .icon-button {
-  color: var(--accent);
-}
-
 .node-table :is(th, td).link-actions-cell {
   text-align: center;
 }
@@ -1930,6 +1919,7 @@ thead th {
 /* A section heading with its filter beside it. */
 .section-intro.heading-with-filter {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
   gap: var(--space-4);
 }
@@ -4432,15 +4422,6 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   margin: 0 0 var(--space-1);
 }
 
-.hop-lists-all {
-  grid-column: 1 / -1;
-  justify-self: start;
-}
-
-.hop-lists-all .icon {
-  margin-right: var(--space-1);
-}
-
 /* A Links row opened: the pair's map on the left, each direction's hours and
    packets beside it; stacked on narrow screens. As wide as the page, not the
    scrolling table it sits in. */
@@ -4474,8 +4455,15 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   margin: 0 0 var(--space-1);
 }
 
-.link-details-side .hop-lists-all {
-  justify-self: start;
+/* The hop's traceroutes and Share, after a link's directions. */
+.link-details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.link-details-actions .icon {
+  margin-right: var(--space-1);
 }
 
 .hour-strip {

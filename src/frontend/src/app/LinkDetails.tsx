@@ -16,8 +16,13 @@ import { now as clockNow } from "./clock";
 import { HopCostLine, HopObservationList } from "./HopObservations";
 import { type LatLon } from "./lineOfSight";
 import { linkTier, linkTierColor } from "./linkQuality";
-import { formatNodeId, nodeName, tracerouteHopHref } from "./nodeDisplay";
-import { Badge, Icon, LinkArrow, ShortTime } from "./ui";
+import {
+  formatNodeId,
+  linkDetailsHref,
+  nodeName,
+  tracerouteHopHref,
+} from "./nodeDisplay";
+import { Badge, Icon, LinkArrow, ShareButton, ShortTime } from "./ui";
 import { useApi } from "./useApi";
 
 // The map brings in MapLibre, so it loads when a row is first opened.
@@ -146,15 +151,28 @@ export function LinkDetails({
             ) : null}
           </section>
         ))}
-        {traceroutes ? (
-          <a
-            className="text-button hop-lists-all"
-            href={tracerouteHopHref(link.node_a, link.node_b)}
-          >
-            <Icon name="route" />
-            All traceroutes with this hop
-          </a>
-        ) : null}
+        <div className="link-details-actions">
+          {traceroutes ? (
+            <a
+              className="text-button"
+              href={tracerouteHopHref(link.node_a, link.node_b)}
+            >
+              <Icon name="route" />
+              All traceroutes with this hop
+            </a>
+          ) : null}
+          <ShareButton
+            hash={linkDetailsHref(
+              linkKind,
+              link.node_a,
+              link.node_b,
+              link.last_seen_at,
+            )}
+            title="Link details"
+            text="Share"
+            className="text-button"
+          />
+        </div>
       </div>
     </div>
   );

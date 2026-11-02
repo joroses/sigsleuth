@@ -10,8 +10,8 @@ import {
   sortLinks,
 } from "./linkRows";
 import { LinkDetails } from "./LinkDetails";
+import { SEEN_WINDOWS, type SeenWindow } from "./mapTimeFilter";
 import {
-  CONTACT_DAYS,
   zeroCostKey,
   zeroCostLabel,
   zeroCostTitle,
@@ -35,18 +35,22 @@ const ROWS_STEP = 10;
 type NodeLinkSort = LinkSort | "link_kind";
 
 /**
- * A node page's links of every kind over the last CONTACT_DAYS, with the
- * Links page's columns, including those to nodes with no position. The page
- * loads them (nodeLinksUrl, from `since`), as its minimap draws them too.
+ * A node page's links of every kind over the page's window, with the Links
+ * page's columns, including those to nodes with no position. The page loads
+ * them (nodeLinksUrl, from `since`), as its minimap draws them too.
  */
 export function NodeLinks({
   nodeId,
   links: { data, error },
   since,
+  linkWindow,
+  onWindow,
 }: {
   nodeId: number;
   links: ApiState<LinkTable>;
-  since: Date;
+  since: Date | null;
+  linkWindow: SeenWindow;
+  onWindow: (window: SeenWindow) => void;
 }) {
   const [search, setSearch] = useViewState("node.links.search", "");
   const [kind, setKind] = useViewState<LinkKind | "">("node.links.kind", "");
@@ -125,30 +129,47 @@ export function NodeLinks({
     <>
       <div className="section-intro compact heading-with-filter">
         <h3>Links</h3>
-        {links.length > 0 ? (
-          <div className="nodes-toolbar">
-            <input
-              type="search"
-              aria-label="Search links by node"
-              placeholder="Node name, !hex or number"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+        <div className="nodes-toolbar">
+          <label>
+            Window
             <select
-              aria-label="Link kind"
-              value={kind}
-              onChange={(event) => setKind(event.target.value as LinkKind | "")}
+              value={linkWindow}
+              onChange={(event) => onWindow(event.target.value as SeenWindow)}
             >
-              <option value="">All link kinds ({links.length})</option>
-              {Object.entries(LINK_KIND_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label} (
-                  {links.filter((link) => link.link_kind === value).length})
+              {SEEN_WINDOWS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
                 </option>
               ))}
             </select>
-          </div>
-        ) : null}
+          </label>
+          {links.length > 0 ? (
+            <>
+              <input
+                type="search"
+                aria-label="Search links by node"
+                placeholder="Node name, !hex or number"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <select
+                aria-label="Link kind"
+                value={kind}
+                onChange={(event) =>
+                  setKind(event.target.value as LinkKind | "")
+                }
+              >
+                <option value="">All link kinds ({links.length})</option>
+                {Object.entries(LINK_KIND_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label} (
+                    {links.filter((link) => link.link_kind === value).length})
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
       </div>
       {error !== null ? <StatusPanel tone="error">{error}</StatusPanel> : null}
       {data === null && error === null ? (
@@ -158,7 +179,7 @@ export function NodeLinks({
         <ErrorPanel message="Only the 20,000 most recently seen links of a kind are shown." />
       ) : null}
       {data !== null && links.length === 0 ? (
-        <StatusPanel>No links in the last {CONTACT_DAYS} days.</StatusPanel>
+        <StatusPanel>No links in this window.</StatusPanel>
       ) : null}
       {links.length > 0 && sorted.length === 0 ? (
         <StatusPanel>No links match these filters.</StatusPanel>
@@ -192,7 +213,7 @@ export function NodeLinks({
                   />
                   {showActions ? (
                     <th scope="col" className="link-actions-cell">
-                      Actions
+                      Explorer
                     </th>
                   ) : null}
                   <LinkHeadings
@@ -287,7 +308,7 @@ export function NodeLinks({
                               link={link}
                               linkKind={link.link_kind}
                               nodes={nodes}
-                              since={since.toISOString()}
+                              since={since?.toISOString()}
                             />
                           </td>
                         </tr>

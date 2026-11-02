@@ -604,12 +604,14 @@ export function ShareButton({
   hash,
   title,
   text,
+  className,
   onShare,
 }: {
   hash: string;
   /** For the share sheet. */
   title: string;
   text?: string;
+  className?: string;
   onShare?: () => void;
 }) {
   const [copied, setCopied] = useState<boolean | null>(null);
@@ -642,6 +644,7 @@ export function ShareButton({
       {text !== undefined ? (
         <button
           type="button"
+          className={className}
           aria-label={label}
           title={label}
           onClick={() => void share()}

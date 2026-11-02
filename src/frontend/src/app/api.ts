@@ -204,14 +204,18 @@ export function nodePositionsUrl(nodeId: number): string {
   return `/api/v1/nodes/${nodeId}/positions`;
 }
 
-export function nodeContactsUrl(nodeId: number, since: Date): string {
-  const query = new URLSearchParams({ since: since.toISOString() });
-  return `/api/v1/nodes/${nodeId}/contacts?${query}`;
+export function nodeContactsUrl(nodeId: number, since: Date | null): string {
+  return `/api/v1/nodes/${nodeId}/contacts${sinceQuery(since)}`;
 }
 
-export function nodeLinksUrl(nodeId: number, since: Date): string {
-  const query = new URLSearchParams({ since: since.toISOString() });
-  return `/api/v1/nodes/${nodeId}/links?${query}`;
+export function nodeLinksUrl(nodeId: number, since: Date | null): string {
+  return `/api/v1/nodes/${nodeId}/links${sinceQuery(since)}`;
+}
+
+function sinceQuery(since: Date | null): string {
+  return since === null
+    ? ""
+    : `?${new URLSearchParams({ since: since.toISOString() })}`;
 }
 
 export function nodesUrl(request: NodeListRequest): string {

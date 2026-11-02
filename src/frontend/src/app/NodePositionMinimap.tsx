@@ -11,14 +11,15 @@ import {
   nodeContactsUrl,
   nodePositionsUrl,
 } from "./api";
+import type { SeenWindow } from "./mapTimeFilter";
 import {
-  CONTACT_DAYS,
   type ContactLayers,
   type ContactMark,
+  CONTACT_WINDOW,
   contactFacts,
   contactLayers,
+  windowText,
 } from "./nodeContacts";
-import { now } from "./clock";
 import {
   COVERAGE_FILL_LAYER,
   COVERAGE_SOURCE,
@@ -72,11 +73,15 @@ type Current = { latitude: number; longitude: number; estimated: boolean };
 export function NodePositionMinimap({
   node,
   links,
+  linkWindow,
+  since,
   linkView = null,
   radios = null,
 }: {
   node: NodeDetail;
   links: LinkTable | null;
+  linkWindow: SeenWindow;
+  since: Date | null;
   linkView?: NodeLinkView | null;
   radios?: NodeRadios | null;
 }) {
@@ -96,9 +101,6 @@ export function NodePositionMinimap({
     linkView?.show.includes("gateways"),
   );
   const showContacts = radios === null && (showTraceroutes || showGateways);
-  const [since] = useState(
-    () => new Date(now() - CONTACT_DAYS * 24 * 60 * 60 * 1000),
-  );
   const contactsState = useApi<NodeContactList>(
     showContacts ? nodeContactsUrl(node.node_id, since) : null,
   );
@@ -344,7 +346,7 @@ export function NodePositionMinimap({
                 <button
                   type="button"
                   aria-pressed={showTraceroutes}
-                  title={`Traceroute neighbours, last ${CONTACT_DAYS} days`}
+                  title={`Traceroute neighbours, ${windowText(linkWindow)}`}
                   onClick={() => setShowTraceroutes(!showTraceroutes)}
                 >
                   <Icon name="route" />
@@ -353,7 +355,7 @@ export function NodePositionMinimap({
                 <button
                   type="button"
                   aria-pressed={showGateways}
-                  title={`Gateways that heard it, last ${CONTACT_DAYS} days`}
+                  title={`Gateways that heard it, ${windowText(linkWindow)}`}
                   onClick={() => setShowGateways(!showGateways)}
                 >
                   <Icon name="radio" />
@@ -386,6 +388,7 @@ export function NodePositionMinimap({
                   ...(showGateways ? (["gateways"] as const) : []),
                   ...(showCoverage ? (["coverage"] as const) : []),
                 ],
+                window: linkWindow === CONTACT_WINDOW ? null : linkWindow,
               })}
               title={nodeLabel(node)}
             />
@@ -419,7 +422,11 @@ export function NodePositionMinimap({
               : `${places.length.toLocaleString()} of ${radios.items.length.toLocaleString()} radios placed, each at its latest sorted position`}
           </span>
           {showContacts ? (
-            <ContactsNote state={contactsState} contacts={contacts} />
+            <ContactsNote
+              state={contactsState}
+              contacts={contacts}
+              linkWindow={linkWindow}
+            />
           ) : null}
           {showCoverage && hasMap ? (
             <span className="data-line">
@@ -436,9 +443,11 @@ export function NodePositionMinimap({
 function ContactsNote({
   state,
   contacts,
+  linkWindow,
 }: {
   state: { data: NodeContactList | null; error: string | null };
   contacts: ContactLayers | null;
+  linkWindow: SeenWindow;
 }) {
   if (state.error !== null)
     return (
@@ -447,11 +456,7 @@ function ContactsNote({
   if (state.data === null || contacts === null)
     return <span className="data-line">Loading contacts…</span>;
   if (state.data.items.length === 0)
-    return (
-      <span className="data-line">
-        No contacts in the last {CONTACT_DAYS} days.
-      </span>
-    );
+    return <span className="data-line">No contacts in this window.</span>;
   const unplaced =
     contacts.unplaced > 0
       ? ` · ${contacts.unplaced.toLocaleString()} unplaced`
@@ -460,10 +465,11 @@ function ContactsNote({
     contacts.moved > 0
       ? ` · ${contacts.moved.toLocaleString()} left out after a move`
       : "";
+  const words = windowText(linkWindow);
   return (
     <span className="data-line">
-      Last {CONTACT_DAYS} days: {contacts.marks.length.toLocaleString()}{" "}
-      contacts drawn{unplaced}
+      {words[0].toUpperCase() + words.slice(1)}:{" "}
+      {contacts.marks.length.toLocaleString()} contacts drawn{unplaced}
       {moved} · click one for its distances
     </span>
   );

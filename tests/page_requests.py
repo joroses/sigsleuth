@@ -204,6 +204,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/nodes/{node}/positions"
     yield f"/api/v1/nodes/{node}/contacts?since={week}"
     yield f"/api/v1/nodes/{node}/links?since={week}"
+    # The node page's All window (perf.db 2026-11-02, busiest nodes: links
+    # 53-58 ms, contacts 64-106 ms).
+    yield f"/api/v1/nodes/{node}/contacts"
+    yield f"/api/v1/nodes/{node}/links"
     yield "/api/v1/map/nodes"
     yield f"/api/v1/map/nodes?seen_since={day}&position_since={fortnight}"
     # What the map opens on: the last 3 days, traceroute links only. Its

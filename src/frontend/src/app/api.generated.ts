@@ -262,9 +262,9 @@ export interface paths {
     };
     /**
      * Node Contact Page
-     * @description Every node linked with this one since `since` (default the last 7
-     *     days) and the gateways that heard its newest packets then, with no
-     *     map rule hiding any, nearest first: for checking where it is.
+     * @description Every node linked with this one since `since` (default all history)
+     *     and the gateways that heard its newest packets then, with no map rule
+     *     hiding any, nearest first: for checking where it is.
      */
     get: operations["node_contact_page_api_v1_nodes__node_id__contacts_get"];
     put?: never;
@@ -284,9 +284,9 @@ export interface paths {
     };
     /**
      * Node Link Page
-     * @description The node's links of every kind since `since` (default the last 7
-     *     days), as the Links page shows them, including those with an end that
-     *     has no position.
+     * @description The node's links of every kind since `since` (default all history),
+     *     as the Links page shows them, including those with an end that has no
+     *     position.
      */
     get: operations["node_link_page_api_v1_nodes__node_id__links_get"];
     put?: never;
@@ -1939,8 +1939,8 @@ export interface components {
     };
     /**
      * NodeContactList
-     * @description Contacts for the node minimap: every node linked
-     *     with it since `since` (link_hour, any kind and distance, also hours the
+     * @description Contacts for the node minimap: every node linked with it since `since`
+     *     (None for all history; link_hour, any kind and distance, also hours the
      *     map hides) and the gateways that reported its newest packets in that
      *     window, nearest first, unplaced contacts last. packets counts the node's
      *     packets read for gateways; limited is True when older ones in the window
@@ -1950,8 +1950,7 @@ export interface components {
      */
     NodeContactList: {
       node_id: number;
-      /** Format: date-time */
-      since: string;
+      since: string | null;
       moved_at: string | null;
       items: components["schemas"]["NodeContact"][];
       packets: number;

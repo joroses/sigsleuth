@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   type LinkTable,
@@ -25,7 +25,8 @@ import {
 } from "./nodeDisplay";
 import { now as clockNow } from "./clock";
 import { NodeActivityCharts } from "./NodeActivityCharts";
-import { CONTACT_DAYS } from "./nodeContacts";
+import type { SeenWindow } from "./mapTimeFilter";
+import { CONTACT_WINDOW, windowSince } from "./nodeContacts";
 import { NodeLinks } from "./NodeLinks";
 import { NodePositionMinimap } from "./NodePositionMinimap";
 import type { NodeLinkView } from "./routes";
@@ -37,6 +38,7 @@ import {
   RadioChips,
   RadioItems,
 } from "./radios";
+import { useViewState } from "./remember";
 import { useApi } from "./useApi";
 import { Badge, CopyValue, DataItem, Icon, StatusPanel } from "./ui";
 import { formatHours } from "./zones";
@@ -55,10 +57,13 @@ export function NodeDetailView({
   // Ages are measured from when the page opened.
   const [now] = useState(clockNow);
   const { data: page, error } = useApi<NodeOverview>(nodeUrl(nodeId));
-  // For the Links table and the minimap's contact lines.
-  const [since] = useState(
-    () => new Date(now - CONTACT_DAYS * 24 * 60 * 60 * 1000),
+  // The Links table's and the minimap's contacts, kept for this history
+  // entry only.
+  const [linkWindow, setLinkWindow] = useViewState<SeenWindow>(
+    "node.window",
+    linkView?.window ?? CONTACT_WINDOW,
   );
+  const since = useMemo(() => windowSince(linkWindow, now), [linkWindow, now]);
   const links = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
   const radios = page?.radios ?? null;
   const shared = radios?.shared === true ? radios : null;
@@ -141,6 +146,8 @@ export function NodeDetailView({
                 node={page.node}
                 radios={radios}
                 links={links.data}
+                linkWindow={linkWindow}
+                since={since}
                 now={now}
                 linkView={linkView}
               />
@@ -148,7 +155,13 @@ export function NodeDetailView({
               <NodeActivityCharts nodeId={nodeId} />
             </>
           )}
-          <NodeLinks nodeId={nodeId} links={links} since={since} />
+          <NodeLinks
+            nodeId={nodeId}
+            links={links}
+            since={since}
+            linkWindow={linkWindow}
+            onWindow={setLinkWindow}
+          />
           <div className="section-intro compact heading-with-filter">
             <h3>Packets</h3>
             <PortSelect ports={page.ports} port={port} onChange={setPort} />
@@ -174,12 +187,16 @@ function NodeSummary({
   node,
   radios,
   links,
+  linkWindow,
+  since,
   now,
   linkView,
 }: {
   node: NodeDetail;
   radios: NodeRadios | null;
   links: LinkTable | null;
+  linkWindow: SeenWindow;
+  since: Date | null;
   now: number;
   linkView: NodeLinkView | null;
 }) {
@@ -340,6 +357,8 @@ function NodeSummary({
       <NodePositionMinimap
         node={node}
         links={links}
+        linkWindow={linkWindow}
+        since={since}
         linkView={linkView}
         radios={radios?.shared === true ? radios : null}
       />

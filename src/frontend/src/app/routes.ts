@@ -97,6 +97,8 @@ const MINIMAP_LAYERS: readonly MinimapLayer[] = [
 export interface NodeLinkView {
   expanded: boolean;
   show: MinimapLayer[];
+  /** The links' and contacts' window; null for the page's own. */
+  window: SeenWindow | null;
 }
 
 /** What a packet page's minimap shows besides the sender. */
@@ -136,7 +138,8 @@ export function routeFromHash(hash: string): Route {
   // The links or the explorer, optionally around one node; the explorer or
   // the links, optionally one link's two nodes; or the line of sight,
   // optionally between two nodes, where they were at a time in ms. On the
-  // links, ?kind= names the kind of the link whose row opens.
+  // links, ?kind= names the kind of the link whose row opens and @ when it
+  // was last heard.
   const linksTab = hash.match(
     new RegExp(
       String.raw`^#links(?:\/(traceroutes|line-of-sight))?(?:\/${NODE}(?:-${NODE})?)?(?:@(\d+))?(?:\?(.*))?$`,
@@ -154,7 +157,7 @@ export function routeFromHash(hash: string): Route {
         ? null
         : nodeNumber(first);
     const at =
-      time === undefined || pair === null || tab !== "line-of-sight"
+      time === undefined || pair === null || tab === "traceroutes"
         ? null
         : Number(time);
     return {
@@ -251,10 +254,18 @@ export function routeFromHash(hash: string): Route {
   }
   const node = hash.match(new RegExp(String.raw`^#nodes\/${NODE}(?:\?(.*))?$`));
   if (node !== null && nodeNumber(node[1]) <= 0xffffffff) {
+    const query = new URLSearchParams(node[2]);
+    const window = query.get("window");
+    const minimap = minimapLinkView(query, MINIMAP_LAYERS);
     return {
       page: "node",
       id: nodeNumber(node[1]),
-      view: minimapLinkView(new URLSearchParams(node[2]), MINIMAP_LAYERS),
+      view: isSeenWindow(window)
+        ? {
+            ...(minimap ?? { expanded: false, show: [] }),
+            window: window as SeenWindow,
+          }
+        : minimap && { ...minimap, window: null },
     };
   }
   const mapNode = hash.match(
@@ -375,7 +386,10 @@ export function mapViewHref(nodeId: number, view: MapLinkView): string {
 
 /** The node's page with its minimap as the view has it. */
 export function nodeViewHref(nodeId: number, view: NodeLinkView): string {
-  return `#nodes/${formatNodeId(nodeId)}${minimapSearch(view)}`;
+  const query = new URLSearchParams(minimapSearch(view));
+  if (view.window !== null) query.set("window", view.window);
+  const search = decodeCommas(query);
+  return `#nodes/${formatNodeId(nodeId)}${search === "" ? "" : `?${search}`}`;
 }
 
 export function packetViewHref(

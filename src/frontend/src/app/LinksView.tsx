@@ -10,7 +10,8 @@ import {
   weakerMargin,
 } from "./linkRows";
 import { LinkDetails } from "./LinkDetails";
-import { SEEN_WINDOWS, type SeenWindow } from "./mapTimeFilter";
+import { now } from "./clock";
+import { SEEN_WINDOWS, type SeenWindow, windowReaching } from "./mapTimeFilter";
 import { formatNodeId } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 import { TracerouteExplorer } from "./TracerouteExplorer";
@@ -79,7 +80,8 @@ export function LinksView({
   pair?: [number, number] | null;
   /** On the links and the explorer, the node search. */
   node?: number | null;
-  /** On line of sight, the time in ms to place the two ends at. */
+  /** On line of sight, the time in ms to place the two ends at; on the
+   * links, when the link whose row opens was last heard. */
   at?: number | null;
   /** On the links tab, the kind of the link a link to its row names. */
   kind?: LinkKind | null;
@@ -105,10 +107,11 @@ export function LinksView({
         </Suspense>
       ) : (
         <WindowTabs
-          key={JSON.stringify([pair, node, explorer])}
+          key={JSON.stringify([pair, node, at, explorer])}
           tab={tab}
           pair={pair}
           node={node}
+          at={at}
           kind={kind}
           explorer={explorer}
         />
@@ -121,12 +124,14 @@ function WindowTabs({
   tab,
   pair,
   node,
+  at,
   kind,
   explorer,
 }: {
   tab: "links" | "traceroutes";
   pair: [number, number] | null;
   node: number | null;
+  at: number | null;
   kind: LinkKind | null;
   explorer: ExplorerLinkView | null;
 }) {
@@ -139,9 +144,10 @@ function WindowTabs({
   );
   // A link to a hop's or node's runs opens on all history, which their
   // searches keep quick, so a shorter kept window hides none of them; a
-  // link to a node's links or to one link's row opens on 7 days, as all of
-  // them is not timed. Neither window is kept. The window stays in this
-  // history entry, so Back shows what was loaded for it.
+  // link to a node's links opens on 7 days, as all of them is not timed.
+  // A link to one link's row opens on 7 days, or on the narrowest window
+  // that reaches its last hearing. None of these windows is kept. The window
+  // stays in this history entry, so Back shows what was loaded for it.
   const [{ windowId, since, chosenAt }, setWindow] = useViewState(
     "links.window",
     () =>
@@ -149,9 +155,11 @@ function WindowTabs({
         tab === "traceroutes" &&
           (pair !== null || node !== null || explorer !== null)
           ? "all"
-          : node !== null || pair !== null
-            ? "7d"
-            : savedWindow,
+          : pair !== null && at !== null
+            ? windowReaching("7d", now(), at)
+            : node !== null || pair !== null
+              ? "7d"
+              : savedWindow,
       ),
   );
   const [keptKind, keepKind] = useSetting<LinkKind>(
@@ -390,11 +398,13 @@ function LinkRanking({
     setSort(next);
   };
   const [shown, setShown] = useViewState("links.shown", ROWS_STEP);
-  // The traceroute link whose packets are listed under its row; a pair in
-  // the URL opens its most recently seen row.
-  const [open, setOpen] = useViewState<string | null>("links.open", () =>
-    pair === null ? null : pairOpenKey(links, pair),
+  // A pair in the URL opens its most recently seen row, shown first so a
+  // node with many links does not push it past Show more.
+  const linkedRow = useMemo(
+    () => (pair === null ? null : pairOpenKey(links, pair)),
+    [links, pair],
   );
+  const [open, setOpen] = useViewState<string | null>("links.open", linkedRow);
 
   const channels = useMemo(
     () => countBy(links, (link) => link.channel),
@@ -433,8 +443,13 @@ function LinkRanking({
         (found === null || found.has(link.node_a) || found.has(link.node_b))
       );
     });
-    return sortLinks(filtered, sort, ascending);
+    const ordered = sortLinks(filtered, sort, ascending);
+    const first = ordered.findIndex((link) => openKey(link) === linkedRow);
+    return first > 0
+      ? [ordered[first], ...ordered.toSpliced(first, 1)]
+      : ordered;
   }, [
+    linkedRow,
     ascending,
     links,
     searchIndex,
@@ -517,7 +532,7 @@ function LinkRanking({
                   </th>
                   {traceroutes ? (
                     <th scope="col" className="link-actions-cell">
-                      Actions
+                      Explorer
                     </th>
                   ) : null}
                   <LinkHeadings
@@ -532,11 +547,9 @@ function LinkRanking({
               </thead>
               <tbody>
                 {sorted.slice(0, shown).map((link) => {
-                  const key = `${link.node_a}-${link.node_b}:${link.channel}`;
-                  // The kind too, so another kind's row of the pair stays shut.
-                  const openKey = `${linkKind}:${key}`;
-                  const expanded = open === openKey;
-                  const toggle = () => setOpen(expanded ? null : openKey);
+                  const key = openKey(link);
+                  const expanded = open === key;
+                  const toggle = () => setOpen(expanded ? null : key);
                   return (
                     <Fragment key={key}>
                       <tr
@@ -629,9 +642,12 @@ function pairOpenKey(links: LinkRow[], pair: [number, number]): string | null {
       newest = link;
     }
   }
-  return newest === null
-    ? null
-    : `${newest.link_kind}:${newest.node_a}-${newest.node_b}:${newest.channel}`;
+  return newest === null ? null : openKey(newest);
+}
+
+/** A row's key; with the kind, so another kind's row of the pair stays shut. */
+function openKey(link: LinkRow): string {
+  return `${link.link_kind}:${link.node_a}-${link.node_b}:${link.channel}`;
 }
 
 function countBy<T>(items: T[], key: (item: T) => string): [string, number][] {

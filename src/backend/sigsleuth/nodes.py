@@ -588,8 +588,8 @@ class NodeContact:
 
 @dataclass(frozen=True)
 class NodeContactList:
-    """Contacts for the node minimap: every node linked
-    with it since `since` (link_hour, any kind and distance, also hours the
+    """Contacts for the node minimap: every node linked with it since `since`
+    (None for all history; link_hour, any kind and distance, also hours the
     map hides) and the gateways that reported its newest packets in that
     window, nearest first, unplaced contacts last. packets counts the node's
     packets read for gateways; limited is True when older ones in the window
@@ -598,7 +598,7 @@ class NodeContactList:
     link facts retain the full window."""
 
     node_id: int
-    since: datetime
+    since: datetime | None
     moved_at: datetime | None
     items: tuple[NodeContact, ...]
     packets: int
@@ -606,7 +606,7 @@ class NodeContactList:
 
 
 def node_contacts(
-    connection: sqlite3.Connection, node_id: int, *, since: datetime
+    connection: sqlite3.Connection, node_id: int, *, since: datetime | None
 ) -> NodeContactList:
     """The node's links and the gateways that heard it since `since`, for
     checking its position by hand. Links come from the window's link_hour
@@ -614,7 +614,7 @@ def node_contacts(
     receptions at or after both ends' last known move."""
     if is_opted_out(connection, node_id):
         return NodeContactList(node_id, since, None, (), 0, False)
-    since_ms = to_epoch_ms(since)
+    since_ms = 0 if since is None else to_epoch_ms(since)
     links: dict[int, list[ContactLink]] = defaultdict(list)
     # link_kind is listed so SQLite reads the window through the primary key.
     for row in connection.execute(

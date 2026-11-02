@@ -5,7 +5,6 @@ import { type LinkSort, asymmetry, weakerMargin } from "./linkRows";
 import {
   doubtedNames,
   formatKm,
-  linkDetailsHref,
   lineOfSightHref,
   tracerouteHopHref,
 } from "./nodeDisplay";
@@ -16,7 +15,6 @@ import {
   Icon,
   MarginValue,
   UnconfirmedBadge,
-  ShareButton,
   ShortTime,
   SortHeading,
 } from "./ui";
@@ -155,25 +153,19 @@ export function LinkCells({
   );
 }
 
-/** A traceroute link's explorer and share actions. */
+/** A traceroute link's runs in the explorer. */
 export function ExplorerCell({ link }: { link: LinkRow }) {
   return (
     <td className="link-actions-cell">
       {link.link_kind === "traceroute" ? (
-        <div className="link-actions">
-          <a
-            className="icon-button"
-            href={tracerouteHopHref(link.node_a, link.node_b)}
-            title="All traceroutes with this hop"
-            aria-label="All traceroutes with this hop"
-          >
-            <Icon name="route" />
-          </a>
-          <ShareButton
-            hash={linkDetailsHref(link.link_kind, link.node_a, link.node_b)}
-            title="Link details"
-          />
-        </div>
+        <a
+          className="icon-button"
+          href={tracerouteHopHref(link.node_a, link.node_b)}
+          title="All traceroutes with this hop"
+          aria-label="All traceroutes with this hop"
+        >
+          <Icon name="route" />
+        </a>
       ) : null}
     </td>
   );

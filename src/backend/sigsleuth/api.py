@@ -452,11 +452,10 @@ def create_app(
         node_id: Annotated[int, ApiPath(ge=1, le=0xFFFFFFFF)],
         since: datetime | None = None,
     ) -> NodeContactList:
-        """Every node linked with this one since `since` (default the last 7
-        days) and the gateways that heard its newest packets then, with no
-        map rule hiding any, nearest first: for checking where it is."""
-        start = _utc(since) or utc_now() - timedelta(days=NODE_CHART_DAYS)
-        return node_contacts(connection, node_id, since=start)
+        """Every node linked with this one since `since` (default all history)
+        and the gateways that heard its newest packets then, with no map rule
+        hiding any, nearest first: for checking where it is."""
+        return node_contacts(connection, node_id, since=_utc(since))
 
     @app.get("/api/v1/nodes/{node_id}/links")
     def node_link_page(
@@ -464,14 +463,13 @@ def create_app(
         node_id: Annotated[int, ApiPath(ge=1, le=0xFFFFFFFF)],
         since: datetime | None = None,
     ) -> links.LinkTable:
-        """The node's links of every kind since `since` (default the last 7
-        days), as the Links page shows them, including those with an end that
-        has no position."""
-        start = _utc(since) or utc_now() - timedelta(days=NODE_CHART_DAYS)
+        """The node's links of every kind since `since` (default all history),
+        as the Links page shows them, including those with an end that has no
+        position."""
         return links.link_table(
             connection,
             link_kinds=links.LINK_KINDS,
-            since=start,
+            since=_utc(since),
             node=node_id,
         )
 

@@ -1695,6 +1695,179 @@ zero_cost_hops: 2 items
     costly: 0
     hours: 24
 
+## GET /api/v1/nodes/3655149723/contacts
+
+node_id: 3655149723
+since: null
+moved_at: null
+items: 40 items
+  - node_id: 3562709820
+    node:
+      node_id: 3562709820
+      long_name: "Node a33c"
+      short_name: "a33c"
+      role: "CLIENT"
+      latitude: 51.78
+      longitude: 19.5232
+      estimated: false
+    links: 1 items
+      - kind: "traceroute"
+        observations: 6
+        min_km: 0.9
+        max_km: 0.9
+        last_seen_at: "2026-10-10T20:12:38.139000Z"
+    moved_at: null
+    heard_before_move: false
+    heard_packets: 0
+    fewest_hops: null
+    km: 0.9
+  - node_id: 2658555076
+    node:
+      node_id: 2658555076
+      long_name: "Node 54c4"
+      short_name: "54c4"
+      role: "CLIENT"
+      latitude: 51.7734
+      longitude: 19.5297
+      estimated: false
+    links: 2 items
+      - kind: "direct"
+        observations: 85
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T14:52:44.526000Z"
+      - kind: "traceroute"
+        observations: 961
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T16:21:06.845000Z"
+    moved_at: null
+    heard_before_move: false
+    heard_packets: 86
+    fewest_hops: 0
+    km: 1.5
+  - node_id: 3408176084
+    node:
+      node_id: 3408176084
+      long_name: "Node a3d4"
+      short_name: "a3d4"
+      role: "CLIENT"
+      latitude: 51.7734
+      longitude: 19.5297
+      estimated: false
+    links: 1 items
+      - kind: "traceroute"
+        observations: 34
+        min_km: 1.5
+        max_km: 1.5
+        last_seen_at: "2026-10-11T01:30:38.419000Z"
+    moved_at: null
+    heard_before_move: false
+    heard_packets: 0
+    fewest_hops: null
+    km: 1.5
+packets: 87
+limited: false
+
+## GET /api/v1/nodes/3655149723/links
+
+items: 46 items
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+      average_rssi: null
+    b_to_a:
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
+      average_rssi: null
+    link_kind: "traceroute"
+    distance_km: 2.4
+    doubts: []
+    radio_names: []
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+      average_rssi: null
+    b_to_a:
+      observations: 960
+      snr_samples: 960
+      average_snr: 12.25
+      average_rssi: null
+    link_kind: "traceroute"
+    distance_km: 1.5
+    doubts: []
+    radio_names: []
+  - node_a: 2933499666
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 577
+      snr_samples: 577
+      average_snr: -3.01
+      average_rssi: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -6.5
+      average_rssi: null
+    link_kind: "traceroute"
+    distance_km: 64.4
+    doubts: []
+    radio_names: []
+nodes: 41 items
+  - node_id: 96879053
+    long_name: "Node 41cd"
+    short_name: "41cd"
+    role: "ROUTER"
+    latitude: 50.561
+    longitude: 19.5232
+    estimated: false
+  - node_id: 313596380
+    long_name: null
+    short_name: null
+    role: null
+    latitude: 51.7603
+    longitude: 19.4773
+    estimated: true
+  - node_id: 383887127
+    long_name: "Node a717"
+    short_name: "a717"
+    role: "CLIENT_MUTE"
+    latitude: 51.7931
+    longitude: 19.4576
+    estimated: false
+doubtful_node_ids: []
+shared_node_ids: []
+truncated: false
+zero_cost_hops: 2 items
+  - from_node_id: 2224775088
+    to_node_id: 3655149723
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+    hours: 72
+  - from_node_id: 3655149723
+    to_node_id: 1770269756
+    channel: "ShortFast"
+    free: 4
+    costly: 0
+    hours: 24
+
 ## GET /api/v1/map/nodes
 
 items: 479 items

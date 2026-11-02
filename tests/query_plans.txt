@@ -660,6 +660,56 @@ links.zero_cost_hops
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_to
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
 
+## GET /api/v1/nodes/168430090/contacts
+
+opt_out.is_opted_out
+  SEARCH node_opt_out USING PRIMARY KEY
+nodes.node_contacts
+  SEARCH link_hour USING PRIMARY KEY
+db.first_packet_row_id_since
+  SEARCH packet
+db.first_packet_row_id_since
+  SEARCH packet USING PRIMARY KEY
+nodes.node_contacts
+  SEARCH packet USING INDEX packet_sender
+nodes.node_contacts
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+opt_out.opted_out
+  SCAN node_opt_out
+nodes.node_contacts
+  SEARCH node_current USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+shared_numbers.shared_nodes
+  SCAN node_shared
+
+## GET /api/v1/nodes/168430090/links
+
+links.unlikely_links
+  SCAN long_link
+links.doubtful_nodes
+  SCAN node_doubtful
+shared_numbers.shared_nodes
+  SCAN node_shared
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+db.nodes_by_id
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_estimate USING PRIMARY KEY
+links.zero_cost_hops
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_to
+  SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
+
 ## GET /api/v1/map/nodes
 
 map_nodes.map_nodes

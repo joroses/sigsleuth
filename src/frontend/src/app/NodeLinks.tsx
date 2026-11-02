@@ -26,11 +26,13 @@ import {
   Icon,
   NodeName,
   StatusPanel,
+  SortHeading,
   WideTable,
 } from "./ui";
 import type { ApiState } from "./useApi";
 
 const ROWS_STEP = 10;
+type NodeLinkSort = LinkSort | "link_kind";
 
 /**
  * A node page's links of every kind over the last CONTACT_DAYS, with the
@@ -52,13 +54,13 @@ export function NodeLinks({
   const showRssi = kind === "direct";
   const shared = (data?.shared_node_ids ?? []).includes(nodeId);
   // Most heard first: by distance, links with no position would come last.
-  const [sort, setSort] = useSetting<LinkSort>(
+  const [sort, setSort] = useSetting<NodeLinkSort>(
     "node.links.sort",
     "observations",
-    isLinkSort,
+    (value) => value === "link_kind" || isLinkSort(value),
   );
   const [ascending, setAscending] = useSetting("node.links.ascending", false);
-  const chooseSort = (next: LinkSort) => {
+  const chooseSort = (next: NodeLinkSort) => {
     setAscending(next === sort && !ascending);
     setSort(next);
   };
@@ -102,16 +104,22 @@ export function NodeLinks({
               (node) => node.node_id,
             ),
           );
-    return sortLinks(
-      links.filter(
-        (link) =>
-          (kind === "" || link.link_kind === kind) &&
-          (found === null || found.has(link.node_b)),
-      ),
-      sort,
-      ascending,
+    const filtered = links.filter(
+      (link) =>
+        (kind === "" || link.link_kind === kind) &&
+        (found === null || found.has(link.node_b)),
     );
-  }, [links, searchIndex, search, kind, sort, ascending]);
+    if (sort !== "link_kind") return sortLinks(filtered, sort, ascending);
+    const rank = (link: (typeof links)[number]) => {
+      if (link.link_kind !== "traceroute")
+        return link.link_kind === "direct" ? 1 : 0;
+      const free = zeroCost.get(zeroCostKey(link.node_b, link.channel));
+      return 2 + Number(free?.into != null) * 2 + Number(free?.out != null);
+    };
+    return filtered.sort((a, b) =>
+      ascending ? rank(a) - rank(b) : rank(b) - rank(a),
+    );
+  }, [links, searchIndex, search, kind, sort, ascending, zeroCost]);
 
   return (
     <>
@@ -175,7 +183,13 @@ export function NodeLinks({
                       Radio
                     </th>
                   ) : null}
-                  <th scope="col">Link kind</th>
+                  <SortHeading
+                    label="Link kind"
+                    sort="link_kind"
+                    active={sort}
+                    descending={!ascending}
+                    onSort={chooseSort}
+                  />
                   {showActions ? (
                     <th scope="col" className="link-actions-cell">
                       Actions
@@ -183,7 +197,7 @@ export function NodeLinks({
                   ) : null}
                   <LinkHeadings
                     showRssi={showRssi}
-                    sort={sort}
+                    sort={sort === "link_kind" ? null : sort}
                     ascending={ascending}
                     onSort={chooseSort}
                     ways="out ⇄ in"

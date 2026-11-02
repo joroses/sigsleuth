@@ -348,8 +348,7 @@ export interface paths {
      *     on a pair the terrain check finds unlikely, drawn 250 km apart or more
      *     with no distance when last heard, over 150 km to an estimated node, or
      *     more than 25 km nearer or farther apart than when last heard.
-     *     Traceroute links list their directions free at least as often as
-     *     costly in the window (zero_cost_hops).
+     *     Traceroute links list their directions free now (zero_cost_hops).
      */
     get: operations["map_link_page_api_v1_map_links_get"];
     put?: never;
@@ -1446,7 +1445,8 @@ export interface components {
      *     role_node_id, the receiver or else the previous relay, has a known role
      *     outside ZERO_COST_ROLES (role), and unknown otherwise. On live, 7 days to
      *     2026-10-23, such a role was wrong for 0.1% (receiver) and 0.6% (previous
-     *     relay) of measured directions.
+     *     relay) of measured directions. hours is how far back a cost now counts
+     *     (current_hop_costs), None over a given window.
      */
     HopCost: {
       free: number;
@@ -1455,6 +1455,7 @@ export interface components {
       verdict: "free" | "costly" | "never_free" | "unknown";
       role_node_id: number | null;
       role: string | null;
+      hours: number | null;
     };
     /**
      * HopObservation
@@ -1478,8 +1479,8 @@ export interface components {
      * HopObservations
      * @description The newest packets that reported each direction of a link; a_to_b is
      *     node a transmitting and node b hearing it, as in MapLink. Each
-     *     direction's cost is its links.HopCost in the window on the channel, None
-     *     without a channel.
+     *     direction's cost is its links.HopCost now on the channel
+     *     (links.current_hop_costs), None without one.
      */
     HopObservations: {
       a_to_b: components["schemas"]["HopObservation"][];
@@ -1583,7 +1584,7 @@ export interface components {
      * @description doubtful_node_ids are the table's nodes with a doubtful position
      *     (doubtful_nodes) and shared_node_ids its shared node numbers
      *     (shared_numbers.shared_nodes), the suspects of a link doubted for one. A node's table
-     *     has its zero_cost_hops either way, those free at least as often as not.
+     *     has its zero_cost_hops either way, those free now.
      */
     LinkTable: {
       items: components["schemas"]["LinkRow"][];
@@ -1759,8 +1760,8 @@ export interface components {
     };
     /**
      * MapLinkList
-     * @description zero_cost_hops are the traceroute links' directions free at least as
-     *     often as costly in the window (free_hops).
+     * @description zero_cost_hops are the traceroute links' directions free now
+     *     (free_hops).
      */
     MapLinkList: {
       items: components["schemas"]["MapLink"][];
@@ -3045,7 +3046,8 @@ export interface components {
      * ZeroCostHop
      * @description to_node_id passed on from_node_id's copies on channel without
      *     spending a hop in free of the traceroute copies that showed, and spent
-     *     one in costly (hop_cost_hour).
+     *     one in costly; hours is the window they were counted over
+     *     (_current_counts).
      */
     ZeroCostHop: {
       from_node_id: number;
@@ -3053,6 +3055,7 @@ export interface components {
       channel: string;
       free: number;
       costly: number;
+      hours: number;
     };
     /**
      * Zone

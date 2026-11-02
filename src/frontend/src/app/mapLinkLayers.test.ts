@@ -69,6 +69,7 @@ describe("zeroCostArrows", () => {
     channel,
     free: 2,
     costly: 0,
+    hours: 24,
   });
   const arrows = (hops: ReturnType<typeof free>[]) =>
     zeroCostArrows([link], hops, nodes).features.map(

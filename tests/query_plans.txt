@@ -277,9 +277,9 @@ packets._reply_route
   SEARCH packet USING PRIMARY KEY
 packets._reply_route
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
@@ -1097,9 +1097,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1189,9 +1189,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1275,9 +1275,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1312,9 +1312,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1355,9 +1355,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1401,9 +1401,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1491,9 +1491,9 @@ traceroute_explorer._saved_route
   SEARCH reception USING PRIMARY KEY
 links.pinned_hops
   SEARCH traceroute_hop USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
@@ -1518,9 +1518,9 @@ traceroute_explorer.hop_observations.<locals>.direction
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 
 ## GET /api/v1/traceroutes/hops?node_a=168430090&node_b=185273099&since=<time>&channel=Unknown
@@ -1538,9 +1538,9 @@ traceroute_explorer.hop_observations.<locals>.direction
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-links.hop_costs
+links._hop_costs
   SEARCH hop_cost_hour USING INDEX hop_cost_hour_from
-links.hop_costs
+links._hop_costs
   SEARCH node_current USING PRIMARY KEY
 
 ## GET /api/v1/links/positions?node_a=168430090&node_b=185273099&at=<time>

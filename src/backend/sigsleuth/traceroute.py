@@ -51,7 +51,7 @@ from dataclasses import dataclass, replace
 from itertools import pairwise
 
 from sigsleuth.decode import MAX_ROUTE_ENTRIES, UNKNOWN_NODE, RouteDiscovery, read_route_discovery
-from sigsleuth.radio import great_circle_km
+from sigsleuth.radio import great_circle_km, relay_byte_of
 
 UNKNOWN_SNR = -128  # quarter decibels, i.e. -32 dB
 MAX_SNR_DB = 30.0
@@ -241,6 +241,10 @@ def pinned_costs(
     if appended:
         relays = relays[:-1]
     elif own_byte:
+        return []
+    previous = relays[-1] if relays else None
+    if own_byte and previous is not None and relay_byte_of(previous) == relay_byte_of(gateway):
+        # An incoming copy would falsely look like a free rebroadcast.
         return []
     chain = (path.nodes[0], *relays, *((gateway,) if own_byte else ()))
     if hops_used == len(chain) - 1:

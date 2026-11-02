@@ -516,8 +516,7 @@ def create_app(
         on a pair the terrain check finds unlikely, drawn 250 km apart or more
         with no distance when last heard, over 150 km to an estimated node, or
         more than 25 km nearer or farther apart than when last heard.
-        Traceroute links list their directions free at least as often as
-        costly in the window (zero_cost_hops).
+        Traceroute links list their directions free now (zero_cost_hops).
         """
         query_start = time.perf_counter()
         start = _utc(since)

@@ -1059,7 +1059,7 @@ export function SortHeading<S extends string>({
   note?: string;
   title?: string;
   sort: S;
-  active: S;
+  active: S | null;
   descending?: boolean;
   onSort: (sort: S) => void;
 }) {

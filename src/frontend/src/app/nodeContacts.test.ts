@@ -146,6 +146,7 @@ describe("contactLayers", () => {
           channel: "LongFast",
           free: 1,
           costly: 0,
+          hours: 24,
         },
       ],
       origin,
@@ -220,12 +221,18 @@ describe("contactLayers", () => {
 });
 
 describe("0-cost hops", () => {
-  const free = (from: number, to: number, channel = "LongFast") => ({
+  const free = (
+    from: number,
+    to: number,
+    channel = "LongFast",
+    hours = 24,
+  ) => ({
     from_node_id: from,
     to_node_id: to,
     channel,
     free: 3,
     costly: 1,
+    hours,
   });
 
   it("marks the traceroute line on the hop's channel only", () => {
@@ -307,18 +314,20 @@ describe("0-cost hops", () => {
   it("keeps which of the two relays the other's copies for free", () => {
     const ways = zeroCostWays(NODE, [
       free(NODE, 1),
-      free(1, NODE),
+      free(1, NODE, "LongFast", 72),
       free(NODE, 2),
     ]);
 
     expect(ways.get("1:LongFast")).toEqual({
       out: free(NODE, 1),
-      into: free(1, NODE),
+      into: free(1, NODE, "LongFast", 72),
     });
     expect(ways.get("2:LongFast")).toEqual({ out: free(NODE, 2), into: null });
-    expect(zeroCostTitle(ways.get("2:LongFast")!)).toBe("3 of 4 traceroutes");
+    expect(zeroCostTitle(ways.get("2:LongFast")!)).toBe(
+      "3 of 4 traceroutes in 24 hours",
+    );
     expect(zeroCostTitle(ways.get("1:LongFast")!)).toBe(
-      "Out 3 of 4 traceroutes, in 3 of 4",
+      "OUT: 3 of 4 in 24h, IN: 3 of 4 in 3d",
     );
     expect(zeroCostLabel(ways.get("1:LongFast")!)).toBe("0-hop both ways");
     expect(zeroCostLabel(ways.get("2:LongFast")!)).toBe("0-hop out");

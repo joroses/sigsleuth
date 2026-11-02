@@ -9,6 +9,7 @@ from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-un
 
 from derived_rows import insert_row, link_hour
 from meshtastic_fixtures import application_envelope, ingest
+from sigsleuth import db
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
@@ -897,6 +898,12 @@ def hop_cost(
         )
 
 
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fixes now at NOW, for hop costs, which count back from now."""
+    monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(NOW))
+
+
 def give_roles(path: Path, roles: dict[int, str | None]) -> None:
     with closing(open_current_database(path)) as connection, connection:
         for node_id, role in roles.items():
@@ -908,18 +915,24 @@ def costs(path: Path, a: int, b: int, **params: object) -> tuple[Any, Any]:
     return hops["a_to_b_cost"], hops["b_to_a_cost"]
 
 
+@pytest.mark.usefixtures("clock")
 def test_a_hops_cost_is_measured_else_costly_by_either_ends_role(path: Path) -> None:
     give_roles(path, {A: "ROUTER", R1: "CLIENT_MUTE", R2: "ROUTER_LATE", R3: None, B: "UNKNOWN_99"})
     hop_cost(path, A, R1, 2, 1)  # free although R1 is no router
     hop_cost(path, A, R2, 0, 3)
     hop_cost(path, R2, A, 4, 0, channel="MediumFast")
-    hop_cost(path, R2, A, 4, 0, hour_start=to_epoch_ms(NOW) - 30 * HOUR_MS)
+    hop_cost(path, R2, A, 4, 0, hour_start=to_epoch_ms(NOW) - 8 * 24 * HOUR_MS)
 
     to_r1, from_r1 = costs(path, A, R1)
-    to_r2, from_r2 = costs(path, A, R2, since=(NOW - timedelta(hours=1)).isoformat())
+    to_r2, from_r2 = costs(path, A, R2)
     via_r1, _ = costs(path, R2, R1)
 
-    assert (to_r1["verdict"], to_r1["free"], to_r1["costly"]) == ("free", 2, 1)
+    assert (to_r1["verdict"], to_r1["free"], to_r1["costly"], to_r1["hours"]) == (
+        "free",
+        2,
+        1,
+        24,
+    )
     assert to_r2["verdict"] == "costly"
     # A previous relay that is no router passes on no copy for free...
     assert (from_r1["verdict"], from_r1["role_node_id"], from_r1["role"]) == (
@@ -930,12 +943,13 @@ def test_a_hops_cost_is_measured_else_costly_by_either_ends_role(path: Path) -> 
     # ...nor does a receiver that is none.
     assert (via_r1["verdict"], via_r1["role_node_id"]) == ("never_free", R1)
     # Two router roles, or a role not reported or not known, say nothing; nor
-    # do another channel's hops or those before the window.
+    # do another channel's hops or those over 7 days old.
     assert from_r2["verdict"] == "unknown"
     assert [cost["verdict"] for cost in costs(path, A, R3)] == ["unknown", "unknown"]
     assert [cost["verdict"] for cost in costs(path, A, B)] == ["unknown", "unknown"]
 
 
+@pytest.mark.usefixtures("clock")
 def test_a_hops_cost_reads_an_opted_out_end_as_a_node_never_heard(path: Path) -> None:
     give_roles(path, {A: "CLIENT", R1: "CLIENT_MUTE"})
     hop_cost(path, A, R1, 2, 0)
@@ -950,6 +964,7 @@ def test_a_hops_cost_reads_an_opted_out_end_as_a_node_never_heard(path: Path) ->
         "verdict": "never_free",
         "role_node_id": A,
         "role": "CLIENT",
+        "hours": None,
     }
     assert from_r1["role_node_id"] == A
     # Costs are per channel, so without one there is none.
@@ -975,6 +990,7 @@ def free_request(path: Path) -> None:
     )
 
 
+@pytest.mark.usefixtures("clock")
 def test_a_packet_that_showed_a_hops_cost_tags_it(path: Path) -> None:
     free_request(path)
 
@@ -1146,6 +1162,7 @@ def test_relay_scoring_keeps_the_old_gateway_placement(path: Path) -> None:
         assert page.receptions[0].gateway_latitude == 41.0
 
 
+@pytest.mark.usefixtures("clock")
 def test_link_drilldowns_merge_radio_channels_without_merging_message_hop_predictions(
     path: Path,
 ) -> None:

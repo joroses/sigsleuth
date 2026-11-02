@@ -172,6 +172,7 @@ describe("findRoute", () => {
       channel: link.channel,
       free: 3,
       costly: 0,
+      hours: 24,
     });
     const route = findRoute(1, 10, chain, [zeroHop(3, 4)]);
     expect(route?.links).toHaveLength(9);

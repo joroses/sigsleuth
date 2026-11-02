@@ -256,16 +256,19 @@ def test_a_nodes_links_list_every_kind_and_keep_ends_with_no_position(path: Path
     assert {item["link_kind"] for item in links(path, "/api/v1/links")["items"]} == {"traceroute"}
 
 
-def test_a_nodes_links_list_its_0_cost_hops_either_way_but_no_hidden_partner(
-    path: Path,
+def test_a_nodes_links_list_its_hops_free_now_either_way_but_no_hidden_partner(
+    path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(HOUR + timedelta(minutes=30)))
     d, hidden = 0x0D0D0D0D, 0x0E0E0E0E
     with closing(open_current_database(path)) as connection, connection:
         for hours_ago, a, b, free, costly in (
-            (0, B, A, 2, 1),  # A passes on B's copies for free
-            (0, A, C, 1, 0),  # C passes on A's
-            (0, A, d, 1, 2),  # mostly costly
-            (30, A, d, 5, 0),  # before since
+            (0, B, A, 2, 1),  # A passes on B's copies for free in the last day
+            (30, B, A, 0, 9),  # older, so it does not count
+            (50, A, C, 1, 0),  # C passed on A's in the last 3 days, before since
+            (0, A, d, 1, 2),  # mostly costly in the last day
+            (30, A, d, 5, 0),
+            (200, C, A, 3, 0),  # over 7 days ago
             (0, hidden, A, 3, 0),
         ):
             insert_row(
@@ -284,15 +287,30 @@ def test_a_nodes_links_list_its_0_cost_hops_either_way_but_no_hidden_partner(
     table = links(path, f"/api/v1/nodes/{A}/links", since="2026-09-27T00:00:00Z")
 
     assert table["zero_cost_hops"] == [
-        {"from_node_id": A, "to_node_id": C, "channel": "LongFast", "free": 1, "costly": 0},
-        {"from_node_id": B, "to_node_id": A, "channel": "LongFast", "free": 2, "costly": 1},
+        {
+            "from_node_id": A,
+            "to_node_id": C,
+            "channel": "LongFast",
+            "free": 1,
+            "costly": 0,
+            "hours": 72,
+        },
+        {
+            "from_node_id": B,
+            "to_node_id": A,
+            "channel": "LongFast",
+            "free": 2,
+            "costly": 1,
+            "hours": 24,
+        },
     ]
     assert links(path, "/api/v1/links")["zero_cost_hops"] == []
 
 
-def test_map_links_list_their_0_cost_directions_on_their_channel_in_the_window(
-    path: Path,
+def test_map_links_list_their_directions_free_now_on_their_channel_whatever_the_window(
+    path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(HOUR + timedelta(minutes=30)))
     add_link_hour(path, 0, A, B, observations=2, snr=[-4.0, -6.0])
     add_link_hour(path, 0, B, C, observations=2, snr=[-4.0, -6.0])
     with closing(open_current_database(path)) as connection, connection:
@@ -317,9 +335,10 @@ def test_map_links_list_their_0_cost_directions_on_their_channel_in_the_window(
 
     page = links(path, since="2026-09-27T00:00:00Z")
 
-    assert page["zero_cost_hops"] == [
-        {"from_node_id": B, "to_node_id": A, "channel": "LongFast", "free": 2, "costly": 1}
-    ]
+    assert sorted(
+        (hop["from_node_id"], hop["to_node_id"], hop["free"], hop["hours"])
+        for hop in page["zero_cost_hops"]
+    ) == [(B, A, 2, 24), (B, C, 5, 72)]
     assert links(path, link_kind="direct")["zero_cost_hops"] == []
 
 

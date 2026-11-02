@@ -156,6 +156,14 @@ export function formatRole(role: string | null): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// Whole days past a day read as days: 24 -> "24 hours" (short "24h"),
+// 72 -> "3 days" ("3d").
+export function formatWindow(hours: number, short = false): string {
+  if (hours > 24 && hours % 24 === 0)
+    return short ? `${hours / 24}d` : `${hours / 24} days`;
+  return short ? `${hours}h` : `${hours} hours`;
+}
+
 // Hardware models keep their product spelling: HELTEC_V3 -> "HELTEC V3".
 export function formatHardware(model: string | null): string {
   if (model === null) return "Not reported";

@@ -869,7 +869,7 @@ describe("Node detail", () => {
     expect(screen.getByRole("link", { name: "Mill Gate" })).not.toBeNull();
   });
 
-  it("tags a node's traceroute link 0-cost its free way, only on the hop's partner and channel", async () => {
+  it("tags and sorts a node's 0-hop links by direction, partner and channel", async () => {
     const direction = {
       observations: 3,
       snr_samples: 0,
@@ -895,6 +895,8 @@ describe("Node detail", () => {
         row(0x22222222, "traceroute", "MediumFast"),
         row(0x22222222, "direct", "LongFast"),
         row(0x33333333, "traceroute", "LongFast"),
+        row(0x44444444, "traceroute", "LongFast"),
+        row(0x55555555, "neighbor", "LongFast"),
       ],
       nodes: [],
       doubtful_node_ids: [],
@@ -905,10 +907,27 @@ describe("Node detail", () => {
       zero_cost_hops: [
         {
           from_node_id: 0x11111111,
+          to_node_id: 0x44444444,
+          channel: "LongFast",
+          free: 1,
+          costly: 0,
+          hours: 24,
+        },
+        {
+          from_node_id: 0x44444444,
+          to_node_id: 0x11111111,
+          channel: "LongFast",
+          free: 1,
+          costly: 0,
+          hours: 24,
+        },
+        {
+          from_node_id: 0x11111111,
           to_node_id: 0x33333333,
           channel: "LongFast",
           free: 1,
           costly: 0,
+          hours: 24,
         },
         {
           from_node_id: 0x22222222,
@@ -916,6 +935,7 @@ describe("Node detail", () => {
           channel: "LongFast",
           free: 4,
           costly: 0,
+          hours: 24,
         },
       ],
     };
@@ -935,18 +955,37 @@ describe("Node detail", () => {
     );
 
     window.location.hash = "#nodes/286331153";
-    render(<App />);
+    const { unmount } = render(<App />);
 
     const [tag] = await screen.findAllByText("0-hop in");
     expect(screen.getAllByText("0-hop in")).toHaveLength(1);
     const cells = tag.closest("tr")!.querySelectorAll("td");
     expect(cells[1].textContent).toBe("!22222222");
     expect(tag.closest("tr")!.textContent).toContain("LongFast");
-    expect(tag.getAttribute("title")).toBe("4 of 4 traceroutes");
+    expect(tag.getAttribute("title")).toBe("4 of 4 traceroutes in 24 hours");
     const [out] = screen.getAllByText("0-hop out");
     expect(out.closest("tr")!.querySelectorAll("td")[1].textContent).toBe(
       "!33333333",
     );
+    const tableElement = tag.closest("table")!;
+    const rows = () => [...tableElement.querySelectorAll("tbody > tr")];
+    const original = rows();
+    const heading = screen.getByRole("button", { name: "Link kind" });
+    fireEvent.click(heading);
+    expect(rows()).toEqual([4, 0, 3, 1, 2, 5].map((i) => original[i]));
+    fireEvent.click(heading);
+    expect(rows()).toEqual([5, 2, 1, 3, 0, 4].map((i) => original[i]));
+
+    // The page remembers the sort.
+    const sorted = rows().map((r) => r.textContent);
+    unmount();
+    render(<App />);
+    const [again] = await screen.findAllByText("0-hop in");
+    expect(
+      [...again.closest("table")!.querySelectorAll("tbody > tr")].map(
+        (r) => r.textContent,
+      ),
+    ).toEqual(sorted);
   });
 
   it("still lists packets for a node with nothing current known", async () => {

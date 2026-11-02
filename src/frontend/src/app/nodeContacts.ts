@@ -12,7 +12,7 @@ import {
   linkHalves,
   zeroCostArrows,
 } from "./mapLinkLayers";
-import { formatKm } from "./nodeDisplay";
+import { formatKm, formatWindow } from "./nodeDisplay";
 
 /** The node page's contacts cover this many days. */
 export const CONTACT_DAYS = 7;
@@ -92,13 +92,16 @@ export function zeroCostLabel({ out, into }: ZeroCostWays): string {
       : "0-hop in";
 }
 
-/** How often the hop was free, each way the label names. */
+/** How often the hop was free lately, each way the label names. */
 export function zeroCostTitle({ out, into }: ZeroCostWays): string {
   const times = (hop: ZeroCostHop) =>
     `${hop.free.toLocaleString()} of ${(hop.free + hop.costly).toLocaleString()}`;
+  const short = (hop: ZeroCostHop) =>
+    `${times(hop)} in ${formatWindow(hop.hours, true)}`;
   if (out !== null && into !== null)
-    return `Out ${times(out)} traceroutes, in ${times(into)}`;
-  return `${times((out ?? into)!)} traceroutes`;
+    return `OUT: ${short(out)}, IN: ${short(into)}`;
+  const hop = (out ?? into)!;
+  return `${times(hop)} traceroutes in ${formatWindow(hop.hours)}`;
 }
 
 /** Placed contacts of the shown groups, with lines heard since both ends'

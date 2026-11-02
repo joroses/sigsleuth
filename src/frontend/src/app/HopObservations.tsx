@@ -2,6 +2,7 @@ import { type HopCost, type NodeSummary, type HopObservations } from "./api";
 import {
   formatNodeId,
   formatRole,
+  formatWindow,
   nodeName,
   packetHopHref,
 } from "./nodeDisplay";
@@ -17,15 +18,16 @@ function hopCostText(
   name: (nodeId: number) => string,
 ): { text: string; title?: string } {
   const total = (cost.free + cost.costly).toLocaleString();
+  const period =
+    cost.hours === null ? "" : `, last ${formatWindow(cost.hours)}`;
   switch (cost.verdict) {
     case "free":
       return {
-        text: `0-hop: free in ${cost.free.toLocaleString()} of ${total} traceroutes`,
-        title: "Passed on without spending a hop",
+        text: `0-hop: free in ${cost.free.toLocaleString()} of ${total} traceroutes${period}`,
       };
     case "costly":
       return {
-        text: `Costs a hop: ${cost.costly.toLocaleString()} of ${total} traceroutes`,
+        text: `Costs a hop: ${cost.costly.toLocaleString()} of ${total} traceroutes${period}`,
       };
     case "never_free":
       return {

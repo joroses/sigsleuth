@@ -369,6 +369,52 @@ def test_hop_costs_count_once_per_packet_on_its_channel(connection: sqlite3.Conn
     ]
 
 
+@pytest.mark.parametrize(
+    ("previous", "gateway"), [(0x11111144, 0x22222244), (0x111111FF, 0x22222200)]
+)
+def test_hop_cost_byte_collision_waits_for_another_gateway(
+    connection: sqlite3.Connection, previous: int, gateway: int
+) -> None:
+    def request(observer: int, hops: int, seconds: int) -> None:
+        observer_id = f"!{observer:08x}"
+        send(
+            connection,
+            seconds,
+            application_envelope(
+                portnums_pb2.PortNum.TRACEROUTE_APP,
+                mesh_pb2.RouteDiscovery(
+                    route=[previous, gateway], snr_towards=[20, 24]
+                ).SerializeToString(),
+                sender=REQUESTER,
+                recipient=TARGET,
+                packet_id=1,
+                gateway_id=observer_id,
+                hop_start=3,
+                hop_limit=3 - hops,
+                relay_node=relay_byte_of(gateway),
+            ),
+            observer_id,
+        )
+
+    request(gateway, hops=1, seconds=0)
+    assert (
+        connection.execute(
+            "SELECT free FROM traceroute_hop WHERE from_node_id=? AND to_node_id=?",
+            (previous, gateway),
+        ).fetchone()[0]
+        is None
+    )
+    assert connection.execute("SELECT count(*) FROM hop_cost_hour").fetchone()[0] == 0
+
+    request(0xCCCCCCCC, hops=2, seconds=1)
+    assert [
+        tuple(row)
+        for row in connection.execute(
+            "SELECT from_node_id, to_node_id, free, costly FROM hop_cost_hour"
+        )
+    ] == [(previous, gateway, 0, 1)]
+
+
 @pytest.mark.parametrize("batch_size", [1, 100])
 def test_signal_distance_guard_agrees_after_capture_and_rebuild(
     path: Path, connection: sqlite3.Connection, batch_size: int

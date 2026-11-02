@@ -578,6 +578,7 @@ hop_costs: 12 items
       verdict: "costly"
       role_node_id: null
       role: null
+      hours: null
     is_return: false
   - from_node_id: 702832197
     to_node_id: 1851440850
@@ -588,6 +589,7 @@ hop_costs: 12 items
       verdict: "never_free"
       role_node_id: 1851440850
       role: "CLIENT"
+      hours: null
     is_return: false
   - from_node_id: 702832197
     to_node_id: 2224775088
@@ -598,6 +600,7 @@ hop_costs: 12 items
       verdict: "costly"
       role_node_id: null
       role: null
+      hours: null
     is_return: false
 
 ## GET /api/v1/packets/11936/flood-routes
@@ -1684,11 +1687,13 @@ zero_cost_hops: 2 items
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 72
   - from_node_id: 3655149723
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 7
+    free: 4
     costly: 0
+    hours: 24
 
 ## GET /api/v1/map/nodes
 
@@ -1958,16 +1963,19 @@ zero_cost_hops: 5 items
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 24
   - from_node_id: 2224775088
     to_node_id: 1770269756
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 72
   - from_node_id: 2224775088
     to_node_id: 3655149723
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 72
 
 ## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
 
@@ -2064,22 +2072,25 @@ items: 499 items
       average_snr: 12.15
       average_rssi: null
 truncated: false
-zero_cost_hops: 3 items
+zero_cost_hops: 5 items
   - from_node_id: 96879053
     to_node_id: 2933499666
     channel: "ShortFast"
     free: 1
     costly: 0
-  - from_node_id: 2933499666
-    to_node_id: 702832197
+    hours: 24
+  - from_node_id: 2224775088
+    to_node_id: 1770269756
     channel: "ShortFast"
     free: 1
     costly: 0
-  - from_node_id: 3655149723
-    to_node_id: 1770269756
+    hours: 72
+  - from_node_id: 2224775088
+    to_node_id: 3655149723
     channel: "ShortFast"
-    free: 4
+    free: 1
     costly: 0
+    hours: 72
 
 ## GET /api/v1/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
 
@@ -2760,16 +2771,19 @@ zero_cost_hops: 5 items
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 24
   - from_node_id: 2224775088
     to_node_id: 1770269756
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 72
   - from_node_id: 2224775088
     to_node_id: 3655149723
     channel: "ShortFast"
     free: 1
     costly: 0
+    hours: 72
 
 ## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
 
@@ -3238,6 +3252,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 1266979693
           to_node_id: 2882539815
@@ -3248,6 +3263,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 702832197
@@ -3402,6 +3418,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 848645925
           to_node_id: 2718938342
@@ -3412,6 +3429,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 96879053
@@ -3474,6 +3492,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 3596185440
           to_node_id: 4110175258
@@ -3484,6 +3503,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 10 items
       - node_id: 603288811
@@ -3546,6 +3566,7 @@ items: 50 items
             verdict: "never_free"
             role_node_id: 1516587721
             role: "CLIENT"
+            hours: null
           is_return: false
         - from_node_id: 1516587721
           to_node_id: 2483997066
@@ -3556,6 +3577,7 @@ items: 50 items
             verdict: "never_free"
             role_node_id: 1516587721
             role: "CLIENT"
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 702832197
@@ -3648,6 +3670,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 2749076957
           to_node_id: 96879053
@@ -3658,6 +3681,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 6 items
       - node_id: 96879053
@@ -3720,6 +3744,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 2997305080
           to_node_id: 2285796188
@@ -3730,6 +3755,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 6 items
       - node_id: 96879053
@@ -3792,6 +3818,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 3472072206
           to_node_id: 2749076957
@@ -3802,6 +3829,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 4 items
       - node_id: 2483997066
@@ -3894,6 +3922,7 @@ items: 1 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 2749076957
           to_node_id: 1128130340
@@ -3904,6 +3933,7 @@ items: 1 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 702832197
@@ -3999,6 +4029,7 @@ items: 1 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 2749076957
           to_node_id: 1128130340
@@ -4009,6 +4040,7 @@ items: 1 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 702832197
@@ -4110,6 +4142,7 @@ items: 50 items
             verdict: "costly"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
         - from_node_id: 848645925
           to_node_id: 2718938342
@@ -4120,6 +4153,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 96879053
@@ -4182,6 +4216,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: true
         - from_node_id: 848645925
           to_node_id: 2483997066
@@ -4192,6 +4227,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: true
     positions: 9 items
       - node_id: 848645925
@@ -4254,6 +4290,7 @@ items: 50 items
             verdict: "never_free"
             role_node_id: 2151687975
             role: "CLIENT"
+            hours: null
           is_return: false
         - from_node_id: 554127139
           to_node_id: 2718938342
@@ -4264,6 +4301,7 @@ items: 50 items
             verdict: "unknown"
             role_node_id: null
             role: null
+            hours: null
           is_return: false
     positions: 8 items
       - node_id: 554127139
@@ -4358,12 +4396,14 @@ a_to_b_cost:
   verdict: "never_free"
   role_node_id: 2658555076
   role: "CLIENT"
+  hours: null
 b_to_a_cost:
   free: 0
   costly: 0
   verdict: "never_free"
   role_node_id: 2658555076
   role: "CLIENT"
+  hours: null
 
 ## GET /api/v1/traceroutes/hops?node_a=3655149723&node_b=2658555076&since=2026-10-10T16:25:30.812000Z&channel=Unknown
 
@@ -4390,12 +4430,14 @@ a_to_b_cost:
   verdict: "never_free"
   role_node_id: 2658555076
   role: "CLIENT"
+  hours: null
 b_to_a_cost:
   free: 0
   costly: 0
   verdict: "never_free"
   role_node_id: 2658555076
   role: "CLIENT"
+  hours: null
 
 ## GET /api/v1/links/positions?node_a=3655149723&node_b=2658555076&at=2026-10-11T16:25:30.812000Z
 

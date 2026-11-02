@@ -34,6 +34,7 @@ from sigsleuth.links import (
     HopCost,
     RouteHopCost,
     confirmed_sql,
+    current_hop_costs,
     doubtful_nodes,
     hop_costs,
     link_doubts,
@@ -83,8 +84,8 @@ class HopObservation:
 class HopObservations:
     """The newest packets that reported each direction of a link; a_to_b is
     node a transmitting and node b hearing it, as in MapLink. Each
-    direction's cost is its links.HopCost in the window on the channel, None
-    without a channel."""
+    direction's cost is its links.HopCost now on the channel
+    (links.current_hop_costs), None without one."""
 
     a_to_b: tuple[HopObservation, ...]
     b_to_a: tuple[HopObservation, ...]
@@ -153,9 +154,7 @@ def hop_observations(
         node_ids.update((item.requester_node_id, item.target_node_id))
     nodes = nodes_by_id(connection, node_ids - hidden)
     costs = (
-        {}
-        if channel is None
-        else hop_costs(connection, {(a, b, channel), (b, a, channel)}, since_ms, radio=True)
+        {} if channel is None else current_hop_costs(connection, {(a, b, channel), (b, a, channel)})
     )
     return HopObservations(
         a_to_b,

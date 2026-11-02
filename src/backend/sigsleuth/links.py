@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, to_epoch_ms
+from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, now_ms, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.opt_out import is_opted_out, opted_out, shown_sql
 from sigsleuth.radio import PRESET_SPREADING_FACTORS, distance_km, preset_name
@@ -173,19 +173,21 @@ class MapLink:
 class ZeroCostHop:
     """to_node_id passed on from_node_id's copies on channel without
     spending a hop in free of the traceroute copies that showed, and spent
-    one in costly (hop_cost_hour)."""
+    one in costly; hours is the window they were counted over
+    (_current_counts)."""
 
     from_node_id: int
     to_node_id: int
     channel: str
     free: int
     costly: int
+    hours: int
 
 
 @dataclass(frozen=True)
 class MapLinkList:
-    """zero_cost_hops are the traceroute links' directions free at least as
-    often as costly in the window (free_hops)."""
+    """zero_cost_hops are the traceroute links' directions free now
+    (free_hops)."""
 
     items: tuple[MapLink, ...]
     truncated: bool
@@ -209,7 +211,7 @@ def map_links(
     of where nodes are now: only the hours that still match (TRUSTED_HOUR),
     and only the links that fit where it draws their nodes (_fits_now), at
     most max_km apart when given. with_free_hops adds the links' 0-cost
-    directions (free_hops)."""
+    directions now (free_hops)."""
     rows = _hourly_links(connection, link_kind, since, limit, channel, trusted)
     kept = rows[:limit]
     if trusted:
@@ -220,38 +222,37 @@ def map_links(
     return MapLinkList(
         items,
         len(rows) > limit,
-        free_hops(connection, items, since, channel) if with_free_hops else (),
+        free_hops(connection, items, channel) if with_free_hops else (),
     )
 
 
 def free_hops(
     connection: sqlite3.Connection,
     links: Sequence[MapLink],
-    since: datetime | None,
     channel: str | None,
 ) -> tuple[ZeroCostHop, ...]:
-    """The links' directions, on their channel, that traceroutes found free
-    at least as often as costly from since's hour."""
+    """The links' directions, on their channel, that traceroutes find free
+    at least as often as costly now (_current_counts)."""
     shown = {(link.node_a, link.node_b, link.channel) for link in links}
-    since_ms = 0 if since is None else to_epoch_ms(since)
-    # Groups every row of the window, as no index finds the free ones: 10, 31
-    # and 70 ms for 3, 7 and 14 days on live (2026-10-24). The + keeps the
-    # window's primary key range; grouping in hop_cost_hour_from's order
-    # scanned all of it.
+    # Groups every row of the longest window, as no index finds the free
+    # ones: 20 ms on live (2026-11-01). The + keeps the window's primary key
+    # range; grouping in hop_cost_hour_from's order scanned all of it.
     rows = connection.execute(
-        """
-        SELECT from_node_id, to_node_id, radio_channel, sum(free), sum(costly)
+        f"""
+        SELECT from_node_id, to_node_id, radio_channel, {_CURRENT_SUMS}
         FROM hop_cost_hour
-        WHERE hour_start >= :since AND (:channel IS NULL OR radio_channel = :channel)
+        WHERE hour_start >= :start AND (:channel IS NULL OR radio_channel = :channel)
         GROUP BY +from_node_id, to_node_id, radio_channel
-        HAVING sum(free) > 0 AND sum(free) >= sum(costly)
+        HAVING sum(free) > 0
         """,
-        {"since": since_ms - since_ms % HOUR_MS, "channel": channel},
+        {**_current_starts(), "channel": channel},
     )
     return tuple(
-        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), int(row[3]), int(row[4]))
+        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), *counts)
         for row in rows
         if (min(row[0], row[1]), max(row[0], row[1]), row[2]) in shown
+        and (counts := _current_counts(row[3:])) is not None
+        and _is_free(counts[0], counts[1])
     )
 
 
@@ -568,7 +569,7 @@ class LinkTable:
     """doubtful_node_ids are the table's nodes with a doubtful position
     (doubtful_nodes) and shared_node_ids its shared node numbers
     (shared_numbers.shared_nodes), the suspects of a link doubted for one. A node's table
-    has its zero_cost_hops either way, those free at least as often as not."""
+    has its zero_cost_hops either way, those free now."""
 
     items: tuple[LinkRow, ...]
     nodes: tuple[NodeSummary, ...]
@@ -633,34 +634,70 @@ def link_table(
         tuple(sorted(doubtful & set(nodes))),
         tuple(sorted(shared & set(nodes))),
         truncated,
-        () if node is None else zero_cost_hops(connection, node, since),
+        () if node is None else zero_cost_hops(connection, node),
     )
 
 
-def zero_cost_hops(
-    connection: sqlite3.Connection, node: int, since: datetime | None
-) -> tuple[ZeroCostHop, ...]:
-    """The node's hops either way, from since's hour, that traceroutes found
-    free at least as often as costly, by partner and channel."""
-    since_ms = 0 if since is None else to_epoch_ms(since)
+def zero_cost_hops(connection: sqlite3.Connection, node: int) -> tuple[ZeroCostHop, ...]:
+    """The node's hops either way that traceroutes find free at least as
+    often as costly now (_current_counts), by partner and channel."""
 
     def one_way(end: str) -> str:
         return f"""
-            SELECT from_node_id, to_node_id, radio_channel, sum(free), sum(costly)
+            SELECT from_node_id, to_node_id, radio_channel, {_CURRENT_SUMS}
             FROM hop_cost_hour INDEXED BY hop_cost_hour_{end}
-            WHERE {end}_node_id = :node AND hour_start >= :since
+            WHERE {end}_node_id = :node AND hour_start >= :start
             GROUP BY 1, 2, 3
-            HAVING sum(free) > 0 AND sum(free) >= sum(costly)
+            HAVING sum(free) > 0
                AND {shown_sql("from_node_id")} AND {shown_sql("to_node_id")}
         """
 
     return tuple(
-        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), int(row[3]), int(row[4]))
+        ZeroCostHop(int(row[0]), int(row[1]), str(row[2]), *counts)
         for row in connection.execute(
             f"{one_way('to')} UNION ALL {one_way('from')} ORDER BY 1, 2, 3",
-            {"node": node, "since": since_ms - since_ms % HOUR_MS},
+            {"node": node, **_current_starts()},
         )
+        if (counts := _current_counts(row[3:])) is not None and _is_free(counts[0], counts[1])
     )
+
+
+# Pages showing a hop's cost now read the shortest of these windows, in hours
+# back from now, with any traceroute copies of it: a changed favourite shows
+# within a day where traceroutes cross it, and older copies decide only when
+# none are newer. Revisit: on live, 7 days to 2026-11-01, 24 hours decided
+# 1,676 of 4,622 measured directions, 3 days 1,269 and 7 days 1,677; a 7-day
+# total differed on 7, 5 of them free in the last day after costly copies.
+CURRENT_COST_HOURS = (24, 3 * 24, 7 * 24)
+
+# Each window's sum(free) and sum(costly), in CURRENT_COST_HOURS order.
+_CURRENT_SUMS = ", ".join(
+    f"sum(free) FILTER (WHERE hour_start >= :start_{hours}), "
+    f"sum(costly) FILTER (WHERE hour_start >= :start_{hours})"
+    for hours in CURRENT_COST_HOURS
+)
+
+
+def _current_starts() -> dict[str, int]:
+    """Where each CURRENT_COST_HOURS window starts, from its whole hour, and
+    start, the longest's."""
+    hour = now_ms() // HOUR_MS * HOUR_MS
+    starts = {f"start_{hours}": hour - hours * HOUR_MS for hours in CURRENT_COST_HOURS}
+    return {**starts, "start": min(starts.values())}
+
+
+def _current_counts(sums: Sequence[int | None]) -> tuple[int, int, int] | None:
+    """free, costly and hours of the shortest window in a row's _CURRENT_SUMS
+    with any copies; None when none has."""
+    for i, hours in enumerate(CURRENT_COST_HOURS):
+        free, costly = sums[2 * i] or 0, sums[2 * i + 1] or 0
+        if free or costly:
+            return int(free), int(costly), hours
+    return None
+
+
+def _is_free(free: int, costly: int) -> bool:
+    return free > 0 and free >= costly
 
 
 # Firmware 2.7.11 and newer: only these relay a favourite router's copy
@@ -682,13 +719,15 @@ class HopCost:
     role_node_id, the receiver or else the previous relay, has a known role
     outside ZERO_COST_ROLES (role), and unknown otherwise. On live, 7 days to
     2026-10-23, such a role was wrong for 0.1% (receiver) and 0.6% (previous
-    relay) of measured directions."""
+    relay) of measured directions. hours is how far back a cost now counts
+    (current_hop_costs), None over a given window."""
 
     free: int
     costly: int
     verdict: HopVerdict
     role_node_id: int | None = None
     role: str | None = None
+    hours: int | None = None
 
 
 def hop_costs(
@@ -703,31 +742,54 @@ def hop_costs(
     start_ms's to end_ms. An opted-out end reads as a node never heard: no
     measurement and no role. radio groups observed counts by physical radio
     channel; predictions for a packet use the original message channel."""
+    return _hop_costs(
+        connection,
+        directions,
+        {"start": start_ms - start_ms % HOUR_MS, "end": end_ms},
+        radio=radio,
+        current=False,
+    )
+
+
+def current_hop_costs(
+    connection: sqlite3.Connection, directions: Collection[tuple[int, int, str]]
+) -> dict[tuple[int, int, str], HopCost]:
+    """The HopCost of each direction (from, to, radio channel) now, counted
+    over the hours _current_counts picks, as hop_costs counts a window."""
+    return _hop_costs(
+        connection, directions, {**_current_starts(), "end": None}, radio=True, current=True
+    )
+
+
+def _hop_costs(
+    connection: sqlite3.Connection,
+    directions: Collection[tuple[int, int, str]],
+    params: Mapping[str, int | None],
+    *,
+    radio: bool,
+    current: bool,
+) -> dict[tuple[int, int, str], HopCost]:
     hidden = opted_out(connection)
     wanted = {d for d in directions if d[0] not in hidden and d[1] not in hidden}
+    sums = _CURRENT_SUMS if current else "sum(free), sum(costly)"
     # Each sender's rows once, then the wanted pairs: looking each pair up
     # read a busy sender's rows again for every partner, 2.6 times slower for
     # an explorer page of 147 directions from 61 senders (live, 2026-10-24).
     counts = {
-        found: (int(row[3]), int(row[4]))
+        found: _current_counts(row[3:]) if current else (int(row[3]), int(row[4]), None)
         for row in connection.execute(
             f"""
-            SELECT from_node_id, to_node_id, {"radio_channel" if radio else "channel"},
-                   sum(free), sum(costly)
+            SELECT from_node_id, to_node_id, {"radio_channel" if radio else "channel"}, {sums}
             FROM hop_cost_hour INDEXED BY hop_cost_hour_from
             WHERE from_node_id IN (SELECT value FROM json_each(:senders))
               AND hour_start >= :start AND (:end IS NULL OR hour_start <= :end)
             GROUP BY 1, 2, 3
             """,
-            {
-                "senders": json.dumps(sorted({d[0] for d in wanted})),
-                "start": start_ms - start_ms % HOUR_MS,
-                "end": end_ms,
-            },
+            {"senders": json.dumps(sorted({d[0] for d in wanted})), **params},
         )
         if (found := (int(row[0]), int(row[1]), str(row[2]))) in wanted
     }
-    unmeasured = {node for d in directions if d not in counts for node in d[:2]} - hidden
+    unmeasured = {node for d in directions if counts.get(d) is None for node in d[:2]} - hidden
     roles = {
         int(row[0]): str(row[1])
         for row in connection.execute(
@@ -738,15 +800,19 @@ def hop_costs(
             (json.dumps(sorted(unmeasured)),),
         )
     }
-    return {d: _hop_cost(d[0], d[1], counts.get(d, (0, 0)), roles) for d in sorted(directions)}
+    return {d: _hop_cost(d[0], d[1], counts.get(d), roles) for d in sorted(directions)}
 
 
 def _hop_cost(
-    from_node: int, to_node: int, counts: tuple[int, int], roles: Mapping[int, str]
+    from_node: int,
+    to_node: int,
+    counts: tuple[int, int, int | None] | None,
+    roles: Mapping[int, str],
 ) -> HopCost:
-    free, costly = counts
+    free, costly, hours = counts or (0, 0, None)
     if free or costly:
-        return HopCost(free, costly, "free" if free and free >= costly else "costly")
+        verdict: HopVerdict = "free" if _is_free(free, costly) else "costly"
+        return HopCost(free, costly, verdict, hours=hours)
     for node in (to_node, from_node):
         role = roles.get(node)
         # UNKNOWN_n is a role newer than this code knows.

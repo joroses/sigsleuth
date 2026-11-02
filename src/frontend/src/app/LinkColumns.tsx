@@ -35,7 +35,7 @@ export function LinkHeadings({
   waysTitle,
   showRssi,
 }: {
-  sort: LinkSort;
+  sort: LinkSort | null;
   ascending: boolean;
   onSort: (sort: LinkSort) => void;
   ways: string;

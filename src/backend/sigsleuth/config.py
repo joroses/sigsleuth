@@ -2,11 +2,19 @@
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
 from dotenv import dotenv_values
+
+from sigsleuth.radio import (
+    BUILT_IN_CHANNELS,
+    Radio,
+    channel_key,
+    modem_preset_radio,
+    preset_name,
+)
 
 DEFAULT_RETENTION_DAYS = 14
 DEFAULT_COVERAGE_RETENTION_DAYS = 90
@@ -47,6 +55,8 @@ class Settings:
     # The API's clock, stopped here, for a demo of a saved database; the page
     # reads the same setting when it is built.
     fixed_now: datetime | None = None
+    # The network's own primary channels, by name (radio.declare_radio_channels).
+    radio_channels: Mapping[str, Radio] = field(default_factory=dict)
 
 
 def load_environment(
@@ -112,6 +122,7 @@ def settings_from_environment(environment: Mapping[str, str], *, capture: bool) 
             "SIGSLEUTH_HIDE_OPTED_OUT",
         ),
         fixed_now=fixed_now,
+        radio_channels=_radio_channels(environment.get("SIGSLEUTH_RADIO_CHANNELS", "")),
     )
 
 
@@ -178,3 +189,34 @@ def _time(value: str, name: str) -> datetime | None:
     if result.utcoffset() is None:
         raise ConfigurationError(f"{name} must include a UTC offset, such as Z")
     return result
+
+
+def _radio_channels(value: str) -> dict[str, Radio]:
+    """Comma-separated Name=Preset or Name=Preset@MHz, each a new channel name."""
+    channels: dict[str, Radio] = {}
+    for item in filter(None, (part.strip() for part in value.split(","))):
+        name, _, setting = (part.strip() for part in item.partition("="))
+        preset, at, frequency = (part.strip() for part in setting.partition("@"))
+        radio = modem_preset_radio(preset)
+        if (
+            radio is None
+            or not name
+            or preset_name(name) in BUILT_IN_CHANNELS
+            or channel_key(name) in map(channel_key, channels)
+        ):
+            raise ConfigurationError(
+                "SIGSLEUTH_RADIO_CHANNELS must list new channel names as "
+                "Name=Preset or Name=Preset@MHz, such as MyMesh=LongFast"
+            )
+        if at:
+            try:
+                mhz = float(frequency)
+            except ValueError:
+                mhz = 0.0
+            if not mhz > 0:
+                raise ConfigurationError(
+                    "SIGSLEUTH_RADIO_CHANNELS frequencies must be in MHz, such as 869.525"
+                )
+            radio = replace(radio, frequency_mhz=mhz)
+        channels[name] = radio
+    return channels

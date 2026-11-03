@@ -1,7 +1,9 @@
 """Radio and geography helpers shared by traceroutes, links and zones."""
 
 import math
-from dataclasses import dataclass
+import string
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 EARTH_RADIUS_KM = 6371.0
@@ -14,16 +16,20 @@ WIDE_LORA_BANDWIDTH = 3.25
 
 @dataclass(frozen=True)
 class Radio:
-    """A radio channel's LoRa spreading factor and bandwidth in kHz (None
-    when unknown). The spreading factor sets how weak a signal the radio can
-    still decode. Presets on one spreading factor but different bandwidths
-    (ShortFast and NarrowFast) do not hear each other. exact: the bandwidth
-    is the one the radio runs at (a survey's report, a 2.4 GHz channel);
-    otherwise it is a preset's, which a wide region runs wider."""
+    """A radio's LoRa spreading factor, bandwidth in kHz and frequency in MHz
+    (None when unknown), and the radio channel it is on: None for settings
+    alone, such as a map report's preset or a survey's. The spreading factor
+    sets how weak a signal the radio can still decode. Presets on one
+    spreading factor but different bandwidths (ShortFast and NarrowFast) do
+    not hear each other. exact: the bandwidth is the one the radio runs at (a
+    survey's report, a 2.4 GHz channel); otherwise it is a preset's, which a
+    wide region runs wider."""
 
     spreading_factor: int
     bandwidth_khz: float | None = None
     exact: bool = False
+    frequency_mhz: float | None = None
+    channel: str | None = None
 
     def bandwidths(self) -> tuple[float, ...]:
         """The bandwidths the radio may run at; empty when unknown."""
@@ -34,24 +40,46 @@ class Radio:
         return (self.bandwidth_khz, self.bandwidth_khz * WIDE_LORA_BANDWIDTH)
 
     def matches(self, other: "Radio") -> bool:
-        """Whether the two can be the same radio settings: the same spreading
-        factor, and a bandwidth both may run at unless either is unknown."""
-        if self.spreading_factor != other.spreading_factor:
+        """Whether the two can be on one mesh. Two radio channels only when
+        they are the same one, as each primary channel name gets its own
+        frequency slot. Otherwise the settings must match and fit the channel."""
+        if self.channel is not None and other.channel is not None:
+            return self.channel == other.channel
+        if not same_settings(self, other):
             return False
-        mine, theirs = self.bandwidths(), other.bandwidths()
-        return not mine or not theirs or not set(mine).isdisjoint(theirs)
+        if self.channel is not None:
+            return self.channel in other.channels()
+        if other.channel is not None:
+            return other.channel in self.channels()
+        return True
+
+    def channels(self) -> set[str]:
+        """The radio channels with these settings (same_settings), only
+        those declaring this frequency when any does."""
+        fitting = {name for name, radio in PRESET_RADIOS.items() if same_settings(self, radio)}
+        declared = {name for name in fitting if PRESET_RADIOS[name].frequency_mhz is not None}
+        return declared if self.frequency_mhz is not None and declared else fitting
 
 
-# Radio channels: channel names that tell a node's radio settings. Each
-# Meshtastic modem preset is listed by the name its primary channel gets when
-# left unnamed (the firmware's DisplayFormatters, so LongModerate is
-# "LongMod"), plus regional primary channels with known settings: SFNarrow
-# and NarrowPlus (62.5 kHz), Medium24 (2.4 GHz MediumSlow, SF10 at 812.5 kHz) and
-# Gaulix's Fr_Balise (France, LongModerate). Add a community's primary
-# channel here once its preset is known; not its chat channels, or nodes
-# would flip to them, nor channels bridged over MQTT downlink, such as
-# Canarias: SFNarrow's settings, but its senders are mostly LongFast nodes.
-PRESET_RADIOS = {
+def same_settings(a: Radio, b: Radio) -> bool:
+    """The same spreading factor, a bandwidth both may run at, and the same
+    frequency slot, each unless either is unknown. Slots sit a bandwidth
+    apart, so frequencies within half a bandwidth share one: the survey app
+    sends 869.618 for SFNarrow's 869.6187."""
+    if a.spreading_factor != b.spreading_factor:
+        return False
+    mine, theirs = a.bandwidths(), b.bandwidths()
+    if mine and theirs and set(mine).isdisjoint(theirs):
+        return False
+    if a.frequency_mhz is None or b.frequency_mhz is None:
+        return True
+    widths = [radio.bandwidth_khz for radio in (a, b) if radio.bandwidth_khz is not None]
+    return not widths or abs(a.frequency_mhz - b.frequency_mhz) < min(widths) / 2000
+
+
+# Meshtastic's modem presets, by the name their primary channel gets when
+# left unnamed (the firmware's DisplayFormatters, so LongModerate is "LongMod").
+MODEM_PRESETS = {
     "ShortTurbo": Radio(7, 500),
     "ShortFast": Radio(7, 250),
     "ShortSlow": Radio(8, 250),
@@ -68,13 +96,62 @@ PRESET_RADIOS = {
     "NarrowSlow": Radio(8, 62.5),
     "TinyFast": Radio(7, 15.625),
     "TinySlow": Radio(8, 15.625),
-    "SFNarrow": Radio(7, 62.5),
-    "NarrowPlus": Radio(6, 62.5),
-    "Medium24": Radio(10, 812.5, exact=True),
-    "Fr_Balise": Radio(11, 125),
 }
-PRESET_SPREADING_FACTORS = {name: radio.spreading_factor for name, radio in PRESET_RADIOS.items()}
-_PRESET_NAMES = {name.lower(): name for name in PRESET_SPREADING_FACTORS}
+_MODEM_PRESET_KEYS = {
+    **{name.lower(): radio for name, radio in MODEM_PRESETS.items()},
+    "longmoderate": MODEM_PRESETS["LongMod"],
+}
+
+# Radio channels: channel names that tell a node's radio settings. The modem
+# presets', regional primary channels with known settings, and a network's
+# own (declare_radio_channels). Regional: SFNarrow and NarrowPlus (62.5 kHz),
+# Medium24 (2.4 GHz MediumSlow, SF10 at 812.5 kHz) and Gaulix's Fr_Balise
+# (France, LongModerate). A channel on a preset's settings names its frequency
+# when known, so surveys there count for it alone. Add a community's primary
+# channel here once its preset is known; not its chat channels, or nodes
+# would flip to them, nor channels bridged over MQTT downlink, such as
+# Canarias: SFNarrow's settings, but its senders are mostly LongFast nodes.
+PRESET_RADIOS = {
+    name: replace(radio, channel=name)
+    for name, radio in {
+        **MODEM_PRESETS,
+        "SFNarrow": Radio(7, 62.5, frequency_mhz=869.6187),
+        "NarrowPlus": Radio(6, 62.5),
+        "Medium24": Radio(10, 812.5, exact=True),
+        "Fr_Balise": Radio(11, 125, frequency_mhz=869.4625),
+    }.items()
+}
+BUILT_IN_CHANNELS = frozenset(PRESET_RADIOS)
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def channel_key(name: str) -> str:
+    """A channel name lowercased as SQLite's lower() does it, A to Z only,
+    so capture and rederive agree on names such as Česko."""
+    return name.translate(_ASCII_LOWER)
+
+
+_PRESET_NAMES = {channel_key(name): name for name in PRESET_RADIOS}
+
+
+def declare_radio_channels(declared: Mapping[str, Radio]) -> None:
+    """Make these a network's own radio channels (SIGSLEUTH_RADIO_CHANNELS),
+    in place of any declared before."""
+    for name in set(PRESET_RADIOS) - BUILT_IN_CHANNELS:
+        del PRESET_RADIOS[name], _PRESET_NAMES[channel_key(name)]
+    for name, radio in declared.items():
+        PRESET_RADIOS[name] = replace(radio, channel=name)
+        _PRESET_NAMES[channel_key(name)] = name
+
+
+def declared_radio_channels() -> str:
+    """The radio channels declare_radio_channels added, as text that changes
+    with them."""
+    return ",".join(
+        f"{name}={radio.spreading_factor}/{radio.bandwidth_khz}@{radio.frequency_mhz}"
+        for name, radio in sorted(PRESET_RADIOS.items())
+        if name not in BUILT_IN_CHANNELS
+    )
 
 
 def great_circle_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -112,17 +189,16 @@ def fade_margin(average_snr: float, spreading_factor: int) -> float:
 
 
 def preset_name(name: str) -> str | None:
-    """A known preset name in its usual spelling, whatever its case; None if unknown."""
-    return _PRESET_NAMES.get(name.lower())
+    """A radio channel's name in its usual spelling, whatever its case; None
+    for other names."""
+    return _PRESET_NAMES.get(channel_key(name))
 
 
 def modem_preset_radio(modem_preset: str) -> Radio | None:
-    """The radio settings of a map report's modem preset (LONG_FAST and the
-    like); None if unknown."""
-    name = (
-        "LongMod" if modem_preset == "LONG_MODERATE" else preset_name(modem_preset.replace("_", ""))
-    )
-    return None if name is None else PRESET_RADIOS[name]
+    """The radio settings of a modem preset, named as in map reports
+    (LONG_FAST) or as its channel (LongFast), whatever the case; None if
+    unknown."""
+    return _MODEM_PRESET_KEYS.get(modem_preset.replace("_", "").lower())
 
 
 def relay_byte_of(node_id: int) -> int:

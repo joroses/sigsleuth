@@ -46,7 +46,8 @@ from sigsleuth.firmware import TRAIT_PORTS, TRAITS, newest, payload_trait
 from sigsleuth.link_channels import Channels, link_channel, record_channel
 from sigsleuth.opt_out import refresh_opt_outs
 from sigsleuth.radio import (
-    PRESET_SPREADING_FACTORS,
+    PRESET_RADIOS,
+    channel_key,
     great_circle_km,
     preset_name,
     relay_byte_of,
@@ -451,7 +452,7 @@ def _derive_batch(connection: sqlite3.Connection, ranges: dict[str, int]) -> Non
             ).fetchall()
         ],
     )
-    radio_channels = [name.lower() for name in PRESET_SPREADING_FACTORS]
+    radio_channels = [channel_key(name) for name in PRESET_RADIOS]
     channels: Channels = {}
     for statement in _BATCH_SQL:
         connection.execute(statement, {**ranges, "radio_channels": json.dumps(radio_channels)})

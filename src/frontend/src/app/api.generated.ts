@@ -4182,6 +4182,7 @@ export interface operations {
       query?: {
         spreading_factor?: number | null;
         bandwidth_khz?: number | null;
+        frequency_mhz?: number | null;
       };
       header?: never;
       path?: never;

@@ -42,7 +42,7 @@ from typing import Literal
 from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, now_ms, to_epoch_ms
 from sigsleuth.derive import HOUR_MS, MOVED_KM
 from sigsleuth.opt_out import is_opted_out, opted_out, shown_sql
-from sigsleuth.radio import PRESET_SPREADING_FACTORS, distance_km, preset_name
+from sigsleuth.radio import PRESET_RADIOS, distance_km, preset_name
 from sigsleuth.shared_numbers import link_radios, shared_nodes
 
 MAX_LINK_ROWS = 20_000
@@ -430,7 +430,9 @@ def _map_link(row: sqlite3.Row) -> MapLink:
         node_b=int(row["node_b"]),
         last_seen_at=from_epoch_ms(row["last_seen_at"]),
         channel=str(row["channel"]),
-        spreading_factor=PRESET_SPREADING_FACTORS.get(preset_name(str(row["channel"])) or ""),
+        spreading_factor=None
+        if (name := preset_name(str(row["channel"]))) is None
+        else PRESET_RADIOS[name].spreading_factor,
         a_to_b=_link_direction(
             row["ab_observations"],
             row["ab_snr_count"],

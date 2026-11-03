@@ -18,7 +18,7 @@ from sigsleuth.nodes import NodePosition, node_position, shown_link
 from sigsleuth.opt_out import is_opted_out, shown_sql, unlinkable_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
-from sigsleuth.radio import PRESET_SPREADING_FACTORS
+from sigsleuth.radio import PRESET_RADIOS, channel_key
 
 # A chatty sender farther than this from any town of 15,000 people has no region.
 SENDER_PLACE_KM = 50
@@ -41,7 +41,6 @@ _TEXT_CHANNELS_SQL = """
     WHERE {sender} id >= :since AND portnum = 1 AND recipient_node_id = 4294967295 {radio}
     GROUP BY sender_node_id, channel
 """
-_PRESETS_SQL = ", ".join(f"'{name.lower()}'" for name in PRESET_SPREADING_FACTORS)
 
 
 def _radio_sql(table: str, radio: str | None) -> str:
@@ -50,7 +49,8 @@ def _radio_sql(table: str, radio: str | None) -> str:
     sender's latest preset by then, else Unknown. No condition for None."""
     if radio is None:
         return ""
-    return f"""AND CASE WHEN lower({table}.channel) IN ({_PRESETS_SQL}) THEN {table}.channel
+    names = ", ".join("'{}'".format(channel_key(name).replace("'", "''")) for name in PRESET_RADIOS)
+    return f"""AND CASE WHEN lower({table}.channel) IN ({names}) THEN {table}.channel
         ELSE coalesce((
             SELECT radio.channel FROM node_channel AS radio
             WHERE radio.node_id = {table}.sender_node_id

@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from filelock import FileLock
 
 from recorded_sample import Sample, build_sample
-from sigsleuth import db, terrain
+from sigsleuth import db, radio, terrain
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 
@@ -48,3 +48,13 @@ def sample_client(sample: Sample, monkeypatch: pytest.MonkeyPatch) -> Iterator[T
     """The API on the sample, with the clock stopped a minute after its last delivery."""
     monkeypatch.setattr(db, "fixed_now_ms", sample.now_ms)
     yield TestClient(create_app(Settings(Path(sample.path))))
+
+
+@pytest.fixture
+def my_mesh(request: pytest.FixtureRequest) -> Iterator[str]:
+    """A declared radio channel on LongMod's settings at its own frequency,
+    named MyMesh unless parametrized."""
+    name = getattr(request, "param", "MyMesh")
+    radio.declare_radio_channels({name: radio.Radio(11, 125, frequency_mhz=869.4625)})
+    yield name
+    radio.declare_radio_channels({})

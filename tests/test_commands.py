@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from sigsleuth import __main__ as commands
+from sigsleuth import radio
 from sigsleuth.db import FACTS_VERSION, facts_version, open_database
 
 
@@ -56,3 +58,31 @@ def test_run_rejects_unsupported_database_with_reset_instructions(
     assert "delete the disposable database" in error
     assert f"rm -f -- {path} {path}-wal {path}-shm" in error
     assert "./scripts/migrate.sh" in error
+
+
+def test_migrate_rebuilds_derived_tables_when_the_radio_channels_change(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "history.db"
+
+    def migrate(radio_channels: str) -> bool:
+        """Whether migrate left the derived tables to rebuild."""
+        settings = {**environment(path), "SIGSLEUTH_RADIO_CHANNELS": radio_channels}
+        monkeypatch.setattr(commands, "load_environment", lambda: settings)
+        assert commands.main(["migrate"]) == 0
+        return "will be rebuilt" in capsys.readouterr().out
+
+    try:
+        migrate("MyMesh=LongMod")
+        with closing(sqlite3.connect(path)) as connection, connection:
+            connection.execute(
+                "INSERT INTO map_report (node_id, received_at, role, modem_preset,"
+                " has_default_channel, nodes_online_local, position_precision)"
+                " VALUES (1, 0, 'CLIENT', 'LONG_FAST', 1, 0, 0)"
+            )
+        assert not migrate("MyMesh=LongMod")
+        assert migrate("MyMesh=LongMod@869.4625")
+    finally:
+        radio.declare_radio_channels({})

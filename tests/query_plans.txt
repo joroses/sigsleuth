@@ -151,22 +151,19 @@ opt_out.refresh_opt_outs
 opt_out.refresh_opt_outs
   SEARCH node_reported USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-coverage.refresh_survey_links
-  SEARCH coverage_session USING PRIMARY KEY
+coverage.network_sessions
   SCAN coverage_session
 coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
 coverage.new_flags
-  SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.new_flags
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
@@ -914,10 +911,11 @@ links.free_hops
 
 ## GET /api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel=LongFast
 
+coverage.other_sessions
+  SCAN coverage_session
 coverage.coverage_nodes
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
   SCAN node_current
-  SCAN coverage_session
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
@@ -2402,12 +2400,13 @@ coverage.coverage_cells
 
 ## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12&since=<time>&node=168430090&channel=LongFast
 
+coverage.other_sessions
+  SCAN coverage_session
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
   SEARCH coverage_relay USING INDEX coverage_relay_node
   SEARCH coverage_measurement USING PRIMARY KEY
   SCAN node_current
-  SCAN coverage_session
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
@@ -2425,12 +2424,13 @@ coverage.coverage_extent
 
 ## GET /api/v1/coverage/extent?node=168430090&channel=LongFast
 
+coverage.other_sessions
+  SCAN coverage_session
 coverage.coverage_extent
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
   SEARCH coverage_relay USING INDEX coverage_relay_node
   SEARCH coverage_measurement USING PRIMARY KEY
   SCAN node_current
-  SCAN coverage_session
   SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender

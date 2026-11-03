@@ -2,10 +2,13 @@
 -- by derive.py during capture. To change one, raise DERIVED_VERSION in db.py:
 -- startup recreates them empty and rederives saved history. No upgrade code.
 
--- The derived tables' version, and whether rederive finished (rebuilt).
+-- The derived tables' version, whether rederive finished (rebuilt), and the
+-- radio channels declared when they were built (radio.declared_radio_channels),
+-- as node and link channels depend on them.
 CREATE TABLE derived_state (
     version INTEGER NOT NULL,
-    rebuilt INTEGER NOT NULL CHECK (rebuilt IN (0, 1))
+    rebuilt INTEGER NOT NULL CHECK (rebuilt IN (0, 1)),
+    radio_channels TEXT NOT NULL
 ) STRICT;
 
 -- Every node seen in retained history: as sender, gateway, traceroute hop or

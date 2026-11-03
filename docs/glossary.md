@@ -40,7 +40,7 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 | Shared distance | A distance with an end that is a shared node number (`shared` in `links.link_doubts`): its radios are in several places, so link pages badge it and rank it apart. |
 | Distance when heard | km between the nodes' reported positions when the link was last heard (`reported.positions_when_heard`). Ranked distances use only this. Link pages draw nodes at the newest report before the hearing, else the first afterwards, else their estimate; packet and line-of-sight distances follow those drawn positions. The map draws nodes where they are now. |
 | Channel | The channel name a packet was uploaded under. `PKI` means private messages, not a channel. |
-| Radio channel | A channel name that tells the radio settings (`radio.py`). A node's channel is the latest observed through its own packet or an accepted traceroute hop. |
+| Radio channel | A primary channel name that tells the radio settings: a preset's, a known regional one (`radio.py`) or one in `SIGSLEUTH_RADIO_CHANNELS`. Two radio channels never share a mesh, even on the same preset. A node's channel is the latest observed through its own packet or an accepted traceroute hop. |
 | Packet channel | The number on one packet: a channel hash when encrypted, a gateway-local index when decoded. |
 | Firmware estimate | The oldest firmware a node's packets prove (`firmware.py`), shown when it sends no map report. A minimum, not the version. |
 

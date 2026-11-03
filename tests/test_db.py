@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from recorded_sample import Sample
-from sigsleuth import db
+from sigsleuth import db, radio
 from sigsleuth.db import (
     DERIVED_VERSION,
     FACTS_VERSION,
@@ -15,9 +15,32 @@ from sigsleuth.db import (
     migrate_database,
     open_current_database,
     open_database,
+    rederive_pending,
 )
 from sigsleuth.derive import rederive
 from sigsleuth.opt_out import opted_out
+
+
+@pytest.mark.usefixtures("my_mesh")
+def test_changing_the_declared_radio_channels_rebuilds_derived_tables(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+
+    def pending() -> bool:
+        with closing(open_database(path)) as connection:
+            return bool(rederive_pending(connection))
+
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute(
+            "INSERT INTO map_report (node_id, received_at, role, modem_preset,"
+            " has_default_channel, nodes_online_local, position_precision)"
+            " VALUES (1, 0, 'CLIENT', 'LONG_FAST', 1, 0, 0)"
+        )
+    migrate_database(path)
+    assert not pending()
+    radio.declare_radio_channels({})
+    migrate_database(path)
+    assert pending()
 
 
 def test_unsupported_facts_version_requires_reset(tmp_path: Path) -> None:
@@ -48,7 +71,7 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
         ALTER TABLE packet DROP COLUMN ok_to_mqtt;
         DROP TABLE node_reported;
         DROP TABLE node_position;
-        INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1);
+        INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1, '');
         PRAGMA user_version = 1;
         INSERT INTO coverage_session (uuid, receiver_node_id, first_uploaded_at, last_uploaded_at)
         VALUES ('session', 1, 0, 0);

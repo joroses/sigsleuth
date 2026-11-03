@@ -10,7 +10,7 @@ A square's colour is the average margin of its measurements: how far the SNR sit
 
 - The SNR is that of the transmission that reached the phone, so it measures the node heard (below), not the sender of a relayed packet.
 - The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly. Choosing a node on the map, in the search or in "Coverage" moves the map out to it and where it was heard, if they are not all in view; "Fit map to coverage", under the selected node in the sidebar, zooms to them. The node page's minimap shows the same. The sidebar's "Coverage" lists the nodes heard in the squares in view, in most squares first, whatever is selected.
-- The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys on another spreading factor or bandwidth than the channel's.
+- The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys that cannot be on the channel: another spreading factor or bandwidth, or another radio channel's frequency.
 
 ## Which node was heard
 

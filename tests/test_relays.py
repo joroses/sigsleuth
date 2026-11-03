@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from sigsleuth.db import NodeSummary
-from sigsleuth.radio import PRESET_RADIOS, Radio
+from sigsleuth.radio import PRESET_RADIOS, Radio, modem_preset_radio
 from sigsleuth.relays import (
     NAME_PROBABILITY,
     NodeRadio,
@@ -193,13 +193,31 @@ def test_stronger_shortcut_falls_through_and_keeps_the_candidate() -> None:
 
 
 def test_a_preset_on_another_bandwidth_cannot_relay() -> None:
-    short_fast = NodeRadio(None, PRESET_RADIOS["ShortFast"], None, AT)
+    short_fast = NodeRadio(None, modem_preset_radio("SHORT_FAST"), None, AT)
     assert cannot_relay(short_fast, {PRESET_RADIOS["NarrowFast"]})
     assert not cannot_relay(short_fast, {PRESET_RADIOS["ShortFast"]})
     # A 2.4 GHz survey reports the widened bandwidth; an old one none.
     assert not cannot_relay(short_fast, {Radio(7, 812.5, exact=True)})
     assert not cannot_relay(short_fast, {Radio(7)})
+
+
+def test_radio_channels_on_one_preset_are_separate_meshes() -> None:
+    sf_narrow, narrow_fast = PRESET_RADIOS["SFNarrow"], PRESET_RADIOS["NarrowFast"]
+    assert not sf_narrow.matches(narrow_fast)
+    # A SFNarrow node's map report names the preset it runs.
+    map_report = modem_preset_radio("NARROW_FAST")
+    assert map_report is not None and map_report.matches(sf_narrow)
+    # The survey app sends 869.618 for SFNarrow's 869.6187.
+    sf_narrow_survey = Radio(7, 62.5, True, 869.618)
+    assert sf_narrow_survey.matches(sf_narrow)
+    assert not sf_narrow_survey.matches(narrow_fast)
+    narrow_fast_survey = Radio(7, 62.5, True, 869.4312)
+    assert narrow_fast_survey.matches(narrow_fast)
+    assert not narrow_fast_survey.matches(sf_narrow)
+    assert Radio(7, 62.5, exact=True).matches(narrow_fast)
+    assert Radio(7, 62.5, exact=True).matches(sf_narrow)
     # A 2.4 GHz channel is never on a 250 kHz survey's settings.
-    medium24 = NodeRadio(None, PRESET_RADIOS["Medium24"], None, AT)
-    assert cannot_relay(medium24, {Radio(10, 250, exact=True)})
-    assert not cannot_relay(medium24, {PRESET_RADIOS["MediumSlow"]})
+    medium24 = PRESET_RADIOS["Medium24"]
+    assert not medium24.matches(Radio(10, 250, exact=True))
+    assert not medium24.matches(PRESET_RADIOS["MediumSlow"])
+    assert medium24.matches(Radio(10, 812.5, exact=True))

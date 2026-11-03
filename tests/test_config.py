@@ -125,3 +125,30 @@ def test_hide_opted_out_is_on_unless_turned_off() -> None:
     assert not hide("false") and not hide("off")
     with pytest.raises(ConfigurationError, match="SIGSLEUTH_HIDE_OPTED_OUT"):
         hide("maybe")
+
+
+def test_radio_channels_are_declared_on_a_preset() -> None:
+    def declared(value: str) -> dict[str, tuple[int, float | None, float | None]]:
+        settings = settings_from_environment({"SIGSLEUTH_RADIO_CHANNELS": value}, capture=False)
+        return {
+            name: (radio.spreading_factor, radio.bandwidth_khz, radio.frequency_mhz)
+            for name, radio in settings.radio_channels.items()
+        }
+
+    assert declared("") == {}
+    assert declared(" MyMesh = longmod @ 869.4625, Other=LONG_FAST ,") == {
+        "MyMesh": (11, 125, 869.4625),
+        "Other": (11, 250, None),
+    }
+    for wrong in (
+        "MyMesh",
+        "MyMesh=Fast",
+        "=LongFast",
+        "sfnarrow=NarrowFast",
+        "A=LongFast,a=LongMod",
+    ):
+        with pytest.raises(ConfigurationError, match="Name=Preset"):
+            declared(wrong)
+    for wrong in ("MyMesh=LongFast@", "MyMesh=LongFast@x", "MyMesh=LongFast@-1"):
+        with pytest.raises(ConfigurationError, match="MHz"):
+            declared(wrong)

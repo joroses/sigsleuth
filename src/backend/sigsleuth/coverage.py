@@ -55,11 +55,10 @@ from sigsleuth.derive import HOUR_MS, SavedHeader, is_direct_reception
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out, opted_out_sql, refresh_opt_outs
 from sigsleuth.positions import own_reach
 from sigsleuth.radio import (
-    PRESET_RADIOS,
     Radio,
     fade_margin,
     great_circle_km,
-    preset_name,
+    same_settings,
 )
 from sigsleuth.relays import (
     DAY_MS,
@@ -70,6 +69,7 @@ from sigsleuth.relays import (
     RelayEvidence,
     RelayScores,
     cannot_relay,
+    channel_radio,
     direct_signals,
     node_km,
     node_radios,
@@ -472,7 +472,7 @@ def new_flags(
 ) -> dict[int, tuple[bool, bool, bool]]:
     """Whether each saved measurement adds a square, its relay byte in it, or
     its sender heard directly there, compared with other sessions on the
-    same spreading factor and bandwidth. Only measurements the map counts
+    same network (network_sessions). Only measurements the map counts
     (_ALIVE_SQL) are compared or flagged; the session's own never are
     compared, so a resent batch gets the same answer."""
     if not seqs:
@@ -480,14 +480,14 @@ def new_flags(
     values = {
         "session": session_row_id,
         "seqs": json.dumps(sorted(seqs)),
-        "alive_since": _filter_values(None, None, alive_days)["alive_since"],
+        "network": json.dumps(network_sessions(connection, session_row_id)),
+        "alive_since": _filter_values(connection, None, None, alive_days)["alive_since"],
     }
     rows = connection.execute(
         f"""
         SELECT m.seq, m.cell_x, m.cell_y, m.relay_byte, m.sender_node_id,
-               {_SHOWN_HOW} AS how, s.spreading_factor, s.bandwidth_khz
+               {_SHOWN_HOW} AS how
         FROM {_MEASUREMENTS}
-        JOIN coverage_session AS s ON s.id = m.session_row_id
         WHERE m.session_row_id = :session AND m.seq IN (SELECT value FROM json_each(:seqs))
           {_ALIVE_SQL}
         """,
@@ -495,12 +495,7 @@ def new_flags(
     ).fetchall()
     if not rows:
         return {}
-    network = {"sf": rows[0]["spreading_factor"], "bw": rows[0]["bandwidth_khz"]}
-    # One scan per cell of the measurements the map counts there. Revisit
-    # (2026-11-03, synthetic cell on a laptop): a 500-row upload over 255
-    # bytes into a cell holding 50,000 other rows took 0.54 s whether the map
-    # counts them or not (0.51 s before these flags); checking key by key
-    # took 5.4 s when it did not.
+    # One scan per cell of the measurements the map counts there.
     cells: set[tuple[int, int]] = set()
     bytes_there: set[tuple[int, int, int]] = set()
     direct_there: set[tuple[int, int, int]] = set()
@@ -510,12 +505,11 @@ def new_flags(
             SELECT DISTINCT m.relay_byte,
                    CASE WHEN {_SHOWN_HOW} = 'direct' THEN m.sender_node_id END
             FROM {_MEASUREMENTS}
-            JOIN coverage_session AS s ON s.id = m.session_row_id
             WHERE m.cell_x = :x AND m.cell_y = :y AND m.session_row_id != :session
-              AND s.spreading_factor IS :sf AND s.bandwidth_khz IS :bw
+              AND +m.session_row_id IN (SELECT value FROM json_each(:network))
               {_ALIVE_SQL}
             """,
-            {**values, **network, "x": x, "y": y},
+            {**values, "x": x, "y": y},
         ):
             cells.add((x, y))
             if byte:
@@ -759,7 +753,29 @@ def session_radio(row: Mapping[str, Any]) -> Radio | None:
     """The radio settings of a row's survey session; None when it sent none."""
     if not row["spreading_factor"]:
         return None
-    return Radio(int(row["spreading_factor"]), row["bandwidth_khz"], exact=True)
+    return Radio(
+        int(row["spreading_factor"]),
+        row["bandwidth_khz"],
+        exact=True,
+        frequency_mhz=row["frequency_mhz"],
+    )
+
+
+def network_sessions(connection: sqlite3.Connection, session_row_id: int) -> list[int]:
+    """The survey sessions on one network with session_row_id, itself
+    included: radio.same_settings, or both without settings."""
+    radios = {
+        int(row["id"]): session_radio(row)
+        for row in connection.execute(
+            "SELECT id, spreading_factor, bandwidth_khz, frequency_mhz FROM coverage_session"
+        )
+    }
+    mine = radios.get(session_row_id)
+    return [
+        session
+        for session, radio in radios.items()
+        if radio == mine or (radio is not None and mine is not None and same_settings(radio, mine))
+    ]
 
 
 def is_direct(row: Mapping[str, Any]) -> bool:
@@ -804,8 +820,8 @@ def refresh_survey_links(
 ) -> None:
     """Refill the survey links (coverage_relay) of the relayed measurements
     heard from start to end (epoch ms): their one survey_candidates node.
-    With session_row_id, only the sessions with its radio settings; else
-    every session (rederive).
+    With session_row_id, only the sessions on its network
+    (network_sessions); else every session (rederive).
 
     Links read saved measurements alone, so each call re-checks the
     measurements in its window against all their evidence: the order uploads
@@ -813,19 +829,7 @@ def refresh_survey_links(
     reach = SURVEY_LINK_TIERS_MS[-1]
     sessions = None
     if session_row_id is not None:
-        sessions = [
-            int(row[0])
-            for row in connection.execute(
-                """
-                SELECT o.id FROM coverage_session AS s JOIN coverage_session AS o
-                  ON o.spreading_factor IS s.spreading_factor
-                 AND o.bandwidth_khz IS s.bandwidth_khz
-                 AND o.frequency_mhz IS s.frequency_mhz
-                WHERE s.id = ?
-                """,
-                (session_row_id,),
-            )
-        ]
+        sessions = network_sessions(connection, session_row_id)
     in_sessions = "AND m.session_row_id IN (SELECT value FROM json_each(:sessions))"
     rows = connection.execute(
         f"""
@@ -1080,17 +1084,14 @@ _ALIVE_SQL = f""" AND coalesce(
         WHERE d.sender_node_id = {_HEARD} AND d.heard_at >= :alive_since))"""
 
 # A measurement has no channel of its own, so the map's channel filter drops
-# those whose survey ran on another spreading factor or bandwidth than the
-# channel's (Radio.bandwidths), or whose sender is known to be on another
-# radio channel. A sender with no known channel stays when its survey fits:
-# a survey where SigSleuth captures no nodes would otherwise show nothing.
-# The + keeps SQLite on the cell index rather than probing every sender or
-# session.
+# those whose survey cannot be on the channel (other_sessions), or whose
+# sender is known to be on another radio channel. A sender with no known
+# channel stays when its survey fits: a survey where SigSleuth captures no
+# nodes would otherwise show nothing. The + keeps SQLite on the cell index
+# rather than probing every sender or session.
 _CHANNEL_SQL = """ AND +m.sender_node_id NOT IN (
     SELECT node_id FROM node_current WHERE channel IS NOT NULL AND channel != :channel)
-  AND +m.session_row_id NOT IN (
-    SELECT id FROM coverage_session WHERE spreading_factor != :channel_sf
-      OR bandwidth_khz NOT IN (:channel_bw, :channel_wide_bw))"""
+  AND +m.session_row_id NOT IN (SELECT value FROM json_each(:other_sessions))"""
 # A node's measurements, by either index, for the node filter.
 _NODE_SQL = f""" AND (m.heard_node_id = :node
     OR m.id IN (SELECT measurement_id FROM coverage_relay WHERE node_id = :node))
@@ -1119,23 +1120,33 @@ def _point_filters(node: int | None, channel: str | None, *, unknown: bool = Fal
     return filters
 
 
-def _filter_values(node: int | None, channel: str | None, alive_days: int) -> dict[str, Any]:
+def _filter_values(
+    connection: sqlite3.Connection, node: int | None, channel: str | None, alive_days: int
+) -> dict[str, Any]:
     """_point_filters' query values. alive_days is how long node_current
-    remembers an unseen node (retention_days, 0 for ever); channel_sf and
-    the bandwidths are None for a channel whose settings are unknown, which
-    drops no session."""
-    radio = (
-        None if channel is None or (name := preset_name(channel)) is None else PRESET_RADIOS[name]
-    )
-    bandwidths = () if radio is None else radio.bandwidths()
+    remembers an unseen node (retention_days, 0 for ever)."""
     return {
         "node": node,
         "channel": channel,
-        "channel_sf": None if radio is None else radio.spreading_factor,
-        "channel_bw": bandwidths[0] if bandwidths else None,
-        "channel_wide_bw": bandwidths[-1] if bandwidths else None,
+        "other_sessions": json.dumps(other_sessions(connection, channel)),
         "alive_since": now_ms() - alive_days * DAY_MS if alive_days else 0,
     }
+
+
+def other_sessions(connection: sqlite3.Connection, channel: str | None) -> list[int]:
+    """The survey sessions whose radio cannot be on a radio channel
+    (Radio.matches); none for other channels, whose settings are unknown,
+    nor for sessions that sent no settings."""
+    radio = channel_radio(channel)
+    if radio is None:
+        return []
+    return [
+        int(row["id"])
+        for row in connection.execute(
+            "SELECT id, spreading_factor, bandwidth_khz, frequency_mhz FROM coverage_session"
+        )
+        if (session := session_radio(row)) is not None and not radio.matches(session)
+    ]
 
 
 def cell_level(zoom: float) -> int:
@@ -1227,7 +1238,7 @@ def coverage_cells(
             "y1": y1,
             "since": 0 if since is None else to_epoch_ms(since),
             "limit": MAX_CELLS + 1,
-            **_filter_values(node, channel, alive_days),
+            **_filter_values(connection, node, channel, alive_days),
         },
     ).fetchall()
     cells = tuple(
@@ -1272,7 +1283,7 @@ def coverage_extent(
         SELECT min(m.cell_x) AS x0, max(m.cell_x) AS x1, min(m.cell_y) AS y0, max(m.cell_y) AS y1
         FROM {_MEASUREMENTS} WHERE 1{_point_filters(node, channel)}
         """,
-        _filter_values(node, channel, alive_days),
+        _filter_values(connection, node, channel, alive_days),
     ).fetchone()
     if row["x0"] is None:
         return None
@@ -1345,7 +1356,7 @@ def coverage_nodes(
             "y0": y0,
             "y1": y1,
             "limit": MAX_VIEW_NODES + 2,
-            **_filter_values(None, channel, alive_days),
+            **_filter_values(connection, None, channel, alive_days),
         },
     ).fetchall()
     unknown = int(rows[0]["measurements"]) if rows and rows[0]["shown"] is None else 0
@@ -1497,7 +1508,7 @@ def coverage_cell(
         "y0": y << shift,
         "y1": ((y + 1) << shift) - 1,
         "since": 0 if since is None else to_epoch_ms(since),
-        **_filter_values(node, channel, alive_days),
+        **_filter_values(connection, node, channel, alive_days),
     }
     totals = connection.execute(
         f"""
@@ -1694,6 +1705,7 @@ def relay_nodes(
     *,
     spreading_factor: int | None,
     bandwidth_khz: float | None = None,
+    frequency_mhz: float | None = None,
     limit: int = MAX_RELAY_NODES,
 ) -> CoverageRelayNodeList:
     """The placed nodes that could relay a packet on these radio settings
@@ -1710,7 +1722,9 @@ def relay_nodes(
     ]
     placed, radios = nodes_by_id(connection, set(seen)), node_radios(connection, set(seen))
     heard_on = (
-        set() if spreading_factor is None else {Radio(spreading_factor, bandwidth_khz, exact=True)}
+        set()
+        if spreading_factor is None
+        else {Radio(spreading_factor, bandwidth_khz, exact=True, frequency_mhz=frequency_mhz)}
     )
     able = [node for node in seen if _could_relay(placed.get(node), radios.get(node), heard_on)]
     shown = able[:limit]

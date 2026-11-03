@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from sigsleuth import db, opt_out
+from sigsleuth import db, opt_out, radio
 from sigsleuth.config import ConfigurationError, load_environment, settings_from_environment
 from sigsleuth.db import (
     DatabaseVersionError,
@@ -49,6 +49,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     except ConfigurationError as error:
         print(f"Configuration error: {error}", file=sys.stderr)
         return 2
+    # Before migrating, which rebuilds derived tables after a change.
+    radio.declare_radio_channels(settings.radio_channels)
     if options.command == "migrate":
         database_path: Path = options.database or settings.database_path
         version = migrate_database(database_path)

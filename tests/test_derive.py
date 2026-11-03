@@ -568,6 +568,46 @@ def test_links_keep_the_transmitters_preceding_radio_channel(
     ] == original_channels
 
 
+# SQLite lowercases A to Z only, so Česko must survive rederive too.
+@pytest.mark.parametrize("my_mesh", ["MyMesh", "Česko"], indirect=True)
+def test_a_declared_radio_channel_holds_its_links(
+    path: Path, connection: sqlite3.Connection, my_mesh: str
+) -> None:
+    gateway = "!aaaaaaaa"
+    # The chat packet's link is on its sender's radio channel, as for a preset's.
+    for packet_id, channel in enumerate((my_mesh, "Chat"), start=1):
+        envelope = application_envelope(
+            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            b"hello",
+            sender=SENDER,
+            packet_id=packet_id,
+            channel_id=channel,
+            gateway_id=gateway,
+            hop_start=3,
+            hop_limit=3,
+            relay_node=relay_byte_of(SENDER),
+            rx_snr=-4,
+            rx_rssi=-100,
+        )
+        topic = f"msh/region/2/e/{channel}/{gateway}"
+        ingest_delivery(connection, MqttDelivery(SENT_AT + packet_id * 1_000, topic, envelope))
+
+    def links() -> list[tuple[object, ...]]:
+        return [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT channel, sum(observations) FROM link_hour WHERE link_kind = 'direct'"
+                " GROUP BY channel"
+            )
+        ]
+
+    assert links() == [(my_mesh, 2)]
+    connection.execute("UPDATE derived_state SET version = 0")
+    migrate_database(path)
+    rederive_all(connection)
+    assert links() == [(my_mesh, 2)]
+
+
 @pytest.mark.parametrize("batch_size", [1, 3, 25_000])
 def test_secondary_links_use_accepted_hops_as_of_the_packet(
     connection: sqlite3.Connection, batch_size: int

@@ -13,7 +13,7 @@ from derived_rows import insert_row, link_hour
 from sigsleuth import coverage
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
-from sigsleuth.coverage import fine_cell
+from sigsleuth.coverage import fine_cell, network_sessions
 from sigsleuth.db import migrate_database, now_ms, open_current_database, recreate_derived
 from sigsleuth.derive import rederive
 from sigsleuth.retention import apply_retention
@@ -153,9 +153,12 @@ def test_the_reply_says_what_each_measurement_adds_to_the_map(
         measurement(4, latitude=41.93),
         session=other,
     ) == ["", "b", "", "cb"]
-    # ShortFast shares SF7 with the surveys' 62.5 kHz settings but is another network.
+    # ShortFast shares SF7 with the surveys' 62.5 kHz settings but is another
+    # network, and so is NarrowFast on its own frequency.
     short_fast = {**SESSION, "id": "short-fast", "bandwidth_khz": 250.0}
     assert news(measurement(1), session=short_fast) == ["cb"]
+    narrow_fast = {**SESSION, "id": "narrow-fast", "frequency_mhz": 869.431}
+    assert news(measurement(1), session=narrow_fast) == ["cb"]
 
     # A node that opted out is never shown as heard directly, though its byte counts.
     hidden = {**direct, "sender_node_id": 0x0300_0042, "relay_byte": 0x42, "ok_to_mqtt": False}
@@ -173,6 +176,40 @@ def test_the_reply_says_what_each_measurement_adds_to_the_map(
     fourth = {**SESSION, "id": "fourth-survey"}
     after = {**direct, "heard_at_ms": now_ms()}
     assert news(measurement(1, **direct), measurement(2, **after), session=fourth) == ["", "bd"]
+
+
+def test_sessions_share_a_network_on_matching_settings_or_none(
+    connection: sqlite3.Connection,
+) -> None:
+    sessions = {
+        "sf-narrow": (7, 62.5, 869.618),
+        "sf-narrow-exact": (7, 62.5, 869.6187),
+        "no-frequency": (7, 62.5, None),
+        "narrow-fast": (7, 62.5, 869.4312),
+        "none": (None, None, None),
+        "none-too": (None, None, None),
+    }
+    ids: dict[str, int] = {}
+    for uuid, (sf, bw, mhz) in sessions.items():
+        ids[uuid] = (
+            connection.execute(
+                "INSERT INTO coverage_session (uuid, receiver_node_id, spreading_factor,"
+                " bandwidth_khz, frequency_mhz, first_uploaded_at, last_uploaded_at)"
+                " VALUES (?, 1, ?, ?, ?, 0, 0)",
+                (uuid, sf, bw, mhz),
+            ).lastrowid
+            or 0
+        )
+    names = {row_id: uuid for uuid, row_id in ids.items()}
+
+    def network(uuid: str) -> set[str]:
+        return {names[row_id] for row_id in network_sessions(connection, ids[uuid])}
+
+    # Frequencies within half a bandwidth are one slot; an unknown one fits any.
+    assert network("sf-narrow") == {"sf-narrow", "sf-narrow-exact", "no-frequency"}
+    assert network("no-frequency") == set(sessions) - {"none", "none-too"}
+    # Sessions that sent no settings share only with each other.
+    assert network("none") == {"none", "none-too"}
 
 
 def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> None:
@@ -708,6 +745,11 @@ def test_the_survey_app_lists_the_placed_nodes_that_could_relay(
         (near, None),
         (narrow_fast, None),
     ]
+    # NarrowFast's settings on SFNarrow's frequency are not NarrowFast.
+    assert listed(spreading_factor=7, bandwidth_khz=62.5, frequency_mhz=869.618) == [
+        (reaching, 100.0),
+        (near, None),
+    ]
     assert listed() == [(reaching, 100.0), (near, None), (long_fast, None), (narrow_fast, None)]
     unauthorised = client.get("/api/v1/coverage/relay-nodes", headers={"Authorization": ""})
     assert unauthorised.status_code == 401
@@ -1186,20 +1228,23 @@ def test_cells_group_measurements_at_the_zoom_level(
     # Its own packets count only when heard directly, not the two relayed ones.
     assert measurements(node=SENDER) == 1
     assert measurements(since="2999-01-01T00:00:00Z") == 0
-    # Measurements stay on the channels of their survey's spreading factor
-    # (SF7) while their sender's channel is unknown, then follow it.
+    # Measurements stay on the channels their survey can be on while their
+    # sender's channel is unknown, then follow it.
     assert measurements(channel="SFNarrow") == 3
     assert measurements(channel="LongFast") == 0
     # SF7 too, but 250 kHz where the survey ran at 62.5.
     assert measurements(channel="ShortFast") == 0
+    # SFNarrow's settings, but the survey ran on SFNarrow's frequency.
+    assert measurements(channel="NarrowFast") == 0
     node(connection, SENDER)
     connection.execute(
         "UPDATE node_current SET last_sent_at = 1, last_sent_packet_row_id = 1,"
         " channel = 'NarrowFast', channel_observed_at = 1 WHERE node_id = ?",
         (SENDER,),
     )
-    assert measurements(channel="NarrowFast") == 3
     assert measurements(channel="SFNarrow") == 0
+    connection.execute("UPDATE node_current SET channel = 'SFNarrow' WHERE node_id = ?", (SENDER,))
+    assert measurements(channel="SFNarrow") == 3
 
 
 @pytest.mark.usefixtures("known_nodes")

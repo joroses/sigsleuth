@@ -766,12 +766,16 @@ def create_app(
         connection: Connection,
         spreading_factor: Annotated[int | None, Query(ge=5, le=12)] = None,
         bandwidth_khz: Annotated[float | None, Query(gt=0)] = None,
+        frequency_mhz: Annotated[float | None, Query(gt=0)] = None,
     ) -> CoverageRelayNodeList:
         """The placed nodes that could relay a survey's packets on these radio
         settings, with their reach, for the survey app's relay guesses
         offline. Takes the upload password."""
         return relay_nodes(
-            connection, spreading_factor=spreading_factor, bandwidth_khz=bandwidth_khz
+            connection,
+            spreading_factor=spreading_factor,
+            bandwidth_khz=bandwidth_khz,
+            frequency_mhz=frequency_mhz,
         )
 
     @app.get("/api/v1/coverage/cells")

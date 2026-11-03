@@ -26,7 +26,6 @@ from sigsleuth.firmware import TRAITS
 from sigsleuth.positions import own_reach, radio_links, traceroute_hops
 from sigsleuth.radio import (
     PRESET_RADIOS,
-    PRESET_SPREADING_FACTORS,
     Radio,
     great_circle_km,
     modem_preset_radio,
@@ -353,12 +352,11 @@ def channel_spreading_factor(channel: str | None) -> int | None:
     """The spreading factor a channel named after a preset uses; None for
     other names, which say nothing about the radio."""
     preset = None if channel is None else preset_name(channel)
-    return None if preset is None else PRESET_SPREADING_FACTORS[preset]
+    return None if preset is None else PRESET_RADIOS[preset].spreading_factor
 
 
 def channel_radio(channel: str | None) -> Radio | None:
-    """The radio settings of a channel named after a preset, as
-    channel_spreading_factor."""
+    """The radio of a radio channel's name, as channel_spreading_factor."""
     preset = None if channel is None else preset_name(channel)
     return None if preset is None else PRESET_RADIOS[preset]
 

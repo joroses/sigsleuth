@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sigsleuth.radio import distance_km, great_circle_km
+from sigsleuth.radio import declared_radio_channels, distance_km, great_circle_km
 
 DATABASE_BUSY_TIMEOUT_MS = 5_000
 # Between the batches of a long write (rederive, retention), so capture gets
@@ -148,7 +148,7 @@ _FACTS_UPGRADES = {
     FROM node_current WHERE position_observed_at IS NOT NULL;
     """,
 }
-DERIVED_VERSION = 57
+DERIVED_VERSION = 58
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
@@ -395,9 +395,9 @@ def migrate_database(database_path: str | Path) -> int:
     and return its facts version.
 
     Facts are upgraded through _FACTS_UPGRADES; versions it cannot reach are
-    reset rather than converted. Derived tables at another version, or after
-    an upgrade, are recreated empty and left for rederive (derive.py), which
-    the app runs at startup.
+    reset rather than converted. Derived tables at another version or built
+    with other declared radio channels, or after an upgrade, are recreated
+    empty and left for rederive (derive.py), which the app runs at startup.
     """
     connection = open_database(database_path)
     try:
@@ -414,11 +414,20 @@ def migrate_database(database_path: str | Path) -> int:
                 f"database facts version {current_version} is not supported; delete the "
                 "disposable database and run ./scripts/migrate.sh"
             )
-        if upgraded or derived_version(connection) != DERIVED_VERSION:
+        if upgraded or not _derived_current(connection):
             recreate_derived(connection)
         return facts_version(connection)
     finally:
         connection.close()
+
+
+def _derived_current(connection: sqlite3.Connection) -> bool:
+    """Whether the derived tables are at DERIVED_VERSION and were built with
+    the radio channels declared now."""
+    if derived_version(connection) != DERIVED_VERSION:
+        return False
+    row = connection.execute("SELECT radio_channels FROM derived_state").fetchone()
+    return row is not None and row[0] == declared_radio_channels()
 
 
 def derived_version(connection: sqlite3.Connection) -> int:
@@ -456,10 +465,11 @@ def recreate_derived(connection: sqlite3.Connection) -> None:
             _DERIVED_FILE.read_text(encoding="utf-8"),
             "DROP INDEX IF EXISTS packet_radio_channel;",
             f"""
-            INSERT INTO derived_state (version, rebuilt) VALUES (
+            INSERT INTO derived_state (version, rebuilt, radio_channels) VALUES (
                 {DERIVED_VERSION},
                 NOT EXISTS (SELECT 1 FROM packet) AND NOT EXISTS (SELECT 1 FROM map_report)
-                AND NOT EXISTS (SELECT 1 FROM coverage_measurement)
+                AND NOT EXISTS (SELECT 1 FROM coverage_measurement),
+                '{declared_radio_channels().replace("'", "''")}'
             );
             """,
         )

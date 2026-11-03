@@ -6210,6 +6210,7 @@ receiver_mode: "survey"
 moved: false
 channel: "ShortFast"
 spreading_factor: 7
+bandwidth_khz: 250
 one_hop: false
 shortcut_skipped: false
 receiver:
@@ -6250,7 +6251,9 @@ candidates: 11 items
     longitude: 19.012
     estimated: true
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 168.5
     sender_km: null
@@ -6282,7 +6285,9 @@ candidates: 11 items
     longitude: 19.9819
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 193.6
     sender_km: null
@@ -6314,7 +6319,9 @@ candidates: 11 items
     longitude: 19.3528
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 45.3
     sender_km: null
@@ -6466,6 +6473,7 @@ receiver_mode: "gateway"
 moved: false
 channel: "ShortFast"
 spreading_factor: 7
+bandwidth_khz: 250
 one_hop: false
 shortcut_skipped: false
 receiver:
@@ -6506,7 +6514,9 @@ candidates: 11 items
     longitude: 19.012
     estimated: true
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 168.5
     sender_km: null
@@ -6538,7 +6548,9 @@ candidates: 11 items
     longitude: 19.9819
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 193.6
     sender_km: null
@@ -6570,7 +6582,9 @@ candidates: 11 items
     longitude: 19.3528
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 45.3
     sender_km: null
@@ -6718,6 +6732,7 @@ receiver_mode: "survey"
 moved: true
 channel: "ShortFast"
 spreading_factor: 7
+bandwidth_khz: 250
 one_hop: false
 shortcut_skipped: false
 receiver:
@@ -6758,7 +6773,9 @@ candidates: 11 items
     longitude: 19.012
     estimated: true
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 190.6
     sender_km: null
@@ -6790,7 +6807,9 @@ candidates: 11 items
     longitude: 19.9819
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 227.5
     sender_km: null
@@ -6822,7 +6841,9 @@ candidates: 11 items
     longitude: 19.3528
     estimated: false
     channel_spreading_factor: 7
+    channel_bandwidth_khz: 250
     preset_spreading_factor: null
+    preset_bandwidth_khz: null
     firmware: null
     receiver_km: 73.8
     sender_km: null

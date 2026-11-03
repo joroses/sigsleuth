@@ -27,7 +27,7 @@ from sigsleuth.links import (
     route_hop_costs,
 )
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
-from sigsleuth.radio import distance_km, relay_byte_of
+from sigsleuth.radio import Radio, distance_km, relay_byte_of
 from sigsleuth.relays import (
     COHEARER_WINDOW_MS,
     DirectSignal,
@@ -35,6 +35,7 @@ from sigsleuth.relays import (
     RelayEvidence,
     RelayScores,
     ScoredHow,
+    channel_radio,
     channel_spreading_factor,
     direct_receptions,
     direct_signals,
@@ -279,7 +280,7 @@ def packet_detail(
         receptions,
         sender,
         at=int(row["first_received_at"]),
-        spreading_factor=channel_spreading_factor(str(row["channel"])),
+        radio=channel_radio(str(row["channel"])),
         hidden=set() if include_hidden_relays else hidden,
     )
     payload = (
@@ -393,7 +394,7 @@ def relayed_packet(
             receptions,
             int(row["sender_node_id"]),
             at=int(row["first_received_at"]),
-            spreading_factor=channel_spreading_factor(str(row["channel"])),
+            radio=channel_radio(str(row["channel"])),
         )
         if with_relays
         else None,
@@ -632,7 +633,7 @@ def relay_namings(
     sender: int,
     *,
     at: int,
-    spreading_factor: int | None,
+    radio: Radio | None,
     reception_ids: set[int] | None = None,
     reach: Mapping[int, float] | None = None,
 ) -> PacketRelays | None:
@@ -665,7 +666,7 @@ def relay_namings(
         {int(reception.relay_byte) for reception in relayed if reception.relay_byte},
         {sender},
         [at],
-        spreading_factors=set() if spreading_factor is None else {spreading_factor},
+        radios=set() if radio is None else {radio},
         links_around=at,
         one_hop_senders={sender},
         reach=reach,
@@ -706,7 +707,7 @@ def relay_namings(
             receiver=gateway,
             at=to_epoch_ms(reception.received_at),
             position=position,
-            spreading_factor=spreading_factor,
+            radio=radio,
             hop_start=reception.hop_start,
             hop_limit=reception.hop_limit,
             relay_byte=int(reception.relay_byte or 0),
@@ -756,14 +757,14 @@ def _with_relays(
     sender: int,
     *,
     at: int,
-    spreading_factor: int | None,
+    radio: Radio | None,
     hidden: set[int],
 ) -> list[PacketReception]:
     """The receptions with relay_node filled in by relay_namings, else
     relay_maybe: up to RELAY_MAYBE candidates, evidence first and then
     likeliest within each group. A hidden node is never named or listed: a
     copy it is named for reads as undecided, as any other."""
-    found = relay_namings(connection, receptions, sender, at=at, spreading_factor=spreading_factor)
+    found = relay_namings(connection, receptions, sender, at=at, radio=radio)
     if found is None:
         return receptions
 

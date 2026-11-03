@@ -25,9 +25,11 @@ from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import TRAITS
 from sigsleuth.positions import own_reach, radio_links, traceroute_hops
 from sigsleuth.radio import (
+    PRESET_RADIOS,
     PRESET_SPREADING_FACTORS,
+    Radio,
     great_circle_km,
-    modem_preset_spreading_factor,
+    modem_preset_radio,
     preset_name,
     relay_byte_of,
     relay_byte_sql,
@@ -154,14 +156,14 @@ Report = tuple[int, int | None, int | None, float | None]
 class Relayed:
     """A relayed copy of a packet: who sent the packet, who heard the copy
     (receiver) and when (at, epoch ms), where the receiver was (None when
-    unplaced), the spreading factor it listens on (None when unknown), the
+    unplaced), the radio settings it listens on (None when unknown), the
     copy's header, and every MQTT gateway's report of the packet."""
 
     sender: int
     receiver: int
     at: int
     position: tuple[float, float] | None
-    spreading_factor: int | None
+    radio: Radio | None
     hop_start: int | None
     hop_limit: int | None
     relay_byte: int
@@ -209,12 +211,12 @@ class Relayed:
 @dataclass(frozen=True)
 class NodeRadio:
     """What a node's packets and map report say about its radio:
-    the spreading factor its channel name and its map report's preset give
-    (None when they tell none), its map report's firmware, and when it last
+    the settings its channel name and its map report's preset give (None
+    when they tell none), its map report's firmware, and when it last
     reported a packet as a gateway."""
 
-    channel_spreading_factor: int | None
-    preset_spreading_factor: int | None
+    channel: Radio | None
+    preset: Radio | None
     firmware: int | None
     last_gateway_at: int | None
 
@@ -260,13 +262,13 @@ def relay_evidence(
     senders: set[int],
     times: Iterable[int],
     *,
-    spreading_factors: set[int],
+    radios: set[Radio],
     links_around: int | None = None,
     one_hop_senders: Collection[int] = (),
     reach: Mapping[int, float] | None = None,
 ) -> RelayEvidence:
     """The RelayEvidence for naming relays of these bytes for these senders,
-    around these times (epoch ms), heard on these spreading factors (empty
+    around these times (epoch ms), heard on these radio settings (empty
     when unknown). Radio links are those of the last day, or of a day either
     side of links_around (positions.radio_links); traceroute hops are read
     only for one_hop_senders, the senders of copies heard after one hop.
@@ -274,10 +276,8 @@ def relay_evidence(
     by_byte = nodes_by_byte(connection, relay_bytes)
     candidates = {node for nodes in by_byte.values() for node in nodes}
     placed = nodes_by_id(connection, candidates | senders)
-    radios = node_radios(connection, candidates)
-    possible = {
-        node for node in candidates if not cannot_relay(radios.get(node), spreading_factors)
-    }
+    node_radio = node_radios(connection, candidates)
+    possible = {node for node in candidates if not cannot_relay(node_radio.get(node), radios)}
     heard = list(times)
     active_hours: dict[int, list[int]] = defaultdict(list)
     start = min(heard, default=0) - ACTIVE_MS - HOUR_MS
@@ -304,7 +304,7 @@ def relay_evidence(
         reach=own_reach(connection, possible, from_km=NAME_KM)
         if reach is None
         else {node: reach[node] for node in possible if node in reach},
-        radios=radios,
+        radios=node_radio,
         active_hours=active_hours,
         history_from=connection.execute(
             "SELECT min(hour_start) FROM node_activity_hour"
@@ -333,10 +333,8 @@ def node_radios(connection: sqlite3.Connection, nodes: set[int]) -> dict[int, No
     """The NodeRadio of each node node_current knows."""
     return {
         int(row["node_id"]): NodeRadio(
-            channel_spreading_factor=channel_spreading_factor(row["channel"]),
-            preset_spreading_factor=None
-            if row["modem_preset"] is None
-            else modem_preset_spreading_factor(row["modem_preset"]),
+            channel=channel_radio(row["channel"]),
+            preset=None if row["modem_preset"] is None else modem_preset_radio(row["modem_preset"]),
             firmware=row["firmware_number"],
             last_gateway_at=row["last_gateway_at"],
         )
@@ -358,6 +356,13 @@ def channel_spreading_factor(channel: str | None) -> int | None:
     return None if preset is None else PRESET_SPREADING_FACTORS[preset]
 
 
+def channel_radio(channel: str | None) -> Radio | None:
+    """The radio settings of a channel named after a preset, as
+    channel_spreading_factor."""
+    preset = None if channel is None else preset_name(channel)
+    return None if preset is None else PRESET_RADIOS[preset]
+
+
 def nodes_by_byte(connection: sqlite3.Connection, relay_bytes: set[int]) -> dict[int, list[int]]:
     """The nodes in node_current that send each relay byte (relay_byte_of)."""
     if not relay_bytes:
@@ -372,16 +377,16 @@ def nodes_by_byte(connection: sqlite3.Connection, relay_bytes: set[int]) -> dict
     return found
 
 
-def cannot_relay(radio: NodeRadio | None, spreading_factors: set[int]) -> bool:
-    """Whether a node cannot have sent a relayed copy heard on these spreading
-    factors (empty when unknown): its firmware sends no relay byte, or its
-    map report's preset is on another spreading factor."""
+def cannot_relay(radio: NodeRadio | None, heard_on: set[Radio]) -> bool:
+    """Whether a node cannot have sent a relayed copy heard on these radio
+    settings (empty when unknown): its firmware sends no relay byte, or its
+    map report's preset matches none of them."""
     if radio is None:
         return False
     if radio.firmware is not None and radio.firmware < TRAITS["relay_byte"].version:
         return True
-    preset = radio.preset_spreading_factor
-    return bool(spreading_factors) and preset is not None and preset not in spreading_factors
+    preset = radio.preset
+    return preset is not None and bool(heard_on) and not any(map(preset.matches, heard_on))
 
 
 def _active(evidence: RelayEvidence, node: int, at: int) -> bool:
@@ -467,11 +472,11 @@ def direct_signals(
 def possible(evidence: RelayEvidence, relayed: Relayed) -> list[int]:
     """The candidates that may have sent the copy: all but those that
     cannot_relay."""
-    spreading_factors = set() if relayed.spreading_factor is None else {relayed.spreading_factor}
+    heard_on = set() if relayed.radio is None else {relayed.radio}
     return [
         node
         for node in evidence.candidates(relayed)
-        if not cannot_relay(evidence.radios.get(node), spreading_factors)
+        if not cannot_relay(evidence.radios.get(node), heard_on)
     ]
 
 
@@ -565,9 +570,9 @@ def relay_terms(
         if (role := ROLE_TERMS.get(None if place is None else place.role)) is not None:
             terms[role] = 1
         radio = evidence.radios.get(node)
-        channel = None if radio is None else radio.channel_spreading_factor
-        if channel is not None and relayed.spreading_factor is not None:
-            terms["channel_same" if channel == relayed.spreading_factor else "channel_other"] = 1
+        channel = None if radio is None else radio.channel
+        if channel is not None and relayed.radio is not None:
+            terms["channel_same" if channel.matches(relayed.radio) else "channel_other"] = 1
         if not _active(evidence, node, relayed.at):
             terms["inactive"] = 1
         if node in heard:

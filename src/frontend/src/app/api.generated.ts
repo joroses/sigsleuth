@@ -650,8 +650,8 @@ export interface paths {
     };
     /**
      * Coverage Relay Nodes
-     * @description The placed nodes that could relay a survey's packets on
-     *     spreading_factor, with their reach, for the survey app's relay guesses
+     * @description The placed nodes that could relay a survey's packets on these radio
+     *     settings, with their reach, for the survey app's relay guesses
      *     offline. Takes the upload password.
      */
     get: operations["coverage_relay_nodes_api_v1_coverage_relay_nodes_get"];
@@ -2400,7 +2400,9 @@ export interface components {
       longitude: number | null;
       estimated: boolean;
       channel_spreading_factor: number | null;
+      channel_bandwidth_khz: number | null;
       preset_spreading_factor: number | null;
+      preset_bandwidth_khz: number | null;
       firmware: number | null;
       receiver_km: number | null;
       sender_km: number | null;
@@ -2467,6 +2469,7 @@ export interface components {
       moved: boolean;
       channel: string;
       spreading_factor: number | null;
+      bandwidth_khz: number | null;
       one_hop: boolean;
       shortcut_skipped: boolean;
       receiver: components["schemas"]["RelayPlace"] | null;
@@ -3060,7 +3063,9 @@ export interface components {
     };
     /**
      * UploadHeard
-     * @description The heard node as the map reads it (_SHOWN), or possible relay hints.
+     * @description The heard node as the map reads it (_SHOWN), or possible relay hints,
+     *     and what the measurement adds to the map (new_flags): a cell, its relay
+     *     byte in the cell, or its sender heard directly in the cell.
      */
     UploadHeard: {
       seq: number;
@@ -3076,6 +3081,12 @@ export interface components {
         | "unknown";
       /** @default [] */
       candidates: components["schemas"]["CoverageCandidate"][];
+      /** @default false */
+      new_cell: boolean;
+      /** @default false */
+      new_byte: boolean;
+      /** @default false */
+      new_direct: boolean;
     };
     /**
      * UploadMeasurement
@@ -4170,6 +4181,7 @@ export interface operations {
     parameters: {
       query?: {
         spreading_factor?: number | null;
+        bandwidth_khz?: number | null;
       };
       header?: never;
       path?: never;

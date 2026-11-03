@@ -31,6 +31,7 @@ import {
   hopsText,
   nodeText,
   percent,
+  radioSettings,
 } from "./relayText";
 import { useSetting, useViewState } from "./remember";
 import { SurveyChecks } from "./SurveyChecks";
@@ -575,7 +576,7 @@ function CheckScores({
             </a>{" "}
             · {detail.channel}
             {detail.spreading_factor !== null
-              ? ` (SF${detail.spreading_factor})`
+              ? ` (${radioSettings(detail.spreading_factor, detail.bandwidth_khz)})`
               : ""}{" "}
             · relay byte {byteText(check.relay_byte)} ·{" "}
             {check.hop_start === null || check.hop_limit === null
@@ -682,8 +683,8 @@ function CheckScores({
           </h3>
           <p>
             {possible.length} may have sent this copy. Firmware without the
-            relay byte, or a map report on another spreading factor, rules out
-            the rest; everything else only counts for or against a candidate.
+            relay byte, or a map report on other radio settings, rules out the
+            rest; everything else only counts for or against a candidate.
           </p>
         </div>
         <CandidateTable

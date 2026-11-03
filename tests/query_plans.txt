@@ -158,6 +158,18 @@ coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
+coverage.new_flags
+  SEARCH coverage_session USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+coverage.new_flags
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
+  SEARCH coverage_session USING PRIMARY KEY
+  SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.saved_heard
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
@@ -2434,7 +2446,7 @@ db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
 
-## GET /api/v1/coverage/relay-nodes?spreading_factor=11
+## GET /api/v1/coverage/relay-nodes?spreading_factor=11&bandwidth_khz=250
 
 opt_out.opted_out
   SCAN node_opt_out

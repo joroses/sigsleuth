@@ -52,7 +52,7 @@ from sigsleuth.relays import (
     RelayEvidence,
     RelayScores,
     RelayTerm,
-    channel_spreading_factor,
+    channel_radio,
     node_km,
     nodes_by_byte,
 )
@@ -188,7 +188,7 @@ def relay_checks(
             list(found.receptions),
             packet.sender_node_id,
             at=to_epoch_ms(packet.first_received_at),
-            spreading_factor=channel_spreading_factor(packet.channel),
+            radio=channel_radio(packet.channel),
             reception_ids=reception_ids,
             reach=reach,
         )
@@ -388,7 +388,9 @@ class RelayCandidate:
     longitude: float | None
     estimated: bool
     channel_spreading_factor: int | None
+    channel_bandwidth_khz: float | None
     preset_spreading_factor: int | None
+    preset_bandwidth_khz: float | None
     firmware: int | None
     receiver_km: float | None
     sender_km: float | None
@@ -498,6 +500,7 @@ class RelayCheckDetail:
     moved: bool
     channel: str
     spreading_factor: int | None
+    bandwidth_khz: float | None
     one_hop: bool
     shortcut_skipped: bool
     receiver: RelayPlace | None
@@ -551,7 +554,8 @@ def relay_check(
         receiver_mode=receiver_mode,
         moved=receiver_at is not None,
         channel=found.packet.channel,
-        spreading_factor=naming.copy.spreading_factor,
+        spreading_factor=None if naming.copy.radio is None else naming.copy.radio.spreading_factor,
+        bandwidth_khz=None if naming.copy.radio is None else naming.copy.radio.bandwidth_khz,
         one_hop=naming.copy.one_hop,
         shortcut_skipped=naming.shortcut_skipped,
         **places,
@@ -805,6 +809,8 @@ def explain_candidates(
         shown = node not in hidden
         place = evidence.placed.get(node)
         radio = evidence.radios.get(node)
+        channel = None if radio is None else radio.channel
+        preset = None if radio is None else radio.preset
         hours = evidence.active_hours.get(node, [])
         nearest = None
         if hours:
@@ -831,8 +837,10 @@ def explain_candidates(
                 latitude=None if place is None or not shown else place.latitude,
                 longitude=None if place is None or not shown else place.longitude,
                 estimated=place is not None and place.estimated,
-                channel_spreading_factor=None if radio is None else radio.channel_spreading_factor,
-                preset_spreading_factor=None if radio is None else radio.preset_spreading_factor,
+                channel_spreading_factor=None if channel is None else channel.spreading_factor,
+                channel_bandwidth_khz=None if channel is None else channel.bandwidth_khz,
+                preset_spreading_factor=None if preset is None else preset.spreading_factor,
+                preset_bandwidth_khz=None if preset is None else preset.bandwidth_khz,
                 firmware=None if radio is None else radio.firmware,
                 receiver_km=None if receiver_km is None else round(receiver_km, 1),
                 sender_km=None if sender_km is None else round(sender_km, 1),

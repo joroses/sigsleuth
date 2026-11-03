@@ -758,17 +758,21 @@ def create_app(
             max_age_days=coverage_limit_days(
                 settings.retention_days, settings.coverage_retention_days
             ),
+            alive_days=settings.retention_days,
         )
 
     @app.get("/api/v1/coverage/relay-nodes", dependencies=[Uploader])
     def coverage_relay_nodes(
         connection: Connection,
         spreading_factor: Annotated[int | None, Query(ge=5, le=12)] = None,
+        bandwidth_khz: Annotated[float | None, Query(gt=0)] = None,
     ) -> CoverageRelayNodeList:
-        """The placed nodes that could relay a survey's packets on
-        spreading_factor, with their reach, for the survey app's relay guesses
+        """The placed nodes that could relay a survey's packets on these radio
+        settings, with their reach, for the survey app's relay guesses
         offline. Takes the upload password."""
-        return relay_nodes(connection, spreading_factor=spreading_factor)
+        return relay_nodes(
+            connection, spreading_factor=spreading_factor, bandwidth_khz=bandwidth_khz
+        )
 
     @app.get("/api/v1/coverage/cells")
     def coverage_cell_page(

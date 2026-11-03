@@ -2,11 +2,13 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 from sigsleuth.db import NodeSummary
+from sigsleuth.radio import PRESET_RADIOS, Radio
 from sigsleuth.relays import (
     NAME_PROBABILITY,
     NodeRadio,
     Relayed,
     RelayEvidence,
+    cannot_relay,
     score_relays,
 )
 
@@ -17,6 +19,7 @@ AT = 1_800_000_000_000
 HERE = (41.9, 1.5)
 # About 1 km of latitude.
 KM = 1 / 111.2
+LONG_FAST = PRESET_RADIOS["LongFast"]
 
 
 def node(
@@ -54,7 +57,7 @@ def evidence(
 
 def copy(*, cohearer: bool = False) -> Relayed:
     reports = [(COHEARER, 3, 0x3D, -5.0)] if cohearer else []
-    return Relayed(SENDER, RECEIVER, AT, HERE, 11, 7, 3, 0x3D, reports)
+    return Relayed(SENDER, RECEIVER, AT, HERE, LONG_FAST, 7, 3, 0x3D, reports)
 
 
 def test_a_rival_lowers_the_best_ones_share_instead_of_vanishing() -> None:
@@ -73,7 +76,7 @@ def test_a_candidate_with_no_evidence_is_never_named() -> None:
     # make it likely.
     router = 0x0101_003D
     found = evidence({router: node(router, None, role="ROUTER")})
-    found = replace(found, radios={router: NodeRadio(11, None, None, AT)})
+    found = replace(found, radios={router: NodeRadio(LONG_FAST, None, None, AT)})
     scores = score_relays(found, copy(), {})
     assert scores.probabilities[router] >= NAME_PROBABILITY
     assert scores.named() is None
@@ -135,7 +138,7 @@ def test_hints_keep_evidence_ahead_of_likelier_unsupported_candidates() -> None:
     found = evidence(
         {nearby: node(nearby, 19), router: node(router, None, role="ROUTER"), client: None}
     )
-    found = replace(found, radios={router: NodeRadio(11, None, None, AT)})
+    found = replace(found, radios={router: NodeRadio(LONG_FAST, None, None, AT)})
     scores = score_relays(found, copy(), {})
 
     assert scores.ranked()[0] == router
@@ -187,3 +190,16 @@ def test_stronger_shortcut_falls_through_and_keeps_the_candidate() -> None:
         assert named.relay == ((a, "receiver_heard") if skipped else (a, "heard_directly"))
     missing = name_copy(found, replace(copy(), rssi=-50), {(a, RECEIVER): 1}, {})
     assert missing.relay == (a, "heard_directly")
+
+
+def test_a_preset_on_another_bandwidth_cannot_relay() -> None:
+    short_fast = NodeRadio(None, PRESET_RADIOS["ShortFast"], None, AT)
+    assert cannot_relay(short_fast, {PRESET_RADIOS["NarrowFast"]})
+    assert not cannot_relay(short_fast, {PRESET_RADIOS["ShortFast"]})
+    # A 2.4 GHz survey reports the widened bandwidth; an old one none.
+    assert not cannot_relay(short_fast, {Radio(7, 812.5, exact=True)})
+    assert not cannot_relay(short_fast, {Radio(7)})
+    # A 2.4 GHz channel is never on a 250 kHz survey's settings.
+    medium24 = NodeRadio(None, PRESET_RADIOS["Medium24"], None, AT)
+    assert cannot_relay(medium24, {Radio(10, 250, exact=True)})
+    assert not cannot_relay(medium24, {PRESET_RADIOS["MediumSlow"]})

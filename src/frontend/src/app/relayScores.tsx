@@ -8,6 +8,7 @@ import {
   candidateName,
   nodeText,
   percent,
+  radioSettings,
 } from "./relayText";
 import { Badge, NodeLink, ShortTime, WideTable } from "./ui";
 
@@ -26,6 +27,7 @@ export type Scored = Pick<
   | "links"
   | "one_hop"
   | "spreading_factor"
+  | "bandwidth_khz"
 >;
 
 // Candidates the score table shows before "Show all".
@@ -53,8 +55,8 @@ const TERM_LABELS: Record<Term, string> = {
   role_client: "CLIENT",
   role_mute: "CLIENT_MUTE",
   role_none: "no role",
-  channel_same: "channel on this SF",
-  channel_other: "channel on another SF",
+  channel_same: "channel on the same radio settings",
+  channel_other: "channel on other radio settings",
   inactive: "not active",
   rheard: "heard by the gateway",
   r_rssi: "receiver RSSI match",
@@ -111,7 +113,6 @@ export function CandidateTable({
 }) {
   const [allShown, setAllShown] = useState(false);
   const rules = detail.rules;
-  const copySf = detail.spreading_factor;
   const sorted = byProbability(detail.candidates);
   const hidden = (candidate: RelayCandidate) =>
     candidate.key !== routeKey &&
@@ -130,9 +131,15 @@ export function CandidateTable({
               <th>Position</th>
               <th>Role</th>
               <th>
-                Spreading factor
+                Radio settings
                 <span className="column-note">
-                  copy {copySf === null ? "unknown" : `SF${copySf}`}
+                  copy{" "}
+                  {detail.spreading_factor === null
+                    ? "unknown"
+                    : radioSettings(
+                        detail.spreading_factor,
+                        detail.bandwidth_khz,
+                      )}
                 </span>
               </th>
               <th>
@@ -208,10 +215,16 @@ export function CandidateTable({
                     : [
                         candidate.channel_spreading_factor === null
                           ? null
-                          : `channel SF${candidate.channel_spreading_factor}`,
+                          : `channel ${radioSettings(
+                              candidate.channel_spreading_factor,
+                              candidate.channel_bandwidth_khz,
+                            )}`,
                         candidate.preset_spreading_factor === null
                           ? null
-                          : `map report SF${candidate.preset_spreading_factor}`,
+                          : `map report ${radioSettings(
+                              candidate.preset_spreading_factor,
+                              candidate.preset_bandwidth_khz,
+                            )}`,
                       ]
                         .filter((text) => text !== null)
                         .join(", ")}

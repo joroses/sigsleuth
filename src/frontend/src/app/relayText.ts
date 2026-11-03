@@ -54,3 +54,13 @@ export function candidateName(candidate: RelayCandidate | undefined): string {
     candidate.name ?? candidate.short_name ?? formatNodeId(candidate.node_id)
   );
 }
+
+/** "SF7, 62.5 kHz", or the spreading factor alone when the bandwidth is unknown. */
+export function radioSettings(
+  spreadingFactor: number,
+  bandwidthKhz: number | null,
+): string {
+  return bandwidthKhz === null
+    ? `SF${spreadingFactor}`
+    : `SF${spreadingFactor}, ${bandwidthKhz} kHz`;
+}

@@ -10,7 +10,7 @@ A square's colour is the average margin of its measurements: how far the SNR sit
 
 - The SNR is that of the transmission that reached the phone, so it measures the node heard (below), not the sender of a relayed packet.
 - The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly. Choosing a node on the map, in the search or in "Coverage" moves the map out to it and where it was heard, if they are not all in view; "Fit map to coverage", under the selected node in the sidebar, zooms to them. The node page's minimap shows the same. The sidebar's "Coverage" lists the nodes heard in the squares in view, in most squares first, whatever is selected.
-- The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys on another spreading factor than the channel's.
+- The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys on another spreading factor or bandwidth than the channel's.
 
 ## Which node was heard
 
@@ -29,6 +29,8 @@ A measurement counts unless it is proven stale, and only while its node is known
 - **Otherwise** (MQTT has not seen it in 14 days, or the heard node is unknown): counts if under 14 days old, or if a survey heard the node send a packet, directly or relayed, in the last 14 days.
 
 Not being seen by MQTT does not mean a node is gone: surveys matter most where no gateway listens. A doubtful position does not hide a node's measurements, since a wrong position does not make a reception wrong. Measurements that do not count are hidden, not deleted.
+
+The upload's reply says what each measurement adds: a new square, a new relay byte in it, or a sender newly heard directly there. Only surveys on the same spreading factor and bandwidth count.
 
 ## Nodes that do not allow MQTT
 

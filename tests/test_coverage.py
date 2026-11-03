@@ -89,14 +89,15 @@ def test_an_upload_saves_its_measurements_once(
         measurement(1, ok_to_mqtt=False, default_key=True),
         measurement(2, rx_snr=0.0, rx_rssi=None),
     ]
+    first = {"new_cell": True, "new_byte": True, "new_direct": False}
     assert upload(client, *batch) == {
         "saved": 2,
         "already_saved": 0,
         "skipped": {},
         "last_seq": 2,
         "heard": [
-            {"seq": 1, "node_id": None, "how": "unknown", "candidates": []},
-            {"seq": 2, "node_id": None, "how": "unknown", "candidates": []},
+            {"seq": seq, "node_id": None, "how": "unknown", "candidates": [], **first}
+            for seq in (1, 2)
         ],
         "nodes": [],
     }
@@ -123,6 +124,57 @@ def test_an_upload_saves_its_measurements_once(
     )
 
 
+def test_the_reply_says_what_each_measurement_adds_to_the_map(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    sender = 1477053352
+    direct = {"hop_start": 3, "hop_limit": 3, "relay_byte": sender & 0xFF}
+    other = {**SESSION, "id": "second-survey"}
+
+    def news(*measurements: dict[str, Any], session: dict[str, Any] = SESSION) -> list[str]:
+        reply = upload(client, *measurements, session=session)
+        return [
+            "".join(
+                letter
+                for letter, key in (("c", "new_cell"), ("b", "new_byte"), ("d", "new_direct"))
+                if heard[key]
+            )
+            for heard in reply["heard"]
+        ]
+
+    # c: a new cell, b: a new relay byte in it, d: a sender newly heard directly in it.
+    assert news(measurement(1), measurement(2, **direct)) == ["cb", "cbd"]
+    # The session's own measurements never count, resent or in a later batch.
+    assert news(measurement(2, **direct), measurement(3)) == ["cbd", "cb"]
+    assert news(
+        measurement(1),
+        measurement(2, relay_byte=27),
+        measurement(3, **direct),
+        measurement(4, latitude=41.93),
+        session=other,
+    ) == ["", "b", "", "cb"]
+    # ShortFast shares SF7 with the surveys' 62.5 kHz settings but is another network.
+    short_fast = {**SESSION, "id": "short-fast", "bandwidth_khz": 250.0}
+    assert news(measurement(1), session=short_fast) == ["cb"]
+
+    # A node that opted out is never shown as heard directly, though its byte counts.
+    hidden = {**direct, "sender_node_id": 0x0300_0042, "relay_byte": 0x42, "ok_to_mqtt": False}
+    third = {**SESSION, "id": "third-survey"}
+    assert news(measurement(1, latitude=41.95, **hidden), session=third) == ["cb"]
+
+    # Measurements the map no longer counts, from before their node moved, add
+    # nothing and block nothing: its byte and its direct reception are new
+    # again, not the cell.
+    node(connection, sender)
+    connection.execute(
+        "UPDATE node_current SET moved_at = ? WHERE node_id = ?", (now_ms() - 1_000, sender)
+    )
+    connection.commit()
+    fourth = {**SESSION, "id": "fourth-survey"}
+    after = {**direct, "heard_at_ms": now_ms()}
+    assert news(measurement(1, **direct), measurement(2, **after), session=fourth) == ["", "bd"]
+
+
 def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> None:
     result = upload(
         client,
@@ -144,7 +196,17 @@ def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> No
             "in_future": 1,
         },
         "last_seq": 6,
-        "heard": [{"seq": 1, "node_id": None, "how": "unknown", "candidates": []}],
+        "heard": [
+            {
+                "seq": 1,
+                "node_id": None,
+                "how": "unknown",
+                "candidates": [],
+                "new_cell": True,
+                "new_byte": True,
+                "new_direct": False,
+            }
+        ],
         "nodes": [],
     }
 
@@ -604,21 +666,23 @@ def test_far_candidates_within_their_reach_are_suggested_not_named(
 def test_the_survey_app_lists_the_placed_nodes_that_could_relay(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
-    reaching, near, unplaced, mute, long_fast = (
+    reaching, near, unplaced, mute, long_fast, narrow_fast = (
         0x0100004F,
         0x0200004F,
         0x0300004F,
         0x0400004F,
         0x0500004F,
+        0x0600004F,
     )
-    for placed in (reaching, near, mute, long_fast):
+    for placed in (reaching, near, mute, long_fast, narrow_fast):
         node(connection, placed, PHONE[0] + 0.5)
     node(connection, unplaced)
     connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (mute,))
-    connection.execute(
-        "UPDATE node_current SET channel = 'LongFast', channel_observed_at = ? WHERE node_id = ?",
-        (now_ms(), long_fast),
-    )
+    for on, channel in ((long_fast, "LongFast"), (narrow_fast, "NarrowFast")):
+        connection.execute(
+            "UPDATE node_current SET channel = ?, channel_observed_at = ? WHERE node_id = ?",
+            (channel, now_ms(), on),
+        )
     # Reach counts only past the 50 km within which any node may relay.
     link(connection, near, GATEWAY, km=5.0)
     link_hour(
@@ -636,8 +700,15 @@ def test_the_survey_app_lists_the_placed_nodes_that_could_relay(
         assert response.status_code == 200, response.text
         return sorted((n["node_id"], n["reach_km"]) for n in response.json()["nodes"])
 
-    assert listed(spreading_factor=7) == [(reaching, 100.0), (near, None)]
-    assert listed() == [(reaching, 100.0), (near, None), (long_fast, None)]
+    # ShortFast and NarrowFast share SF7; apps that send no bandwidth get both.
+    assert listed(spreading_factor=7) == [(reaching, 100.0), (near, None), (narrow_fast, None)]
+    assert listed(spreading_factor=7, bandwidth_khz=250) == [(reaching, 100.0), (near, None)]
+    assert listed(spreading_factor=7, bandwidth_khz=62.5) == [
+        (reaching, 100.0),
+        (near, None),
+        (narrow_fast, None),
+    ]
+    assert listed() == [(reaching, 100.0), (near, None), (long_fast, None), (narrow_fast, None)]
     unauthorised = client.get("/api/v1/coverage/relay-nodes", headers={"Authorization": ""})
     assert unauthorised.status_code == 401
 
@@ -1119,6 +1190,8 @@ def test_cells_group_measurements_at_the_zoom_level(
     # (SF7) while their sender's channel is unknown, then follow it.
     assert measurements(channel="SFNarrow") == 3
     assert measurements(channel="LongFast") == 0
+    # SF7 too, but 250 kHz where the survey ran at 62.5.
+    assert measurements(channel="ShortFast") == 0
     node(connection, SENDER)
     connection.execute(
         "UPDATE node_current SET last_sent_at = 1, last_sent_packet_row_id = 1,"

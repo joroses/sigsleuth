@@ -124,13 +124,49 @@ HeardHow = Literal[
 # The guesses, drawn dashed: direct and survey_link come from a direct reception.
 GUESSED: tuple[HeardHow, ...] = ("reported", "gateway_link", "sender_link", "only_candidate")
 
-# A radio network (Network) and a relay byte. Not the survey node: a relay
-# byte is the relay's, whichever survey node heard it.
-LinkKey = tuple[int | None, float | None, float | None, int]
 # A survey direct reception: when, where, by which survey node, its signal.
 Reception = tuple[int, float, float, int, float | None]
-# Per LinkKey, each node's direct receptions, in time order.
-DirectReceptions = dict[LinkKey, dict[int, list[Reception]]]
+# Each node's direct receptions sending a relay byte, in time order.
+NodeReceptions = dict[int, list[Reception]]
+
+
+@dataclass
+class DirectReceptions:
+    """Survey nodes' direct receptions (heard_directly), by session radio
+    (session_radio), relay byte and node."""
+
+    by_radio: dict[Radio | None, dict[int, NodeReceptions]]
+    # by_radio merged per network, for each radio nodes() was asked about.
+    _networks: dict[Radio | None, dict[int, NodeReceptions]] = field(
+        default_factory=dict, init=False, repr=False
+    )
+
+    def nodes(self, row: Mapping[str, Any]) -> NodeReceptions:
+        """Each node's direct receptions sending a measurement row's relay
+        byte, heard by any survey node on the row's network (same_network):
+        a relay byte is the relay's, whichever survey node heard it, and
+        survey apps may round one frequency differently."""
+        radio = session_radio(row)
+        if radio not in self._networks:
+            self._networks[radio] = _merged(
+                [by_byte for other, by_byte in self.by_radio.items() if same_network(radio, other)]
+            )
+        return self._networks[radio].get(int(row["relay_byte"]), {})
+
+
+def _merged(radios: list[dict[int, NodeReceptions]]) -> dict[int, NodeReceptions]:
+    """Several radios' receptions by relay byte and node as one, in time order."""
+    if len(radios) <= 1:
+        return radios[0] if radios else {}
+    merged: dict[int, NodeReceptions] = defaultdict(lambda: defaultdict(list))
+    for by_byte in radios:
+        for byte, nodes in by_byte.items():
+            for node, receptions in nodes.items():
+                merged[byte][node].extend(receptions)
+    for nodes in merged.values():
+        for receptions in nodes.values():
+            receptions.sort(key=lambda reception: reception[0])
+    return merged
 
 
 class UploadSession(BaseModel):
@@ -729,7 +765,7 @@ def score_measurement(
             for report in mqtt_reports(connection, row)
         ],
     )
-    receptions = direct.get(_link_key(row), {})
+    receptions = direct.nodes(row)
     left: list[int] = []
     ruled_out: list[int] = []
     for node in possible(evidence, copy):
@@ -761,21 +797,28 @@ def session_radio(row: Mapping[str, Any]) -> Radio | None:
     )
 
 
+def same_network(a: Radio | None, b: Radio | None) -> bool:
+    """Whether two survey sessions' radios (session_radio) are on one
+    network: radio.same_settings, or both without settings."""
+    return a == b or (a is not None and b is not None and same_settings(a, b))
+
+
 def network_sessions(connection: sqlite3.Connection, session_row_id: int) -> list[int]:
     """The survey sessions on one network with session_row_id, itself
-    included: radio.same_settings, or both without settings."""
-    radios = {
+    included (same_network)."""
+    radios = _session_radios(connection)
+    mine = radios.get(session_row_id)
+    return [session for session, radio in radios.items() if same_network(radio, mine)]
+
+
+def _session_radios(connection: sqlite3.Connection) -> dict[int, Radio | None]:
+    """Each survey session's radio (session_radio), by row ID."""
+    return {
         int(row["id"]): session_radio(row)
         for row in connection.execute(
             "SELECT id, spreading_factor, bandwidth_khz, frequency_mhz FROM coverage_session"
         )
     }
-    mine = radios.get(session_row_id)
-    return [
-        session
-        for session, radio in radios.items()
-        if radio == mine or (radio is not None and mine is not None and same_settings(radio, mine))
-    ]
 
 
 def is_direct(row: Mapping[str, Any]) -> bool:
@@ -827,13 +870,24 @@ def refresh_survey_links(
     measurements in its window against all their evidence: the order uploads
     arrive in makes no difference."""
     reach = SURVEY_LINK_TIERS_MS[-1]
-    sessions = None
+    targets = sessions = None
     if session_row_id is not None:
-        sessions = network_sessions(connection, session_row_id)
+        radios = _session_radios(connection)
+        mine = radios.get(session_row_id)
+        targets = {session for session, radio in radios.items() if same_network(radio, mine)}
+        # Each re-checked session reads every session on its own network,
+        # which may reach past this one's: a session without a frequency
+        # matches two that do not match each other.
+        networks = {radios[session] for session in targets}
+        sessions = [
+            session
+            for session, radio in radios.items()
+            if any(same_network(radio, network) for network in networks)
+        ]
     in_sessions = "AND m.session_row_id IN (SELECT value FROM json_each(:sessions))"
     rows = connection.execute(
         f"""
-        SELECT {SURVEY_LINK_COLUMNS}, l.node_id AS linked
+        SELECT {SURVEY_LINK_COLUMNS}, m.session_row_id, l.node_id AS linked
         FROM coverage_measurement AS m JOIN coverage_session AS s ON s.id = m.session_row_id
         LEFT JOIN coverage_relay AS l ON l.measurement_id = m.id
         WHERE m.heard_at BETWEEN :start AND :end
@@ -843,13 +897,17 @@ def refresh_survey_links(
         {"start": start - reach, "end": end + reach, "sessions": json.dumps(sessions)},
     ).fetchall()
     heard = heard_directly(rows)
-    targets = [
-        row for row in rows if row["heard_how"] != "direct" and start <= row["heard_at"] <= end
+    relayed = [
+        row
+        for row in rows
+        if row["heard_how"] != "direct"
+        and start <= row["heard_at"] <= end
+        and (targets is None or row["session_row_id"] in targets)
     ]
     # Only changed links are written: a phone that records all day re-checks
     # thousands of measurements per upload, and capture waits on the write.
     changed = []
-    for row in targets:
+    for row in relayed:
         found = survey_candidates(heard, row)
         link = found[0] if len(found) == 1 else None
         if link != row["linked"]:
@@ -875,11 +933,14 @@ SURVEY_LINK_COLUMNS = """
 
 
 def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
-    """The direct receptions among rows (SURVEY_LINK_COLUMNS)."""
-    heard: DirectReceptions = defaultdict(lambda: defaultdict(list))
+    """The direct receptions among rows (SURVEY_LINK_COLUMNS), each node's
+    in time order."""
+    heard: dict[Radio | None, dict[int, NodeReceptions]] = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(list))
+    )
     for row in rows:
         if row["heard_how"] == "direct":
-            heard[_link_key(row)][int(row["sender_node_id"])].append(
+            heard[session_radio(row)][int(row["relay_byte"])][int(row["sender_node_id"])].append(
                 (
                     int(row["heard_at"]),
                     row["latitude"],
@@ -888,10 +949,11 @@ def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
                     signal_db(row["rx_rssi"], row["rx_snr"]),
                 )
             )
-    for nodes in heard.values():
-        for receptions in nodes.values():
-            receptions.sort(key=lambda reception: reception[0])
-    return heard
+    for by_byte in heard.values():
+        for nodes in by_byte.values():
+            for receptions in nodes.values():
+                receptions.sort(key=lambda reception: reception[0])
+    return DirectReceptions(heard)
 
 
 def survey_receptions(
@@ -902,7 +964,7 @@ def survey_receptions(
     and too_strong read for those rows."""
     relayed = [row for row in rows if row["relay_byte"]]
     if not relayed:
-        return heard_directly(())
+        return heard_directly([])
     times = [int(row["heard_at"]) for row in relayed]
     reach = SURVEY_LINK_TIERS_MS[-1]
     return heard_directly(
@@ -946,12 +1008,12 @@ def survey_candidates(
     tiers_ms: Sequence[int] = SURVEY_LINK_TIERS_MS,
 ) -> list[int]:
     """The nodes that may have relayed a measurement row's packet, by survey
-    evidence: those any survey node heard directly, on the same radio
-    settings, sending the same relay byte within km of the phone, in the
+    evidence: those any survey node on its network heard directly,
+    sending the same relay byte within km of the phone, in the
     first tier (ms either side) that has any. A survey link when exactly one.
     A node never relays its own packet, a survey node never records its own
     rebroadcast, and a too_strong node is left out."""
-    nodes = heard.get(_link_key(row), {})
+    nodes = heard.nodes(row)
     excluded = (row["sender_node_id"], row["receiver_node_id"])
     for tier in tiers_ms:
         found = [
@@ -1000,15 +1062,6 @@ def too_strong(receptions: list[Reception], row: Mapping[str, Any]) -> bool:
             return False
         checked = True
     return checked
-
-
-def _link_key(row: Mapping[str, Any]) -> LinkKey:
-    return (
-        row["spreading_factor"],
-        row["bandwidth_khz"],
-        row["frequency_mhz"],
-        int(row["relay_byte"]),
-    )
 
 
 def _heard_near(

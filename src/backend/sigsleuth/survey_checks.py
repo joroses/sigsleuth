@@ -556,8 +556,7 @@ def _survey_link(
     if not row["relay_byte"] or is_direct(row):
         return ()
     heard = survey_receptions(connection, [row])
-    key = (row["spreading_factor"], row["bandwidth_khz"], row["frequency_mhz"], row["relay_byte"])
-    nodes = heard.get(key, {})
+    nodes = heard.nodes(row)
     found = set(survey_candidates(heard, row))
     names = nodes_by_id(connection, set(nodes))
     at, reach = int(row["heard_at"]), SURVEY_LINK_TIERS_MS[-1]

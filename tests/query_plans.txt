@@ -151,7 +151,7 @@ opt_out.refresh_opt_outs
 opt_out.refresh_opt_outs
   SEARCH node_reported USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-coverage.network_sessions
+coverage._session_radios
   SCAN coverage_session
 coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY

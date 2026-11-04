@@ -1639,11 +1639,18 @@ def test_survey_links_need_the_same_settings_and_area_from_any_survey_node(
 ) -> None:
     at = now_ms() - DAY_MS
     by_other_node, by_other_network, far, itself = 0x0500002B, 0x0500003C, 0x0500004D, 0x0500005E
+    by_unrounded, by_other_slot = 0x0500007A, 0x0500008B
     other_receiver = 0x0E0E0E6F
     other_node = {**SESSION, "id": "other-node", "receiver_node_id": other_receiver}
     other_network = {**SESSION, "id": "other-network", "spreading_factor": 11}
+    # An app that sends SESSION's frequency unrounded is on its network; one
+    # a slot away is not.
+    unrounded = {**SESSION, "id": "unrounded", "frequency_mhz": 869.6187}
+    other_slot = {**SESSION, "id": "other-slot", "frequency_mhz": 869.431}
     upload(client, direct(1, by_other_node, heard_at_ms=at), session=other_node)
     upload(client, direct(1, by_other_network, heard_at_ms=at), session=other_network)
+    upload(client, direct(1, by_unrounded, heard_at_ms=at), session=unrounded)
+    upload(client, direct(1, by_other_slot, heard_at_ms=at), session=other_slot)
     upload(
         client,
         direct(1, far, heard_at_ms=at, latitude=42.4),
@@ -1666,14 +1673,37 @@ def test_survey_links_need_the_same_settings_and_area_from_any_survey_node(
         relayed(6, far, latitude=42.39),
         # A node never relays its own packet.
         relayed(7, itself, sender_node_id=itself),
+        relayed(9, by_unrounded),
+        relayed(10, by_other_slot),
     )
     upload(client, relayed(3, other_receiver, latitude=41.6), session=other_node)
-    expected = [(3, by_other_node), (6, far)]
+    expected = [(3, by_other_node), (6, far), (9, by_unrounded)]
     assert links(connection) == expected
     # Rederive reads every session at once, with the same result.
     recreate_derived(connection)
     rederive(connection, lambda: False)
     assert links(connection) == expected
+
+
+def test_survey_links_do_not_depend_on_upload_order_across_networks(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    # A session without a frequency is on the network of both slots, which
+    # are not on each other's.
+    at = now_ms() - DAY_MS
+    any_slot = {**SESSION, "id": "any-slot", "receiver_node_id": 0x0E0E0E01}
+    any_slot["frequency_mhz"] = None
+    other_slot = {**SESSION, "id": "other-slot", "receiver_node_id": 0x0E0E0E02}
+    other_slot["frequency_mhz"] = 869.431
+    upload(client, measurement(1, heard_at_ms=at), session=any_slot)
+    upload(client, direct(1, OTHER_RELAY, heard_at_ms=at), session=other_slot)
+    assert links(connection) == [(1, OTHER_RELAY)]
+    # RELAY heard on SESSION's slot leaves it ambiguous, as rederive finds.
+    upload(client, direct(1, RELAY, heard_at_ms=at))
+    assert links(connection) == []
+    recreate_derived(connection)
+    rederive(connection, lambda: False)
+    assert links(connection) == []
 
 
 def test_a_resent_batch_refreshes_the_links_a_failed_upload_missed(

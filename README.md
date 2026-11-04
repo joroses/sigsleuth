@@ -11,7 +11,7 @@ A map of your Meshtastic mesh, built from what gateways upload to MQTT. Among ot
 
 ## Coverage
 
-MQTT shows only what gateways hear. To see where your mesh can be heard on the ground, someone walks or drives with their node and [Mesh Survey](https://github.com/joroses/mesh-survey), a fork of the Meshtastic Android app. It records every packet the node hears, with the phone's position, and uploads them to a SigSleuth. On the Map, turn on **Coverage**: squares are coloured by their signal strength.
+MQTT shows only what gateways hear. To see where your mesh can be heard on the ground, someone walks or drives with their node and [Mesh Survey](https://github.com/joroses/mesh-survey), a fork of the Meshtastic Android app. It records every packet the node hears, with the phone's position, and uploads them to a SigSleuth. On the Map, turn on **Coverage**: squares are coloured by their signal strength. See the [demo node with fake data](https://sigsleuth.com/#map/!dec0de01?show=traceroute,coverage&window=24h) for an example.
 
 | | |
 |---|---|

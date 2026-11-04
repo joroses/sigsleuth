@@ -27,10 +27,10 @@ export type MainPage =
 
 export const mainPages: { page: MainPage; href: string; label: string }[] = [
   { page: "map", href: "#map", label: "Map" },
-  { page: "zones", href: "#zones", label: "Zones" },
-  { page: "chat", href: "#chat", label: "Chat" },
-  { page: "nodes", href: "#nodes", label: "Nodes" },
   { page: "links", href: "#links", label: "Links" },
+  { page: "chat", href: "#chat", label: "Chat" },
+  { page: "zones", href: "#zones", label: "Zones" },
+  { page: "nodes", href: "#nodes", label: "Nodes" },
   // Linked only in a browser where it has loaded (DIAGNOSTICS_LINKED): its
   // data takes the admin password, so the operator first opens it by typing
   // #diagnostics.

@@ -45,7 +45,7 @@ While capturing, packets older than `SIGSLEUTH_RETENTION_DAYS` (default 14) are 
 ## External services
 
 - The map's basemap style and tiles load directly in the browser; SigSleuth does not proxy them.
-- The app fetches terrain tiles from AWS open data to check links 250 km or longer (`terrain.py`). Without them those links show unchecked and are retried; capture does not wait.
+- The app fetches terrain tiles from AWS open data to check links 250 km or longer (`terrain.py`) and direct partners 150 to 250 km apart (`positions.py`). Without them those links show unchecked and those partners still count toward a doubtful position; both are retried, and capture does not wait.
 
 ## A public server
 

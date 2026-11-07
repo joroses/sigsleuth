@@ -537,6 +537,7 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
   const ends = [link.node_a, link.node_b];
   const reason = link.doubt?.reason;
   const anyBlamed = ends.some((end) => end.blamed_partners > 0);
+  const anyInReach = ends.some((end) => end.in_reach_partners > 0);
   const row = (label: ReactNode, cell: (end: LongLinkEnd) => ReactNode) => (
     <tr>
       {label}
@@ -564,9 +565,12 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
           {rules.partner_days} days is over its limit:{" "}
           {rules.doubtful_partner_km} km, or its radio horizon when it reports a
           high altitude. A far partner whose own other partners place it
-          elsewhere is not counted, and measured traceroute hops near its
-          position can clear it. <strong>Shared node number</strong>: two radios
-          with this number were on air at once, from different places.{" "}
+          elsewhere is not counted, nor one under {rules.long_link_km} km when
+          the node stands {rules.terrain_above_meters} m or more above the
+          ground between or {Math.round(rules.terrain_sea_share * 100)}% or more
+          of the path is sea, and measured traceroute hops near its position can
+          clear it. <strong>Shared node number</strong>: two radios with this
+          number were on air at once, from different places.{" "}
           <strong>Unconfirmed</strong>: the Links page ranks distances of{" "}
           {rules.unconfirmed_km} km or more apart unless both ends have reported
           a position since it was heard and neither has moved since.
@@ -655,7 +659,9 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
               </th>,
               (end) =>
                 end.direct_partners === 0
-                  ? "none placed"
+                  ? end.blamed_partners + end.in_reach_partners > 0
+                    ? "none counted"
+                    : "none placed"
                   : `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km`,
             )}
             {row(
@@ -678,6 +684,17 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
                     Partners not counted
                   </th>,
                   (end) => end.blamed_partners,
+                )
+              : null}
+            {anyInReach
+              ? row(
+                  <th
+                    scope="row"
+                    title="Far partners explained by its height or a sea path"
+                  >
+                    Partners within reach
+                  </th>,
+                  (end) => end.in_reach_partners,
                 )
               : null}
             {row(

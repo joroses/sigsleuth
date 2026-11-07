@@ -5125,6 +5125,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5147,6 +5148,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5219,6 +5221,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5241,6 +5244,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5313,6 +5317,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5335,6 +5340,7 @@ items: 30 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5524,6 +5530,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5546,6 +5553,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5618,6 +5626,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5640,6 +5649,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5690,6 +5700,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5712,6 +5723,7 @@ items: 5 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5789,6 +5801,7 @@ items: 25 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5811,6 +5824,7 @@ items: 25 items
       shared: false
       direct_partners: 4
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
@@ -5861,6 +5875,7 @@ items: 25 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5883,6 +5898,7 @@ items: 25 items
       shared: false
       direct_partners: 4
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
@@ -5942,6 +5958,7 @@ items: 25 items
       shared: false
       direct_partners: 0
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
@@ -5964,6 +5981,7 @@ items: 25 items
       shared: false
       direct_partners: 4
       blamed_partners: 0
+      in_reach_partners: 0
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2

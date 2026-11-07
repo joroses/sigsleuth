@@ -1688,7 +1688,8 @@ export interface components {
      *     direct_partners counts the placed nodes used to assess its current position
      *     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
      *     blamed_partners counts far partners excluded because their other partners
-     *     contradict their positions.
+     *     contradict their positions, in_reach_partners those its height or a sea
+     *     path explains (far_partner).
      *     traceroute_corroborated means measured hops support its position around
      *     every counted far direct hour, despite its direct median.
      *     doubt_limit_km is the altitude-aware direct median limit, before corroboration;
@@ -1704,6 +1705,7 @@ export interface components {
       shared: boolean;
       direct_partners: number;
       blamed_partners: number;
+      in_reach_partners: number;
       traceroute_corroborated: boolean;
       nearest_partner_km: number | null;
       median_partner_km: number | null;

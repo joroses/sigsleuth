@@ -220,17 +220,29 @@ class LongLinkCheck:
     unlikely: bool
 
 
-def check_long_link(a: End, b: End, terrain: Terrain, confirmed: bool = False) -> LongLinkCheck:
-    """The terrain check between two ends, confirmed in place or not. Raises
-    TerrainUnavailable."""
+def path_heights(a: End, b: End, terrain: Terrain) -> tuple[float, int, int]:
+    """The share of the path between two ends over sea, and how far each end
+    stands above the median ground between (sea as 0 m), rounded as saved.
+    Raises TerrainUnavailable."""
     heights = [
         terrain.height(lat, lon, PATH_ZOOM) for lat, lon in path_points(a[0], a[1], b[0], b[1])
     ]
     between = heights[1:-1] or heights
-    # Decided on the rounded figures it saves, so they always explain the verdict.
     sea_share = round(sum(height < SEA_M for height in between) / len(between), 2)
     ground = statistics.median(max(height, 0.0) for height in between)
-    above = round(max(_end_height(end, terrain) for end in (a, b)) - ground)
+    return (
+        sea_share,
+        round(_end_height(a, terrain) - ground),
+        round(_end_height(b, terrain) - ground),
+    )
+
+
+def check_long_link(a: End, b: End, terrain: Terrain, confirmed: bool = False) -> LongLinkCheck:
+    """The terrain check between two ends, confirmed in place or not. Raises
+    TerrainUnavailable."""
+    # Decided on the rounded figures it saves, so they always explain the verdict.
+    sea_share, above_a, above_b = path_heights(a, b, terrain)
+    above = max(above_a, above_b)
     return LongLinkCheck(
         sea_share=sea_share,
         above_meters=above,
@@ -256,7 +268,7 @@ def _end_height(end: End, terrain: Terrain) -> float:
     return max(ground, altitude) if altitude <= highest + END_ALTITUDE_SLACK_M else ground
 
 
-def _prefetch(terrain: Terrain, pairs: Sequence[tuple[End, End]]) -> None:
+def prefetch_paths(terrain: Terrain, pairs: Sequence[tuple[End, End]]) -> None:
     terrain.prefetch(
         (point for a, b in pairs for point in path_points(a[0], a[1], b[0], b[1])), PATH_ZOOM
     )
@@ -299,7 +311,7 @@ def refresh_long_links(
     ends = _ends_when_heard(connection, todo)
     confirmed = _confirmed_nodes(connection, {node for pair in ends for node in pair})
     terrain = Terrain(stopping)
-    _prefetch(terrain, list(ends.values()))
+    prefetch_paths(terrain, list(ends.values()))
     if stopping():
         return len(ends)
     rows, unjudged = [], 0

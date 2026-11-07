@@ -1731,6 +1731,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 
 ## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
 
@@ -1867,6 +1870,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -1945,6 +1951,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -2013,6 +2022,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -2082,6 +2094,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 diagnostics._long_links
   SCAN long_link
 diagnostics._long_links
@@ -2556,6 +2571,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 positions._traceroute_corroborated
   SEARCH link_hour USING PRIMARY KEY
 positions._doubtful
@@ -2643,6 +2661,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 positions._traceroute_corroborated
   SEARCH link_hour USING PRIMARY KEY
 diagnostics._long_links
@@ -2728,6 +2749,9 @@ positions.direct_partners
   SEARCH node_current USING PRIMARY KEY
 positions.direct_partners
   SCAN node_current
+positions.direct_partners
+  SCAN far_partner
+  SCAN far_partner
 positions._doubtful
   SCAN node_current
 positions._estimates

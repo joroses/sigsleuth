@@ -13,14 +13,17 @@ refresh_estimates refills node_estimate and node_doubtful from a fixed window
 (ESTIMATE_DAYS), so a node gets the same flags on every page. A doubtful
 position is never replaced: guessing which positions are wrong moved correct
 mountain sites. Pages hide or badge its links instead (links.trusted_sql).
+refresh_far_partners judges the terrain to far direct partners (far_partner)
+on the terrain thread, as its tiles come over the network.
 """
 
 import json
+import logging
 import math
 import sqlite3
 import statistics
 from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -32,6 +35,17 @@ from sigsleuth.opt_out import opted_out
 from sigsleuth.radio import great_circle_km
 from sigsleuth.reported import HeardPosition, positions_when_heard
 from sigsleuth.shared_numbers import shared_nodes
+from sigsleuth.terrain import (
+    ABOVE_LAND_M,
+    SEA_SHARE,
+    End,
+    Terrain,
+    TerrainUnavailable,
+    path_heights,
+    prefetch_paths,
+)
+
+LOGGER = logging.getLogger(__name__)
 
 # Estimates come from this many days of links; perf.py budgets the refill.
 ESTIMATE_DAYS = 7
@@ -147,8 +161,13 @@ def _doubtful(connection: sqlite3.Connection, since_ms: int) -> list[tuple[int, 
 
 @dataclass(frozen=True)
 class DirectPartners:
+    """counted holds the partners judged. blamed and in_reach
+    count the far partners left out: doubtful on their other partners, or
+    within reach over the terrain between."""
+
     counted: dict[int, float]
     blamed: int
+    in_reach: int
     corroborated: bool = False
 
 
@@ -156,10 +175,13 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
     """Placed direct partners since both ends last moved, at their shortest km.
     A shared node number is no one's partner: its radios are in several places.
 
-    Exclude a far partner doubtful on at least BLAME_OTHER_PARTNERS other
-    partners, leaving this pair out. Use the original partners in one pass so
-    exclusions cannot manufacture support for each other. Remaining doubtful
-    positions may be corroborated by independent measured traceroute hops.
+    Leave out a far partner short of LONG_LINK_KM when the node stands high
+    above the land between or SEA_SHARE of the path is sea (far_partner). Also
+    leave out a far partner doubtful on at least BLAME_OTHER_PARTNERS other
+    partners, leaving this pair out. Blame uses the partners the terrain
+    leaves, in one pass, so exclusions cannot manufacture support for each
+    other. Remaining doubtful positions may be corroborated by independent
+    measured traceroute hops.
     """
     partners: dict[int, dict[int, float]] = defaultdict(dict)
     for from_node, to_node, km in connection.execute(
@@ -183,21 +205,49 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
     ).fetchall()
     limits = {int(node): doubt_limit_km(altitude) for node, altitude, _ in current}
     moves = {int(node): int(moved) for node, _, moved in current if moved is not None}
+    # Ground radio reaches past its limit from high above the land between, or over
+    # sea (terrain.py). Only the node's own height counts: a node carried to
+    # where mountain gateways hear it must stay doubtful. Revisit: 2026-11-07,
+    # loranet.pl, a week each in October and November: 13 and 5 direct pairs
+    # of 150-250 km, no flag changed; either end's height would have cleared a
+    # handheld heard only by mountain gateways 175-197 km from its position.
+    in_reach = {
+        (int(node), int(other))
+        for node, other in connection.execute(
+            """
+            SELECT node_a, node_b FROM far_partner WHERE sea_share >= :sea OR above_a >= :above
+            UNION ALL
+            SELECT node_b, node_a FROM far_partner WHERE sea_share >= :sea OR above_b >= :above
+            """,
+            {"sea": SEA_SHARE, "above": ABOVE_LAND_M},
+        )
+        if limits.get(node, DOUBTFUL_PARTNER_KM)
+        < partners.get(node, {}).get(other, 0)
+        < LONG_LINK_KM
+    }
+    judged = {
+        node: {other: km for other, km in found.items() if (node, other) not in in_reach}
+        for node, found in partners.items()
+    }
     assessed = {}
-    for node, found in partners.items():
+    for node, found in judged.items():
         counted = {}
         for other, km in found.items():
             if km > limits.get(node, DOUBTFUL_PARTNER_KM):
-                others = [d for partner, d in partners[other].items() if partner != node]
+                others = [d for partner, d in judged[other].items() if partner != node]
                 if len(others) >= BLAME_OTHER_PARTNERS and statistics.median(others) > limits.get(
                     other, DOUBTFUL_PARTNER_KM
                 ):
                     continue
             counted[other] = km
-        assessed[node] = DirectPartners(counted, len(found) - len(counted))
-    corroborated = _traceroute_corroborated(connection, since_ms, partners, assessed, limits, moves)
+        assessed[node] = DirectPartners(
+            counted, len(found) - len(counted), len(partners[node]) - len(found)
+        )
+    corroborated = _traceroute_corroborated(
+        connection, since_ms, partners, judged, assessed, limits, moves
+    )
     return {
-        node: DirectPartners(found.counted, found.blamed, node in corroborated)
+        node: DirectPartners(found.counted, found.blamed, found.in_reach, node in corroborated)
         for node, found in assessed.items()
     }
 
@@ -206,6 +256,7 @@ def _traceroute_corroborated(
     connection: sqlite3.Connection,
     since_ms: int,
     partners: dict[int, dict[int, float]],
+    judged: dict[int, dict[int, float]],
     assessed: dict[int, DirectPartners],
     limits: dict[int, float],
     moves: dict[int, int],
@@ -213,8 +264,9 @@ def _traceroute_corroborated(
     """Clear a direct flag only with support around every counted far hour.
 
     Direct partners weigh twice as much as other measured route partners.
-    Original direct partners and first-pass doubtful voters cannot vote;
-    clearing one position never supplies support for another.
+    Original direct partners and voters doubtful on their judged partners
+    before blame cannot vote; clearing one position never supplies support
+    for another.
     """
     candidates = {
         node: found.counted
@@ -226,8 +278,8 @@ def _traceroute_corroborated(
         return set()
     first = {
         node
-        for node, found in partners.items()
-        if statistics.median(found.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
+        for node, found in judged.items()
+        if found and statistics.median(found.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
     }
     direct: dict[int, list[tuple[int, int]]] = defaultdict(list)
     routes: dict[int, list[tuple[int, int, float]]] = defaultdict(list)
@@ -276,6 +328,69 @@ def _traceroute_corroborated(
         else:
             corroborated.add(node)
     return corroborated
+
+
+def refresh_far_partners(
+    connection: sqlite3.Connection, stopping: Callable[[], bool] = lambda: False
+) -> int:
+    """Judge the terrain of each pair heard directly over DOUBTFUL_PARTNER_KM
+    and under LONG_LINK_KM apart in the doubt window, at the ends' current
+    positions, and again once the km between them changes; drop pairs gone.
+    Returns how many pairs were left unjudged because their tiles could not be
+    fetched. Gives up, saving nothing new, once stopping() is true."""
+    ends: dict[tuple[int, int], tuple[End, End]] = {
+        (int(a), int(b)): ((lat_a, lon_a, alt_a), (lat_b, lon_b, alt_b))
+        for a, b, lat_a, lon_a, alt_a, lat_b, lon_b, alt_b in connection.execute(
+            """
+            WITH pair (node_a, node_b) AS (
+                SELECT DISTINCT min(from_node_id, to_node_id), max(from_node_id, to_node_id)
+                FROM link_hour
+                WHERE link_kind = 'direct' AND hour_start >= :since
+                  AND km > :from_km AND km < :long_km
+            )
+            SELECT node_a, node_b, a.latitude, a.longitude, a.altitude_meters,
+                   b.latitude, b.longitude, b.altitude_meters
+            FROM pair
+            JOIN node_current AS a ON a.node_id = node_a
+            JOIN node_current AS b ON b.node_id = node_b
+            WHERE a.latitude IS NOT NULL AND b.latitude IS NOT NULL
+              AND node_a NOT IN (SELECT node_id FROM node_shared)
+              AND node_b NOT IN (SELECT node_id FROM node_shared)
+            """,
+            {
+                "since": estimate_since_ms(connection),
+                "from_km": DOUBTFUL_PARTNER_KM,
+                "long_km": LONG_LINK_KM,
+            },
+        )
+    }
+    km = {pair: great_circle_km(a[0], a[1], b[0], b[1]) for pair, (a, b) in ends.items()}
+    judged = {
+        (int(a), int(b)): float(saved)
+        for a, b, saved in connection.execute("SELECT node_a, node_b, km FROM far_partner")
+    }
+    stale = [pair for pair, saved in judged.items() if km.get(pair) != saved]
+    if stale:
+        with transaction(connection):
+            connection.executemany("DELETE FROM far_partner WHERE node_a = ? AND node_b = ?", stale)
+    todo = {pair: found for pair, found in ends.items() if judged.get(pair) != km[pair]}
+    if not todo:
+        return 0
+    terrain = Terrain(stopping)
+    prefetch_paths(terrain, list(todo.values()))
+    if stopping():
+        return len(todo)
+    rows, unjudged = [], 0
+    for (a, b), (end_a, end_b) in todo.items():
+        try:
+            rows.append((a, b, km[a, b], *path_heights(end_a, end_b, terrain)))
+        except TerrainUnavailable:
+            unjudged += 1
+    with transaction(connection):
+        connection.executemany("INSERT INTO far_partner VALUES (?, ?, ?, ?, ?, ?)", rows)
+    if unjudged:
+        LOGGER.warning("Left %d far partners unjudged: terrain tiles unavailable", unjudged)
+    return unjudged
 
 
 def node_estimate(connection: sqlite3.Connection, node_id: int) -> EstimatedPosition | None:

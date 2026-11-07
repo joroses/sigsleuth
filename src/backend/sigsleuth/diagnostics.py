@@ -394,7 +394,8 @@ class LongLinkEnd:
     direct_partners counts the placed nodes used to assess its current position
     (positions.direct_partners); nearest_partner_km and median_partner_km are over those.
     blamed_partners counts far partners excluded because their other partners
-    contradict their positions.
+    contradict their positions, in_reach_partners those its height or a sea
+    path explains (far_partner).
     traceroute_corroborated means measured hops support its position around
     every counted far direct hour, despite its direct median.
     doubt_limit_km is the altitude-aware direct median limit, before corroboration;
@@ -409,6 +410,7 @@ class LongLinkEnd:
     shared: bool
     direct_partners: int
     blamed_partners: int
+    in_reach_partners: int
     traceroute_corroborated: bool
     nearest_partner_km: float | None
     median_partner_km: float | None
@@ -929,6 +931,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             shared=node_id in shared,
             direct_partners=len(found),
             blamed_partners=assessment.blamed if assessment else 0,
+            in_reach_partners=assessment.in_reach if assessment else 0,
             traceroute_corroborated=assessment.corroborated if assessment else False,
             nearest_partner_km=found[0] if found else None,
             median_partner_km=None if median is None else round(median, 1),

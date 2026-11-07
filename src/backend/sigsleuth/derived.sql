@@ -147,7 +147,8 @@ CREATE TABLE node_estimate (
 ) STRICT;
 
 -- Nodes whose direct links since both ends last moved contradict their current position
--- (positions.doubt_limit_km), excluding far partners doubtful on their other partners.
+-- (positions.doubt_limit_km), excluding far partners doubtful on their other partners
+-- or that the terrain between explains (far_partner).
 -- Independent measured traceroute hops may corroborate a position around each far hour.
 -- Refilled with node_estimate; partners and median_km describe the counted partners.
 CREATE TABLE node_doubtful (
@@ -168,6 +169,21 @@ CREATE TABLE long_link (
     above_meters REAL NOT NULL,
     confirmed INTEGER NOT NULL CHECK (confirmed IN (0, 1)),
     unlikely INTEGER NOT NULL CHECK (unlikely IN (0, 1)),
+    PRIMARY KEY (node_a, node_b)
+) STRICT, WITHOUT ROWID;
+
+-- Terrain between the current positions of each pair heard directly over
+-- positions.DOUBTFUL_PARTNER_KM and under links.LONG_LINK_KM apart in the
+-- doubt window, node_a < node_b (positions.refresh_far_partners). km is
+-- between those positions; above_a and above_b say how far each end stands
+-- above the median ground between, sea as 0 m. No row means not judged yet.
+CREATE TABLE far_partner (
+    node_a INTEGER NOT NULL,
+    node_b INTEGER NOT NULL,
+    km REAL NOT NULL,
+    sea_share REAL NOT NULL CHECK (sea_share BETWEEN 0 AND 1),
+    above_a REAL NOT NULL,
+    above_b REAL NOT NULL,
     PRIMARY KEY (node_a, node_b)
 ) STRICT, WITHOUT ROWID;
 

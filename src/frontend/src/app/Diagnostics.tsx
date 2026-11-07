@@ -1130,13 +1130,19 @@ function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
       <td>
         {end.direct_partners > 0
           ? `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km (limit ${formatKm(end.doubt_limit_km)} km)`
-          : end.blamed_partners === 0
+          : end.blamed_partners === 0 && end.in_reach_partners === 0
             ? "none placed"
             : null}
         {end.blamed_partners > 0 ? (
           <div>
             {end.blamed_partners} far not counted: doubtful on their other
             partners
+          </div>
+        ) : null}
+        {end.in_reach_partners > 0 ? (
+          <div>
+            {end.in_reach_partners} far not counted: within reach from its
+            height or over sea
           </div>
         ) : null}
         {end.traceroute_corroborated ? (

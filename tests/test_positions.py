@@ -1,6 +1,6 @@
 import sqlite3
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import closing
 from pathlib import Path
 
@@ -10,15 +10,19 @@ from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-un
 
 from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope
+from sigsleuth import terrain
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, nodes_by_id, now_ms, open_current_database, reported_km
 from sigsleuth.ingest import MqttDelivery, ingest_delivery
 from sigsleuth.positions import (
     EstimatedPosition,
+    direct_partners,
+    estimate_since_ms,
     node_estimate,
     own_reach,
     refresh_estimates,
+    refresh_far_partners,
     traceroute_hops,
 )
 from sigsleuth.radio import great_circle_km
@@ -425,6 +429,137 @@ def test_corroboration_needs_independent_measured_partners_that_were_not_doubtfu
     for _ in range(2):
         refresh_estimates(connection)
         assert NODE in {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+
+
+def ground(monkeypatch: pytest.MonkeyPatch, height: Callable[[float, float], float]) -> None:
+    monkeypatch.setattr(terrain.Terrain, "height", lambda self, lat, lon, zoom: height(lat, lon))
+
+
+def far_partners(connection: sqlite3.Connection) -> list[tuple[object, ...]]:
+    return [
+        tuple(row)
+        for row in connection.execute(
+            "SELECT node_a, node_b, round(km), sea_share, above_a, above_b FROM far_partner"
+        )
+    ]
+
+
+def test_far_direct_partners_are_judged_once_and_again_after_an_end_moves(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Only the pair 200 km apart is judged, not those 50 or 300 km apart.
+    node(connection, NODE, 0.0)
+    for other, latitude, km in ((N1, 1.8, 200.0), (N2, 0.45, 50.0), (N3, 2.7, 300.0)):
+        node(connection, other, latitude)
+        link(connection, other, NODE, km=km)
+
+    assert refresh_far_partners(connection) == 1  # conftest's tiles all fail
+    assert far_partners(connection) == []
+
+    # NODE stands on a summit, 1,400 m above the land between.
+    ground(monkeypatch, lambda lat, lon: 1500.0 if lat < 0.01 else 100.0)
+    assert refresh_far_partners(connection) == 0
+    assert far_partners(connection) == [(NODE, N1, 200.0, 0.0, 1400.0, 0.0)]
+
+    ground(monkeypatch, lambda lat, lon: 100.0)
+    refresh_far_partners(connection)
+    assert far_partners(connection) == [(NODE, N1, 200.0, 0.0, 1400.0, 0.0)]
+
+    connection.execute("UPDATE node_current SET latitude = 1.9 WHERE node_id = ?", (N1,))
+    refresh_far_partners(connection)
+    assert far_partners(connection) == [(NODE, N1, 211.0, 0.0, 0.0, 0.0)]
+
+    connection.execute("DELETE FROM link_hour WHERE from_node_id = ?", (N1,))
+    refresh_far_partners(connection)
+    assert far_partners(connection) == []
+
+
+def summit_at_node(lat: float, lon: float) -> float:
+    return 1500.0 if lat < 0.01 else 100.0
+
+
+@pytest.mark.parametrize(
+    ("case", "doubtful"),
+    [
+        ("node-on-summit", {N1}),
+        ("partner-on-summit", {NODE}),
+        ("sea", set()),
+        ("low-land", {NODE, N1}),
+        ("node-on-summit-300-km", {NODE, N1}),
+    ],
+)
+def test_a_far_partner_is_within_reach_from_the_nodes_own_summit_or_across_sea(
+    connection: sqlite3.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    doubtful: set[int],
+) -> None:
+    # N1 hears NODE about 200 km to the north, or 300 km.
+    latitude = 2.7 if case.endswith("300-km") else 1.8
+    node(connection, NODE, 0.0)
+    node(connection, N1, latitude)
+    link(connection, N1, NODE, km=great_circle_km(0.0, 0.0, latitude, 0.0))
+    heights: dict[str, Callable[[float, float], float]] = {
+        "node-on-summit": summit_at_node,
+        "partner-on-summit": lambda lat, lon: 1500.0 if lat > latitude - 0.01 else 100.0,
+        "sea": lambda lat, lon: -50.0 if 0.01 < lat < latitude - 0.01 else 10.0,
+        "low-land": lambda lat, lon: 100.0,
+        "node-on-summit-300-km": summit_at_node,
+    }
+    ground(monkeypatch, heights[case])
+
+    refresh_far_partners(connection)
+    refresh_estimates(connection)
+
+    assert {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")} == doubtful
+    if case in ("node-on-summit", "sea"):
+        found = direct_partners(connection, estimate_since_ms(connection))[NODE]
+        assert (found.counted, found.in_reach) == ({}, 1)
+
+
+def test_a_partner_within_the_nodes_own_limit_still_counts_from_its_summit(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # At 1,500 m NODE's limit is 159 km, so N1 at 155 km supports its
+    # position; leaving it out would leave N2 and N3's median of 200 km.
+    node(connection, NODE, 0.0)
+    connection.execute("UPDATE node_current SET altitude_meters = 1500 WHERE node_id = ?", (NODE,))
+    for other, latitude in ((N1, 1.4), (N2, 0.9), (N3, 2.7)):
+        node(connection, other, latitude)
+        link(connection, other, NODE, km=great_circle_km(0.0, 0.0, latitude, 0.0))
+    ground(monkeypatch, summit_at_node)
+
+    refresh_far_partners(connection)
+    refresh_estimates(connection)
+
+    assert NODE not in {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+
+
+@pytest.mark.parametrize("voter_ground", ["summit", "low-land"])
+def test_a_route_voter_whose_far_partner_the_terrain_explains_may_corroborate(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, voter_ground: str
+) -> None:
+    # N2's only direct partner, 21, is 200 km away: N2 may vote only when it
+    # stands on a summit, which explains that partner.
+    seen = now_ms() // HOUR_MS * HOUR_MS + 15 * 60_000
+    for n, latitude, longitude in ((NODE, 0.0, 0.0), (N1, 1.8, 0.0), (N3, 0.0, 0.0)):
+        node(connection, n, latitude, longitude)
+    node(connection, N2, 0.0, 5.0)
+    node(connection, 21, 1.8, 5.0)
+    link_hour(connection, NODE, N1, seen, km=200.0)
+    link_hour(connection, 21, N2, seen, km=200.0)
+    link_hour(connection, NODE, N2, seen, link_kind="traceroute", km=16.0, snr=[5.0])
+    link_hour(connection, NODE, N3, seen, link_kind="traceroute", km=20.0, snr=[5.0])
+    on_summit = voter_ground == "summit"
+    ground(
+        monkeypatch, lambda lat, lon: 1500.0 if on_summit and lon > 4.99 and lat < 0.01 else 100.0
+    )
+
+    refresh_far_partners(connection)
+    refresh_estimates(connection)
+
+    found = {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
+    assert (NODE not in found) == on_summit
 
 
 def test_a_node_heard_only_before_its_gateway_moved_is_not_placed_there(

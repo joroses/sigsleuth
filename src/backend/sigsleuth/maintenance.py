@@ -9,9 +9,10 @@ serves saved copies whose history must stay), shared node numbers
 (positions.refresh_estimates), which leave shared numbers out. A failure is
 logged and tried again five minutes later, a failed rebuild included.
 
-New long links are judged (terrain.py) on a second thread, started after the
-rebuild and the first estimates, because their tiles come over the network and
-a tile server can hang.
+Far direct partners (positions.refresh_far_partners) and new long links
+(terrain.py) are judged on a second thread, started after the rebuild and the
+first estimates, because their tiles come over the network and a tile server
+can hang.
 """
 
 import logging
@@ -28,7 +29,7 @@ from sigsleuth.db import (
     rederive_pending,
 )
 from sigsleuth.derive import rederive
-from sigsleuth.positions import refresh_estimates
+from sigsleuth.positions import refresh_estimates, refresh_far_partners
 from sigsleuth.retention import RETENTION_INTERVAL_SECONDS, apply_retention
 from sigsleuth.shared_numbers import refresh_shared_numbers
 from sigsleuth.terrain import refresh_long_links
@@ -80,7 +81,7 @@ class Maintenance:
                     if not judging:
                         # Daemon: a tile fetch that hangs must not hold up shutdown.
                         threading.Thread(
-                            target=self._judge_long_links, name="sigsleuth-terrain", daemon=True
+                            target=self._judge_terrain, name="sigsleuth-terrain", daemon=True
                         ).start()
                         judging = True
                 except sqlite3.Error:
@@ -112,12 +113,15 @@ class Maintenance:
         if result.measurements:
             LOGGER.info("Retention removed %d signal survey measurements", result.measurements)
 
-    def _judge_long_links(self) -> None:
-        """Judge new long links now and about every five minutes."""
+    def _judge_terrain(self) -> None:
+        """Judge far direct partners and new long links now and about every
+        five minutes. Far partners first: they are few, and a first run of
+        long links can take hundreds of tiles."""
         with closing(open_current_database(self._settings.database_path)) as connection:
             while not self._stop.is_set():
                 try:
+                    refresh_far_partners(connection, self._stop.is_set)
                     refresh_long_links(connection, self._stop.is_set)
                 except sqlite3.Error:
-                    LOGGER.exception("Judging long links failed; it will retry in a few minutes")
+                    LOGGER.exception("Judging terrain failed; it will retry in a few minutes")
                 self._stop.wait(RETENTION_INTERVAL_SECONDS)

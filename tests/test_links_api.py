@@ -538,29 +538,13 @@ def test_a_node_heard_only_far_from_where_it_was_is_doubtful(path: Path) -> None
     assert table["doubtful_node_ids"] == [far]
 
 
-@pytest.mark.parametrize(
-    ("altitude", "km", "counted", "blamed"), [(0, 250.0, 0, 1), (1500, 155.0, 1, 0)]
-)
-def test_diagnostics_names_only_the_far_tracker_as_suspect(
-    path: Path, altitude: int, km: float, counted: int, blamed: int
-) -> None:
+def test_diagnostics_names_only_the_far_tracker_as_suspect(path: Path) -> None:
     tracker = 0x0D0D0D0D
     for node_id in (A, B, C, tracker):
         place(path, node_id, f"N{node_id:x}", 40.0, 2.0)
-    with closing(open_current_database(path)) as connection:
-        connection.execute(
-            "UPDATE node_current SET altitude_meters = ? WHERE node_id = ?", (altitude, A)
-        )
     for victim in (A, B, C):
         add_link_hour(
-            path,
-            0,
-            tracker,
-            victim,
-            observations=1,
-            snr=[5.0],
-            link_kind="direct",
-            km=km if victim == A else 250.0,
+            path, 0, tracker, victim, observations=1, snr=[5.0], link_kind="direct", km=250.0
         )
     refresh(path)
 
@@ -569,10 +553,10 @@ def test_diagnostics_names_only_the_far_tracker_as_suspect(
     [item] = reviewed
     ends = {end["node"]["node_id"]: end for end in (item["node_a"], item["node_b"])}
     assert ends[A]["doubtful"] is False
-    assert ends[A]["direct_partners"] == counted
-    assert ends[A]["blamed_partners"] == blamed
-    assert ends[A]["nearest_partner_km"] == (km if counted else None)
-    assert ends[A]["median_partner_km"] == (km if counted else None)
+    assert ends[A]["direct_partners"] == 0
+    assert ends[A]["blamed_partners"] == 1
+    assert ends[A]["nearest_partner_km"] is None
+    assert ends[A]["median_partner_km"] is None
     assert ends[tracker]["doubtful"] is True
     assert ends[tracker]["direct_partners"] == 3
     assert ends[tracker]["blamed_partners"] == 0

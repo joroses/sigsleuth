@@ -192,10 +192,16 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     ):
         yield f"/api/v1/nodes?sort={sort}&limit=20&offset=0"
     yield f"/api/v1/nodes?sort=traceroute&limit=20&offset=0&q={name}&channel={channel}&gateway=true"
+    # A node filter's search of every known node, and the name of its chosen node.
+    yield f"/api/v1/nodes?sort=last_sent&limit=50&q={name}"
+    yield f"/api/v1/nodes?sort=last_sent&limit=50&q=%21{node:08x}"
     yield "/api/v1/nodes/channels"
     yield f"/api/v1/nodes/{node}"
     yield f"/api/v1/nodes/{node}/packets?limit=50"
     yield f"/api/v1/nodes/{node}/packets?limit=50&port={text}"
+    # The node page's packets with one node, and those a gateway heard directly.
+    yield f"/api/v1/nodes/{node}/packets?limit=50&other={neighbour}"
+    yield f"/api/v1/nodes/{node}/packets?limit=50&heard_directly_by={neighbour}"
     # A shared node number's radio filter (the sample has none:
     # tests/test_shared_numbers.py).
     yield f"/api/v1/nodes/{node}/packets?limit=50&radio=1"

@@ -185,6 +185,53 @@ def test_a_pair_whose_tiles_fail_is_judged_at_a_later_refresh(
     assert unlikely_links(connection) == {(A, B)}
 
 
+def flat_tile(height: int) -> bytes:
+    """A Terrarium tile with the same height everywhere."""
+    value = height + 32768
+    png = io.BytesIO()
+    Image.new("RGB", (256, 256), (value // 256, value % 256, 0)).save(png, format="PNG")
+    return png.getvalue()
+
+
+def test_tiles_are_fetched_once_and_kept_beside_the_database(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    place(connection, A, *WEST)
+    place(connection, B, *EAST)
+    heard(connection, A, B, 264.0)
+    fetched = []
+
+    def fetch(key: terrain.TileKey) -> bytes:
+        fetched.append(key)
+        return flat_tile(100)
+
+    monkeypatch.setattr(terrain, "fetch_tile", fetch)
+    assert refresh_long_links(connection) == 0
+    assert fetched
+    assert (tmp_path / "terrain-tiles").is_dir()
+
+    # As after a rebuild: judged again from the kept tiles alone.
+    with connection:
+        connection.execute("DELETE FROM long_link")
+    fetched.clear()
+    assert refresh_long_links(connection) == 0
+    assert fetched == []
+    assert unlikely_links(connection) == {(A, B)}
+
+
+def test_tiles_that_cannot_be_kept_still_judge_the_link(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "terrain-tiles").write_text("a file, not a folder")
+    place(connection, A, *WEST)
+    place(connection, B, *EAST)
+    heard(connection, A, B, 264.0)
+    monkeypatch.setattr(terrain, "fetch_tile", lambda key: flat_tile(100))
+
+    assert refresh_long_links(connection) == 0
+    assert unlikely_links(connection) == {(A, B)}
+
+
 def test_a_long_link_between_ends_confirmed_by_near_direct_partners_passes(
     connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:

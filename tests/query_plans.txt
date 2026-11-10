@@ -524,6 +524,34 @@ nodes.node_list
   SCAN node_current
   SEARCH map_report USING PRIMARY KEY
 
+## GET /api/v1/nodes?sort=last_sent&limit=50&q=hill
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+opt_out.unlinkable_packets
+  SEARCH packet USING PRIMARY KEY
+
+## GET /api/v1/nodes?sort=last_sent&limit=50&q=%210a0a0a0a
+
+nodes.node_list
+  SEARCH node_activity_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+nodes.node_list
+  SCAN node_current
+  SEARCH map_report USING PRIMARY KEY
+opt_out.unlinkable_packets
+  SEARCH packet USING PRIMARY KEY
+
 ## GET /api/v1/nodes/channels
 
 nodes.node_channels
@@ -575,6 +603,32 @@ packets.packet_rows
 shared_numbers.shared_nodes
   SCAN node_shared
 
+## GET /api/v1/nodes/168430090/packets?limit=50&other=185273099
+
+opt_out.is_opted_out
+  SEARCH node_opt_out USING PRIMARY KEY
+packets.packet_rows
+  SEARCH packet USING INDEX packet_direct_recipient
+  SEARCH packet USING INDEX packet_direct_recipient
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+shared_numbers.shared_nodes
+  SCAN node_shared
+
+## GET /api/v1/nodes/168430090/packets?limit=50&heard_directly_by=185273099
+
+opt_out.is_opted_out
+  SEARCH node_opt_out USING PRIMARY KEY
+packets.packet_rows
+  SEARCH packet USING INDEX packet_sender
+  SEARCH reception USING INDEX sqlite_autoindex_reception_1
+  SEARCH packet USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+shared_numbers.shared_nodes
+  SCAN node_shared
+
 ## GET /api/v1/nodes/168430090/packets?limit=50&radio=1
 
 opt_out.is_opted_out
@@ -615,7 +669,7 @@ opt_out.unlinkable_packets
 opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
 nodes.node_position_history
-  SEARCH packet USING INDEX packet_sender
+  SEARCH node_position USING PRIMARY KEY
 opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
@@ -2576,8 +2630,6 @@ positions.direct_partners
   SCAN far_partner
 positions._traceroute_corroborated
   SEARCH link_hour USING PRIMARY KEY
-positions._doubtful
-  SCAN node_current
 positions._estimates
   SCAN node_current
 positions._estimates
@@ -2752,8 +2804,6 @@ positions.direct_partners
 positions.direct_partners
   SCAN far_partner
   SCAN far_partner
-positions._doubtful
-  SCAN node_current
 positions._estimates
   SCAN node_current
 positions._estimates

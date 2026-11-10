@@ -634,14 +634,12 @@ function historyNote(
 ): string {
   if (error !== null) return `Position history could not load: ${error}`;
   if (history === null) return "Loading position history…";
-  const { items, invalid, limited } = history;
+  const { items, limited } = history;
   const count =
     items.length === 0
       ? "No valid position packets of its own."
       : `${shown.toLocaleString()} ${shown === 1 ? "position" : "positions"}${shown < items.length ? " · 3 km spacing" : ""} · click a dot for its packet`;
-  const skipped = invalid > 0 ? ` · ${invalid.toLocaleString()} invalid` : "";
-  const older = limited ? " · older not drawn" : "";
-  return count + skipped + older;
+  return count + (limited ? " · older not drawn" : "");
 }
 
 function historyBounds(

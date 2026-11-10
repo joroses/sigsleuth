@@ -13,7 +13,7 @@ import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from meshtastic.protobuf import admin_pb2, mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
@@ -30,7 +30,7 @@ from sigsleuth.db import (
     to_epoch_ms,
 )
 from sigsleuth.decode import interpret_payload, portnum_name, read_device_telemetry
-from sigsleuth.derive import HOUR_MS
+from sigsleuth.derive import HOUR_MS, direct_reception_sql
 from sigsleuth.firmware import FirmwareEstimate, estimate
 from sigsleuth.links import LinkKind
 from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unlinkable_packets
@@ -57,7 +57,7 @@ NODE_ACTIVITY_HOURS = 24
 NODE_CHART_DAYS = 7
 # Newest telemetry packets read for one node's chart.
 MAX_NODE_TELEMETRY = 2_000
-# Newest position packets read for one node's position history. A node on the
+# Newest positions read for one node's position history. A node on the
 # default 15-minute broadcast sends about 1,350 in 14 days; a tracker more.
 MAX_NODE_POSITIONS = 1_000
 # Newest packets of the node whose gateways its contacts list; 500 named
@@ -278,11 +278,15 @@ def node_packets(
     before_id: int | None = None,
     portnum: int | None = None,
     radio: int | Literal["unsorted"] | None = None,
+    other: int | None = None,
+    heard_directly_by: int | None = None,
 ) -> PacketPage:
     """The node's newest packets sent by it or addressed to it, only those on
-    application port portnum when it is given. With radio, only those it
-    sent that are sorted to its radio of that number, or to none
-    (shared_numbers.py).
+    application port portnum when it is given. With other, only those between
+    the node and other, either way. With radio, only those it sent that are
+    sorted to its radio of that number, or to none (shared_numbers.py). With
+    heard_directly_by, only those it sent that the gateway heard with no
+    relay, by the rule direct links are counted by.
 
     Broadcasts count only as sent by their sender, not as addressed to every node.
     """
@@ -291,29 +295,51 @@ def node_packets(
     # The recipient index only covers direct messages; its condition is repeated
     # here so SQLite uses it. A port filter checks each of the node's packets
     # newest first until a page matches; a (sender_node_id, portnum) index
-    # would help if a busy node's filtered page gets slow.
+    # would help if a busy node's filtered page gets slow. The gateway filter
+    # checks them the same way, looking up each one's reports: tens of
+    # thousands at most for a gateway that rarely heard a busy node, as in
+    # Diagnostics.
     if is_opted_out(connection, node_id):
         return PacketPage((), None)
-    port_filter = "" if portnum is None else "AND portnum = :port"
+    filters = "" if portnum is None else "AND portnum = :port"
+    if heard_directly_by is not None:
+        filters += f"""
+            AND EXISTS (
+                SELECT 1 FROM reception AS r
+                WHERE r.packet_row_id = packet.id AND r.gateway_node_id = :gateway
+                  AND {direct_reception_sql("r", "packet")}
+            )
+        """
+    params = {"node": node_id, "port": portnum, "other": other, "gateway": heard_directly_by}
     if radio is not None:
-        return _radio_packets(connection, node_id, radio, port_filter, portnum, limit, before_id)
+        if other is not None:
+            filters += " AND recipient_node_id = :other"
+        return _radio_packets(connection, node_id, radio, filters, params, limit, before_id)
+    # With other, the sent side reads the direct messages to other instead:
+    # fewer than all the node sent.
+    sent = (
+        "sender_node_id = :node"
+        if other is None
+        else "recipient_node_id = :other AND recipient_node_id != 4294967295"
+        " AND sender_node_id = :node"
+    )
+    received = "recipient_node_id = :node AND recipient_node_id != 4294967295" + (
+        "" if other is None else " AND sender_node_id = :other"
+    )
+    sides = [sent] if heard_directly_by is not None else [sent, received]
     packets, next_before_id = packet_rows(
         connection,
-        f"""
-        SELECT id FROM (
-            SELECT id FROM packet
-            WHERE sender_node_id = :node AND id < :before {port_filter} AND {SHOWN_PACKET}
-            ORDER BY id DESC LIMIT :limit
-        )
-        UNION
-        SELECT id FROM (
-            SELECT id FROM packet
-            WHERE recipient_node_id = :node AND recipient_node_id != 4294967295
-              AND id < :before {port_filter} AND {SHOWN_PACKET}
-            ORDER BY id DESC LIMIT :limit
-        )
-        """,
-        {"node": node_id, "port": portnum},
+        "\nUNION\n".join(
+            f"""
+            SELECT id FROM (
+                SELECT id FROM packet
+                WHERE {side} AND id < :before {filters} AND {SHOWN_PACKET}
+                ORDER BY id DESC LIMIT :limit
+            )
+            """
+            for side in sides
+        ),
+        params,
         limit=limit,
         before_id=before_id,
     )
@@ -324,8 +350,8 @@ def _radio_packets(
     connection: sqlite3.Connection,
     node_id: int,
     radio: int | Literal["unsorted"],
-    port_filter: str,
-    portnum: int | None,
+    filters: str,
+    params: dict[str, Any],
     limit: int,
     before_id: int | None,
 ) -> PacketPage:
@@ -334,7 +360,7 @@ def _radio_packets(
     if radio == "unsorted":
         picked = f"""
             SELECT id FROM packet
-            WHERE sender_node_id = :node AND id < :before {port_filter} AND {SHOWN_PACKET}
+            WHERE sender_node_id = :node AND id < :before {filters} AND {SHOWN_PACKET}
               AND NOT EXISTS (SELECT 1 FROM packet_radio WHERE packet_row_id = packet.id)
             ORDER BY id DESC LIMIT :limit
         """
@@ -348,13 +374,13 @@ def _radio_packets(
             FROM packet_radio AS r INDEXED BY packet_radio_radio
             JOIN packet ON packet.id = r.packet_row_id
             WHERE r.node_id = :node AND r.mac_address = :mac AND r.packet_row_id < :before
-              {port_filter} AND {SHOWN_PACKET}
+              {filters} AND {SHOWN_PACKET}
             ORDER BY r.packet_row_id DESC LIMIT :limit
         """
     packets, next_before_id = packet_rows(
         connection,
         picked,
-        {"node": node_id, "port": portnum, "mac": mac},
+        {**params, "mac": mac},
         limit=limit,
         before_id=before_id,
     )
@@ -500,51 +526,39 @@ class NodeHistoricPosition:
 
 @dataclass(frozen=True)
 class NodePositionHistory:
-    """The valid positions from the node's newest MAX_NODE_POSITIONS position
-    packets, newest first. invalid counts the packets read that gave none;
-    limited is True when older position packets were left unread."""
+    """The node's newest MAX_NODE_POSITIONS positions from its own packets,
+    newest first. limited is True when older ones were left unread."""
 
     node_id: int
     items: tuple[NodeHistoricPosition, ...]
-    invalid: int
     limited: bool
 
 
 def node_position_history(connection: sqlite3.Connection, node_id: int) -> NodePositionHistory:
-    """Where the node's own position packets placed it, decoded here."""
+    """Where the node's own packets placed it (node_position)."""
     if is_opted_out(connection, node_id):
-        return NodePositionHistory(node_id, (), 0, False)
-    # portnum = 3 is written out so SQLite keeps the packet_sender index.
+        return NodePositionHistory(node_id, (), False)
     rows = connection.execute(
         """
-        SELECT id, first_received_at, application_payload FROM packet
-        WHERE sender_node_id = ? AND portnum = 3 AND application_payload IS NOT NULL
-        ORDER BY id DESC LIMIT ?
+        SELECT packet_row_id, at, latitude, longitude, altitude_meters FROM node_position
+        WHERE node_id = ? AND packet_row_id IS NOT NULL
+        ORDER BY at DESC LIMIT ?
         """,
         (node_id, MAX_NODE_POSITIONS),
     ).fetchall()
-    items = []
-    unshown = unlinkable_packets(connection, (row["id"] for row in rows))
-    for row in rows:
-        position = interpret_payload(
-            portnums_pb2.PortNum.POSITION_APP, bytes(row["application_payload"])
-        ).position
-        if position is None or not position.is_valid:
-            continue
-        assert position.latitude is not None and position.longitude is not None
-        items.append(
-            NodeHistoricPosition(
-                packet_row_id=shown_link(int(row["id"]), unshown),
-                observed_at=from_epoch_ms(row["first_received_at"]),
-                latitude=position.latitude,
-                longitude=position.longitude,
-                altitude_meters=position.altitude_meters,
-            )
-        )
+    unshown = unlinkable_packets(connection, (row["packet_row_id"] for row in rows))
     return NodePositionHistory(
         node_id=node_id,
-        items=tuple(items),
-        invalid=len(rows) - len(items),
+        items=tuple(
+            NodeHistoricPosition(
+                packet_row_id=shown_link(int(row["packet_row_id"]), unshown),
+                observed_at=from_epoch_ms(row["at"]),
+                latitude=float(row["latitude"]),
+                longitude=float(row["longitude"]),
+                altitude_meters=row["altitude_meters"],
+            )
+            for row in rows
+        ),
         limited=len(rows) == MAX_NODE_POSITIONS,
     )
 

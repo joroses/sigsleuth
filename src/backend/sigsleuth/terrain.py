@@ -17,10 +17,10 @@ refresh_long_links judges each node pair with a link hour of LONG_LINK_KM or
 more once, at its longest hour's positions, and keeps the verdict in
 long_link (derived.sql); capture runs it on a thread of its own about every
 five minutes, and the API at startup and after a rebuild. Ground heights come
-from the AWS open-data Terrarium tiles that line of sight also uses, fetched
-when a pair is judged and kept only in memory for that refresh. A pair whose
-tiles cannot be fetched is left unjudged, shown as before, and tried again at
-the next refresh.
+from the AWS open-data Terrarium tiles that line of sight also uses, each
+fetched once and kept in TILE_FOLDER beside the database. A pair whose tiles
+cannot be fetched is left unjudged, shown as before, and tried again at the
+next refresh.
 
 Pages treat an unlikely pair's long links like a doubtful node's
 (links.unlikely_links).
@@ -34,9 +34,11 @@ import logging
 import math
 import sqlite3
 import statistics
+import tempfile
 import urllib.request
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from PIL import Image
 
@@ -49,11 +51,16 @@ LOGGER = logging.getLogger(__name__)
 
 TILE_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
 TILE_SIZE = 256
-# Judging every long pair from nothing takes hundreds of tiles, a later
-# refresh a dozen or so. Capture does not wait for any of this (mqtt.py), so a
-# slow or hanging tile server only delays verdicts.
+# A network's first judging fetches hundreds of tiles, later ones only those of
+# new places. Capture does not wait for any of this (mqtt.py), so a slow or
+# hanging tile server only delays verdicts.
 FETCH_TIMEOUT_SECONDS = 20
 FETCH_PARALLEL = 6
+# Tiles never change, so each is fetched once and kept here, beside the
+# database; the mesh's area bounds it to tens of MB. Revisit 2026-11-10, live
+# loranet.pl: judging its 54 long pairs and 5 far partners from nothing, as
+# after every rebuild, fetched 139 tiles (15 MB) in 35 s; from disk, 0.5 s.
+TILE_FOLDER = "terrain-tiles"
 # Path heights come from zoom 9 tiles (about 200 m a pixel in Poland) every
 # PATH_STEP_KM; end heights from zoom 12 (about 25 m).
 PATH_ZOOM = 9
@@ -107,19 +114,30 @@ def _tile_xy(latitude: float, longitude: float, zoom: int) -> tuple[float, float
     return x, y
 
 
+def tile_folder(connection: sqlite3.Connection) -> Path | None:
+    """TILE_FOLDER beside the database's file; None for a database in memory."""
+    file = connection.execute("PRAGMA database_list").fetchone()[2]
+    return Path(file).parent / TILE_FOLDER if file else None
+
+
 class Terrain:
-    """Ground heights from tiles fetched on first use and kept while this
-    object lives: one refresh. A tile that failed stays failed. Once stopping()
-    is true no new tile is fetched, so shutdown waits at most one
+    """Ground heights from tiles loaded on first use and kept while this
+    object lives: one refresh. With a folder, a tile is read from it, else
+    fetched and saved there. A tile that failed stays failed. Once stopping()
+    is true no new tile is loaded, so shutdown waits at most one
     FETCH_TIMEOUT_SECONDS for the requests already running, not for the queue
     (Python joins the fetch threads at exit)."""
 
-    def __init__(self, stopping: Callable[[], bool] = lambda: False) -> None:
+    def __init__(
+        self, stopping: Callable[[], bool] = lambda: False, folder: Path | None = None
+    ) -> None:
         self._tiles: dict[TileKey, bytes | None] = {}
         self._stopping = stopping
+        self._folder = folder
+        self._unsaved = False
 
     def prefetch(self, points: Iterable[tuple[float, float]], zoom: int) -> None:
-        """Fetch, a few at once, the tiles under points not fetched yet."""
+        """Load, a few at once, the tiles under points not loaded yet."""
         keys = {
             (zoom, int(x), int(y)) for x, y in (_tile_xy(lat, lon, zoom) for lat, lon in points)
         } - self._tiles.keys()
@@ -147,12 +165,39 @@ class Terrain:
         or the refresh is stopping."""
         if self._stopping():
             return None
+        z, x, y = key
+        saved = None if self._folder is None else self._folder / str(z) / str(x) / f"{y}.png"
+        if saved is not None:
+            try:
+                return _pixels(saved.read_bytes())
+            except (OSError, ValueError):
+                pass  # Not saved yet, or unreadable: fetch it again.
         try:
             data = fetch_tile(key)
-            return Image.open(io.BytesIO(data)).convert("RGB").tobytes()
+            pixels = _pixels(data)
         except (OSError, ValueError) as error:
             LOGGER.debug("Terrain tile %s unavailable: %s", key, error)
             return None
+        if saved is not None:
+            self._save(saved, data)
+        return pixels
+
+    def _save(self, path: Path, data: bytes) -> None:
+        """Write a tile whole or not at all, as another refresh may read it
+        meanwhile. A tile that cannot be saved is fetched again next time."""
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".part", delete=False) as file:
+                file.write(data)
+            Path(file.name).replace(path)
+        except OSError as error:
+            if not self._unsaved:
+                LOGGER.warning("Cannot keep terrain tiles in %s: %s", self._folder, error)
+            self._unsaved = True
+
+
+def _pixels(png: bytes) -> bytes:
+    return Image.open(io.BytesIO(png)).convert("RGB").tobytes()
 
 
 def path_points(
@@ -310,7 +355,7 @@ def refresh_long_links(
         return 0
     ends = _ends_when_heard(connection, todo)
     confirmed = _confirmed_nodes(connection, {node for pair in ends for node in pair})
-    terrain = Terrain(stopping)
+    terrain = Terrain(stopping, tile_folder(connection))
     prefetch_paths(terrain, list(ends.values()))
     if stopping():
         return len(ends)

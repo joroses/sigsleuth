@@ -562,18 +562,17 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
         <>
           <strong>Doubtful position</strong>: the median distance to the placed
           nodes it heard, or that heard it, directly over the last{" "}
-          {rules.partner_days} days is over its limit:{" "}
-          {rules.doubtful_partner_km} km, or its radio horizon when it reports a
-          high altitude. A far partner whose own other partners place it
-          elsewhere is not counted, nor one under {rules.long_link_km} km when
-          the node stands {rules.terrain_above_meters} m or more above the
-          ground between or {Math.round(rules.terrain_sea_share * 100)}% or more
-          of the path is sea, and measured traceroute hops near its position can
-          clear it. <strong>Shared node number</strong>: two radios with this
-          number were on air at once, from different places.{" "}
-          <strong>Unconfirmed</strong>: the Links page ranks distances of{" "}
-          {rules.unconfirmed_km} km or more apart unless both ends have reported
-          a position since it was heard and neither has moved since.
+          {rules.partner_days} days is over {rules.doubtful_partner_km} km. A
+          far partner whose own other partners place it elsewhere is not
+          counted, nor one under {rules.long_link_km} km when the node stands{" "}
+          {rules.terrain_above_meters} m or more above the ground between or{" "}
+          {Math.round(rules.terrain_sea_share * 100)}% or more of the path is
+          sea, and measured traceroute hops near its position can clear it.{" "}
+          <strong>Shared node number</strong>: two radios with this number were
+          on air at once, from different places. <strong>Unconfirmed</strong>:
+          the Links page ranks distances of {rules.unconfirmed_km} km or more
+          apart unless both ends have reported a position since it was heard and
+          neither has moved since.
         </>
       }
       toCheck={
@@ -605,7 +604,7 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
                     name={nodeName(end.node)}
                   />{" "}
                   {end.doubtful ? (
-                    <Badge tone="amber" title={partnersTitle(end)}>
+                    <Badge tone="amber" title={partnersTitle(end, rules)}>
                       doubtful position
                     </Badge>
                   ) : null}{" "}
@@ -667,12 +666,12 @@ function EndsFactor({ link, rules, checks }: FactorProps) {
             {row(
               <th
                 scope="row"
-                title="Its partners' median distance against its limit"
+                title="Its partners' median distance against the limit"
               >
                 Position check
               </th>,
               (end) => (
-                <PositionVerdict end={end} />
+                <PositionVerdict end={end} rules={rules} />
               ),
             )}
             {anyBlamed
@@ -738,7 +737,13 @@ function EndPosition({ end }: { end: LongLinkEnd }) {
 }
 
 /** Whether an end's direct partners fit its reported position. */
-function PositionVerdict({ end }: { end: LongLinkEnd }) {
+function PositionVerdict({
+  end,
+  rules,
+}: {
+  end: LongLinkEnd;
+  rules: LongLinkRules;
+}) {
   if (end.direct_partners === 0 || end.median_partner_km === null) {
     return end.doubtful ? (
       <span className="long-link-fail">doubtful</span>
@@ -746,7 +751,7 @@ function PositionVerdict({ end }: { end: LongLinkEnd }) {
       <span className="muted">no partners to judge by</span>
     );
   }
-  const numbers = `median ${formatKm(end.median_partner_km)} km, limit ${formatKm(end.doubt_limit_km)} km`;
+  const numbers = `median ${formatKm(end.median_partner_km)} km, limit ${formatKm(rules.doubtful_partner_km)} km`;
   if (end.doubtful) {
     return <span className="long-link-fail">doubtful: {numbers}</span>;
   }
@@ -754,16 +759,16 @@ function PositionVerdict({ end }: { end: LongLinkEnd }) {
     return <>cleared by nearby traceroute hops: {numbers}</>;
   }
   return end.over_limit ? (
-    <span className="long-link-fail">over its limit: {numbers}</span>
+    <span className="long-link-fail">over the limit: {numbers}</span>
   ) : (
     <span className="long-link-pass">fits: {numbers}</span>
   );
 }
 
-function partnersTitle(end: LongLinkEnd): string {
+function partnersTitle(end: LongLinkEnd, rules: LongLinkRules): string {
   return end.median_partner_km === null
     ? `${endName(end)}'s direct partners are too far from its reported position`
-    : `${endName(end)}'s direct partners are a median ${formatKm(end.median_partner_km)} km away, over its ${formatKm(end.doubt_limit_km)} km limit`;
+    : `${endName(end)}'s direct partners are a median ${formatKm(end.median_partner_km)} km away, over ${formatKm(rules.doubtful_partner_km)} km`;
 }
 
 function TerrainFactor({ link, rules, checks }: FactorProps) {
@@ -1184,7 +1189,10 @@ function DoubtBadge({ link, rules }: { link: LongLink; rules: LongLinkRules }) {
   }
   if (doubt.reason === "position") {
     return (
-      <Badge tone="amber" title={suspects.map(partnersTitle).join("\n")}>
+      <Badge
+        tone="amber"
+        title={suspects.map((end) => partnersTitle(end, rules)).join("\n")}
+      >
         doubtful position: {named}
       </Badge>
     );

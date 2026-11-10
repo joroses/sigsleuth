@@ -307,6 +307,50 @@ def test_node_page_filters_packets_by_port(tmp_path: Path) -> None:
     assert [item["port"] for item in overview["ports"]] == ["POSITION_APP", "TEXT_MESSAGE_APP"]
 
 
+def test_node_page_filters_packets_by_other_node_and_direct_gateway(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    node, other, third, gateway = 0x11111111, 0x22222222, 0x33333333, 0xAAAAAAAA
+
+    def save(packet_id: int, sender: int, recipient: int, *, hops_left: int) -> int:
+        # The gateway hears the packet directly when no hop was used.
+        packet_row_id = ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"hello",
+                sender=sender,
+                recipient=recipient,
+                packet_id=packet_id,
+                hop_start=3,
+                hop_limit=hops_left,
+                relay_node=(sender if hops_left == 3 else third) & 0xFF,
+                rx_snr=5.0,
+            ),
+            received_at=RECEIVED_AT + timedelta(minutes=packet_id),
+            topic="msh/EU_868/2/e/LongFast/!aaaaaaaa",
+        ).packet_row_id
+        assert packet_row_id is not None
+        return packet_row_id
+
+    to_other = save(1, node, other, hops_left=3)
+    save(2, node, third, hops_left=2)
+    from_other = save(3, other, node, hops_left=3)
+    broadcast = save(4, node, 0xFFFFFFFF, hops_left=3)
+    save(5, third, node, hops_left=3)
+
+    def listed(**params: int) -> list[int]:
+        with TestClient(create_app(Settings(path))) as client:
+            page = client.get(f"/api/v1/nodes/{node}/packets", params=params).json()
+        return [item["packet_row_id"] for item in page["packets"]]
+
+    # Between the two nodes, either way; broadcasts are to no one node.
+    assert listed(other=other) == [from_other, to_other]
+    # Only what the node sent, heard with no relay.
+    assert listed(heard_directly_by=gateway) == [broadcast, to_other]
+    assert listed(other=other, heard_directly_by=gateway) == [to_other]
+
+
 def test_node_page_pages_through_packets_newest_first(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)

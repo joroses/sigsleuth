@@ -2,7 +2,7 @@ import { formatNodeId } from "./nodeDisplay";
 
 export const NODE_SEARCH_LIMIT = 10;
 
-interface SearchableNode {
+export interface SearchableNode {
   node_id: number;
   long_name: string | null;
   short_name: string | null;

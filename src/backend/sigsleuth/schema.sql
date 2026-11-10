@@ -184,11 +184,11 @@ CREATE TABLE node_reported (
     CHECK ((ok_to_mqtt IS NULL) = (ok_to_mqtt_at IS NULL))
 ) STRICT;
 
--- Each valid position a node reported, from its own packet, or from its map
--- report (packet_row_id NULL) while it has no position of its own: map
--- reports are often coarse or wrong. Retention keeps the rows from its age
--- limit on and each node's newest before it, so where a node was is known
--- for all kept history.
+-- Each valid position a node reported, from its own packet on a radio channel
+-- (reported.py), or from its map report (packet_row_id NULL) while it has no
+-- position of its own: map reports are often coarse or wrong. Retention keeps
+-- the rows from its age limit on and each node's newest before it, so where a
+-- node was is known for all kept history.
 CREATE TABLE node_position (
     node_id INTEGER NOT NULL CHECK (node_id BETWEEN 1 AND 4294967295),
     at INTEGER NOT NULL,

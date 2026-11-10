@@ -1,34 +1,43 @@
 import { KeyboardEvent, useId, useMemo, useState } from "react";
 
-import type { MapNode } from "./api";
 import { formatNodeId, nodeLabel, nodeMarkerLabel } from "./nodeDisplay";
-import { nodeSearchIndex, searchNodes } from "./nodeSearch";
+import { nodeSearchIndex, SearchableNode, searchNodes } from "./nodeSearch";
 
 /**
- * A search box over the nodes on the map; ↑/↓ move, Enter picks, Esc clears.
+ * A search box over the given nodes; ↑/↓ move, Enter picks, Esc clears.
  * The results drop down over the page below and close when the box loses
  * focus.
  */
-export function NodeSearch({
+export function NodeSearch<T extends SearchableNode>({
   nodes,
   onSelect,
   onSelectId,
+  onQuery,
+  emptyText = "No matching nodes on the map.",
   label = "Search nodes",
   keepResults = false,
   placeholder = "Search name or node ID",
   autoFocus = false,
 }: {
-  nodes: MapNode[];
-  onSelect: (node: MapNode) => void;
-  /** Also accept a node ID absent from the map, for Diagnostics filters. */
+  nodes: readonly T[];
+  onSelect: (node: T) => void;
+  /** Also accept a node ID absent from the nodes, for the node filters. */
   onSelectId?: (nodeId: number) => void;
+  /** Told what is typed, by a search that loads its nodes for it. */
+  onQuery?: (query: string) => void;
+  /** Shown when nothing matches; null shows nothing, as while loading. */
+  emptyText?: string | null;
   label?: string;
   /** Keep the query after a pick; a click in the box shows the results again. */
   keepResults?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQueryText] = useState("");
+  const setQuery = (text: string) => {
+    setQueryText(text);
+    onQuery?.(text);
+  };
   const [activeIndex, setActiveIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const index = useMemo(() => nodeSearchIndex(nodes), [nodes]);
@@ -51,7 +60,7 @@ export function NodeSearch({
   const open = typed !== "" && !dismissed;
   const active = Math.min(activeIndex, choices - 1);
 
-  const choose = (node: MapNode) => {
+  const choose = (node: T) => {
     if (keepResults) setDismissed(true);
     else {
       setQuery("");
@@ -149,11 +158,11 @@ export function NodeSearch({
               </li>
             ) : null}
           </ul>
-        ) : (
+        ) : emptyText !== null ? (
           <p id={listId} className="node-search-empty" role="status">
-            No matching nodes on the map.
+            {emptyText}
           </p>
-        )
+        ) : null
       ) : null}
     </div>
   );

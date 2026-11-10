@@ -27,6 +27,7 @@ import { now as clockNow } from "./clock";
 import { NodeActivityCharts } from "./NodeActivityCharts";
 import type { SeenWindow } from "./mapTimeFilter";
 import { CONTACT_WINDOW, windowSince } from "./nodeContacts";
+import { NodeFilter } from "./NodeFilter";
 import { NodeLinks } from "./NodeLinks";
 import { NodePositionMinimap } from "./NodePositionMinimap";
 import type { NodeLinkView } from "./routes";
@@ -40,8 +41,17 @@ import {
 } from "./radios";
 import { useViewState } from "./remember";
 import { useApi } from "./useApi";
-import { Badge, CopyValue, DataItem, Icon, StatusPanel } from "./ui";
+import {
+  Badge,
+  CopyValue,
+  DataItem,
+  Icon,
+  SidebarTabs,
+  StatusPanel,
+} from "./ui";
 import { formatHours } from "./zones";
+
+type NodeList = "links" | "packets";
 
 /** `linkView`, from a shared link's query, sets up its position minimap. */
 export function NodeDetailView({
@@ -51,9 +61,22 @@ export function NodeDetailView({
   nodeId: number;
   linkView?: NodeLinkView | null;
 }) {
-  const [port, setPort] = useState<number | null>(null);
-  // Not remembered: radio numbers change as reports expire.
-  const [radio, setRadio] = useState<RadioFilter | null>(null);
+  // The list shown under the summary, and the packet filters, are kept for
+  // this history entry only, so Back from a packet shows the list as it was.
+  const [list, setList] = useViewState<NodeList>("node.list", "links");
+  // Packets load once their tab is first shown, then stay as they were.
+  const [packetsOpened, setPacketsOpened] = useState(list === "packets");
+  if (list === "packets" && !packetsOpened) setPacketsOpened(true);
+  const [port, setPort] = useViewState<number | null>("node.port", null);
+  const [chosenRadio, setRadio] = useViewState<RadioFilter | null>(
+    "node.radio",
+    null,
+  );
+  const [other, setOther] = useViewState<number | null>("node.other", null);
+  const [gateway, setGateway] = useViewState<number | null>(
+    "node.gateway",
+    null,
+  );
   // Ages are measured from when the page opened.
   const [now] = useState(clockNow);
   const { data: page, error } = useApi<NodeOverview>(nodeUrl(nodeId));
@@ -67,6 +90,13 @@ export function NodeDetailView({
   const links = useApi<LinkTable>(nodeLinksUrl(nodeId, since));
   const radios = page?.radios ?? null;
   const shared = radios?.shared === true ? radios : null;
+  // A kept radio whose reports have since expired shows every radio.
+  const radio =
+    shared !== null &&
+    (chosenRadio === "unsorted" ||
+      shared.items.some((item) => item.number === chosenRadio))
+      ? chosenRadio
+      : null;
 
   return (
     <section className="node-detail-page" aria-labelledby="node-heading">
@@ -155,28 +185,74 @@ export function NodeDetailView({
               <NodeActivityCharts nodeId={nodeId} />
             </>
           )}
-          <NodeLinks
-            nodeId={nodeId}
-            links={links}
-            since={since}
-            linkWindow={linkWindow}
-            onWindow={setLinkWindow}
-          />
-          <div className="section-intro compact heading-with-filter">
-            <h3>Packets</h3>
-            <PortSelect ports={page.ports} port={port} onChange={setPort} />
+          <div className="node-lists">
+            <SidebarTabs
+              tabs={[
+                {
+                  tab: "links",
+                  label: "Links",
+                  count: links.data?.items.length.toLocaleString() ?? null,
+                },
+                { tab: "packets", label: "Packets", count: null },
+              ]}
+              active={list}
+              onChange={setList}
+              idPrefix="node-list"
+            />
+            <div id="node-list-links" hidden={list !== "links"}>
+              <NodeLinks
+                nodeId={nodeId}
+                links={links}
+                since={since}
+                linkWindow={linkWindow}
+                onWindow={setLinkWindow}
+              />
+            </div>
+            {packetsOpened ? (
+              <div id="node-list-packets" hidden={list !== "packets"}>
+                <div className="nodes-toolbar">
+                  <PortSelect
+                    ports={page.ports}
+                    port={port}
+                    onChange={setPort}
+                  />
+                  <NodeFilter
+                    label="With node"
+                    nodeId={other}
+                    onPick={setOther}
+                  />
+                  <NodeFilter
+                    label="Heard directly by"
+                    nodeId={gateway}
+                    onPick={setGateway}
+                  />
+                </div>
+                {shared === null ? null : (
+                  <RadioChips
+                    radios={shared}
+                    radio={radio}
+                    onChange={setRadio}
+                  />
+                )}
+                <PagedPacketTable
+                  url={nodePacketsUrl(nodeId, {
+                    port,
+                    radio,
+                    other,
+                    heardDirectlyBy: gateway,
+                  })}
+                  empty={
+                    port === null &&
+                    radio === null &&
+                    other === null &&
+                    gateway === null
+                      ? "No packets from or to this node are saved."
+                      : "No packets match these filters."
+                  }
+                />
+              </div>
+            ) : null}
           </div>
-          {shared === null ? null : (
-            <RadioChips radios={shared} radio={radio} onChange={setRadio} />
-          )}
-          <PagedPacketTable
-            url={nodePacketsUrl(nodeId, port, shared === null ? null : radio)}
-            empty={
-              port === null && radio === null
-                ? "No packets from or to this node are saved."
-                : "No packets match these filters."
-            }
-          />
         </>
       ) : null}
     </section>
@@ -205,7 +281,7 @@ function NodeSummary({
   return (
     <div className="node-facts">
       <div className="fact-groups">
-        <FactGroup title="Identity" note={note}>
+        <FactGroup title="Identity" tone="identity" note={note}>
           <DataItem
             label="Long name"
             value={node.long_name ?? "Not reported"}
@@ -229,7 +305,7 @@ function NodeSummary({
           <DataItem label="Role" value={formatRole(node.role)} />
           <DataItem label="Channel" value={node.channel ?? "Unknown"} />
         </FactGroup>
-        <FactGroup title="Activity">
+        <FactGroup title="Activity" tone="activity">
           <DataItem
             label="Last seen"
             value={
@@ -284,15 +360,15 @@ function NodeSummary({
             }
           />
         </FactGroup>
-        <FactGroup title="Position" note={note}>
+        <FactGroup title="Position" tone="position" note={note}>
           <PositionItems node={node} now={now} />
         </FactGroup>
         {radios === null || radios.shared ? null : (
-          <FactGroup title="Radios">
+          <FactGroup title="Radios" tone="radios">
             <RadioItems radios={radios} />
           </FactGroup>
         )}
-        <FactGroup title="Device" note={note}>
+        <FactGroup title="Device" tone="device" note={note}>
           <DataItem
             label="Hardware"
             value={formatHardware(node.hardware_model)}
@@ -366,17 +442,20 @@ function NodeSummary({
   );
 }
 
+/** A titled group of node facts; its tone colours the title (styles.css). */
 function FactGroup({
   title,
+  tone,
   note,
   children,
 }: {
   title: string;
+  tone: "identity" | "activity" | "position" | "radios" | "device";
   note?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="fact-group">
+    <section className={`fact-group fact-group-${tone}`}>
       <h3>
         {title}
         {note === undefined ? null : (

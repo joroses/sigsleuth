@@ -196,9 +196,11 @@ export interface paths {
     /**
      * Node Packet Page
      * @description Packets the node sent or that were addressed to it, only those on
-     *     application port number `port` when given. radio keeps those a
-     *     shared node number sent that are sorted to its radio of that number
-     *     (NodeOverview.radios), or to none with radio=unsorted.
+     *     application port number `port` when given and those between it and
+     *     node `other`. radio keeps those a shared node number sent that are
+     *     sorted to its radio of that number (NodeOverview.radios), or to none
+     *     with radio=unsorted. heard_directly_by keeps those it sent that the
+     *     gateway heard with no relay.
      */
     get: operations["node_packet_page_api_v1_nodes__node_id__packets_get"];
     put?: never;
@@ -1692,8 +1694,8 @@ export interface components {
      *     path explains (far_partner).
      *     traceroute_corroborated means measured hops support its position around
      *     every counted far direct hour, despite its direct median.
-     *     doubt_limit_km is the altitude-aware direct median limit, before corroboration;
-     *     over_limit compares the unrounded median with it, as positions does.
+     *     over_limit compares the unrounded median with DOUBTFUL_PARTNER_KM, before
+     *     corroboration, as positions does.
      */
     LongLinkEnd: {
       node: components["schemas"]["NodeSummary"];
@@ -1709,7 +1711,6 @@ export interface components {
       traceroute_corroborated: boolean;
       nearest_partner_km: number | null;
       median_partner_km: number | null;
-      doubt_limit_km: number;
       over_limit: boolean;
     };
     /**
@@ -2088,14 +2089,12 @@ export interface components {
     };
     /**
      * NodePositionHistory
-     * @description The valid positions from the node's newest MAX_NODE_POSITIONS position
-     *     packets, newest first. invalid counts the packets read that gave none;
-     *     limited is True when older position packets were left unread.
+     * @description The node's newest MAX_NODE_POSITIONS positions from its own packets,
+     *     newest first. limited is True when older ones were left unread.
      */
     NodePositionHistory: {
       node_id: number;
       items: components["schemas"]["NodeHistoricPosition"][];
-      invalid: number;
       limited: boolean;
     };
     /**
@@ -3559,6 +3558,8 @@ export interface operations {
         before_id?: number | null;
         port?: number | null;
         radio?: string | null;
+        other?: number | null;
+        heard_directly_by?: number | null;
       };
       header?: never;
       path: {

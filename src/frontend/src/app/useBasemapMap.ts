@@ -5,15 +5,25 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { BASEMAPS, type Basemap, findBasemap } from "./basemaps";
 
 /**
- * Why there is no map: the browser cannot draw one (no WebGL), or the
- * basemap failed before its style loaded.
+ * Why there is no map: the browser has no WebGL 2, the map failed to start
+ * for another reason, or the basemap failed before its style loaded.
  */
-export type MapFailure = "unavailable" | "basemap";
+export type MapFailure = "webgl" | "unavailable" | "basemap";
 
 export const MAP_FAILURE_MESSAGES: Record<MapFailure, string> = {
-  unavailable: "The interactive map is unavailable in this browser.",
+  webgl:
+    "This browser cannot draw the map because WebGL is off. Turn on graphics acceleration (Chrome, Brave, Edge: Settings → System) or update the graphics driver.",
+  unavailable: "The map could not start. Refresh the page to try again.",
   basemap: "The map could not load. Refresh the page to try again.",
 };
+
+function hasWebGL2(): boolean {
+  try {
+    return document.createElement("canvas").getContext("webgl2") !== null;
+  } catch {
+    return false;
+  }
+}
 
 interface BasemapMapOptions {
   /** False leaves the container empty, with no map. */
@@ -71,7 +81,8 @@ export function useBasemapMap(
       });
       performance.measure("map: construction", { start: constructionStart });
     } catch {
-      queueMicrotask(() => setFailure("unavailable"));
+      const failure = hasWebGL2() ? "unavailable" : "webgl";
+      queueMicrotask(() => setFailure(failure));
       return;
     }
     if (flat) {

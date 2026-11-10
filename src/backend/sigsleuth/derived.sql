@@ -147,7 +147,7 @@ CREATE TABLE node_estimate (
 ) STRICT;
 
 -- Nodes whose direct links since both ends last moved contradict their current position
--- (positions.doubt_limit_km), excluding far partners doubtful on their other partners
+-- (positions.DOUBTFUL_PARTNER_KM), excluding far partners doubtful on their other partners
 -- or that the terrain between explains (far_partner).
 -- Independent measured traceroute hops may corroborate a position around each far hour.
 -- Refilled with node_estimate; partners and median_km describe the counted partners.

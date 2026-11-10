@@ -1,6 +1,6 @@
 """What nodes reported that has to outlive their packets: each node's last
 sent packet, newest NodeInfo and newest OK to MQTT bit (node_reported), and
-its valid positions (node_position).
+its valid positions sent on a radio channel (node_position).
 
 They are facts (schema.sql): ingest saves them with the delivery, a rebuild
 never drops them, and retention keeps them while the node is known. So a
@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.decode import Position, interpret_payload, invalid_position_reason
+from sigsleuth.radio import preset_name
 
 
 def save_packet(connection: sqlite3.Connection, packet_row_id: int) -> None:
@@ -28,7 +29,7 @@ def save_packet(connection: sqlite3.Connection, packet_row_id: int) -> None:
     to MQTT bit. Runs inside the caller's transaction; safe to repeat."""
     row = connection.execute(
         """
-        SELECT id AS packet_row_id, sender_node_id, first_received_at, portnum,
+        SELECT id AS packet_row_id, channel, sender_node_id, first_received_at, portnum,
                application_payload, ok_to_mqtt
         FROM packet WHERE id = ?
         """,
@@ -73,8 +74,8 @@ def save_packet(connection: sqlite3.Connection, packet_row_id: int) -> None:
 
 def save_position(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
     """Record the position a saved position packet reported, if valid and not
-    kept yet. row has packet_row_id, sender_node_id, first_received_at and
-    application_payload. A rebuild uses it to add the kept packets' positions."""
+    kept yet. row has packet_row_id, channel, sender_node_id, first_received_at
+    and application_payload. A rebuild uses it to add the kept packets' positions."""
     payload = row["application_payload"]
     if payload is None:
         return
@@ -85,6 +86,11 @@ def save_position(connection: sqlite3.Connection, row: sqlite3.Row) -> None:
 
 def _save_position(connection: sqlite3.Connection, row: sqlite3.Row, position: Position) -> None:
     if not position.is_valid:
+        return
+    # Each channel rounds positions to its own precision, so a node answering on
+    # several would jump between them, and a side channel may get a position its
+    # owner keeps off the radio channel. Unknown is no channel name, so it counts.
+    if preset_name(row["channel"]) is None and row["channel"] != "Unknown":
         return
     # Of two at the same time, the later packet's wins.
     connection.execute(

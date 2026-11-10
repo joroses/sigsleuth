@@ -640,7 +640,7 @@ describe("Node detail", () => {
     portnum: "TEXT_MESSAGE_APP",
   };
 
-  it("filters the node's packets by port", async () => {
+  it("filters the node's packets by port, kept on Back from a packet", async () => {
     const sentText = {
       ...textPacket,
       sender_node_id: 0x11111111,
@@ -656,7 +656,12 @@ describe("Node detail", () => {
       ],
       ...NO_RADIOS,
     };
-    const pageWith = (packets: object[]) => ({ packets, next_before_id: null });
+    // Also answers the links request, with none.
+    const pageWith = (packets: object[]) => ({
+      packets,
+      next_before_id: null,
+      items: [],
+    });
     const positionPacket = {
       ...sentText,
       packet_row_id: 9,
@@ -666,11 +671,13 @@ describe("Node detail", () => {
     const fetchMock = vi.fn((url: string) =>
       Promise.resolve(
         jsonResponse(
-          url === "/api/v1/nodes/286331153"
+          /^\/api\/v1\/nodes\/\d+$/.test(url)
             ? overview
-            : url.endsWith("?port=1")
-              ? pageWith([sentText])
-              : pageWith([positionPacket, sentText]),
+            : url.startsWith("/api/v1/nodes/572662306")
+              ? pageWith([])
+              : url.endsWith("?port=1")
+                ? pageWith([sentText])
+                : pageWith([positionPacket, sentText]),
         ),
       ),
     );
@@ -679,6 +686,9 @@ describe("Node detail", () => {
     window.location.hash = "#nodes/286331153";
     render(<App />);
 
+    // Packets load once their tab is opened.
+    expect(screen.queryByText("5678")).toBeNull();
+    fireEvent.click(await screen.findByRole("tab", { name: "Packets" }));
     expect(await screen.findByText("5678")).not.toBeNull();
     fireEvent.change(screen.getByRole("combobox", { name: "Port" }), {
       target: { value: "1" },
@@ -690,9 +700,89 @@ describe("Node detail", () => {
       "/api/v1/nodes/286331153/packets?port=1",
       expect.anything(),
     );
+
+    // Opening another page and coming Back shows the Packets tab and the
+    // filtered list again.
+    window.location.hash = "#nodes/!22222222";
+    await waitFor(() => expect(screen.queryByText("1234")).toBeNull());
+    window.history.back();
+    expect(await screen.findByText("1234")).not.toBeNull();
+    expect(screen.queryByText("5678")).toBeNull();
+    expect(
+      (screen.getByRole("combobox", { name: "Port" }) as HTMLSelectElement)
+        .value,
+    ).toBe("1");
   });
 
-  it("filters a shared node number's packets by radio, and starts again with every radio", async () => {
+  it("filters the node's packets by another node, found among every known node, and by a gateway that heard it directly", async () => {
+    const valley = {
+      node_id: 0x22222222,
+      long_name: "Valley Base",
+      short_name: "VALL",
+    };
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/nodes/286331153"
+            ? { node: null, ports: [], ...NO_RADIOS }
+            : url.startsWith("/api/v1/nodes?")
+              ? { items: [valley], total: 1 }
+              : { packets: [], next_before_id: null, items: [] },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const lastPackets = () =>
+      fetchMock.mock.calls
+        .map(([url]) => url)
+        .filter((url) => url.startsWith("/api/v1/nodes/286331153/packets"))
+        .at(-1);
+    const pick = (label: string, id: string) => {
+      const search = screen.getByRole("combobox", { name: label });
+      fireEvent.change(search, { target: { value: id } });
+      fireEvent.keyDown(search, { key: "Enter" });
+    };
+
+    window.location.hash = "#nodes/286331153";
+    render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Packets" }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets"),
+    );
+
+    // A name is searched for on the server once typing pauses.
+    fireEvent.change(screen.getByRole("combobox", { name: "With node" }), {
+      target: { value: "valley" },
+    });
+    fireEvent.click(await screen.findByRole("option", { name: /Valley Base/ }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/nodes?sort=last_sent&limit=50&q=valley",
+      expect.anything(),
+    );
+    await waitFor(() =>
+      expect(lastPackets()).toBe(
+        "/api/v1/nodes/286331153/packets?other=572662306",
+      ),
+    );
+    expect(screen.getByRole("link", { name: "Valley Base" })).not.toBeNull();
+    // A whole ID is taken as typed, known or not.
+    pick("Heard directly by", "!aaaaaaaa");
+    await waitFor(() =>
+      expect(lastPackets()).toBe(
+        "/api/v1/nodes/286331153/packets?other=572662306&heard_directly_by=2863311530",
+      ),
+    );
+    expect(screen.getByText("No packets match these filters.")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear with node" }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe(
+        "/api/v1/nodes/286331153/packets?heard_directly_by=2863311530",
+      ),
+    );
+  });
+
+  it("filters a shared node number's packets by radio, kept on Back, and starts again with every radio", async () => {
     const radio = (number: number, long_name: string) => ({
       number,
       long_name,
@@ -721,7 +811,9 @@ describe("Node detail", () => {
         jsonResponse(
           url === "/api/v1/nodes/286331153"
             ? overview
-            : { packets: [], next_before_id: null },
+            : url === "/api/v1/nodes/572662306"
+              ? { node: null, ports: [], ...NO_RADIOS }
+              : { packets: [], next_before_id: null, items: [] },
         ),
       ),
     );
@@ -734,6 +826,7 @@ describe("Node detail", () => {
 
     window.location.hash = "#nodes/286331153";
     render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Packets" }));
     fireEvent.click(await screen.findByRole("button", { name: /Valley/ }));
     await waitFor(() =>
       expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets?radio=2"),
@@ -745,11 +838,62 @@ describe("Node detail", () => {
       ),
     );
 
-    cleanup();
+    fireEvent.click(screen.getByRole("button", { name: /Valley/ }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets?radio=2"),
+    );
+
+    // Back to the page shows the radio chosen there.
+    window.location.hash = "#nodes/!22222222";
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Valley/ })).toBeNull(),
+    );
     fetchMock.mockClear();
-    render(<App />);
-    await screen.findByRole("button", { name: /Valley/ });
+    window.history.back();
+    const valley = await screen.findByRole("button", { name: /Valley/ });
+    expect(valley.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() =>
+      expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets?radio=2"),
+    );
+
+    // A new visit starts on Links, and with every radio.
+    window.location.hash = "#nodes/!22222222";
+    await waitFor(() =>
+      expect(screen.queryByText("Hilltop, Valley")).toBeNull(),
+    );
+    window.location.hash = "#nodes/286331153";
+    // The page's own Links tab, once it names its radios.
+    await screen.findByText("Hilltop, Valley");
+    expect(
+      screen.getByRole("tab", { name: /^Links/ }).getAttribute("aria-selected"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("tab", { name: "Packets" }));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "All radios" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true"),
+    );
     expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets");
+
+    // Back once the number is no longer shared shows every packet.
+    fireEvent.click(screen.getByRole("button", { name: /Unsorted/ }));
+    await waitFor(() =>
+      expect(lastPackets()).toBe(
+        "/api/v1/nodes/286331153/packets?radio=unsorted",
+      ),
+    );
+    window.location.hash = "#nodes/!22222222";
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Unsorted/ })).toBeNull(),
+    );
+    overview.radios.shared = false;
+    fetchMock.mockClear();
+    window.history.back();
+    await waitFor(() =>
+      expect(lastPackets()).toBe("/api/v1/nodes/286331153/packets"),
+    );
   });
 
   it("opens a shared node page's minimap without keeping its switches, and shares it back", async () => {
@@ -1113,7 +1257,7 @@ describe("Node detail", () => {
                   ],
                   next_before_id: null,
                 }
-              : { node: null, ports: [], ...NO_RADIOS },
+              : { node: null, ports: [], items: [], ...NO_RADIOS },
           ),
         ),
       ),
@@ -1125,7 +1269,10 @@ describe("Node detail", () => {
     expect(
       await screen.findByRole("heading", { name: "!11111111" }),
     ).not.toBeNull();
-    expect(screen.getByRole("link", { name: "!22222222" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Packets" }));
+    expect(
+      await screen.findByRole("link", { name: "!22222222" }),
+    ).not.toBeNull();
   });
 });
 
@@ -1605,7 +1752,10 @@ describe("Diagnostics", () => {
     const pages: Record<string, object> = {
       "/api/v1/packets/ports": { ports: [] },
       "/api/v1/packets?sender=2": packets,
-      "/api/v1/map/nodes": { items: [], truncated: false },
+      "/api/v1/nodes?sort=last_sent&limit=50&q=%2100000002": {
+        items: [{ node_id: 2, long_name: "Low Node", short_name: null }],
+        total: 1,
+      },
       "/api/v1/diagnostics/longest-links?offset=0&count=30": {
         items: [],
         looked_through: 0,
@@ -1623,6 +1773,10 @@ describe("Diagnostics", () => {
     window.location.hash = "#diagnostics/packets/2";
     render(<App />);
     expect(await screen.findByText("1234")).not.toBeNull();
+    // The filter in the address is named from the known nodes.
+    expect(
+      await screen.findByRole("link", { name: "Low Node" }),
+    ).not.toBeNull();
     expect(asked()).not.toContain(
       "/api/v1/diagnostics/longest-links?offset=0&count=30",
     );

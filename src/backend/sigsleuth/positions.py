@@ -43,6 +43,7 @@ from sigsleuth.terrain import (
     TerrainUnavailable,
     path_heights,
     prefetch_paths,
+    tile_folder,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -62,12 +63,6 @@ DOUBTFUL_PARTNER_KM = 150
 # A far partner takes the blame only when this many other partners contradict it.
 BLAME_OTHER_PARTNERS = 2
 CORROBORATING_PARTNERS = 2
-# A node reporting an altitude is allowed partners out to its radio horizon,
-# HORIZON_KM_PER_ROOT_M * sqrt(altitude) km (4/3 of the Earth's radius), when that
-# is farther: from 1,340 m up. Altitudes of 0 (the apps' "not set") and over
-# MAX_DOUBT_ALTITUDE_M (junk) are ignored.
-HORIZON_KM_PER_ROOT_M = 4.1
-MAX_DOUBT_ALTITUDE_M = 4000
 
 
 @dataclass(frozen=True)
@@ -132,30 +127,14 @@ def refresh_estimates(connection: sqlite3.Connection) -> int:
     return len(estimates)
 
 
-def doubt_limit_km(altitude_meters: float | None) -> float:
-    """The direct median limit before traceroute corroboration:
-    DOUBTFUL_PARTNER_KM, or the radio horizon of its reported altitude when farther."""
-    if altitude_meters is None or not 0 < altitude_meters <= MAX_DOUBT_ALTITUDE_M:
-        return DOUBTFUL_PARTNER_KM
-    return max(DOUBTFUL_PARTNER_KM, HORIZON_KM_PER_ROOT_M * math.sqrt(altitude_meters))
-
-
 def _doubtful(connection: sqlite3.Connection, since_ms: int) -> list[tuple[int, int, float]]:
     """Nodes whose direct partners contradict their current position."""
-    partners = direct_partners(connection, since_ms)
-    altitudes = {
-        int(node): float(altitude)
-        for node, altitude in connection.execute(
-            "SELECT node_id, altitude_meters FROM node_current WHERE altitude_meters IS NOT NULL"
-        )
-    }
     return [
         (node, len(found.counted), round(median, 1))
-        for node, found in sorted(partners.items())
+        for node, found in sorted(direct_partners(connection, since_ms).items())
         if not found.corroborated
         and found.counted
-        and (median := statistics.median(found.counted.values()))
-        > doubt_limit_km(altitudes.get(node))
+        and (median := statistics.median(found.counted.values())) > DOUBTFUL_PARTNER_KM
     ]
 
 
@@ -200,17 +179,21 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
     ):
         for node, other in ((from_node, to_node), (to_node, from_node)):
             partners[node][other] = min(km, partners[node].get(other, km))
-    current = connection.execute(
-        "SELECT node_id, altitude_meters, moved_at FROM node_current"
-    ).fetchall()
-    limits = {int(node): doubt_limit_km(altitude) for node, altitude, _ in current}
-    moves = {int(node): int(moved) for node, _, moved in current if moved is not None}
-    # Ground radio reaches past its limit from high above the land between, or over
-    # sea (terrain.py). Only the node's own height counts: a node carried to
-    # where mountain gateways hear it must stay doubtful. Revisit: 2026-11-07,
-    # loranet.pl, a week each in October and November: 13 and 5 direct pairs
-    # of 150-250 km, no flag changed; either end's height would have cleared a
-    # handheld heard only by mountain gateways 175-197 km from its position.
+    moves = {
+        int(node): int(moved)
+        for node, moved in connection.execute(
+            "SELECT node_id, moved_at FROM node_current WHERE moved_at IS NOT NULL"
+        )
+    }
+    # Ground radio reaches past DOUBTFUL_PARTNER_KM from high above the land
+    # between, or over sea (terrain.py). Only the node's own height counts: a
+    # node carried to where mountain gateways hear it must stay doubtful.
+    # Revisit: 2026-11-07, loranet.pl, a week each in October and November: 13
+    # and 5 direct pairs of 150-250 km, no flag changed; either end's height
+    # would have cleared a handheld heard only by mountain gateways 175-197 km
+    # from its position. 2026-11-10, 40 daily windows on four copies including
+    # loranet.pl: this already left out all 7 partners that a limit raised to
+    # the reported altitude's radio horizon let through, so there is no such limit.
     in_reach = {
         (int(node), int(other))
         for node, other in connection.execute(
@@ -221,9 +204,7 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
             """,
             {"sea": SEA_SHARE, "above": ABOVE_LAND_M},
         )
-        if limits.get(node, DOUBTFUL_PARTNER_KM)
-        < partners.get(node, {}).get(other, 0)
-        < LONG_LINK_KM
+        if DOUBTFUL_PARTNER_KM < partners.get(node, {}).get(other, 0) < LONG_LINK_KM
     }
     judged = {
         node: {other: km for other, km in found.items() if (node, other) not in in_reach}
@@ -233,19 +214,18 @@ def direct_partners(connection: sqlite3.Connection, since_ms: int) -> dict[int, 
     for node, found in judged.items():
         counted = {}
         for other, km in found.items():
-            if km > limits.get(node, DOUBTFUL_PARTNER_KM):
+            if km > DOUBTFUL_PARTNER_KM:
                 others = [d for partner, d in judged[other].items() if partner != node]
-                if len(others) >= BLAME_OTHER_PARTNERS and statistics.median(others) > limits.get(
-                    other, DOUBTFUL_PARTNER_KM
+                if (
+                    len(others) >= BLAME_OTHER_PARTNERS
+                    and statistics.median(others) > DOUBTFUL_PARTNER_KM
                 ):
                     continue
             counted[other] = km
         assessed[node] = DirectPartners(
             counted, len(found) - len(counted), len(partners[node]) - len(found)
         )
-    corroborated = _traceroute_corroborated(
-        connection, since_ms, partners, judged, assessed, limits, moves
-    )
+    corroborated = _traceroute_corroborated(connection, since_ms, partners, judged, assessed, moves)
     return {
         node: DirectPartners(found.counted, found.blamed, found.in_reach, node in corroborated)
         for node, found in assessed.items()
@@ -258,7 +238,6 @@ def _traceroute_corroborated(
     partners: dict[int, dict[int, float]],
     judged: dict[int, dict[int, float]],
     assessed: dict[int, DirectPartners],
-    limits: dict[int, float],
     moves: dict[int, int],
 ) -> set[int]:
     """Clear a direct flag only with support around every counted far hour.
@@ -271,15 +250,14 @@ def _traceroute_corroborated(
     candidates = {
         node: found.counted
         for node, found in assessed.items()
-        if found.counted
-        and statistics.median(found.counted.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
+        if found.counted and statistics.median(found.counted.values()) > DOUBTFUL_PARTNER_KM
     }
     if not candidates:
         return set()
     first = {
         node
         for node, found in judged.items()
-        if found and statistics.median(found.values()) > limits.get(node, DOUBTFUL_PARTNER_KM)
+        if found and statistics.median(found.values()) > DOUBTFUL_PARTNER_KM
     }
     direct: dict[int, list[tuple[int, int]]] = defaultdict(list)
     routes: dict[int, list[tuple[int, int, float]]] = defaultdict(list)
@@ -303,7 +281,7 @@ def _traceroute_corroborated(
             if node not in candidates:
                 continue
             if kind == "direct":
-                if other in candidates[node] and km > limits.get(node, DOUBTFUL_PARTNER_KM):
+                if other in candidates[node] and km > DOUBTFUL_PARTNER_KM:
                     direct[node].append((hour, last))
             elif other != node and other not in partners[node] and other not in first:
                 routes[node].append((other, hour, km))
@@ -313,7 +291,6 @@ def _traceroute_corroborated(
     for node, counted in candidates.items():
         if not direct[node]:
             continue
-        limit = limits.get(node, DOUBTFUL_PARTNER_KM)
         for hour, last in direct[node]:
             extra: dict[int, float] = {}
             for other, route_hour, km in routes[node]:
@@ -321,8 +298,9 @@ def _traceroute_corroborated(
                 if route_hour >= last - window and route_hour + HOUR_MS <= hour + window:
                     extra[other] = min(km, extra.get(other, km))
             if (
-                sum(km <= limit for km in extra.values()) < CORROBORATING_PARTNERS
-                or statistics.median(list(counted.values()) * 2 + list(extra.values())) > limit
+                sum(km <= DOUBTFUL_PARTNER_KM for km in extra.values()) < CORROBORATING_PARTNERS
+                or statistics.median(list(counted.values()) * 2 + list(extra.values()))
+                > DOUBTFUL_PARTNER_KM
             ):
                 break
         else:
@@ -376,7 +354,7 @@ def refresh_far_partners(
     todo = {pair: found for pair, found in ends.items() if judged.get(pair) != km[pair]}
     if not todo:
         return 0
-    terrain = Terrain(stopping)
+    terrain = Terrain(stopping, tile_folder(connection))
     prefetch_paths(terrain, list(todo.values()))
     if stopping():
         return len(todo)

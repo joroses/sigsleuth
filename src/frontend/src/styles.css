@@ -2076,21 +2076,21 @@ button.text-button:hover:not(:disabled) {
 }
 
 /* A node filter: its label, then a search or the chosen node. */
-.diagnostic-node-filter {
+.node-filter {
   display: flex;
   align-items: flex-start;
   gap: var(--space-2);
   min-width: min(20rem, 100%);
 }
 
-.diagnostic-node-filter-label {
+.node-filter-label {
   color: var(--muted);
   font-size: var(--text-sm);
   line-height: var(--control-height);
   white-space: nowrap;
 }
 
-.diagnostic-node-filter .node-search {
+.node-filter .node-search {
   flex: 1;
   margin: 0;
 }
@@ -2360,8 +2360,46 @@ dd {
   letter-spacing: 0.1em;
 }
 
+/* Each group's colour: the chart's for its packets where it draws them
+   (Node info, Position, Telemetry). */
+.fact-group-identity {
+  --group-color: var(--series-3);
+}
+
+.fact-group-activity {
+  --group-color: var(--series-1);
+}
+
+.fact-group-position {
+  --group-color: var(--series-4);
+}
+
+.fact-group-radios {
+  --group-color: var(--series-5);
+}
+
+.fact-group-device {
+  --group-color: var(--series-2);
+}
+
+.fact-group > h3 {
+  color: var(--group-color, var(--muted));
+}
+
+.fact-group > h3::before {
+  content: "";
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-right: var(--space-2);
+  border-radius: 2px;
+  background: var(--group-color, var(--muted));
+  vertical-align: -0.05em;
+}
+
 .fact-group > h3 .heading-note {
   display: inline;
+  color: var(--muted);
   margin-left: var(--space-2);
   font-weight: 400;
   text-transform: none;
@@ -4005,6 +4043,10 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
   font-variant-numeric: tabular-nums;
 }
 
+.activity-chart:only-child {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 960px) {
   .activity-charts {
     grid-template-columns: minmax(0, 1fr);
@@ -5247,6 +5289,19 @@ thead th:is([aria-sort="ascending"], [aria-sort="descending"]) {
 .zones-late,
 .zones-value.zones-late {
   color: var(--amber);
+}
+
+/* The node page's Links and Packets, as tabs under its summary. */
+.node-lists {
+  margin-top: var(--space-8);
+}
+
+.node-lists > .sidebar-tabs {
+  margin-bottom: var(--space-4);
+}
+
+.node-lists > .sidebar-tabs button {
+  font-size: var(--text-lg);
 }
 
 .zones-side .sidebar-tabs {

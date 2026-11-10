@@ -1,4 +1,4 @@
-import { PointerEvent, ReactNode, useState } from "react";
+import { PointerEvent, ReactNode, useEffect, useRef, useState } from "react";
 
 import { NodeCharts, NodeUtilization, nodeChartsUrl } from "./api";
 import {
@@ -14,12 +14,14 @@ import { now as clockNow } from "./clock";
 import { useApi } from "./useApi";
 import { StatusPanel } from "./ui";
 
-// Both charts share one drawing area, in SVG user units; the SVG scales to fit.
-const WIDTH = 640;
+// Charts are drawn in CSS pixels at their frame's width and this height, so
+// labels keep their size on a phone and a lone chart fills a wide row. Until
+// the frame is measured, they are drawn this wide and scaled to fit.
+const FIRST_WIDTH = 640;
 const HEIGHT = 200;
 const PLOT = { left: 44, right: 12, top: 12, bottom: 28 };
-const PLOT_WIDTH = WIDTH - PLOT.left - PLOT.right;
 const PLOT_HEIGHT = HEIGHT - PLOT.top - PLOT.bottom;
+
 // Telemetry further apart than this is drawn as a break in the line.
 const UTILIZATION_GAP_MS = 3 * 24 * 60 * 60 * 1000;
 
@@ -27,11 +29,38 @@ const dayLabel = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
   day: "numeric",
 });
+const weekdayLabel = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+// Days narrower than this, in pixels, are labelled by weekday alone.
+const NARROW_DAY = 56;
+
 const timeLabel = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
   hour: "2-digit",
   minute: "2-digit",
 });
+
+/** A ref for a chart's frame, and the frame's width once measured. */
+function useFrameWidth() {
+  const frame = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(FIRST_WIDTH);
+  useEffect(() => {
+    const element = frame.current;
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      const measured = Math.round(element.clientWidth);
+      if (measured > PLOT.left + PLOT.right) setWidth(measured);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [frame, width] as const;
+}
+
+/** An axis label for a day `slot` pixels wide. */
+function axisDay(day: Date, slot: number): string {
+  return (slot < NARROW_DAY ? weekdayLabel : dayLabel).format(day);
+}
 
 /** The node page's charts: packets per local day by port, and ChUtil and AirUtil. */
 export function NodeActivityCharts({ nodeId }: { nodeId: number }) {
@@ -195,23 +224,24 @@ function DayBarChart({
   tooltip: (day: ActivityDay) => ReactNode;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
+  const [frame, width] = useFrameWidth();
   const ticks = axisTicks(Math.max(...days.map((day) => day.total)));
   const max = ticks[ticks.length - 1];
-  const slot = PLOT_WIDTH / days.length;
+  const slot = (width - PLOT.left - PLOT.right) / days.length;
   const barWidth = Math.min(48, slot * 0.6);
   const y = (value: number) => PLOT.top + PLOT_HEIGHT * (1 - value / max);
   const hoveredDay = hovered === null ? null : days[hovered];
   return (
-    <div className="chart-frame">
+    <div className="chart-frame" ref={frame}>
       <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
         role="img"
         aria-label={days
           .map((day) => `${dayLabel.format(day.start)}: ${day.total}`)
           .join(", ")}
         onPointerLeave={() => setHovered(null)}
       >
-        <ValueAxis ticks={ticks} y={y} />
+        <ValueAxis ticks={ticks} y={y} width={width} />
         {days.map((day, index) => {
           const x = PLOT.left + slot * index + (slot - barWidth) / 2;
           return (
@@ -226,7 +256,7 @@ function DayBarChart({
                 y={HEIGHT - 8}
                 textAnchor="middle"
               >
-                {dayLabel.format(day.start)}
+                {axisDay(day.start, slot)}
               </text>
               {/* The whole column is the hover target, not just the bar. */}
               <rect
@@ -243,7 +273,7 @@ function DayBarChart({
       </svg>
       {hoveredDay !== null && hovered !== null ? (
         <ChartTooltip
-          left={((PLOT.left + slot * (hovered + 0.5)) / WIDTH) * 100}
+          left={((PLOT.left + slot * (hovered + 0.5)) / width) * 100}
         >
           <strong>{dayLabel.format(hoveredDay.start)}</strong>
           {tooltip(hoveredDay)}
@@ -272,13 +302,15 @@ function UtilizationChart({
   end: number;
 }) {
   const [hovered, setHovered] = useState<NodeUtilization | null>(null);
+  const [frame, width] = useFrameWidth();
+  const plotWidth = width - PLOT.left - PLOT.right;
   const values = points.flatMap((point) =>
     UTILIZATION_SERIES.map((series) => point[series.key] ?? 0),
   );
   const ticks = axisTicks(Math.max(...values), 5);
   const max = ticks[ticks.length - 1];
   const x = (at: number) =>
-    PLOT.left + (PLOT_WIDTH * (at - start)) / (end - start);
+    PLOT.left + (plotWidth * (at - start)) / (end - start);
   const y = (value: number) => PLOT.top + PLOT_HEIGHT * (1 - value / max);
   const times = points.map((point) => new Date(point.observed_at).getTime());
   const midnights: Date[] = [];
@@ -292,8 +324,8 @@ function UtilizationChart({
 
   function pickNearest(event: PointerEvent<SVGSVGElement>) {
     const box = event.currentTarget.getBoundingClientRect();
-    const svgX = ((event.clientX - box.left) / box.width) * WIDTH;
-    const at = start + ((svgX - PLOT.left) / PLOT_WIDTH) * (end - start);
+    const svgX = ((event.clientX - box.left) / box.width) * width;
+    const at = start + ((svgX - PLOT.left) / plotWidth) * (end - start);
     let nearest = 0;
     times.forEach((time, index) => {
       if (Math.abs(time - at) < Math.abs(times[nearest] - at)) nearest = index;
@@ -306,15 +338,15 @@ function UtilizationChart({
   return (
     <>
       <Legend items={UTILIZATION_SERIES} />
-      <div className="chart-frame">
+      <div className="chart-frame" ref={frame}>
         <svg
-          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          viewBox={`0 0 ${width} ${HEIGHT}`}
           role="img"
           aria-label={`ChUtil and AirUtil from ${points.length} telemetry packets, up to ${max}%`}
           onPointerMove={pickNearest}
           onPointerLeave={() => setHovered(null)}
         >
-          <ValueAxis ticks={ticks} y={y} unit="%" />
+          <ValueAxis ticks={ticks} y={y} unit="%" width={width} />
           {midnights.map((day) => (
             <text
               key={day.getTime()}
@@ -322,7 +354,7 @@ function UtilizationChart({
               x={x(day.getTime())}
               y={HEIGHT - 8}
             >
-              {dayLabel.format(day)}
+              {axisDay(day, plotWidth / midnights.length)}
             </text>
           ))}
           {UTILIZATION_SERIES.map((series) => (
@@ -386,7 +418,7 @@ function UtilizationChart({
           ) : null}
         </svg>
         {hovered !== null && hoveredAt !== null ? (
-          <ChartTooltip left={(x(hoveredAt) / WIDTH) * 100}>
+          <ChartTooltip left={(x(hoveredAt) / width) * 100}>
             <strong>{timeLabel.format(hoveredAt)}</strong>
             <table>
               <tbody>
@@ -415,10 +447,12 @@ function ValueAxis({
   ticks,
   y,
   unit = "",
+  width,
 }: {
   ticks: number[];
   y: (value: number) => number;
   unit?: string;
+  width: number;
 }) {
   return (
     <g>
@@ -427,7 +461,7 @@ function ValueAxis({
           <line
             className="chart-grid"
             x1={PLOT.left}
-            x2={WIDTH - PLOT.right}
+            x2={width - PLOT.right}
             y1={y(tick)}
             y2={y(tick)}
           />

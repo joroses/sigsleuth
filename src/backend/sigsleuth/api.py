@@ -410,11 +410,15 @@ def create_app(
         before_id: BeforeId = None,
         port: Annotated[int | None, Query(ge=0, le=0xFFFFFFFF)] = None,
         radio: Annotated[str | None, Query(pattern=r"^([1-9][0-9]{0,2}|unsorted)$")] = None,
+        other: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
+        heard_directly_by: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
     ) -> PacketPage:
         """Packets the node sent or that were addressed to it, only those on
-        application port number `port` when given. radio keeps those a
-        shared node number sent that are sorted to its radio of that number
-        (NodeOverview.radios), or to none with radio=unsorted."""
+        application port number `port` when given and those between it and
+        node `other`. radio keeps those a shared node number sent that are
+        sorted to its radio of that number (NodeOverview.radios), or to none
+        with radio=unsorted. heard_directly_by keeps those it sent that the
+        gateway heard with no relay."""
         return node_packets(
             connection,
             node_id,
@@ -422,6 +426,8 @@ def create_app(
             before_id=before_id,
             portnum=port,
             radio=None if radio is None else "unsorted" if radio == "unsorted" else int(radio),
+            other=other,
+            heard_directly_by=heard_directly_by,
         )
 
     @app.get("/api/v1/nodes/{node_id}/charts")

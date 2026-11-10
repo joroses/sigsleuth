@@ -1,12 +1,4 @@
-import {
-  ReactNode,
-  Suspense,
-  lazy,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ReactNode, Suspense, lazy, useEffect, useRef, useState } from "react";
 
 import {
   DiagnosticsSummary,
@@ -18,14 +10,11 @@ import {
   LongLinkFilter,
   LongLinkOrder,
   LongLinkList,
-  MapNode,
-  MapNodeList,
   PacketPortList,
   diagnosticsSummaryUrl,
   deviceConflictsUrl,
   doubtfulNodesUrl,
   longestLinksUrl,
-  mapNodesUrl,
   packetPortsUrl,
   packetsUrl,
   request,
@@ -35,12 +24,11 @@ import {
   diagnosticsPacketsHref,
   formatKm,
   formatNodeId,
-  nodeLabel,
   nodeName,
   relayChecksHref,
 } from "./nodeDisplay";
 import { LongLinkItem, ShownBadge } from "./LongLinks";
-import { NodeSearch } from "./NodeSearch";
+import { NodeFilter } from "./NodeFilter";
 import { PagedPacketTable, PortSelect } from "./PacketTable";
 import {
   readView,
@@ -50,13 +38,13 @@ import {
   writeView,
 } from "./remember";
 import { ApiState, openedAt, useApi } from "./useApi";
+import { useNodeName } from "./useNodeName";
 import {
   Badge,
   DIAGNOSTICS_LINKED,
   DataItem,
   DoubtfulBadge,
   Icon,
-  IconButton,
   IconName,
   NodeLink,
   OpenedAt,
@@ -157,7 +145,6 @@ export function Diagnostics({
   const reception = useHeldWhile(tab !== "relays", receptionId);
   const surveysShown = useHeldWhile(tab !== "relays", surveys);
   const measurement = useHeldWhile(tab !== "relays", measurementId);
-  const nodes = useNodes(node !== null || from !== null);
   const panel = (which: DiagnosticsTab, content: ReactNode) =>
     opened.includes(which) ? <div hidden={tab !== which}>{content}</div> : null;
   return (
@@ -183,7 +170,7 @@ export function Diagnostics({
       )}
       {panel("doubtful", <DoubtfulNodesSection />)}
       {panel("devices", <DeviceConflictsSection />)}
-      {panel("links", <LongestLinksSection node={node} nodes={nodes} />)}
+      {panel("links", <LongestLinksSection node={node} />)}
       {panel(
         "relays",
         <Suspense fallback={<StatusPanel>Loading…</StatusPanel>}>
@@ -196,11 +183,7 @@ export function Diagnostics({
       )}
       {panel(
         "packets",
-        <PacketsSection
-          sender={from}
-          heardDirectlyBy={heardBy}
-          nodes={nodes}
-        />,
+        <PacketsSection sender={from} heardDirectlyBy={heardBy} />,
       )}
     </div>
   );
@@ -237,67 +220,6 @@ function usePageView<T>(key: string, initial: T) {
     return () => window.removeEventListener("hashchange", follow);
   }, [key, setValue]);
   return [value, setValue] as const;
-}
-
-/** The map's nodes, for the node searches and the chosen nodes' names. */
-interface NodeChoices {
-  nodes: MapNode[];
-  name: (nodeId: number) => string;
-  /** Loads the nodes; a search calls it when it gets focus. */
-  want: () => void;
-}
-
-// Loaded only once a node filter is set or a search is used: the page is
-// usually opened for the rest.
-function useNodes(needed: boolean): NodeChoices {
-  const [wanted, setWanted] = useState(false);
-  const state = useApi<MapNodeList>(needed || wanted ? mapNodesUrl({}) : null);
-  const items = state.data?.items;
-  return useMemo(() => {
-    const nodes = items ?? [];
-    const names = new Map(nodes.map((node) => [node.node_id, nodeLabel(node)]));
-    return {
-      nodes,
-      name: (nodeId) => names.get(nodeId) ?? formatNodeId(nodeId),
-      want: () => setWanted(true),
-    };
-  }, [items]);
-}
-
-/** A node chosen to filter by, with a button to clear it, or a search to choose one. */
-function NodeFilter({
-  label,
-  nodeId,
-  nodes,
-  onPick,
-}: {
-  label: string;
-  nodeId: number | null;
-  nodes: NodeChoices;
-  onPick: (nodeId: number | null) => void;
-}) {
-  return (
-    <div className="diagnostic-node-filter" onFocus={nodes.want}>
-      <span className="diagnostic-node-filter-label">{label}</span>
-      {nodeId === null ? (
-        <NodeSearch
-          nodes={nodes.nodes}
-          label={label}
-          onSelect={(node) => onPick(node.node_id)}
-          onSelectId={onPick}
-        />
-      ) : (
-        <span className="los-chosen">
-          <NodeLink nodeId={nodeId} name={nodes.name(nodeId)} />
-          <IconButton
-            icon="close"
-            label={`Clear ${label.toLowerCase()}`}
-            onClick={() => onPick(null)}
-          />
-        </span>
-      )}
-    </div>
-  );
 }
 
 function SummarySection({ state }: { state: ApiState<DiagnosticsSummary> }) {
@@ -447,11 +369,9 @@ function SkippedSection({ state }: { state: ApiState<DiagnosticsSummary> }) {
 function PacketsSection({
   sender,
   heardDirectlyBy,
-  nodes,
 }: {
   sender: number | null;
   heardDirectlyBy: number | null;
-  nodes: NodeChoices;
 }) {
   const [port, setPort] = usePageView<number | null>(
     "diagnostics.packetPort",
@@ -483,14 +403,12 @@ function PacketsSection({
         <NodeFilter
           label="From"
           nodeId={sender}
-          nodes={nodes}
           onPick={(picked) => filterBy(picked, null)}
         />
         {sender !== null ? (
           <NodeFilter
             label="Heard directly by"
             nodeId={heardDirectlyBy}
-            nodes={nodes}
             onPick={(picked) => filterBy(sender, picked)}
           />
         ) : null}
@@ -531,13 +449,8 @@ const LINK_PAGE = 30;
 const FILTERED_LINK_PAGE = 300;
 const MAX_LINK_REQUEST = 1000;
 
-function LongestLinksSection({
-  node,
-  nodes,
-}: {
-  node: number | null;
-  nodes: NodeChoices;
-}) {
+function LongestLinksSection({ node }: { node: number | null }) {
+  const nodeName = useNodeName(node);
   const [shown, setShown] = useSetting<LongLinkFilter | "all">(
     "diagnostics.longLinks",
     "all",
@@ -598,7 +511,6 @@ function LongestLinksSection({
         <NodeFilter
           label="Node"
           nodeId={node}
-          nodes={nodes}
           onPick={(picked) => {
             window.location.hash = diagnosticsLinksHref(picked);
           }}
@@ -647,7 +559,7 @@ function LongestLinksSection({
             </ol>
           ) : null}
           <p className="end-note">
-            {lookedThrough(data, only, node, nodes, order)}
+            {lookedThrough(data, only, nodeName, order)}
           </p>
           {state.loadMoreError !== null ? (
             <StatusPanel tone="error">{state.loadMoreError}</StatusPanel>
@@ -679,8 +591,7 @@ function pairKey(link: LongLink): string {
 function lookedThrough(
   data: LongLinkList,
   only: LongLinkFilter | null,
-  node: number | null,
-  nodes: NodeChoices,
+  nodeName: string | null,
   order: LongLinkOrder,
 ): ReactNode {
   const latest = order === "latest";
@@ -688,11 +599,11 @@ function lookedThrough(
     const what = latest
       ? "link heard 250 km or more apart"
       : "link with a distance";
-    return node === null
+    return nodeName === null
       ? `No ${what} yet.`
-      : `${nodes.name(node)} has no ${what}.`;
+      : `${nodeName} has no ${what}.`;
   }
-  const whose = node === null ? "" : ` of ${nodes.name(node)}`;
+  const whose = nodeName === null ? "" : ` of ${nodeName}`;
   const links = `${data.looked_through.toLocaleString()} ${latest ? "latest links heard 250 km+ apart" : "longest links"}${whose}`;
   const depth =
     data.next_offset === null ? (
@@ -1129,7 +1040,7 @@ function EndRow({ end, children }: { end: LongLinkEnd; children?: ReactNode }) {
       </td>
       <td>
         {end.direct_partners > 0
-          ? `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km (limit ${formatKm(end.doubt_limit_km)} km)`
+          ? `${end.direct_partners}: nearest ${formatKm(end.nearest_partner_km)} km, median ${formatKm(end.median_partner_km)} km`
           : end.blamed_partners === 0 && end.in_reach_partners === 0
             ? "none placed"
             : null}

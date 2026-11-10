@@ -172,6 +172,15 @@ def test_radio_filter_pages_sorted_and_unsorted_packets(path: Path) -> None:
         assert client.get(f"{url}?radio=0").status_code == 400
 
 
+def test_a_radios_position_is_its_latest_on_a_radio_channel(path: Path) -> None:
+    two_radios_at_once(path)
+    position(path, 45, 53.0, counter=104, gateway=GW_A, channel="Friends")
+    refresh(path)
+
+    hilltop = get(path, f"/api/v1/nodes/{NODE}")["radios"]["items"][0]
+    assert (hilltop["sorted_packets"], hilltop["position"]["latitude"]) == (6, 52.2)
+
+
 def test_a_board_swap_is_one_at_a_time_and_changes_nothing(path: Path) -> None:
     node_info(path, 0, MAC_A, "First", counter=100, **A)
     position(path, 10, 52.1, counter=101, **A)

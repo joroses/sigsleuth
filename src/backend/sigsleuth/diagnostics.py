@@ -45,7 +45,6 @@ from sigsleuth.positions import (
     DOUBTFUL_PARTNER_KM,
     ESTIMATE_DAYS,
     direct_partners,
-    doubt_limit_km,
     estimate_since_ms,
 )
 from sigsleuth.radio import distance_km, great_circle_km
@@ -359,8 +358,8 @@ LONG_LINK_SCAN = 300
 MAX_LONG_LINK_SCAN = 1_000
 # Warnings for reviewing them by hand, none of which the map acts on.
 # A node whose nearest placed direct partner is farther than this (with at
-# least two) may not be where it says; positions.doubt_limit_km judges the
-# median instead.
+# least two) may not be where it says; positions judges the median against
+# DOUBTFUL_PARTNER_KM instead.
 LOCAL_PARTNER_KM = 60
 # A node that has moved before, heard on a position at least this old, may
 # have travelled again without reporting it.
@@ -398,8 +397,8 @@ class LongLinkEnd:
     path explains (far_partner).
     traceroute_corroborated means measured hops support its position around
     every counted far direct hour, despite its direct median.
-    doubt_limit_km is the altitude-aware direct median limit, before corroboration;
-    over_limit compares the unrounded median with it, as positions does."""
+    over_limit compares the unrounded median with DOUBTFUL_PARTNER_KM, before
+    corroboration, as positions does."""
 
     node: NodeSummary
     altitude_meters: int | None
@@ -414,7 +413,6 @@ class LongLinkEnd:
     traceroute_corroborated: bool
     nearest_partner_km: float | None
     median_partner_km: float | None
-    doubt_limit_km: float
     over_limit: bool
 
 
@@ -915,7 +913,6 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
         assessment = partners.get(node_id)
         found = sorted(assessment.counted.values()) if assessment else []
         median = statistics.median(found) if found else None
-        limit = doubt_limit_km(None if row is None else row["altitude_meters"])
         ends[node_id] = LongLinkEnd(
             node=nodes.get(node_id)
             or NodeSummary(node_id, None, None, None, None, None, estimated=False),
@@ -935,8 +932,7 @@ def _long_link_ends(connection: sqlite3.Connection, ids: list[int]) -> dict[int,
             traceroute_corroborated=assessment.corroborated if assessment else False,
             nearest_partner_km=found[0] if found else None,
             median_partner_km=None if median is None else round(median, 1),
-            doubt_limit_km=round(limit),
-            over_limit=median is not None and median > limit,
+            over_limit=median is not None and median > DOUBTFUL_PARTNER_KM,
         )
     return ends
 

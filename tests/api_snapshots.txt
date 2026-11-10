@@ -1328,6 +1328,60 @@ total: 666
 items: []
 total: 0
 
+## GET /api/v1/nodes?sort=last_sent&limit=50&q=289b
+
+items: 1 items
+  - node_id: 3655149723
+    long_name: "Node 289b"
+    short_name: "289b"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T14:52:44.526000Z"
+    last_sent_packet_row_id: 30361
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T11:47:22.037000Z"
+    altitude_meters: 310
+    traceroute_hops: 1209
+    traceroute_neighbours: 23
+    packets: 29
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:52:33.427000Z"
+    channel_utilization: 13.0367
+    air_util_tx: 1.18461
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 1
+
+## GET /api/v1/nodes?sort=last_sent&limit=50&q=%21d9dd289b
+
+items: 1 items
+  - node_id: 3655149723
+    long_name: "Node 289b"
+    short_name: "289b"
+    role: "ROUTER"
+    hardware_model: "RAK4631"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T14:52:44.526000Z"
+    last_sent_packet_row_id: 30361
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T11:47:22.037000Z"
+    altitude_meters: 310
+    traceroute_hops: 1209
+    traceroute_neighbours: 23
+    packets: 29
+    broadcast_texts: 0
+    utilization_observed_at: "2026-10-11T14:52:33.427000Z"
+    channel_utilization: 13.0367
+    air_util_tx: 1.18461
+    firmware_version: null
+    firmware:
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
+total: 1
+
 ## GET /api/v1/nodes/channels
 
 channels: 2 items
@@ -1424,6 +1478,52 @@ next_before_id: 13660
 packets: []
 next_before_id: null
 
+## GET /api/v1/nodes/3655149723/packets?limit=50&other=2658555076
+
+packets: []
+next_before_id: null
+
+## GET /api/v1/nodes/3655149723/packets?limit=50&heard_directly_by=2658555076
+
+packets: 50 items
+  - packet_row_id: 30361
+    first_received_at: "2026-10-11T14:52:44.526000Z"
+    last_received_at: "2026-10-11T14:52:44.847000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 2490384298
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+  - packet_row_id: 30360
+    first_received_at: "2026-10-11T14:52:33.427000Z"
+    last_received_at: "2026-10-11T14:52:33.616000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 279989161
+    portnum: "TELEMETRY_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+  - packet_row_id: 30291
+    first_received_at: "2026-10-11T14:42:46.499000Z"
+    last_received_at: "2026-10-11T14:42:47.546000Z"
+    reception_count: 4
+    channel: "ShortFast"
+    sender_node_id: 3655149723
+    recipient_node_id: 4294967295
+    packet_id: 3753400232
+    portnum: "NODEINFO_APP"
+    sender_name: "Node 289b"
+    recipient_name: null
+    sender_radio: null
+next_before_id: 12598
+
 ## GET /api/v1/nodes/3655149723/packets?limit=50&radio=1
 
 packets: []
@@ -1519,7 +1619,6 @@ items: 6 items
     latitude: 51.78
     longitude: 19.5101
     altitude_meters: 310
-invalid: 0
 limited: false
 
 ## GET /api/v1/nodes/3655149723/contacts?since=2026-10-04T16:25:30.812000Z
@@ -5129,7 +5228,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5152,7 +5250,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 161
       over_limit: false
     longest_km: 204.1
     longest_at: "2026-10-11T16:22:08.338000Z"
@@ -5225,7 +5322,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 161
       over_limit: false
     node_b:
       node:
@@ -5248,7 +5344,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 202.6
     longest_at: "2026-10-10T16:21:57.277000Z"
@@ -5321,7 +5416,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5344,7 +5438,6 @@ items: 30 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 171.3
     longest_at: "2026-10-11T07:00:58.905000Z"
@@ -5534,7 +5627,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5557,7 +5649,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 161
       over_limit: false
     longest_km: 204.1
     longest_at: "2026-10-11T16:22:08.338000Z"
@@ -5630,7 +5721,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 183
       over_limit: false
     node_b:
       node:
@@ -5653,7 +5743,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 125
     longest_at: "2026-10-11T15:21:49.297000Z"
@@ -5704,7 +5793,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 152
       over_limit: false
     node_b:
       node:
@@ -5727,7 +5815,6 @@ items: 5 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 120.9
     longest_at: "2026-10-11T15:21:55.991000Z"
@@ -5805,7 +5892,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5828,7 +5914,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 135.5
     longest_at: "2026-10-11T13:56:10.833000Z"
@@ -5879,7 +5964,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5902,7 +5986,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 64.4
     longest_at: "2026-10-11T16:21:06.845000Z"
@@ -5962,7 +6045,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: null
       median_partner_km: null
-      doubt_limit_km: 150
       over_limit: false
     node_b:
       node:
@@ -5985,7 +6067,6 @@ items: 25 items
       traceroute_corroborated: false
       nearest_partner_km: 1.5
       median_partner_km: 2
-      doubt_limit_km: 150
       over_limit: false
     longest_km: 44.6
     longest_at: "2026-10-11T07:46:48.599000Z"

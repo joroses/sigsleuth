@@ -182,15 +182,27 @@ export function nodeUrl(nodeId: number): string {
   return `/api/v1/nodes/${nodeId}`;
 }
 
-/** The node's packets, only those on application port `port` when it is not null. */
+/** The node page's packet filters; null shows every packet. */
+export interface NodePacketFilter {
+  port: number | null;
+  radio: number | "unsorted" | null;
+  /** Only packets between the node and this one, either way. */
+  other: number | null;
+  /** Only packets the node sent that this gateway heard with no relay. */
+  heardDirectlyBy: number | null;
+}
+
 export function nodePacketsUrl(
   nodeId: number,
-  port: number | null,
-  radio: number | "unsorted" | null = null,
+  filter: NodePacketFilter,
 ): string {
   const query = new URLSearchParams();
-  if (port !== null) query.set("port", String(port));
-  if (radio !== null) query.set("radio", String(radio));
+  if (filter.port !== null) query.set("port", String(filter.port));
+  if (filter.radio !== null) query.set("radio", String(filter.radio));
+  if (filter.other !== null) query.set("other", String(filter.other));
+  if (filter.heardDirectlyBy !== null) {
+    query.set("heard_directly_by", String(filter.heardDirectlyBy));
+  }
   const url = `/api/v1/nodes/${nodeId}/packets`;
   return query.size === 0 ? url : `${url}?${query}`;
 }
@@ -228,6 +240,16 @@ export function nodesUrl(request: NodeListRequest): string {
   if (request.channel !== null) query.set("channel", request.channel);
   if (request.gatewayOnly) query.set("gateway", "true");
   return `/api/v1/nodes?${query}`;
+}
+
+/**
+ * Known nodes matching a node filter's search, the latest heard first: more
+ * than it shows, so that it can put an exact name first. Revisit 2026-11-10
+ * (loranet.pl, 4,153 nodes): 65 nodes have a short name, and 7 a long name,
+ * that matches more than 50 nodes, so they may need more typing or their ID.
+ */
+export function nodeSearchUrl(query: string): string {
+  return `/api/v1/nodes?${new URLSearchParams({ sort: "last_sent", limit: "50", q: query })}`;
 }
 
 export const nodeChannelsUrl = "/api/v1/nodes/channels";

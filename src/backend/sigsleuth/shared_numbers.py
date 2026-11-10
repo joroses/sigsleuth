@@ -35,7 +35,7 @@ from typing import Literal, cast
 from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import from_epoch_ms, to_epoch_ms, transaction
-from sigsleuth.decode import interpret_payload, read_neighbors
+from sigsleuth.decode import read_neighbors
 from sigsleuth.derive import HOUR_MS, device_identity, direct_reception_sql, refresh_radio_links
 from sigsleuth.link_channels import Channels, link_channel
 from sigsleuth.opt_out import SHOWN_PACKET, shown_sql
@@ -54,8 +54,6 @@ COUNTER = 1024
 # its first radio's runs, and a board swap at one site had none.
 RUN_STEP = 32
 RUN_GAP_MS = 6 * HOUR_MS
-# Newest positions read for a radio's latest sorted position.
-MAX_RADIO_POSITIONS = 50
 # Newest sorted packets, and neighbour info packets, read for a shared
 # number's links; as nodes.MAX_CONTACT_PACKETS.
 MAX_RADIO_PACKETS = 1_000
@@ -475,24 +473,21 @@ def node_radios(
 def _latest_position(
     connection: sqlite3.Connection, node_id: int, mac: bytes
 ) -> RadioPosition | None:
-    """The radio's newest valid position among its newest sorted ones."""
-    for row_id, at, payload in connection.execute(
+    """The newest of the number's positions (node_position) sorted to the radio."""
+    row = connection.execute(
         f"""
-        SELECT t.id, t.first_received_at, t.application_payload
-        FROM packet_radio AS r JOIN packet AS t ON t.id = r.packet_row_id
-        WHERE r.node_id = ? AND r.mac_address = ? AND t.portnum = ?
-          AND t.application_payload IS NOT NULL AND {shown_sql("t.recipient_node_id")}
-        ORDER BY r.packet_row_id DESC LIMIT ?
+        SELECT p.at, p.latitude, p.longitude, p.packet_row_id
+        FROM node_position AS p
+        JOIN packet_radio AS r ON r.packet_row_id = p.packet_row_id
+        JOIN packet AS t ON t.id = p.packet_row_id
+        WHERE p.node_id = ? AND r.mac_address = ? AND {shown_sql("t.recipient_node_id")}
+        ORDER BY p.at DESC LIMIT 1
         """,
-        (node_id, mac, POSITION, MAX_RADIO_POSITIONS),
-    ):
-        position = interpret_payload(POSITION, bytes(payload)).position
-        if position is not None and position.is_valid:
-            assert position.latitude is not None and position.longitude is not None
-            return RadioPosition(
-                from_epoch_ms(at), position.latitude, position.longitude, int(row_id)
-            )
-    return None
+        (node_id, mac),
+    ).fetchone()
+    if row is None:
+        return None
+    return RadioPosition(from_epoch_ms(row[0]), float(row[1]), float(row[2]), int(row[3]))
 
 
 def link_radios(

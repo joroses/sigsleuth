@@ -159,28 +159,21 @@ def test_an_estimate_ignores_a_neighbour_with_a_doubtful_position(
     assert estimate.neighbours == 3
 
 
-@pytest.mark.parametrize(
-    ("altitude", "doubted"),
-    [(1500, False), (300, True), (0, True), (9000, True)],
-    ids=["mountain", "hill", "not set", "junk"],
-)
-def test_a_high_node_may_be_heard_farther_before_its_position_is_doubted(
-    connection: sqlite3.Connection, altitude: int, doubted: bool
+def test_a_reported_altitude_alone_does_not_excuse_far_partners(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Its partners sat 155 km away when heard: within the radio horizon of
-    # 1,500 m (159 km), beyond the 150 km allowed from lower down.
+    # It says it is 1,500 m up on low land; its partners sat 155 km away.
     node(connection, NODE, 0.0)
-    connection.execute(
-        "UPDATE node_current SET altitude_meters = ? WHERE node_id = ?", (altitude, NODE)
-    )
+    connection.execute("UPDATE node_current SET altitude_meters = 1500 WHERE node_id = ?", (NODE,))
     for other in (N1, N2, N3):
         node(connection, other, 1.4)
         link(connection, other, NODE, km=155.0)
+    ground(monkeypatch, lambda lat, lon: 100.0)
 
+    refresh_far_partners(connection)
     refresh_estimates(connection)
 
-    found = {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")}
-    assert (NODE in found) == doubted
+    assert NODE in {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")}
 
 
 @pytest.mark.parametrize("victims", [1, 2, 3])
@@ -224,15 +217,16 @@ def test_a_victim_with_an_independent_far_partner_stays_doubtful(
     ) == (1, 200.0)
 
 
-def test_a_high_partner_within_its_horizon_does_not_take_blame(
-    connection: sqlite3.Connection,
+def test_a_partner_on_a_summit_takes_no_blame_for_partners_its_height_explains(
+    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     node(connection, NODE, 0.0)
-    connection.execute("UPDATE node_current SET altitude_meters = 1500 WHERE node_id = ?", (NODE,))
     for other in (N1, N2, N3):
         node(connection, other, 1.4)
         link(connection, NODE, other, km=155.0)
+    ground(monkeypatch, summit_at_node)
 
+    refresh_far_partners(connection)
     refresh_estimates(connection)
 
     assert {row[0] for row in connection.execute("SELECT node_id FROM node_doubtful")} == {
@@ -515,24 +509,6 @@ def test_a_far_partner_is_within_reach_from_the_nodes_own_summit_or_across_sea(
     if case in ("node-on-summit", "sea"):
         found = direct_partners(connection, estimate_since_ms(connection))[NODE]
         assert (found.counted, found.in_reach) == ({}, 1)
-
-
-def test_a_partner_within_the_nodes_own_limit_still_counts_from_its_summit(
-    connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # At 1,500 m NODE's limit is 159 km, so N1 at 155 km supports its
-    # position; leaving it out would leave N2 and N3's median of 200 km.
-    node(connection, NODE, 0.0)
-    connection.execute("UPDATE node_current SET altitude_meters = 1500 WHERE node_id = ?", (NODE,))
-    for other, latitude in ((N1, 1.4), (N2, 0.9), (N3, 2.7)):
-        node(connection, other, latitude)
-        link(connection, other, NODE, km=great_circle_km(0.0, 0.0, latitude, 0.0))
-    ground(monkeypatch, summit_at_node)
-
-    refresh_far_partners(connection)
-    refresh_estimates(connection)
-
-    assert NODE not in {r[0] for r in connection.execute("SELECT node_id FROM node_doubtful")}
 
 
 @pytest.mark.parametrize("voter_ground", ["summit", "low-land"])

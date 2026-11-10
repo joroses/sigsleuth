@@ -127,49 +127,44 @@ export function NodeLinks({
 
   return (
     <>
-      <div className="section-intro compact heading-with-filter">
-        <h3>Links</h3>
-        <div className="nodes-toolbar">
-          <label>
-            Window
+      <div className="nodes-toolbar">
+        <label>
+          Window
+          <select
+            value={linkWindow}
+            onChange={(event) => onWindow(event.target.value as SeenWindow)}
+          >
+            {SEEN_WINDOWS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {links.length > 0 ? (
+          <>
+            <input
+              type="search"
+              aria-label="Search links by node"
+              placeholder="Node name, !hex or number"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
             <select
-              value={linkWindow}
-              onChange={(event) => onWindow(event.target.value as SeenWindow)}
+              aria-label="Link kind"
+              value={kind}
+              onChange={(event) => setKind(event.target.value as LinkKind | "")}
             >
-              {SEEN_WINDOWS.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
+              <option value="">All link kinds ({links.length})</option>
+              {Object.entries(LINK_KIND_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label} (
+                  {links.filter((link) => link.link_kind === value).length})
                 </option>
               ))}
             </select>
-          </label>
-          {links.length > 0 ? (
-            <>
-              <input
-                type="search"
-                aria-label="Search links by node"
-                placeholder="Node name, !hex or number"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-              <select
-                aria-label="Link kind"
-                value={kind}
-                onChange={(event) =>
-                  setKind(event.target.value as LinkKind | "")
-                }
-              >
-                <option value="">All link kinds ({links.length})</option>
-                {Object.entries(LINK_KIND_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label} (
-                    {links.filter((link) => link.link_kind === value).length})
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : null}
-        </div>
+          </>
+        ) : null}
       </div>
       {error !== null ? <StatusPanel tone="error">{error}</StatusPanel> : null}
       {data === null && error === null ? (

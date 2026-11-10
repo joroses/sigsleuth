@@ -9,7 +9,7 @@ from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
 from sigsleuth.derive import rederive
 from sigsleuth.links import map_links
-from sigsleuth.nodes import node_channels
+from sigsleuth.nodes import node_channels, node_position_history
 
 TOPIC = "msh/EU_868/2/e/LongFast/!aaaaaaaa"
 
@@ -276,7 +276,12 @@ SENDER, GATEWAY = 0x11111111, 0xAAAAAAAA
 
 
 def position_at(
-    path: Path, minutes: int, latitude: float, sender: int = SENDER, longitude: float = 2.0
+    path: Path,
+    minutes: int,
+    latitude: float,
+    sender: int = SENDER,
+    longitude: float = 2.0,
+    channel: str = "LongFast",
 ) -> None:
     position = mesh_pb2.Position(latitude_i=int(latitude * 1e7), longitude_i=int(longitude * 1e7))
     ingest(
@@ -286,9 +291,21 @@ def position_at(
             position.SerializeToString(),
             sender=sender,
             packet_id=sender + minutes,
+            channel_id=channel,
         ),
         received_at=datetime(2026, 9, 19, 12, tzinfo=UTC) + timedelta(minutes=minutes),
+        topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
     )
+
+
+def placed(path: Path) -> dict[int, float]:
+    with closing(open_current_database(path)) as connection:
+        return {
+            int(row["node_id"]): float(row["latitude"])
+            for row in connection.execute(
+                "SELECT node_id, latitude FROM node_current WHERE latitude IS NOT NULL"
+            )
+        }
 
 
 def moved_at(path: Path) -> int | None:
@@ -314,6 +331,20 @@ def test_a_new_position_over_25_km_from_the_last_is_a_move(tmp_path: Path) -> No
     position_at(path, 3, 52.5)  # 50 km on
 
     assert moved_at(path) == to_epoch_ms(datetime(2026, 9, 19, 12, 3, tzinfo=UTC))
+
+
+def test_only_positions_sent_on_a_radio_channel_place_a_node(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    position_at(path, 0, 52.0)
+    position_at(path, 1, 52.2, channel="Friends")  # rounded coarser there
+    position_at(path, 0, 50.0, sender=GATEWAY, channel="Friends")
+    position_at(path, 0, 51.0, sender=0x22222222, channel="Unknown")
+
+    assert placed(path) == {SENDER: 52.0, 0x22222222: 51.0}
+    with closing(open_current_database(path)) as connection:
+        history = node_position_history(connection, SENDER)
+    assert [position.latitude for position in history.items] == [52.0]
 
 
 def test_a_links_km_follows_the_latest_observation_of_its_hour(tmp_path: Path) -> None:

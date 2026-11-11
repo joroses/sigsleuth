@@ -29,6 +29,7 @@ from sigsleuth.coverage import (
     SavedHow,
     heard_tier,
     is_direct,
+    link_evidence,
     mqtt_reports,
     relay_evidence,
     score_measurement,
@@ -568,7 +569,7 @@ def _survey_link(
         if not near:
             continue
         kms = [(great_circle_km(*position, r[1], r[2]), r) for r in near]
-        close = [r for km, r in kms if km <= SURVEY_LINK_KM]
+        evidence = link_evidence(receptions, row)
         here = [
             r[4] for km, r in kms if r[3] == surveyor and r[4] is not None and km <= TOO_STRONG_KM
         ]
@@ -584,9 +585,7 @@ def _survey_link(
                 else summary.long_name or summary.short_name,
                 receptions=len(near),
                 km=round(min(km for km, _ in kms), 1),
-                hours=None
-                if not close
-                else round((min(close, key=lambda r: abs(r[0] - at))[0] - at) / HOUR_MS, 2),
+                hours=None if evidence is None else round(evidence.offset_ms / HOUR_MS, 2),
                 tier_hours=None if tier is None else SURVEY_LINK_TIERS_MS[tier] / HOUR_MS,
                 too_strong=too_strong(receptions, row),
                 strongest_here_db=max(here, default=None),

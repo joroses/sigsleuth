@@ -32,6 +32,8 @@ Not being seen by MQTT does not mean a node is gone: surveys matter most where n
 
 The upload's reply says what each measurement adds: a new square, a new relay byte in it, or a sender newly heard directly there. Only surveys on the same spreading factor and bandwidth count.
 
+For a survey link, the reply also gives the relay's direct reception closest in time: how far away and how long before or after it was, and whether the same survey node heard it.
+
 ## Nodes that do not allow MQTT
 
 A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bit 0). No page names a node that turned it off (an [opted-out node](glossary.md#nodes-and-positions)), wherever its packets came from. A survey node hears its packets over the air, so each measurement keeps the bit, unknown when the survey node could not decode the packet. A missing bit counts as off, as in the firmware. Capture keeps the bit of each packet too, and the newer packet decides, captured or surveyed.

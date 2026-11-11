@@ -173,6 +173,9 @@ coverage.saved_heard
   SEARCH coverage_relay USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
+coverage._link_receptions
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_session USING PRIMARY KEY
 
 ## GET /api/v1/packets?limit=50
 

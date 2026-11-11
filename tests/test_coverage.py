@@ -90,13 +90,14 @@ def test_an_upload_saves_its_measurements_once(
         measurement(2, rx_snr=0.0, rx_rssi=None),
     ]
     first = {"new_cell": True, "new_byte": True, "new_direct": False}
+    no_link = {"link_km": None, "link_offset_ms": None, "link_mine": None}
     assert upload(client, *batch) == {
         "saved": 2,
         "already_saved": 0,
         "skipped": {},
         "last_seq": 2,
         "heard": [
-            {"seq": seq, "node_id": None, "how": "unknown", "candidates": [], **first}
+            {"seq": seq, "node_id": None, "how": "unknown", "candidates": [], **no_link, **first}
             for seq in (1, 2)
         ],
         "nodes": [],
@@ -239,6 +240,9 @@ def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> No
                 "node_id": None,
                 "how": "unknown",
                 "candidates": [],
+                "link_km": None,
+                "link_offset_ms": None,
+                "link_mine": None,
                 "new_cell": True,
                 "new_byte": True,
                 "new_direct": False,
@@ -1613,6 +1617,53 @@ def test_a_relay_the_survey_node_heard_directly_names_its_relayed_packets(
     # A third heard within the hour leaves it ambiguous.
     upload(client, direct(4, THIRD_RELAY, heard_at_ms=at - 1_200_000))
     assert links(connection) == []
+
+
+def test_the_reply_says_where_and_when_a_survey_links_relay_was_heard(client: TestClient) -> None:
+    at = now_ms() - 10 * DAY_MS
+    minute = 60_000
+    # Another survey node heard a node ending in 2B 12 km away, three days
+    # after the packet it relayed.
+    other_node = {**SESSION, "id": "other-node", "receiver_node_id": 0x0E0E0E6F}
+    upload(
+        client,
+        direct(1, 0x0500002B, heard_at_ms=at + 3 * DAY_MS, latitude=42.0277),
+        session=other_node,
+    )
+    reply = upload(
+        client,
+        # This survey node heard RELAY beside the phone 50 minutes before,
+        # then 5 km away 40 minutes before: the closest in time within 30 km
+        # is shown, not the one 35 km away 10 minutes before.
+        direct(1, RELAY, heard_at_ms=at - 50 * minute),
+        direct(2, RELAY, heard_at_ms=at - 40 * minute, latitude=41.965),
+        direct(6, RELAY, heard_at_ms=at - 10 * minute, latitude=42.2345),
+        measurement(3, relay_byte=0x1A, heard_at_ms=at),
+        measurement(4, relay_byte=0x2B, heard_at_ms=at),
+        measurement(5, relay_byte=0x3C, heard_at_ms=at),
+    )
+
+    evidence = {
+        h["seq"]: (h["how"], h["link_km"], h["link_offset_ms"], h["link_mine"])
+        for h in reply["heard"]
+    }
+    assert evidence == {
+        1: ("direct", None, None, None),
+        2: ("direct", None, None, None),
+        3: ("survey_link", 5.0, -40 * minute, True),
+        4: ("survey_link", 12.0, 3 * DAY_MS, False),
+        5: ("unknown", None, None, None),
+        6: ("direct", None, None, None),
+    }
+    # Diagnostics' survey checks read the same receptions.
+    checks = "/api/v1/diagnostics/survey-checks"
+    linked = [c["measurement_id"] for c in client.get(checks).json()["checks"] if c["link"]]
+    hours = [
+        (node["node_id"], node["hours"])
+        for id_ in linked
+        for node in client.get(f"{checks}/{id_}").json()["survey_link"]
+    ]
+    assert sorted(hours) == [(RELAY, -0.67), (0x0500002B, 72.0)]
 
 
 @pytest.mark.usefixtures("known_nodes")

@@ -223,12 +223,18 @@ class CoverageCandidate:
 class UploadHeard:
     """The heard node as the map reads it (_SHOWN), or possible relay hints,
     and what the measurement adds to the map (new_flags): a cell, its relay
-    byte in the cell, or its sender heard directly in the cell."""
+    byte in the cell, or its sender heard directly in the cell. A survey
+    link's evidence (link_evidence): km from the measurement, its time minus
+    the measurement's (ms, negative before) and whether the measurement's own
+    survey node heard it; None for other hows."""
 
     seq: int
     node_id: int | None
     how: HeardHow
     candidates: tuple[CoverageCandidate, ...] = ()
+    link_km: float | None = None
+    link_offset_ms: int | None = None
+    link_mine: bool | None = None
     new_cell: bool = False
     new_byte: bool = False
     new_direct: bool = False
@@ -463,16 +469,14 @@ def _as_saved(
 def saved_heard(
     connection: sqlite3.Connection, session_row_id: int, maybe: Mapping[int, Sequence[int]]
 ) -> list[UploadHeard]:
-    """The heard node of a session's saved measurements with these seqs, else
-    their maybe nodes (heard_node), km from the measurement; nodes that
-    turned OK to MQTT off are never suggested."""
+    """The heard node of a session's saved measurements with these seqs, with
+    a survey link's evidence, else their maybe nodes (heard_node), km from
+    the measurement; nodes that turned OK to MQTT off are never suggested."""
     if not maybe:
         return []
     rows = connection.execute(
         f"""
-        SELECT m.seq, {_SHOWN} AS node_id, {_SHOWN_HOW} AS how,
-               m.relay_byte, m.latitude, m.longitude, s.spreading_factor,
-               m.sender_node_id, s.receiver_node_id
+        SELECT m.seq, {_SHOWN} AS node_id, {_SHOWN_HOW} AS how, {SURVEY_LINK_COLUMNS}
         FROM {_MEASUREMENTS}
         JOIN coverage_session AS s ON s.id = m.session_row_id
         WHERE m.session_row_id = ? AND m.seq IN (SELECT value FROM json_each(?))
@@ -487,8 +491,14 @@ def saved_heard(
         if row["node_id"] is None
     }
     placed = nodes_by_id(connection, {node for nodes in unknown.values() for node in nodes})
+    receptions = _link_receptions(connection, [row for row in rows if row["how"] == "survey_link"])
     heard = []
     for row in rows:
+        found = (
+            link_evidence(receptions.nodes(row).get(int(row["node_id"]), []), row)
+            if row["how"] == "survey_link"
+            else None
+        )
         candidates = []
         for node in unknown.get(int(row["seq"]), []):
             place = placed.get(node)
@@ -499,8 +509,47 @@ def saved_heard(
                 )
                 if len(candidates) == CELL_CANDIDATES:
                     break
-        heard.append(UploadHeard(int(row["seq"]), row["node_id"], row["how"], tuple(candidates)))
+        heard.append(
+            UploadHeard(
+                int(row["seq"]),
+                row["node_id"],
+                row["how"],
+                tuple(candidates),
+                link_km=None if found is None else round(found.km, 1),
+                link_offset_ms=None if found is None else found.offset_ms,
+                link_mine=None if found is None else found.heard_by == row["receiver_node_id"],
+            )
+        )
     return heard
+
+
+def _link_receptions(
+    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+) -> DirectReceptions:
+    """Every survey node's direct receptions of the nodes the rows' survey
+    links name (node_id), within SURVEY_LINK_TIERS_MS[-1] of them: what
+    link_evidence reads. Narrower than survey_receptions, which reads every
+    node sending the rows' relay bytes."""
+    if not rows:
+        return heard_directly([])
+    times = [int(row["heard_at"]) for row in rows]
+    reach = SURVEY_LINK_TIERS_MS[-1]
+    return heard_directly(
+        connection.execute(
+            f"""
+            SELECT {SURVEY_LINK_COLUMNS}
+            FROM coverage_measurement AS m INDEXED BY coverage_measurement_sender
+            JOIN coverage_session AS s ON s.id = m.session_row_id
+            WHERE m.sender_node_id IN (SELECT value FROM json_each(:nodes))
+              AND m.heard_at BETWEEN :start AND :end AND m.heard_how = 'direct'
+            """,
+            {
+                "nodes": json.dumps(sorted({int(row["node_id"]) for row in rows})),
+                "start": min(times) - reach,
+                "end": max(times) + reach,
+            },
+        )
+    )
 
 
 def new_flags(
@@ -1026,6 +1075,43 @@ def survey_candidates(
         if found:
             return found
     return []
+
+
+@dataclass(frozen=True)
+class LinkEvidence:
+    """A direct reception behind a survey link: km from the measurement, its
+    time minus the measurement's (ms, negative before) and the survey node
+    that heard it."""
+
+    km: float
+    offset_ms: int
+    heard_by: int
+
+
+def link_evidence(receptions: list[Reception], row: Mapping[str, Any]) -> LinkEvidence | None:
+    """Of a node's direct receptions (time-sorted) within SURVEY_LINK_KM and
+    SURVEY_LINK_TIERS_MS[-1] of a measurement row, the one closest in time,
+    the earlier on a tie; None when there is none."""
+    at, reach = int(row["heard_at"]), SURVEY_LINK_TIERS_MS[-1]
+    # Outward from the row's time, so the first reception close enough is the
+    # answer: a node heard all day by a survey has thousands in reach.
+    later = bisect_left(receptions, at, key=lambda reception: reception[0])
+    earlier = later - 1
+    while True:
+        if earlier >= 0 and (
+            later == len(receptions) or at - receptions[earlier][0] <= receptions[later][0] - at
+        ):
+            reception, earlier = receptions[earlier], earlier - 1
+        elif later < len(receptions):
+            reception, later = receptions[later], later + 1
+        else:
+            return None
+        heard_at, latitude, longitude, heard_by, _ = reception
+        if abs(heard_at - at) > reach:
+            return None
+        km = great_circle_km(row["latitude"], row["longitude"], latitude, longitude)
+        if km <= SURVEY_LINK_KM:
+            return LinkEvidence(km, heard_at - at, heard_by)
 
 
 def signal_db(rssi: float | None, snr: float | None) -> float | None:

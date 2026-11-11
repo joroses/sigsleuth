@@ -3066,7 +3066,10 @@ export interface components {
      * UploadHeard
      * @description The heard node as the map reads it (_SHOWN), or possible relay hints,
      *     and what the measurement adds to the map (new_flags): a cell, its relay
-     *     byte in the cell, or its sender heard directly in the cell.
+     *     byte in the cell, or its sender heard directly in the cell. A survey
+     *     link's evidence (link_evidence): km from the measurement, its time minus
+     *     the measurement's (ms, negative before) and whether the measurement's own
+     *     survey node heard it; None for other hows.
      */
     UploadHeard: {
       seq: number;
@@ -3082,6 +3085,9 @@ export interface components {
         | "unknown";
       /** @default [] */
       candidates: components["schemas"]["CoverageCandidate"][];
+      link_km: number | null;
+      link_offset_ms: number | null;
+      link_mine: boolean | null;
       /** @default false */
       new_cell: boolean;
       /** @default false */

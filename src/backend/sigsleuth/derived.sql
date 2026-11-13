@@ -191,9 +191,11 @@ CREATE TABLE far_partner (
 -- to_node_id heard it. is_observation excludes a reply's copy of a captured
 -- request's hop on the same radio channel. The route_ columns hold the packet's
 -- best route with the hop, for the Traceroute explorer's node search.
--- free is whether the first request copy to pin the hop's cost
--- (traceroute.pinned_costs) found it free, NULL until one does; it counts the
--- hop once in hop_cost_hour.
+-- free is whether the hop was free, NULL until known; it counts the hop once
+-- in hop_cost_hour. Two request copies decide it from to_level and the levels
+-- of the packet's hops into from_node_id (traceroute.level_cost); otherwise
+-- the first copy to pin it alone (traceroute.pinned_costs). A level that turns
+-- -1 sets the cost it decided back to NULL.
 CREATE TABLE traceroute_hop (
     packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
     from_node_id INTEGER NOT NULL CHECK (from_node_id BETWEEN 0 AND 4294967295),
@@ -207,6 +209,9 @@ CREATE TABLE traceroute_hop (
     route_km REAL,
     route_reached INTEGER NOT NULL CHECK (route_reached IN (0, 1)),
     free INTEGER CHECK (free IN (0, 1)),
+    -- Hops used after to_node_id passed on from_node_id's request copy
+    -- (traceroute.transmitter_level); -1 when two copies disagree.
+    to_level INTEGER CHECK (to_level >= -1),
     PRIMARY KEY (packet_row_id, from_node_id, to_node_id)
 ) STRICT, WITHOUT ROWID;
 
@@ -287,8 +292,8 @@ CREATE TABLE link_hour (
 -- Also gives each direction's longest km without reading the table.
 CREATE INDEX link_hour_pair ON link_hour (from_node_id, to_node_id, km);
 
--- Hourly counts of traceroute request hops whose cost a single copy pins
--- (traceroute.pinned_costs), per direction, message and radio channel, once per packet:
+-- Hourly counts of traceroute request hops whose cost is known
+-- (traceroute_hop.free), per direction, message and radio channel, once per packet:
 -- free when to_node_id passed on from_node_id's copy without spending a hop
 -- (from firmware 2.7.11, a router role relaying a favourite router), costly
 -- when it spent one. It holds for that channel only: from 2.8 a relay that

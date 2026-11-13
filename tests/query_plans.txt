@@ -84,6 +84,8 @@ derive._save_hops
   SEARCH traceroute_hop USING PRIMARY KEY
 derive._count_hop_costs
   SEARCH traceroute_hop USING PRIMARY KEY
+derive._set_hop_cost
+  SEARCH traceroute_hop USING PRIMARY KEY
 
 ## POST /api/v1/coverage/uploads
 

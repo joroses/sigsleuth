@@ -1450,7 +1450,7 @@ export interface components {
      * HopCost
      * @description Whether to_node passes on from_node's copies on a channel without
      *     spending a hop, over a window: free and costly count the traceroute
-     *     copies that showed it (hop_cost_hour), and verdict is free when free > 0
+     *     packets that showed it (hop_cost_hour), and verdict is free when free > 0
      *     and free >= costly, else costly. Unmeasured, it is never_free when
      *     role_node_id, the receiver or else the previous relay, has a known role
      *     outside ZERO_COST_ROLES (role), and unknown otherwise. On live, 7 days to

@@ -58,12 +58,14 @@ from sigsleuth.traceroute import (
     Hop,
     Route,
     TracerouteReport,
+    level_cost,
     path_hops,
     pinned_costs,
     read_traceroute_report,
     report_routes,
     route_rank,
     successful_route,
+    transmitter_level,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -1155,43 +1157,119 @@ def _refill_hop_hours(connection: sqlite3.Connection, hops: list[sqlite3.Row]) -
 def _count_hop_costs(
     connection: sqlite3.Connection, row: sqlite3.Row, report: TracerouteReport
 ) -> None:
-    """Count the hops this request copy pins as free or costly
-    (traceroute.pinned_costs) in hop_cost_hour, once per packet: the first
-    copy to pin a hop marks its traceroute_hop row."""
+    """Count a request copy's hop costs in hop_cost_hour, once per packet. The
+    copy saves its transmitter's level (to_level); two copies' levels decide a
+    hop, replacing a pin, and a conflicting level (-1) sends the hops it
+    decided back to unknown. Hops still unknown take the first cost a single
+    copy pins (traceroute.pinned_costs)."""
     sender, gateway = int(row["sender_node_id"]), int(row["gateway_node_id"])
     header = SavedHeader.of(row)
     if gateway == sender or header.hop_start is None or header.hop_limit is None:
         return
-    own_byte = header.relay_byte == relay_byte_of(gateway)
-    seen_at = int(row["first_received_at"])
+    hops_used = header.hop_start - header.hop_limit
+    hops = {
+        (int(h["from_node_id"]), int(h["to_node_id"])): _HopCost(
+            h["to_level"], None if h["free"] is None else bool(h["free"]), h["radio_channel"]
+        )
+        for h in connection.execute(
+            "SELECT from_node_id, to_node_id, to_level, free, radio_channel FROM traceroute_hop "
+            "WHERE packet_row_id = ?",
+            (row["packet_row_id"],),
+        )
+    }
+    found = transmitter_level(report.paths.forward, gateway, hops_used, header.relay_byte)
+    if found is not None and (key := (found[0].from_node_id, found[0].to_node_id)) in hops:
+        saved = hops[key].to_level
+        level = found[1] if saved is None or saved == found[1] else -1
+        if level != saved:
+            touched = [key, *(pair for pair in hops if pair[0] == key[1])]
+            before = {pair: _level_cost(hops, pair, sender) for pair in touched}
+            hops[key].to_level = level
+            connection.execute(
+                "UPDATE traceroute_hop SET to_level = ? WHERE packet_row_id = ? "
+                "AND from_node_id = ? AND to_node_id = ?",
+                (level, row["packet_row_id"], *key),
+            )
+            for pair in touched:
+                after = _level_cost(hops, pair, sender)
+                if after is not None and after != hops[pair].free:
+                    _set_hop_cost(connection, row, pair, hops[pair], after)
+                elif after is None and before[pair] is not None:
+                    _set_hop_cost(connection, row, pair, hops[pair], None)
     for hop, free in pinned_costs(
-        report.paths.forward, gateway, header.hop_start - header.hop_limit, own_byte
+        report.paths.forward, gateway, hops_used, header.relay_byte == relay_byte_of(gateway)
     ):
-        values = {
-            "packet": row["packet_row_id"],
-            "from_node": hop.from_node_id,
-            "to_node": hop.to_node_id,
-            "free": free,
-            "hour_start": seen_at - seen_at % HOUR_MS,
-            "channel": row["channel"],
-        }
-        if not connection.execute(
-            """
-            UPDATE traceroute_hop SET free = :free
-            WHERE packet_row_id = :packet AND from_node_id = :from_node
-              AND to_node_id = :to_node AND free IS NULL
-            """,
+        pair = (hop.from_node_id, hop.to_node_id)
+        if pair in hops and hops[pair].free is None:
+            _set_hop_cost(connection, row, pair, hops[pair], free)
+
+
+@dataclass
+class _HopCost:
+    to_level: int | None
+    free: bool | None
+    radio_channel: str
+
+
+def _level_cost(
+    hops: dict[tuple[int, int], _HopCost], pair: tuple[int, int], requester: int
+) -> bool | None:
+    """The requester's first hop always costs (firmware), so it is never
+    decided here."""
+    if pair[0] == requester:
+        return None
+    previous = [
+        hop.to_level
+        for (_, to_node), hop in hops.items()
+        if to_node == pair[0] and hop.to_level is not None
+    ]
+    return level_cost(hops[pair].to_level, previous)
+
+
+def _set_hop_cost(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    pair: tuple[int, int],
+    hop: _HopCost,
+    free: bool | None,
+) -> None:
+    """Set a hop's free and move its count in hop_cost_hour, in the packet's
+    hour and message channel and the hop's radio channel."""
+    seen_at = int(row["first_received_at"])
+    values = {
+        "packet": row["packet_row_id"],
+        "from_node": pair[0],
+        "to_node": pair[1],
+        "hour_start": seen_at - seen_at % HOUR_MS,
+        "channel": row["channel"],
+        "radio_channel": hop.radio_channel,
+        "old": hop.free,
+        "free": free,
+    }
+    cell = """
+        hour_start = :hour_start AND from_node_id = :from_node AND to_node_id = :to_node
+        AND channel = :channel AND radio_channel = :radio_channel
+    """
+    if hop.free is not None:
+        connection.execute(
+            f"UPDATE hop_cost_hour SET free = free - :old, costly = costly - NOT :old WHERE {cell}",
             values,
-        ).rowcount:
-            continue
+        )
+        connection.execute(
+            f"DELETE FROM hop_cost_hour WHERE {cell} AND free = 0 AND costly = 0", values
+        )
+    connection.execute(
+        "UPDATE traceroute_hop SET free = :free WHERE packet_row_id = :packet "
+        "AND from_node_id = :from_node AND to_node_id = :to_node",
+        values,
+    )
+    hop.free = free
+    if free is not None:
         connection.execute(
             """
             INSERT INTO hop_cost_hour (
                 hour_start, from_node_id, to_node_id, channel, radio_channel, free, costly
-            )
-            SELECT :hour_start, :from_node, :to_node, :channel, radio_channel, :free, NOT :free
-            FROM traceroute_hop WHERE packet_row_id = :packet
-              AND from_node_id = :from_node AND to_node_id = :to_node
+            ) VALUES (:hour_start, :from_node, :to_node, :channel, :radio_channel, :free, NOT :free)
             ON CONFLICT (hour_start, from_node_id, to_node_id, channel, radio_channel) DO UPDATE SET
                 free = free + excluded.free, costly = costly + excluded.costly
             """,

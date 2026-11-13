@@ -233,7 +233,9 @@ def pinned_costs(
     own rebroadcast (own_byte) is Rk, at the header's hops; one that added
     itself to a copy it heard is no relay of it. Full routes, gaps and routes
     with fewer relays than hops (older firmware omitted some) pin nothing.
-    Only path_hops' hops count."""
+    Only path_hops' hops count. A free hop shows only when every later one
+    was free too, so derive uses this where two copies' levels
+    (level_cost) do not decide."""
     relays = path.nodes[1:-1]
     if hops_used < 1 or len(relays) >= MAX_ROUTE_ENTRIES or None in relays:
         return []
@@ -255,6 +257,56 @@ def pinned_costs(
         return []
     later = set(pairwise(chain[1:]))
     return [(hop, free) for hop in path_hops(path) if (hop.from_node_id, hop.to_node_id) in later]
+
+
+def transmitter_level(
+    path: RoutePath, gateway: int, hops_used: int, relay_byte: int | None
+) -> tuple[Hop, int] | None:
+    """The hop P -> X into the node X whose transmission this request copy is,
+    and the hops used after X passed it on (hops_used); None when the copy does
+    not show it.
+
+    A gateway's own rebroadcast (it added itself, relay_byte its own) is X,
+    unless the node before it has the same byte. Otherwise X is the last listed
+    relay besides the gateway, and the relay byte must be X's. Nothing across a
+    gap or a 0 dB step up to X (it may have crossed MQTT), or when P -> X is
+    not one of path_hops' hops."""
+    if hops_used < 0 or relay_byte is None:
+        return None
+    relays = path.nodes[1:-1]
+    appended = bool(relays) and relays[-1] == gateway
+    own_byte = relay_byte == relay_byte_of(gateway)
+    if own_byte and not appended:
+        return None
+    chain = (path.nodes[0], *(relays if own_byte or not appended else relays[:-1]))
+    if len(chain) < 2 or None in chain:
+        return None
+    previous, transmitter = chain[-2], chain[-1]
+    assert previous is not None and transmitter is not None
+    if own_byte:
+        if relay_byte_of(previous) == relay_byte:
+            return None
+    elif relay_byte != relay_byte_of(transmitter):
+        return None
+    if MQTT_HOP_SNR_DB in path.snr_db[: len(chain) - 1]:
+        return None
+    for hop in path_hops(path):
+        if (hop.from_node_id, hop.to_node_id) == (previous, transmitter):
+            return hop, hops_used
+    return None
+
+
+def level_cost(level: int | None, previous: Collection[int]) -> bool | None:
+    """Whether a hop P -> X was free (True) or cost a hop (False), from X's
+    level (transmitter_level's hops used) and P's levels on the packet's hops
+    into P; None unless they all agree and differ by 0 or 1. -1 is a level that
+    two copies disagreed on."""
+    if level is None or level < 0 or len(set(previous)) != 1:
+        return None
+    (base,) = set(previous)
+    if base < 0:
+        return None
+    return {0: True, 1: False}.get(level - base)
 
 
 @dataclass(frozen=True)

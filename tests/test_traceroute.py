@@ -1,5 +1,13 @@
 from sigsleuth.decode import RouteDiscovery
-from sigsleuth.traceroute import Hop, pinned_costs, report_hops, report_paths
+from sigsleuth.radio import relay_byte_of
+from sigsleuth.traceroute import (
+    Hop,
+    level_cost,
+    pinned_costs,
+    report_hops,
+    report_paths,
+    transmitter_level,
+)
 
 A, B = 0xA0A0A0A0, 0xB0B0B0B0
 R1, R2, R3 = 0x11111111, 0x22222222, 0x33333333
@@ -128,3 +136,60 @@ def test_hops_that_are_no_hops_pin_nothing() -> None:
     # 0 dB likely crossed MQTT; a missing slot is a hop not measured.
     assert costs((R1, R2, R3), 1, (20, 0, 20)) == [(R2, R3, True)]
     assert costs((R1, R2, R3), 1, (20, 20)) == [(R1, R2, True)]
+
+
+def level(
+    relays: tuple[int, ...], hops: int, relay: int, snr: tuple[int, ...] | None = None
+) -> tuple[int, int, int] | None:
+    """transmitter_level of a request copy from A to B that GATEWAY heard after
+    hops, last passed on by relay (its byte is the header's)."""
+    snr = tuple(20 for _ in relays) if snr is None else snr
+    paths = report_paths(route(relays, snr), A, B, None)
+    found = transmitter_level(paths.forward, GATEWAY, hops, relay_byte_of(relay))
+    return None if found is None else (found[0].from_node_id, found[0].to_node_id, found[1])
+
+
+def test_a_heard_copy_is_the_last_relays_level() -> None:
+    assert level((R1, R2), 1, R2) == (R1, R2, 1)
+    # The gateway added itself to the copy it heard.
+    assert level((R1, R2, GATEWAY), 2, R2) == (R1, R2, 2)
+    # The requester's first relay saves its level too.
+    assert level((R1,), 1, R1) == (A, R1, 1)
+
+
+def test_a_gateways_own_rebroadcast_is_its_own_level() -> None:
+    assert level((R1, GATEWAY), 1, GATEWAY) == (R1, GATEWAY, 1)
+    # Its own byte without adding itself: the route and the header disagree.
+    assert level((R1, R2), 1, GATEWAY) is None
+
+
+def test_an_own_byte_shared_with_the_relay_before_shows_nothing() -> None:
+    twin = (R1 & ~0xFF) | (GATEWAY & 0xFF)
+    assert level((twin, GATEWAY), 1, GATEWAY) is None
+
+
+def test_a_copy_another_node_passed_on_shows_nothing() -> None:
+    assert level((R1, R2), 1, R3) is None
+    assert level((R1, R2, GATEWAY), 2, R3) is None
+
+
+def test_gaps_and_0_db_steps_up_to_the_transmitter_show_nothing() -> None:
+    assert level((R1, GAP, R2), 2, R2) is None
+    assert level((R1, R2), 1, R2, (0, 20)) is None
+    assert level((R1, R2), 1, R2, (20, 0)) is None
+    # A 0 dB step into the gateway that added itself does not matter.
+    assert level((R1, R2, GATEWAY), 2, R2, (20, 20, 0)) == (R1, R2, 2)
+
+
+def test_a_transmitter_without_a_measured_hop_into_it_shows_nothing() -> None:
+    assert level((R1, R2), 1, R2, (20,)) is None
+
+
+def test_level_cost_decides_only_on_agreeing_levels_one_apart() -> None:
+    assert level_cost(3, [1]) is None
+    assert level_cost(0, [1]) is None
+    assert level_cost(2, [1, 2]) is None
+    assert level_cost(2, [-1]) is None
+    assert level_cost(-1, [1]) is None
+    assert level_cost(None, [1]) is None
+    assert level_cost(1, []) is None

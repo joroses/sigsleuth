@@ -596,7 +596,7 @@ hop_costs: 12 items
     spent: 1
     learned:
       free: 0
-      costly: 1
+      costly: 7
       verdict: "costly"
       role_node_id: null
       role: null
@@ -1780,17 +1780,23 @@ nodes: 41 items
 doubtful_node_ids: []
 shared_node_ids: []
 truncated: false
-zero_cost_hops: 2 items
+zero_cost_hops: 3 items
   - from_node_id: 2224775088
     to_node_id: 3655149723
     channel: "ShortFast"
-    free: 1
+    free: 12
     costly: 0
-    hours: 72
+    hours: 24
   - from_node_id: 3655149723
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 4
+    free: 116
+    costly: 0
+    hours: 24
+  - from_node_id: 3655149723
+    to_node_id: 3306575460
+    channel: "ShortFast"
+    free: 2
     costly: 0
     hours: 24
 
@@ -1953,17 +1959,23 @@ nodes: 41 items
 doubtful_node_ids: []
 shared_node_ids: []
 truncated: false
-zero_cost_hops: 2 items
+zero_cost_hops: 3 items
   - from_node_id: 2224775088
     to_node_id: 3655149723
     channel: "ShortFast"
-    free: 1
+    free: 12
     costly: 0
-    hours: 72
+    hours: 24
   - from_node_id: 3655149723
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 4
+    free: 116
+    costly: 0
+    hours: 24
+  - from_node_id: 3655149723
+    to_node_id: 3306575460
+    channel: "ShortFast"
+    free: 2
     costly: 0
     hours: 24
 
@@ -2229,25 +2241,25 @@ items: 932 items
       average_snr: 12.25
       average_rssi: null
 truncated: false
-zero_cost_hops: 5 items
+zero_cost_hops: 7 items
   - from_node_id: 96879053
     to_node_id: 2933499666
     channel: "ShortFast"
     free: 1
     costly: 0
     hours: 24
+  - from_node_id: 1770269756
+    to_node_id: 1217212781
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+    hours: 72
   - from_node_id: 2224775088
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 1
+    free: 9
     costly: 0
-    hours: 72
-  - from_node_id: 2224775088
-    to_node_id: 3655149723
-    channel: "ShortFast"
-    free: 1
-    costly: 0
-    hours: 72
+    hours: 24
 
 ## GET /api/v1/map/text-senders?since=2026-10-08T16:25:30.812000Z
 
@@ -2344,7 +2356,7 @@ items: 499 items
       average_snr: 12.15
       average_rssi: null
 truncated: false
-zero_cost_hops: 5 items
+zero_cost_hops: 6 items
   - from_node_id: 96879053
     to_node_id: 2933499666
     channel: "ShortFast"
@@ -2354,15 +2366,15 @@ zero_cost_hops: 5 items
   - from_node_id: 2224775088
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 1
+    free: 9
     costly: 0
-    hours: 72
+    hours: 24
   - from_node_id: 2224775088
     to_node_id: 3655149723
     channel: "ShortFast"
-    free: 1
+    free: 12
     costly: 0
-    hours: 72
+    hours: 24
 
 ## GET /api/v1/links?link_kind=traceroute&since=2026-10-10T16:25:30.812000Z
 
@@ -3037,25 +3049,25 @@ items: 932 items
       average_snr: 12.25
       average_rssi: null
 truncated: false
-zero_cost_hops: 5 items
+zero_cost_hops: 7 items
   - from_node_id: 96879053
     to_node_id: 2933499666
     channel: "ShortFast"
     free: 1
     costly: 0
     hours: 24
+  - from_node_id: 1770269756
+    to_node_id: 1217212781
+    channel: "ShortFast"
+    free: 1
+    costly: 0
+    hours: 72
   - from_node_id: 2224775088
     to_node_id: 1770269756
     channel: "ShortFast"
-    free: 1
+    free: 9
     costly: 0
-    hours: 72
-  - from_node_id: 2224775088
-    to_node_id: 3655149723
-    channel: "ShortFast"
-    free: 1
-    costly: 0
-    hours: 72
+    hours: 24
 
 ## GET /api/v1/map/text-senders?since=2026-10-10T16:25:30.812000Z
 

@@ -1,3 +1,4 @@
+import itertools
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -123,7 +124,24 @@ def capture_some_history(connection: sqlite3.Connection) -> None:
             ),
             gateway,
         )
-    # One hop used over two relays: SENDER passed on RELAY's copy for free.
+    # RELAY's copy after one hop, then SENDER's after one hop: SENDER passed
+    # it on for free.
+    send(
+        connection,
+        31,
+        application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(route=[RELAY], snr_towards=[20]).SerializeToString(),
+            sender=REQUESTER,
+            recipient=TARGET,
+            packet_id=9,
+            gateway_id="!bbbbbbbb",
+            hop_start=3,
+            hop_limit=2,
+            relay_node=RELAY & 0xFF,
+        ),
+        "!bbbbbbbb",
+    )
     send(
         connection,
         32,
@@ -413,6 +431,108 @@ def test_hop_cost_byte_collision_waits_for_another_gateway(
             "SELECT from_node_id, to_node_id, free, costly FROM hop_cost_hour"
         )
     ] == [(previous, gateway, 0, 1)]
+
+
+R1, R2, R3, OMITTED = 0x31313131, 0x32323232, 0x33333333, 0x34343434
+
+
+def copy(connection: sqlite3.Connection, route: list[int], hops: int, relay: int) -> None:
+    """A gateway of its own hears REQUESTER's request after hops, from relay."""
+    gateway = (
+        f"!{0xC0000000 + connection.execute('SELECT count(*) FROM reception').fetchone()[0]:08x}"
+    )
+    send(
+        connection,
+        0,
+        application_envelope(
+            portnums_pb2.PortNum.TRACEROUTE_APP,
+            mesh_pb2.RouteDiscovery(route=route, snr_towards=[20] * len(route)).SerializeToString(),
+            sender=REQUESTER,
+            recipient=TARGET,
+            packet_id=1,
+            gateway_id=gateway,
+            hop_start=7,
+            hop_limit=7 - hops,
+            relay_node=relay_byte_of(relay),
+        ),
+        gateway,
+    )
+
+
+def hop_costs(connection: sqlite3.Connection) -> dict[str, list[tuple[object, ...]]]:
+    return {
+        "hops": [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT from_node_id, to_node_id, to_level, free FROM traceroute_hop ORDER BY 1, 2"
+            )
+        ],
+        "counts": [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT from_node_id, to_node_id, free, costly FROM hop_cost_hour ORDER BY 1, 2"
+            )
+        ],
+    }
+
+
+@pytest.mark.parametrize("order", list(itertools.permutations(range(3))))
+def test_two_copies_levels_decide_a_hop_in_any_order(
+    connection: sqlite3.Connection, order: tuple[int, ...]
+) -> None:
+    # R1 used a hop, R2 kept it, R3 used another; the third copy alone pins nothing.
+    copies = (([R1], 1, R1), ([R1, R2], 1, R2), ([R1, R2, R3], 2, R3))
+    for index in order:
+        copy(connection, *copies[index])
+
+    assert hop_costs(connection) == {
+        "hops": [(REQUESTER, R1, 1, None), (R1, R2, 1, 1), (R2, R3, 2, 0)],
+        "counts": [(R1, R2, 1, 0), (R2, R3, 0, 1)],
+    }
+
+
+def test_a_repeated_level_counts_a_hop_once(connection: sqlite3.Connection) -> None:
+    copy(connection, [R1], 1, R1)
+    copy(connection, [R1, R2], 1, R2)
+    copy(connection, [R1, R2], 1, R2)
+    copy(connection, [R1], 1, R1)
+
+    assert hop_costs(connection)["counts"] == [(R1, R2, 1, 0)]
+
+
+def test_two_copies_levels_replace_a_single_copys_pin(connection: sqlite3.Connection) -> None:
+    # Two hops over two relays, from a node the route left out: costly by the rule.
+    copy(connection, [R1, R2], 2, OMITTED)
+    assert hop_costs(connection)["counts"] == [(R1, R2, 0, 1)]
+
+    copy(connection, [R1], 1, R1)
+    copy(connection, [R1, R2], 1, R2)
+    assert hop_costs(connection)["counts"] == [(R1, R2, 1, 0)]
+
+
+def test_disagreeing_levels_undo_the_hops_they_decided(connection: sqlite3.Connection) -> None:
+    copy(connection, [R1], 1, R1)
+    copy(connection, [R1, R2], 1, R2)
+    copy(connection, [R1, R2, R3], 2, R3)
+    assert hop_costs(connection)["counts"] == [(R1, R2, 1, 0), (R2, R3, 0, 1)]
+
+    # R2's copy heard at another level, which no single-copy rule pins.
+    copy(connection, [R1, R2], 3, R2)
+    assert hop_costs(connection) == {
+        "hops": [(REQUESTER, R1, 1, None), (R1, R2, -1, None), (R2, R3, 2, None)],
+        "counts": [],
+    }
+
+
+def test_levels_two_apart_keep_a_single_copys_pin(connection: sqlite3.Connection) -> None:
+    copy(connection, [R1, R2], 2, OMITTED)
+    copy(connection, [R1], 1, R1)
+    copy(connection, [R1, R2], 3, R2)
+
+    assert hop_costs(connection) == {
+        "hops": [(REQUESTER, R1, 1, None), (R1, R2, 3, 0)],
+        "counts": [(R1, R2, 0, 1)],
+    }
 
 
 @pytest.mark.parametrize("batch_size", [1, 100])

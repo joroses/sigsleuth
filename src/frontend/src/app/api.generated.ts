@@ -3068,8 +3068,9 @@ export interface components {
      *     and what the measurement adds to the map (new_flags): a cell, its relay
      *     byte in the cell, or its sender heard directly in the cell. A survey
      *     link's evidence (link_evidence): km from the measurement, its time minus
-     *     the measurement's (ms, negative before) and whether the measurement's own
-     *     survey node heard it; None for other hows.
+     *     the measurement's (ms, negative before), whether the measurement's own
+     *     survey node heard it and its RSSI (None when not recorded); None for
+     *     other hows.
      */
     UploadHeard: {
       seq: number;
@@ -3088,6 +3089,7 @@ export interface components {
       link_km: number | null;
       link_offset_ms: number | null;
       link_mine: boolean | null;
+      link_rssi: number | null;
       /** @default false */
       new_cell: boolean;
       /** @default false */

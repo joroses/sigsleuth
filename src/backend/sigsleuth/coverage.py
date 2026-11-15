@@ -124,8 +124,9 @@ HeardHow = Literal[
 # The guesses, drawn dashed: direct and survey_link come from a direct reception.
 GUESSED: tuple[HeardHow, ...] = ("reported", "gateway_link", "sender_link", "only_candidate")
 
-# A survey direct reception: when, where, by which survey node, its signal.
-Reception = tuple[int, float, float, int, float | None]
+# A survey direct reception: when, where, by which survey node, its signal
+# (signal_db) and its RSSI.
+Reception = tuple[int, float, float, int, float | None, int | None]
 # Each node's direct receptions sending a relay byte, in time order.
 NodeReceptions = dict[int, list[Reception]]
 
@@ -225,8 +226,9 @@ class UploadHeard:
     and what the measurement adds to the map (new_flags): a cell, its relay
     byte in the cell, or its sender heard directly in the cell. A survey
     link's evidence (link_evidence): km from the measurement, its time minus
-    the measurement's (ms, negative before) and whether the measurement's own
-    survey node heard it; None for other hows."""
+    the measurement's (ms, negative before), whether the measurement's own
+    survey node heard it and its RSSI (None when not recorded); None for
+    other hows."""
 
     seq: int
     node_id: int | None
@@ -235,6 +237,7 @@ class UploadHeard:
     link_km: float | None = None
     link_offset_ms: int | None = None
     link_mine: bool | None = None
+    link_rssi: int | None = None
     new_cell: bool = False
     new_byte: bool = False
     new_direct: bool = False
@@ -518,6 +521,7 @@ def saved_heard(
                 link_km=None if found is None else round(found.km, 1),
                 link_offset_ms=None if found is None else found.offset_ms,
                 link_mine=None if found is None else found.heard_by == row["receiver_node_id"],
+                link_rssi=None if found is None else found.rssi,
             )
         )
     return heard
@@ -996,6 +1000,7 @@ def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
                     row["longitude"],
                     int(row["receiver_node_id"]),
                     signal_db(row["rx_rssi"], row["rx_snr"]),
+                    row["rx_rssi"] or None,  # 0 is an RSSI not recorded.
                 )
             )
     for by_byte in heard.values():
@@ -1080,12 +1085,13 @@ def survey_candidates(
 @dataclass(frozen=True)
 class LinkEvidence:
     """A direct reception behind a survey link: km from the measurement, its
-    time minus the measurement's (ms, negative before) and the survey node
-    that heard it."""
+    time minus the measurement's (ms, negative before), the survey node
+    that heard it and its RSSI (None when not recorded)."""
 
     km: float
     offset_ms: int
     heard_by: int
+    rssi: int | None
 
 
 def link_evidence(receptions: list[Reception], row: Mapping[str, Any]) -> LinkEvidence | None:
@@ -1106,12 +1112,12 @@ def link_evidence(receptions: list[Reception], row: Mapping[str, Any]) -> LinkEv
             reception, later = receptions[later], later + 1
         else:
             return None
-        heard_at, latitude, longitude, heard_by, _ = reception
+        heard_at, latitude, longitude, heard_by, _, rssi = reception
         if abs(heard_at - at) > reach:
             return None
         km = great_circle_km(row["latitude"], row["longitude"], latitude, longitude)
         if km <= SURVEY_LINK_KM:
-            return LinkEvidence(km, heard_at - at, heard_by)
+            return LinkEvidence(km, heard_at - at, heard_by, rssi)
 
 
 def signal_db(rssi: float | None, snr: float | None) -> float | None:
@@ -1137,7 +1143,7 @@ def too_strong(receptions: list[Reception], row: Mapping[str, Any]) -> bool:
     first = bisect_left(receptions, at - reach, key=lambda reception: reception[0])
     checked = False
     for index in range(first, len(receptions)):
-        heard_at, latitude, longitude, heard_by, heard_signal = receptions[index]
+        heard_at, latitude, longitude, heard_by, heard_signal, _ = receptions[index]
         if heard_at > at + reach:
             break
         if heard_by != receiver or heard_signal is None:
@@ -1159,7 +1165,7 @@ def _heard_near(
     first = bisect_left(receptions, at - within_ms, key=lambda reception: reception[0])
     # By index: a slice would copy every later reception for each measurement.
     for index in range(first, len(receptions)):
-        heard_at, latitude, longitude, _, _ = receptions[index]
+        heard_at, latitude, longitude, _, _, _ = receptions[index]
         if heard_at > at + within_ms:
             return False
         if great_circle_km(row["latitude"], row["longitude"], latitude, longitude) <= km:

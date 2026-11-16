@@ -300,11 +300,13 @@ def level_cost(level: int | None, previous: Collection[int]) -> bool | None:
     """Whether a hop P -> X was free (True) or cost a hop (False), from X's
     level (transmitter_level's hops used) and P's levels on the packet's hops
     into P; None unless they all agree and differ by 0 or 1. -1 is a level that
-    two copies disagreed on."""
+    two copies disagreed on. None too when P's level is 0: firmware always
+    spends a hop on a copy still at 0 hops used, so X's cost says nothing
+    about P -> X."""
     if level is None or level < 0 or len(set(previous)) != 1:
         return None
     (base,) = set(previous)
-    if base < 0:
+    if base <= 0:
         return None
     return {0: True, 1: False}.get(level - base)
 

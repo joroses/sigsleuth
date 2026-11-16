@@ -193,3 +193,9 @@ def test_level_cost_decides_only_on_agreeing_levels_one_apart() -> None:
     assert level_cost(-1, [1]) is None
     assert level_cost(None, [1]) is None
     assert level_cost(1, []) is None
+
+
+def test_level_cost_leaves_a_hop_after_a_relay_at_0_hops_used_undecided() -> None:
+    # The relay kept the hop count as first relay, so firmware made X spend one.
+    assert level_cost(1, [0]) is None
+    assert level_cost(0, [0]) is None

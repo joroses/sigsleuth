@@ -49,7 +49,9 @@ import {
   nodeLabel,
   nodeMarkerLabel,
   radioName,
+  cellSize,
 } from "./nodeDisplay";
+import { type RoundingCell, positionCell } from "./roundingCell";
 import { spacedPositions } from "./nodePositionHistory";
 import type { NodeRadios } from "./radios";
 import { useLinkedSetting } from "./remember";
@@ -61,10 +63,17 @@ import { MAP_FAILURE_MESSAGES, useBasemapMap } from "./useBasemapMap";
 const HISTORY_SOURCE = "position-history";
 const TRACK_LAYER = "position-track";
 const POINTS_LAYER = "position-points";
+const CELL_SOURCE = "rounding-cell";
 // Position packets listed in a clicked spot's popup, newest first.
 const POPUP_PACKETS = 5;
 
-type Current = { latitude: number; longitude: number; estimated: boolean };
+type Current = {
+  latitude: number;
+  longitude: number;
+  estimated: boolean;
+  // Where a rounded reported position can be.
+  cell: RoundingCell | null;
+};
 
 // Reported position history, contacts and survey coverage, with a pin at
 // the current reported or estimated position. A shared node number's radios
@@ -143,9 +152,13 @@ export function NodePositionMinimap({
     radios !== null
       ? null
       : node.position !== null
-        ? { ...node.position, estimated: false }
+        ? {
+            ...node.position,
+            estimated: false,
+            cell: positionCell(node.position),
+          }
         : node.estimate !== null
-          ? { ...node.estimate, estimated: true }
+          ? { ...node.estimate, estimated: true, cell: null }
           : null;
   const contacts = useMemo(
     () =>
@@ -201,6 +214,7 @@ export function NodePositionMinimap({
           buildCoverageLines(null, [], new Map()),
           TRACK_LAYER,
         );
+        if (current?.cell != null) addCellLayers(created, current.cell);
       },
       setup: (created) => {
         if (current !== null) {
@@ -273,7 +287,14 @@ export function NodePositionMinimap({
         updateCoverageArea();
       },
     },
-    [hasMap, items, places, current?.latitude, current?.longitude],
+    [
+      hasMap,
+      items,
+      places,
+      current?.latitude,
+      current?.longitude,
+      current?.cell?.bits,
+    ],
   );
 
   useEffect(() => {
@@ -421,6 +442,12 @@ export function NodePositionMinimap({
               ? historyNote(history, error, items.length)
               : `${places.length.toLocaleString()} of ${radios.items.length.toLocaleString()} radios placed, each at its latest sorted position`}
           </span>
+          {current?.cell == null ? null : (
+            <span className="data-line">
+              Precision {current.cell.bits} bits: somewhere in the outlined{" "}
+              {cellSize(current.cell)} area.
+            </span>
+          )}
           {showContacts ? (
             <ContactsNote
               state={contactsState}
@@ -650,6 +677,10 @@ function historyBounds(
   const bounds = new maplibregl.LngLatBounds();
   for (const item of items) bounds.extend([item.longitude, item.latitude]);
   if (current !== null) bounds.extend([current.longitude, current.latitude]);
+  if (current?.cell != null) {
+    bounds.extend([current.cell.west, current.cell.south]);
+    bounds.extend([current.cell.east, current.cell.north]);
+  }
   for (const place of places) bounds.extend([place.longitude, place.latitude]);
   return bounds;
 }
@@ -740,6 +771,50 @@ function addHistoryLayers(
       "circle-stroke-width": 1,
     },
   });
+}
+
+// A faint box where a rounded position can be.
+function addCellLayers(map: maplibregl.Map, cell: RoundingCell): void {
+  const { south, west, north, east } = cell;
+  map.addSource(CELL_SOURCE, {
+    type: "geojson",
+    data: {
+      type: "Polygon",
+      coordinates: [
+        [
+          [west, south],
+          [east, south],
+          [east, north],
+          [west, north],
+          [west, south],
+        ],
+      ],
+    },
+  });
+  const colour = "#3987e5";
+  map.addLayer(
+    {
+      id: "rounding-cell-fill",
+      type: "fill",
+      source: CELL_SOURCE,
+      paint: { "fill-color": colour, "fill-opacity": 0.08 },
+    },
+    TRACK_LAYER,
+  );
+  map.addLayer(
+    {
+      id: "rounding-cell-line",
+      type: "line",
+      source: CELL_SOURCE,
+      paint: {
+        "line-color": colour,
+        "line-width": 1.5,
+        "line-opacity": 0.7,
+        "line-dasharray": [3, 2],
+      },
+    },
+    TRACK_LAYER,
+  );
 }
 
 // The position packets under a click, newest first, each with its date

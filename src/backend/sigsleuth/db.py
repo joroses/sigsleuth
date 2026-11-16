@@ -28,7 +28,7 @@ DATABASE_BUSY_TIMEOUT_MS = 5_000
 # Between the batches of a long write (rederive, retention), so capture gets
 # the write lock: a waiting connection retries only every 100 ms or so.
 WRITE_PAUSE_SECONDS = 0.15
-FACTS_VERSION = 4
+FACTS_VERSION = 5
 # Each takes facts from its version to the next. Survey measurements are kept
 # across them: a phone cannot resend what it has deleted.
 _FACTS_UPGRADES = {
@@ -146,6 +146,15 @@ _FACTS_UPGRADES = {
     SELECT node_id, position_observed_at, latitude, longitude, altitude_meters, device_time,
            position_packet_row_id
     FROM node_current WHERE position_observed_at IS NOT NULL;
+    """,
+    4: """
+    ALTER TABLE node_position ADD COLUMN precision_bits INTEGER
+        CHECK (precision_bits BETWEEN 0 AND 32);
+    UPDATE node_position SET precision_bits = m.position_precision
+    FROM map_report AS m
+    WHERE node_position.packet_row_id IS NULL AND m.node_id = node_position.node_id
+      AND m.latitude = node_position.latitude AND m.longitude = node_position.longitude
+      AND m.position_precision <= 32;
     """,
 }
 DERIVED_VERSION = 60

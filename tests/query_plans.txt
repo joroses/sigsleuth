@@ -569,6 +569,7 @@ opt_out.is_opted_out
 nodes.node_overview
   SEARCH node_current USING PRIMARY KEY
   SEARCH map_report USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 nodes._location_source
@@ -783,7 +784,7 @@ links.zero_cost_hops
 map_nodes.map_nodes
   SCAN node_current
   SEARCH node_estimate USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 
@@ -792,7 +793,7 @@ opt_out.unlinkable_packets
 map_nodes.map_nodes
   SCAN node_current
   SEARCH node_estimate USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 opt_out.unlinkable_packets
   SEARCH packet USING PRIMARY KEY
 

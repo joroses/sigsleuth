@@ -219,7 +219,7 @@ def test_pages_show_the_reported_firmware_and_an_approximate_position(
     assert node["map_report"]["firmware_version"] == "2.7.15.567b8ea"
     assert node["map_report"]["modem_preset"] == "MEDIUM_FAST"
     assert node["position"]["packet_row_id"] is None
-    assert node["position"]["precision_km"] == 1.46
+    assert node["position"]["precision_bits"] == 14
     assert [(item["node_id"], item["firmware_version"]) for item in listed[:2]] == [
         (0x22222222, None),
         (NODE, "2.7.15.567b8ea"),

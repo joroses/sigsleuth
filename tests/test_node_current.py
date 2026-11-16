@@ -9,7 +9,7 @@ from meshtastic_fixtures import application_envelope, ingest
 from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
 from sigsleuth.derive import rederive
 from sigsleuth.links import map_links
-from sigsleuth.nodes import node_channels, node_position_history
+from sigsleuth.nodes import node_channels, node_overview, node_position_history
 
 TOPIC = "msh/EU_868/2/e/LongFast/!aaaaaaaa"
 
@@ -282,8 +282,13 @@ def position_at(
     sender: int = SENDER,
     longitude: float = 2.0,
     channel: str = "LongFast",
+    precision_bits: int = 0,
 ) -> None:
-    position = mesh_pb2.Position(latitude_i=int(latitude * 1e7), longitude_i=int(longitude * 1e7))
+    position = mesh_pb2.Position(
+        latitude_i=int(latitude * 1e7),
+        longitude_i=int(longitude * 1e7),
+        precision_bits=precision_bits,
+    )
     ingest(
         path,
         application_envelope(
@@ -345,6 +350,30 @@ def test_only_positions_sent_on_a_radio_channel_place_a_node(tmp_path: Path) -> 
     with closing(open_current_database(path)) as connection:
         history = node_position_history(connection, SENDER)
     assert [position.latitude for position in history.items] == [52.0]
+
+
+def test_a_positions_rounding_reaches_the_page_and_a_rebuild_fills_it_in(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    migrate_database(path)
+    position_at(path, 0, 52.0, sender=GATEWAY, precision_bits=32)
+    position_at(path, 0, 52.1, precision_bits=13)
+
+    def bits(node_id: int) -> int | None:
+        with closing(open_current_database(path)) as connection:
+            node = node_overview(connection, node_id).node
+        assert node is not None and node.position is not None
+        return node.position.precision_bits
+
+    assert (bits(SENDER), bits(GATEWAY)) == (13, None)
+    # Rows saved before positions kept their rounding.
+    with closing(open_current_database(path)) as connection:
+        connection.execute("UPDATE node_position SET precision_bits = NULL")
+        connection.commit()
+        assert bits(SENDER) is None
+        connection.execute("UPDATE derived_state SET rebuilt = 0")
+        connection.commit()
+        assert rederive(connection, lambda: False)
+    assert bits(SENDER) == 13
 
 
 def test_a_links_km_follows_the_latest_observation_of_its_hour(tmp_path: Path) -> None:

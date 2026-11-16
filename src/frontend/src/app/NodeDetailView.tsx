@@ -21,8 +21,9 @@ import {
   nodeTraceroutesHref,
   nodeMarkerLabel,
   estimateText,
-  mapReportPositionText,
+  cellSize,
 } from "./nodeDisplay";
+import { positionCell } from "./roundingCell";
 import { now as clockNow } from "./clock";
 import { NodeActivityCharts } from "./NodeActivityCharts";
 import type { SeenWindow } from "./mapTimeFilter";
@@ -513,47 +514,36 @@ function PositionItems({ node, now }: { node: NodeDetail; now: number }) {
     return <DataItem label="Coordinates" value="Not reported" />;
   }
   const { position } = node;
-  if (position.from_map_report) {
-    return (
-      <>
-        <DataItem
-          label="Coordinates"
-          value={
-            <span className="mono">
-              ≈ {position.latitude.toFixed(3)}, {position.longitude.toFixed(3)}
-            </span>
-          }
-        />
-        <DataItem
-          label="Source"
-          value={mapReportPositionText(position.precision_km)}
-        />
-        <DataItem
-          label="Updated"
-          value={<Age now={now} at={position.observed_at} />}
-        />
-      </>
-    );
-  }
+  const cell = positionCell(position);
+  // A map report's position is often coarse, even when it says it is exact.
+  const rough = position.from_map_report || cell !== null;
+  const source = position.from_map_report
+    ? "From its map report"
+    : node.location_source === null
+      ? null
+      : (LOCATION_SOURCES[node.location_source] ?? node.location_source);
   return (
     <>
       <DataItem
         label="Coordinates"
         value={
           <span className="mono">
-            {position.latitude.toFixed(5)}, {position.longitude.toFixed(5)}
+            {rough
+              ? `≈ ${position.latitude.toFixed(3)}, ${position.longitude.toFixed(3)}`
+              : `${position.latitude.toFixed(5)}, ${position.longitude.toFixed(5)}`}
           </span>
         }
       />
-      {position.altitude_meters == null ? null : (
-        <DataItem label="Altitude" value={`${position.altitude_meters} m`} />
-      )}
-      {node.location_source === null ? null : (
+      {cell === null ? null : (
         <DataItem
-          label="Source"
-          value={LOCATION_SOURCES[node.location_source] ?? node.location_source}
+          label="Precision"
+          value={`${cell.bits} bits, ${cellSize(cell)}`}
         />
       )}
+      {position.from_map_report || position.altitude_meters == null ? null : (
+        <DataItem label="Altitude" value={`${position.altitude_meters} m`} />
+      )}
+      {source === null ? null : <DataItem label="Source" value={source} />}
       <DataItem
         label="Updated"
         value={

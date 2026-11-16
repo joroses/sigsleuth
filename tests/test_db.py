@@ -18,6 +18,7 @@ from sigsleuth.db import (
     rederive_pending,
 )
 from sigsleuth.derive import rederive
+from sigsleuth.nodes import CURRENT_PRECISION_SQL
 from sigsleuth.opt_out import opted_out
 
 
@@ -178,14 +179,15 @@ def link_km(connection: sqlite3.Connection) -> dict[tuple[object, ...], float | 
 
 
 def reported(connection: sqlite3.Connection) -> set[tuple[object, ...]]:
-    """Each node's names, position and last sent time."""
+    """Each node's names, position and its rounding, and last sent time."""
     return {
         tuple(row)
         for row in connection.execute(
-            """
+            f"""
             SELECT node_id, long_name, short_name, hardware_model, role, last_sent_at,
-                   latitude, longitude, altitude_meters, position_observed_at
-            FROM node_current
+                   latitude, longitude, altitude_meters, position_observed_at,
+                   {CURRENT_PRECISION_SQL}
+            FROM node_current AS n
             """
         )
     }

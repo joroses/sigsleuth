@@ -763,7 +763,7 @@ def place(
             (node_id, at, at, f"N{node_id % 16}", at, latitude, longitude),
         )
         connection.execute(
-            "INSERT OR REPLACE INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1)",
+            "INSERT OR REPLACE INTO node_position VALUES (?, ?, ?, ?, NULL, NULL, 1, NULL)",
             (node_id, at, latitude, longitude),
         )
 

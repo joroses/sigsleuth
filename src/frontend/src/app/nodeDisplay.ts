@@ -1,4 +1,5 @@
 import type { LinkKind } from "./api";
+import type { RoundingCell } from "./roundingCell";
 
 export function formatNodeId(value: number): string {
   return `!${value.toString(16).padStart(8, "0")}`;
@@ -360,7 +361,7 @@ export function estimateText(estimate: PositionEstimate): string {
  */
 export function positionSource(node: {
   estimate: PositionEstimate | null;
-  position: { from_map_report: boolean; precision_km: number | null } | null;
+  position: { from_map_report: boolean } | null;
 }): { text: string; hover: string | null } {
   const { estimate, position } = node;
   if (estimate !== null)
@@ -368,25 +369,15 @@ export function positionSource(node: {
       text: `Estimated, ${estimate.neighbours} ${estimate.neighbours === 1 ? "neighbour" : "neighbours"}`,
       hover: `${estimate.from_traceroute ? "Rough, from" : "From"} ${estimateSource(estimate)}`,
     };
-  if (position?.from_map_report !== true)
-    return { text: "Reported", hover: null };
-  if (position.precision_km === null)
-    return { text: "Map report", hover: null };
-  const km = formatKm(position.precision_km);
   return {
-    text: `Map report, ~${km} km`,
-    hover: `Rounded on purpose: within about ${km} km`,
+    text: position?.from_map_report === true ? "Map report" : "Reported",
+    hover: null,
   };
 }
 
-/**
- * Where a position from a node's map report comes from and how rough it is,
- * such as "From its map report, rounded on purpose: within about 1.5 km."
- * precisionKm is null when the report gave it exactly.
- */
-export function mapReportPositionText(precisionKm: number | null): string {
-  if (precisionKm === null) return "From its map report.";
-  return `From its map report, rounded on purpose: within about ${formatKm(precisionKm)} km.`;
+/** A rounding cell's size, north–south by east–west, such as "5.8 × 3.6 km". */
+export function cellSize(cell: RoundingCell): string {
+  return `${formatKm(cell.northSouthKm)} × ${formatKm(cell.eastWestKm)} km`;
 }
 
 /** A reported firmware string without its build hash: "2.7.15.567b8ea" -> "2.7.15". */

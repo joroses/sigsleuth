@@ -92,15 +92,16 @@ def _save_position(connection: sqlite3.Connection, row: sqlite3.Row, position: P
     # owner keeps off the radio channel. Unknown is no channel name, so it counts.
     if preset_name(row["channel"]) is None and row["channel"] != "Unknown":
         return
-    # Of two at the same time, the later packet's wins.
+    # Of two at the same time, the later packet's wins. Saving the same packet
+    # again (a rebuild) fills in what older code did not keep.
     connection.execute(
         """
-        INSERT INTO node_position VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO node_position VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (node_id, at) DO UPDATE SET
             latitude = excluded.latitude, longitude = excluded.longitude,
             altitude_meters = excluded.altitude_meters, device_time = excluded.device_time,
-            packet_row_id = excluded.packet_row_id
-        WHERE excluded.packet_row_id > coalesce(packet_row_id, 0)
+            packet_row_id = excluded.packet_row_id, precision_bits = excluded.precision_bits
+        WHERE excluded.packet_row_id >= coalesce(packet_row_id, 0)
         """,
         (
             row["sender_node_id"],
@@ -110,6 +111,7 @@ def _save_position(connection: sqlite3.Connection, row: sqlite3.Row, position: P
             position.altitude_meters,
             position.device_time,
             row["packet_row_id"],
+            position.precision_bits,
         ),
     )
 
@@ -119,8 +121,8 @@ def save_map_report(connection: sqlite3.Connection, node_id: int) -> None:
     node has reported no position of its own."""
     report = connection.execute(
         """
-        SELECT received_at, latitude, longitude, altitude_meters FROM map_report
-        WHERE node_id = ?
+        SELECT received_at, latitude, longitude, altitude_meters, position_precision
+        FROM map_report WHERE node_id = ?
         """,
         (node_id,),
     ).fetchone()
@@ -128,8 +130,9 @@ def save_map_report(connection: sqlite3.Connection, node_id: int) -> None:
         return
     connection.execute(
         """
-        INSERT OR IGNORE INTO node_position (node_id, at, latitude, longitude, altitude_meters)
-        SELECT ?1, ?2, ?3, ?4, ?5
+        INSERT OR IGNORE INTO node_position
+            (node_id, at, latitude, longitude, altitude_meters, precision_bits)
+        SELECT ?1, ?2, ?3, ?4, ?5, ?6
         WHERE NOT EXISTS (
             SELECT 1 FROM node_position WHERE node_id = ?1 AND packet_row_id IS NOT NULL
         )
@@ -140,6 +143,7 @@ def save_map_report(connection: sqlite3.Connection, node_id: int) -> None:
             report["latitude"],
             report["longitude"],
             report["altitude_meters"],
+            report["position_precision"] if report["position_precision"] <= 32 else None,
         ),
     )
 

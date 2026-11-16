@@ -14,7 +14,7 @@ from sigsleuth.db import (
     to_epoch_ms,
 )
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.nodes import NodePosition, node_position, shown_link
+from sigsleuth.nodes import CURRENT_PRECISION_SQL, NodePosition, node_position, shown_link
 from sigsleuth.opt_out import is_opted_out, shown_sql, unlinkable_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
@@ -127,10 +127,9 @@ def map_nodes(
                n.position_observed_at, n.position_packet_row_id, n.device_time,
                n.latitude, n.longitude, n.altitude_meters, n.channel,
                e.latitude AS estimate_latitude, e.longitude AS estimate_longitude,
-               e.neighbours, e.spread_km, e.from_traceroute, m.position_precision
+               e.neighbours, e.spread_km, e.from_traceroute, {CURRENT_PRECISION_SQL}
         FROM node_current AS n
         LEFT JOIN node_estimate AS e USING (node_id)
-        LEFT JOIN map_report AS m USING (node_id)
         WHERE (({" AND ".join(placed)}) OR (n.latitude IS NULL AND e.node_id IS NOT NULL))
           {"".join(f" AND {condition}" for condition in filters)}
         ORDER BY n.last_seen_at DESC, n.node_id

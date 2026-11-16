@@ -62,7 +62,9 @@ class NodeInfo:
 class Position:
     """device_time is the sender's clock, in milliseconds since the Unix epoch.
     location_source says where the sender got the position, such as LOC_MANUAL
-    (typed in) or LOC_INTERNAL (its own GPS); None when unset."""
+    (typed in) or LOC_INTERNAL (its own GPS); None when unset. precision_bits
+    is how many top bits of each coordinate the sender kept, as sent: 32 or 0
+    (older firmware) for an exact position; None when over 32."""
 
     latitude: float | None
     longitude: float | None
@@ -71,6 +73,7 @@ class Position:
     is_valid: bool
     invalid_reason: str | None
     location_source: str | None = None
+    precision_bits: int | None = 0
 
 
 @dataclass(frozen=True)
@@ -630,7 +633,12 @@ def _read_position(payload: bytes) -> Position | None:
         location_source=None
         if position.location_source == mesh_pb2.Position.LOC_UNSET
         else mesh_pb2.Position.LocSource.Name(position.location_source),
+        precision_bits=_precision_bits(position.precision_bits),
     )
+
+
+def _precision_bits(value: int) -> int | None:
+    return int(value) if value <= 32 else None
 
 
 def invalid_position_reason(latitude: float | None, longitude: float | None) -> str | None:

@@ -34,7 +34,7 @@ const node: MapNode = {
     altitude_meters: null,
     packet_row_id: 1,
     from_map_report: false,
-    precision_km: null,
+    precision_bits: null,
   },
 };
 const gateway = { ...node, last_gateway_at: "2026-09-25T12:00:00Z" };

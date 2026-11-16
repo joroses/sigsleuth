@@ -1413,7 +1413,7 @@ node:
     altitude_meters: 310
     packet_row_id: 28933
     from_map_report: false
-    precision_km: null
+    precision_bits: 15
   location_source: "LOC_MANUAL"
   estimate: null
   firmware:
@@ -2002,7 +2002,7 @@ items: 479 items
       altitude_meters: 185
       packet_row_id: 31079
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 2658512488
     long_name: "Node ae68"
@@ -2024,7 +2024,7 @@ items: 479 items
       altitude_meters: 243
       packet_row_id: 30632
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 1770149960
     long_name: "Node 5848"
@@ -2046,7 +2046,7 @@ items: 479 items
       altitude_meters: null
       packet_row_id: 28424
       from_map_report: false
-      precision_km: null
+      precision_bits: 13
     estimate: null
 truncated: false
 
@@ -2073,7 +2073,7 @@ items: 426 items
       altitude_meters: 185
       packet_row_id: 31079
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 2658512488
     long_name: "Node ae68"
@@ -2095,7 +2095,7 @@ items: 426 items
       altitude_meters: 243
       packet_row_id: 30632
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 1770149960
     long_name: "Node 5848"
@@ -2117,7 +2117,7 @@ items: 426 items
       altitude_meters: null
       packet_row_id: 28424
       from_map_report: false
-      precision_km: null
+      precision_bits: 13
     estimate: null
 truncated: false
 
@@ -2144,7 +2144,7 @@ items: 479 items
       altitude_meters: 185
       packet_row_id: 31079
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 2658512488
     long_name: "Node ae68"
@@ -2166,7 +2166,7 @@ items: 479 items
       altitude_meters: 243
       packet_row_id: 30632
       from_map_report: false
-      precision_km: null
+      precision_bits: 15
     estimate: null
   - node_id: 1770149960
     long_name: "Node 5848"
@@ -2188,7 +2188,7 @@ items: 479 items
       altitude_meters: null
       packet_row_id: 28424
       from_map_report: false
-      precision_km: null
+      precision_bits: 13
     estimate: null
 truncated: false
 
@@ -5129,7 +5129,7 @@ revision: null
 api_started_at: "2026-10-11T16:25:30.812000Z"
 api_uptime_seconds: 0
 database:
-  facts_version: 4
+  facts_version: 5
   row_counts:
     reception: 106266
     packet: 31095

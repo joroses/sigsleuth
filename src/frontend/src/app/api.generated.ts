@@ -2085,7 +2085,7 @@ export interface components {
       altitude_meters: number | null;
       packet_row_id: number | null;
       from_map_report: boolean;
-      precision_km: number | null;
+      precision_bits: number | null;
     };
     /**
      * NodePositionHistory

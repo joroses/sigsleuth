@@ -188,7 +188,9 @@ CREATE TABLE node_reported (
 -- (reported.py), or from its map report (packet_row_id NULL) while it has no
 -- position of its own: map reports are often coarse or wrong. Retention keeps
 -- the rows from its age limit on and each node's newest before it, so where a
--- node was is known for all kept history.
+-- node was is known for all kept history. precision_bits is how many top bits
+-- of each coordinate the node kept, as sent (32, or 0 from older firmware, for
+-- an exact position); NULL when not known, for rows saved before it was kept.
 CREATE TABLE node_position (
     node_id INTEGER NOT NULL CHECK (node_id BETWEEN 1 AND 4294967295),
     at INTEGER NOT NULL,
@@ -197,5 +199,6 @@ CREATE TABLE node_position (
     altitude_meters INTEGER,
     device_time INTEGER,
     packet_row_id INTEGER,
+    precision_bits INTEGER CHECK (precision_bits BETWEEN 0 AND 32),
     PRIMARY KEY (node_id, at)
 ) STRICT, WITHOUT ROWID;

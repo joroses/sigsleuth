@@ -77,14 +77,13 @@ class NodePosition:
     # pages do not show the packet.
     packet_row_id: int | None
     from_map_report: bool
-    # How far from a map report's position the node may be, about; None when
-    # the position is exact or from the node's own packet.
-    precision_km: float | None
+    # How many top bits of each coordinate the node kept: it reported the
+    # middle of that grid cell. None when exact, or not known for old rows.
+    precision_bits: int | None
 
 
 def node_position(row: sqlite3.Row, unshown: set[int]) -> NodePosition:
-    """The position part of a node_current row that has a valid position. The
-    row also holds the node's map report's position_precision, NULL without one.
+    """The position part of a node_current row that has a valid position.
     unshown are packets not to link (opt_out.unlinkable_packets)."""
     packet = row["position_packet_row_id"]
     return NodePosition(
@@ -95,8 +94,15 @@ def node_position(row: sqlite3.Row, unshown: set[int]) -> NodePosition:
         altitude_meters=None if row["altitude_meters"] is None else int(row["altitude_meters"]),
         packet_row_id=None if packet is None or packet in unshown else int(packet),
         from_map_report=packet is None,
-        precision_km=None if packet is not None else precision_km(row["position_precision"]),
+        precision_bits=rounded_bits(row["precision_bits"]),
     )
+
+
+# The current position's rounding, for a query on node_current AS n.
+CURRENT_PRECISION_SQL = """
+    (SELECT p.precision_bits FROM node_position AS p
+     WHERE p.node_id = n.node_id AND p.at = n.position_observed_at) AS precision_bits
+"""
 
 
 def shown_link(packet_row_id: int | None, unshown: set[int]) -> int | None:
@@ -104,13 +110,9 @@ def shown_link(packet_row_id: int | None, unshown: set[int]) -> int | None:
     return None if packet_row_id in unshown else packet_row_id
 
 
-def precision_km(bits: int | None) -> float | None:
-    """How far from a position rounded to `bits` bits the true spot may be, at
-    most about: half the side of the rounding square, 1.5 km for the default
-    14 bits. None when it is not rounded (32 bits, or 0 from older firmware)."""
-    if bits is None or not 0 < bits < 32:
-        return None
-    return round(2.0 ** (32 - bits) * 1e-7 * 111.32 / 2, 2)
+def rounded_bits(bits: int | None) -> int | None:
+    """bits when they round the position: None for 32, 0 (older firmware) or not known."""
+    return bits if bits is not None and 0 < bits < 32 else None
 
 
 @dataclass(frozen=True)
@@ -192,12 +194,12 @@ def node_overview(connection: sqlite3.Connection, node_id: int) -> NodeOverview:
     if is_opted_out(connection, node_id):
         return NodeOverview(None, ())
     row = connection.execute(
-        """
-        SELECT node_current.*,
+        f"""
+        SELECT n.*,
                m.received_at AS map_report_at, m.firmware_version, m.region, m.modem_preset,
                m.channel AS primary_channel, m.has_default_channel, m.nodes_online_local,
-               m.position_precision
-        FROM node_current LEFT JOIN map_report AS m USING (node_id)
+               {CURRENT_PRECISION_SQL}
+        FROM node_current AS n LEFT JOIN map_report AS m USING (node_id)
         WHERE node_id = ?
         """,
         (node_id,),

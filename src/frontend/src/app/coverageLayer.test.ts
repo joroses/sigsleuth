@@ -6,20 +6,20 @@ import {
   cellBounds,
   cellsInView,
   coverageNodesUrl,
+  heardHowText,
   nextCoverageArea,
   viewSpreadingFactor,
 } from "./coverageLayer";
+import { relayNodeTitle } from "./nodeDisplay";
 
 const heard = (
   node_id: number,
   how: CoverageHeardNode["how"],
-  candidates = 1,
 ): CoverageHeardNode => ({
   node_id,
   long_name: null,
   short_name: null,
   how,
-  candidates,
   measurements: 1,
   guessed: 0,
   average_snr: 10,
@@ -137,7 +137,7 @@ describe("coverage cells", () => {
     );
     const lines = buildCoverageLines(
       [1.5, 41.9],
-      [heard(1, "survey_link", 3), heard(2, "reported"), heard(9, "direct")],
+      [heard(1, "survey_link"), heard(2, "reported"), heard(9, "direct")],
       drawn,
     );
     expect(
@@ -149,5 +149,27 @@ describe("coverage cells", () => {
       [1, true],
       [2, false],
     ]);
+  });
+});
+
+describe("relay byte tooltips", () => {
+  it("give a node ending in 00 the ff byte it sends", () => {
+    expect(heardHowText(heard(0x0b0b0b00, "survey_link"))).toBe(
+      "Heard directly nearby: the only node ending in ff a survey heard",
+    );
+    expect(
+      relayNodeTitle({
+        node_id: 0x0b0b0b00,
+        candidates: 1,
+        how: "heard_directly",
+      }),
+    ).toBe("Heard directly: the only node ending in ff this gateway hears");
+    expect(
+      relayNodeTitle({
+        node_id: 0x0b0b0b1a,
+        candidates: 1,
+        how: "heard_directly",
+      }),
+    ).toBe("Heard directly: the only node ending in 1a this gateway hears");
   });
 });

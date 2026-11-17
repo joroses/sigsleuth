@@ -1,7 +1,7 @@
 import type {
+  ContactLine,
   ContactLink,
   LinkKind,
-  LinkRow,
   NodeContact,
   ZeroCostHop,
 } from "./api";
@@ -12,16 +12,16 @@ import {
   linkHalves,
   zeroCostArrows,
 } from "./mapLinkLayers";
-import { SEEN_WINDOWS, type SeenWindow } from "./mapTimeFilter";
+import { SEEN_WINDOWS, type SeenWindow, windowStartMs } from "./mapTimeFilter";
 import { formatKm, formatWindow } from "./nodeDisplay";
 
 /** The window a node page's links and contacts open on. */
 export const CONTACT_WINDOW: SeenWindow = "7d";
 
-/** The window's start, `now` in ms; null for all history. */
+/** The window's start (windowStartMs), `now` in ms; null for all history. */
 export function windowSince(window: SeenWindow, now: number): Date | null {
   const hours = SEEN_WINDOWS.find((option) => option.id === window)?.hours;
-  return hours == null ? null : new Date(now - hours * 60 * 60 * 1000);
+  return hours == null ? null : new Date(windowStartMs(hours, now));
 }
 
 export function windowText(window: SeenWindow): string {
@@ -61,7 +61,11 @@ export interface ContactLayers {
   zeroCost: ZeroCostArrows;
   /** Contacts with no position, not drawn. */
   unplaced: number;
-  moved: number;
+  /**
+   * Contacts with no line the Map would draw and no gateway reception since
+   * both ends' last move, not drawn.
+   */
+  hidden: number;
 }
 
 /**
@@ -117,52 +121,44 @@ export function zeroCostTitle({ out, into }: ZeroCostWays): string {
   return `${times(hop)} traceroutes in ${formatWindow(hop.hours)}`;
 }
 
-/** Placed contacts of the shown groups, with lines heard since both ends'
- * last move. Markers need a line or a gateway reception since both moves.
- * Arrowheads follow the visible traceroute lines.
+/** Placed contacts of the shown groups, with the lines the Map would draw
+ * (the contacts list's lines). Markers need a line or a gateway reception
+ * since both moves. Arrowheads follow the visible traceroute lines.
  */
 export function contactLayers(
   nodeId: number,
   contacts: NodeContact[],
-  links: LinkRow[],
+  mapLines: ContactLine[],
   zeroCost: ZeroCostHop[],
   origin: Place | null,
   shown: ContactGroups,
-  movedAt: string | null = null,
 ): ContactLayers {
   const marks: ContactMark[] = [];
   const places = new Map<number, Place>();
   let unplaced = 0;
-  let moved = 0;
-  const rows = new Map<number, LinkRow[]>();
-  for (const row of links) {
-    const link = fromNode(row, nodeId);
-    const group =
-      link.link_kind === "traceroute" ? shown.traceroutes : shown.gateways;
-    if (!group) continue;
+  let hidden = 0;
+  const inGroup = (kind: LinkKind) =>
+    kind === "traceroute" ? shown.traceroutes : shown.gateways;
+  const rows = new Map<number, ContactLine[]>();
+  for (const line of mapLines) {
+    const link = fromNode(line, nodeId);
+    if (!inGroup(link.link_kind)) continue;
     const found = rows.get(link.node_b) ?? [];
     found.push(link);
     rows.set(link.node_b, found);
   }
-  const trusted: LinkRow[] = [];
+  const drawn: ContactLine[] = [];
   for (const contact of contacts) {
-    const candidates = rows.get(contact.node_id) ?? [];
-    const kept = candidates.filter(
-      (link) =>
-        (movedAt === null ||
-          Date.parse(link.last_seen_at) >= Date.parse(movedAt)) &&
-        (contact.moved_at === null ||
-          Date.parse(link.last_seen_at) >= Date.parse(contact.moved_at)),
-    );
-    trusted.push(...kept);
+    const kept = rows.get(contact.node_id) ?? [];
+    drawn.push(...kept);
     const radio = kept.some((link) => link.link_kind !== "traceroute");
     const gateway = shown.gateways && contact.heard_packets > 0;
     if (kept.length === 0 && !gateway) {
       if (
-        candidates.length > 0 ||
+        contact.links.some((link) => inGroup(link.kind)) ||
         (shown.gateways && contact.heard_before_move)
       )
-        moved += 1;
+        hidden += 1;
       continue;
     }
     const place = contact.node;
@@ -197,10 +193,10 @@ export function contactLayers(
     features: [],
   });
   const lines = { traceroute: empty(), direct: empty(), neighbor: empty() };
-  const traceroutes: LinkRow[] = [];
+  const traceroutes: ContactLine[] = [];
   if (origin !== null) {
     places.set(nodeId, origin);
-    for (const link of trusted) {
+    for (const link of drawn) {
       const place = places.get(link.node_b);
       if (place === undefined) continue;
       const halves = linkHalves(
@@ -218,7 +214,7 @@ export function contactLayers(
     lines,
     zeroCost: zeroCostArrows(traceroutes, zeroCost, places),
     unplaced,
-    moved,
+    hidden,
   };
 }
 

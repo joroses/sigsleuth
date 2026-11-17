@@ -54,6 +54,20 @@ def test_reads_header_facts_and_treats_unavailable_measurements_as_missing() -> 
     ) == (None, None, None, None, None)
 
 
+def test_a_zero_snr_heard_with_an_rssi_is_a_reading() -> None:
+    def signal(rx_snr: float, rx_rssi: int) -> tuple[float | None, int | None]:
+        parsed = parse_delivery(
+            "msh/EU_868/2/e/LongFast/!aaaaaaaa",
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP, b"hello", rx_snr=rx_snr, rx_rssi=rx_rssi
+            ),
+        )
+        return parsed.rx_snr, parsed.rx_rssi
+
+    assert signal(0.0, -102) == (0.0, -102)
+    assert signal(0.0, 0) == (None, None)
+
+
 def test_a_zero_hop_start_is_known_only_on_a_packet_sent_with_no_hops() -> None:
     def hops(sender: int, hop_limit: int, relay_node: int) -> tuple[int | None, int | None]:
         parsed = parse_delivery(
@@ -76,6 +90,22 @@ def test_a_zero_hop_start_is_known_only_on_a_packet_sent_with_no_hops() -> None:
     assert hops(0x0C0C0C42, 0, 0x11) == (None, None)
     assert hops(0x0C0C0C42, 0, 0) == (None, None)
     assert hops(0x0C0C0C42, 3, 0x42) == (None, None)
+
+
+def test_more_hops_left_than_at_the_start_is_unknown() -> None:
+    parsed = parse_delivery(
+        "msh/EU_868/2/e/LongFast/!aaaaaaaa",
+        application_envelope(
+            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+            b"hello",
+            sender=0x0C0C0C42,
+            hop_start=1,
+            hop_limit=3,
+            relay_node=0x11,
+        ),
+    )
+
+    assert (parsed.hop_start, parsed.hop_limit) == (None, None)
 
 
 def test_keeps_gateway_and_header_facts_of_an_ungroupable_packet() -> None:

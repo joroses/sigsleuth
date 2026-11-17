@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from sigsleuth.coverage import (
+    SHOWN_COLUMNS,
     SURVEY_LINK_KM,
     SURVEY_LINK_TIERS_MS,
     TOO_STRONG_DB,
@@ -27,10 +28,12 @@ from sigsleuth.coverage import (
     HeardHow,
     MeasurementScore,
     SavedHow,
+    alive_since,
     heard_tier,
     is_direct,
     link_evidence,
     mqtt_reports,
+    muted_nodes,
     relay_evidence,
     score_measurement,
     shown_packet,
@@ -110,8 +113,9 @@ class SurveyCheck:
     """One measurement and its decisions. upload_node/upload_how are as
     saved; link is its survey link, link_nodes how many nodes survey
     evidence leaves it now (one makes a link). shown_node/shown_how are
-    what the map shows; changed: today names another node than upload, a
-    saved nearest guess reading as none."""
+    what the map shows (coverage.SHOWN_COLUMNS). counted is whether the map
+    still counts the measurement at all. changed: today names another node
+    than upload, a saved nearest guess reading as none."""
 
     measurement_id: int
     heard_at: datetime
@@ -129,6 +133,7 @@ class SurveyCheck:
     today: SurveyToday
     shown_node: RelayCheckNode | None
     shown_how: HeardHow
+    counted: bool
     changed: bool
 
 
@@ -144,23 +149,29 @@ class SurveyCheckList:
     next_before_id: int | None
 
 
-_ROWS = """
+_ROWS = f"""
     SELECT m.id, m.heard_at, m.latitude, m.longitude, m.sender_node_id, m.packet_id,
            m.rx_snr, m.rx_rssi, m.hop_start, m.hop_limit, m.relay_byte,
            m.heard_node_id, m.heard_how,
            s.receiver_node_id, s.receiver_name, s.spreading_factor, s.bandwidth_khz,
-           s.frequency_mhz, l.node_id AS linked
-    FROM coverage_measurement AS m {index}
+           s.frequency_mhz, l.node_id AS linked, {SHOWN_COLUMNS}
+    FROM coverage_measurement AS m {{index}}
     JOIN coverage_session AS s ON s.id = m.session_row_id
     LEFT JOIN coverage_relay AS l ON l.measurement_id = m.id
 """
 
 
 def survey_checks(
-    connection: sqlite3.Connection, *, before_id: int | None, count: int, direct: bool = False
+    connection: sqlite3.Connection,
+    *,
+    before_id: int | None,
+    count: int,
+    alive_days: int,
+    direct: bool = False,
 ) -> SurveyCheckList:
     """The checks of the `count` newest heard measurements before measurement
-    before_id (the newest when None)."""
+    before_id (the newest when None). alive_days as for the map
+    (coverage.alive_since)."""
     before = None
     if before_id is not None:
         before = connection.execute(
@@ -182,6 +193,7 @@ def survey_checks(
                 "before": before_id or 0,
                 "direct": direct,
                 "count": count,
+                "alive_since": alive_since(alive_days),
             },
         )
     ]
@@ -209,6 +221,7 @@ def _checks(
     per hour heard, with links around it, so a row scores as on its own."""
     hidden = opted_out(connection)
     receptions = survey_receptions(connection, rows)
+    muted = muted_nodes(connection, receptions)
     relayed = [row for row in rows if row["relay_byte"] and not is_direct(row)]
     candidates = {
         node
@@ -259,13 +272,6 @@ def _checks(
         today = todays[int(row["id"])]
         saved = None if row["heard_how"] == "nearest" else row["heard_node_id"]
         linked = row["linked"]
-        shown_how: HeardHow = (
-            "survey_link"
-            if linked is not None
-            else "unknown"
-            if row["heard_how"] == "nearest"
-            else row["heard_how"]
-        )
         sender = node(int(row["sender_node_id"]))
         surveyor = node(int(row["receiver_node_id"]), row["receiver_name"])
         assert sender is not None and surveyor is not None
@@ -286,7 +292,7 @@ def _checks(
                     link=node(linked),
                     link_nodes=0
                     if not row["relay_byte"] or row["heard_how"] == "direct"
-                    else len(survey_candidates(receptions, row)),
+                    else len(survey_candidates(receptions, row, muted=muted)),
                     today=SurveyToday(
                         node=node(today[0]),
                         how=today[1],
@@ -296,8 +302,9 @@ def _checks(
                         possible=0 if found is None else len(found.score.scores.terms),
                         ruled_out=0 if found is None else len(found.score.ruled_out),
                     ),
-                    shown_node=node(linked if linked is not None else saved),
-                    shown_how=shown_how,
+                    shown_node=node(row["shown_node"]),
+                    shown_how=row["shown_how"],
+                    counted=bool(row["counted"]),
                     changed=today[0] != saved,
                 ),
                 found,
@@ -347,7 +354,8 @@ class SurveyLinkNode:
     before). tier_hours is the first tier that finds it, None when none
     does. strongest_here_db is the survey node's own strongest direct
     signal of it within too_strong_km, which too_strong compares.
-    excluded: the measurement's sender or survey node, never its relay.
+    excluded: the measurement's sender or survey node, or a muted node
+    (CLIENT_MUTE), never its relay.
     candidate: survey evidence leaves it."""
 
     key: int
@@ -359,7 +367,7 @@ class SurveyLinkNode:
     tier_hours: float | None
     too_strong: bool
     strongest_here_db: float | None
-    excluded: Literal["sender", "surveyor"] | None
+    excluded: Literal["sender", "surveyor", "muted"] | None
     candidate: bool
 
 
@@ -402,10 +410,14 @@ class SurveyCheckDetail:
     link_rules: SurveyLinkRules
 
 
-def survey_check(connection: sqlite3.Connection, measurement_id: int) -> SurveyCheckDetail | None:
-    """One measurement's check, explained; None when there is none."""
+def survey_check(
+    connection: sqlite3.Connection, measurement_id: int, *, alive_days: int
+) -> SurveyCheckDetail | None:
+    """One measurement's check, explained; None when there is none.
+    alive_days as for the map (coverage.alive_since)."""
     found_row = connection.execute(
-        f"{_ROWS.format(index='')} WHERE m.id = ?", (measurement_id,)
+        f"{_ROWS.format(index='')} WHERE m.id = :id",
+        {"id": measurement_id, "alive_since": alive_since(alive_days)},
     ).fetchone()
     if found_row is None:
         return None
@@ -558,7 +570,8 @@ def _survey_link(
         return ()
     heard = survey_receptions(connection, [row])
     nodes = heard.nodes(row)
-    found = set(survey_candidates(heard, row))
+    muted = muted_nodes(connection, heard)
+    found = set(survey_candidates(heard, row, muted=muted))
     names = nodes_by_id(connection, set(nodes))
     at, reach = int(row["heard_at"]), SURVEY_LINK_TIERS_MS[-1]
     position = (row["latitude"], row["longitude"])
@@ -593,6 +606,8 @@ def _survey_link(
                 if node == int(row["sender_node_id"])
                 else "surveyor"
                 if node == surveyor
+                else "muted"
+                if node in muted
                 else None,
                 candidate=node in found,
             )

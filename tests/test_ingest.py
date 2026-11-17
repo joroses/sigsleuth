@@ -342,12 +342,12 @@ def test_a_direct_reception_counts_once_from_the_sender_to_the_gateway(
     # MQTT copies of the same report add nothing.
     text_reception(connection, "!aaaaaaaa", first_seen + 500, rx_snr=6.5, rx_rssi=-100, **DIRECT)
     text_reception(connection, "!aaaaaaaa", first_seen + 900, rx_snr=6.5, rx_rssi=-100, **DIRECT)
-    # A second gateway without an SNR still counts, from the packet's hour.
+    # A second gateway at 0 dB counts, its SNR too, from the packet's hour.
     text_reception(connection, "!bbbbbbbb", first_seen + 2_000, rx_rssi=-120, **DIRECT)
 
     assert link_hours(connection, "direct") == [
         (HOUR_START, SENDER, 0xAAAAAAAA, 1, 1, 6.5, first_seen, "LongFast"),
-        (HOUR_START, SENDER, 0xBBBBBBBB, 1, 0, 0.0, first_seen, "LongFast"),
+        (HOUR_START, SENDER, 0xBBBBBBBB, 1, 1, 0.0, first_seen, "LongFast"),
     ]
     assert link_hours(connection) == []
     assert [

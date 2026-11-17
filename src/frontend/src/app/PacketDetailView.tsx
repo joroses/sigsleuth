@@ -356,10 +356,6 @@ function PacketDetailContent({
             }}
             groups={split?.matching ?? groups}
             sharedForward={sharedForward}
-            sender={{
-              nodeId: packet.sender_node_id,
-              estimated: detail.sender_estimated,
-            }}
             others={
               split === null
                 ? null
@@ -486,7 +482,6 @@ function ReceptionTable({
   groups,
   others,
   sharedForward,
-  sender,
   hop,
   earliest,
   nodeNames,
@@ -509,7 +504,6 @@ function ReceptionTable({
   /** On a reply, the route to the target shown above the table; rows show
    * theirs only when it differs. */
   sharedForward: RoutePath | null;
-  sender: ReportSender;
   /** The hop to mark in each route. */
   hop: DirectedHop | null;
   /** When the first report arrived, including hidden ones, in milliseconds. */
@@ -602,7 +596,6 @@ function ReceptionTable({
               reception={row.reception}
               alsoReported={row.alsoReported}
               sharedForward={sharedForward}
-              sender={sender}
               earliest={earliest}
               nodeNames={nodeNames}
               hovered={row.reception.reception_id === hovered}
@@ -725,16 +718,8 @@ function rowProps(receptionId: number, hovered: boolean, pinned: boolean) {
 }
 
 // How far the gateway was from the sender.
-function ReportKm({
-  reception,
-  sender,
-}: {
-  reception: PacketReception;
-  sender: ReportSender;
-}) {
-  if (reception.km === null) return "—";
-  const rough = sender.estimated || reception.gateway_estimated;
-  return `${rough ? "~" : ""}${formatKm(reception.km)}`;
+function ReportKm({ reception }: { reception: PacketReception }) {
+  return reception.km === null ? "—" : formatKm(reception.km);
 }
 
 // How many hidden reports repeat this route or only its start.
@@ -807,19 +792,11 @@ function ReplyRows({
   );
 }
 
-/** The packet's sender, for each report's distance from it. */
-interface ReportSender {
-  nodeId: number;
-  /** Placed by an estimate, so distances from it are rough. */
-  estimated: boolean;
-}
-
 function ReceptionRows({
   action,
   reception,
   alsoReported,
   sharedForward,
-  sender,
   earliest,
   nodeNames,
   hovered,
@@ -831,7 +808,6 @@ function ReceptionRows({
   reception: PacketReception;
   alsoReported: number;
   sharedForward: RoutePath | null;
-  sender: ReportSender;
   earliest: number;
   nodeNames: ReadonlyMap<number, string | null>;
   hovered: boolean;
@@ -868,7 +844,7 @@ function ReceptionRows({
           </div>
         </td>
         <td className="number">
-          <ReportKm reception={reception} sender={sender} />
+          <ReportKm reception={reception} />
         </td>
         <td
           className="number"

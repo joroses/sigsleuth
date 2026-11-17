@@ -43,6 +43,20 @@ def test_a_relay_with_four_leaves_behind_it_carries_four() -> None:
     assert carries[10] == 4
 
 
+def test_a_node_that_only_ends_paths_carries_no_one() -> None:
+    # 10 is the stronger way to the leaves but never relays, so their paths
+    # take the weaker way through 20.
+    links: nx.Graph[int] = nx.Graph()
+    for a, b, margin in [
+        (1, 10, 20),
+        (1, 20, 5),
+        *((end, leaf, 20) for end in (10, 20) for leaf in (11, 12)),
+    ]:
+        links.add_edge(a, b, weight=1.0, margin=margin)
+
+    assert carriers(links, [1], ends={10}) == {20: 2}
+
+
 def test_nodes_that_carry_no_one_are_left_out() -> None:
     assert carriers(graph(*clique(1, 3)), [1]) == {}
 

@@ -13,9 +13,10 @@ a route is a gap, as a relay that could not add itself (opt_out.py).
 
 import json
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sigsleuth.db import (
     NodeSummary,
@@ -26,7 +27,6 @@ from sigsleuth.db import (
     to_epoch_ms,
 )
 from sigsleuth.derive import HOUR_MS
-from sigsleuth.link_channels import packet_radio_channel
 from sigsleuth.links import (
     LONG_LINK_KM,
     UNCONFIRMED_KM,
@@ -197,7 +197,8 @@ class TracerouteRun:
     """A traceroute request and its reply, matched by requester and the
     request's packet ID; either may be missing. A window lists a run when it
     holds the run's earliest saved packet, which gives first_received_at
-    and channel. Its spreading_factor comes from the run's radio channel.
+    and channel, the name it was uploaded under. radio_channel is the run's
+    (traceroute_run), Unknown when not known, and gives its spreading_factor.
     The reception counts are the gateways that reported each packet. distance_km
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
@@ -214,6 +215,7 @@ class TracerouteRun:
     target_node_id: int
     first_received_at: datetime
     channel: str
+    radio_channel: str
     spreading_factor: int | None
     request_packet_row_id: int | None
     request_receptions: int | None
@@ -328,15 +330,6 @@ def traceroute_runs(
         packets_by_run.setdefault(
             (packet["requester_node_id"], packet["request_packet_id"]), []
         ).append(packet)
-    hop_channels: dict[int, list[str]] = {}
-    for hop in connection.execute(
-        """
-        SELECT packet_row_id, radio_channel FROM traceroute_hop
-        WHERE packet_row_id IN (SELECT value FROM json_each(?))
-        """,
-        (json.dumps([p["packet_row_id"] for packets in packets_by_run.values() for p in packets]),),
-    ):
-        hop_channels.setdefault(hop["packet_row_id"], []).append(hop["radio_channel"])
     doubtful = doubtful_nodes(connection)
     shared = shared_nodes(connection)
     unlikely = unlikely_links(connection)
@@ -381,25 +374,14 @@ def traceroute_runs(
                 packets,
                 route,
                 _doubts(packets, doubtful, shared, unlikely),
-                channel_spreading_factor(
-                    packet_radio_channel(
-                        connection,
-                        packets[0],
-                        (
-                            channel
-                            for p in packets
-                            for channel in hop_channels.get(p["packet_row_id"], ())
-                        ),
-                        prefer_hops=True,
-                    )
-                ),
+                str(row["radio_channel"]),
                 tuple(
                     heard[node_id, heard_at[route.packet_row_id]]
                     for node_id in sorted(_run_nodes(packets, route))
                     if (node_id, heard_at[route.packet_row_id]) in heard
                 ),
             )
-            for packets, route in routes
+            for row, (packets, route) in zip(shown, routes, strict=True)
         ),
         nodes=tuple(nodes.values()),
         matched_node_ids=tuple(sorted(node_ids & (first or set()) | node_ids & (second or set()))),
@@ -421,6 +403,16 @@ _SUSPECTS = """(SELECT node_id FROM node_doubtful
 _UNLIKELY_PAIR = """EXISTS (SELECT 1 FROM long_link
     WHERE unlikely AND node_a = min({a}, {b}) AND node_b = max({a}, {b}))"""
 
+# The runs (traceroute_run AS r) the explorer may list and count. The
+# replies to a broadcast request each name their own target, so a run is
+# left out when any of its packets' targets opted out.
+_SHOWN_RUN = f"""{shown_sql("r.requester_node_id")}
+    AND NOT EXISTS (
+        SELECT 1 FROM traceroute_packet AS p
+        WHERE p.requester_node_id = r.requester_node_id
+          AND p.request_packet_id = r.request_packet_id
+          AND {opted_out_sql("p.target_node_id")})"""
+
 # The newest run first breaks every tie.
 _ORDER = {
     "newest": "first_packet_row_id DESC",
@@ -435,17 +427,9 @@ _ORDER = {
 def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> str:
     """SQL: traceroute_runs' page and one run more, with each run's shown
     route in traceroute_run's route_ columns and reached."""
-    # The replies to a broadcast request each name their own target, so a run
-    # is left out when any of its packets' targets opted out.
-    window = f"""r.first_packet_row_id >= :since
-        AND {shown_sql("r.requester_node_id")}
-        AND NOT EXISTS (
-            SELECT 1 FROM traceroute_packet AS p
-            WHERE p.requester_node_id = r.requester_node_id
-              AND p.request_packet_id = r.request_packet_id
-              AND {opted_out_sql("p.target_node_id")})
+    window = f"""r.first_packet_row_id >= :since AND {_SHOWN_RUN}
         AND (r.reached OR NOT :successful)
-        AND (:channel IS NULL OR r.channel = :channel)"""
+        AND (:channel IS NULL OR r.radio_channel = :channel)"""
     run = """(SELECT requester_node_id, request_packet_id
         FROM traceroute_packet WHERE packet_row_id = :packet)"""
     if single_run:
@@ -491,7 +475,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
         ),
         shown AS (
             SELECT r.requester_node_id, r.request_packet_id, r.target_node_id,
-                   r.first_packet_row_id, r.ends_packet_row_id, r.ends_km,
+                   r.first_packet_row_id, r.radio_channel, r.ends_packet_row_id, r.ends_km,
                    CASE WHEN {ends} THEN r.route_packet_row_id ELSE s.packet_row_id END
                        AS route_packet_row_id,
                    CASE WHEN {ends} THEN r.route_reception_id ELSE s.route_reception_id END
@@ -682,64 +666,80 @@ def busiest_traceroutes(
     connection: sqlite3.Connection, *, since: datetime | None
 ) -> BusiestTraceroutes:
     since_id = _since_id(connection, since)
-
-    def busiest(sql: str) -> tuple[NodeCount, ...]:
-        found = connection.execute(sql, {"since": since_id, "limit": BUSIEST_NODES})
-        return tuple(NodeCount(int(row[0]), int(row[1])) for row in found)
-
-    requesters = busiest(
+    # Every count is of the runs the list shows (_SHOWN_RUN), so none
+    # hints at a run left out for an opted-out end.
+    runs = connection.execute(
         f"""
-        SELECT requester_node_id, count(*) AS runs FROM traceroute_run
-        WHERE first_packet_row_id >= :since
-        GROUP BY requester_node_id HAVING {shown_sql("requester_node_id")}
-        ORDER BY runs DESC, requester_node_id LIMIT :limit
-        """
-    )
-    targets = busiest(
-        f"""
-        SELECT target_node_id, count(*) AS runs FROM traceroute_run
-        WHERE first_packet_row_id >= :since
-        GROUP BY target_node_id HAVING {shown_sql("target_node_id")}
-        ORDER BY runs DESC, target_node_id LIMIT :limit
-        """
-    )
-    # Reads every hop row in the window, one per reception's route; UNION
-    # drops a packet's repeats before counting, faster than count(DISTINCT).
-    # Past the 7-day request's budget, keep hourly relay totals in derive.
-    relays = busiest(
-        f"""
-        WITH h (packet_row_id, node_id) AS (
-            SELECT packet_row_id, from_node_id FROM traceroute_hop
-            WHERE packet_row_id >= :since
-            UNION
-            SELECT packet_row_id, to_node_id FROM traceroute_hop
-            WHERE packet_row_id >= :since
+        SELECT requester_node_id, target_node_id, radio_channel FROM traceroute_run AS r
+        WHERE first_packet_row_id >= ? AND {_SHOWN_RUN}
+        """,
+        (since_id,),
+    ).fetchall()
+    requesters, targets = (
+        tuple(
+            NodeCount(node, count)
+            for node, count in _busiest(Counter(int(run[end]) for run in runs))[:BUSIEST_NODES]
         )
-        SELECT node_id, count(*) AS packets
-        FROM h JOIN traceroute_packet AS tr USING (packet_row_id)
-        WHERE node_id NOT IN (tr.requester_node_id, tr.target_node_id)
-        GROUP BY node_id HAVING {shown_sql("node_id")}
-        ORDER BY packets DESC, node_id LIMIT :limit
-        """
+        for end in (0, 1)
     )
-    # CROSS JOIN keeps traceroute_packet first: otherwise SQLite walks every
-    # packet in the window looking for a traceroute.
+    relays = _busiest_relays(connection, since_id)
     channels = tuple(
-        ChannelCount(str(row[0]), int(row[1]))
-        for row in connection.execute(
-            """
-            SELECT t.channel, count(*) AS packets
-            FROM traceroute_packet AS tr CROSS JOIN packet AS t
-            WHERE t.id = tr.packet_row_id AND tr.packet_row_id >= ?
-            GROUP BY t.channel ORDER BY packets DESC, t.channel
-            """,
-            (since_id,),
-        )
+        ChannelCount(channel, count)
+        for channel, count in _busiest(Counter(str(run[2]) for run in runs))
     )
     node_ids = {item.node_id for items in (requesters, targets, relays) for item in items}
     return BusiestTraceroutes(
         requesters, targets, relays, channels, tuple(nodes_by_id(connection, node_ids).values())
     )
+
+
+def _busiest_relays(connection: sqlite3.Connection, since_id: int) -> tuple[NodeCount, ...]:
+    """The nodes on most shown runs' routes since since_id, by packet: the
+    window's counts less those of the few packets of runs _SHOWN_RUN leaves
+    out, which costs less than checking every hop row."""
+
+    def counts(packets: str, params: dict[str, Any]) -> Counter[int]:
+        # Reads every hop row of these packets, one per reception's route;
+        # UNION drops a packet's repeats before counting, faster than
+        # count(DISTINCT). Past the 7-day request's budget, keep hourly
+        # relay totals in derive.
+        found = connection.execute(
+            f"""
+            WITH h (packet_row_id, node_id) AS (
+                SELECT packet_row_id, from_node_id FROM traceroute_hop WHERE {packets}
+                UNION
+                SELECT packet_row_id, to_node_id FROM traceroute_hop WHERE {packets}
+            )
+            SELECT node_id, count(*) FROM h JOIN traceroute_packet AS tr USING (packet_row_id)
+            WHERE node_id NOT IN (tr.requester_node_id, tr.target_node_id)
+            GROUP BY node_id HAVING {shown_sql("node_id")}
+            """,
+            params,
+        )
+        return Counter({int(row[0]): int(row[1]) for row in found})
+
+    hidden = [
+        int(row[0])
+        for row in connection.execute(
+            f"""
+            SELECT tr.packet_row_id FROM traceroute_packet AS tr
+            JOIN traceroute_run AS r USING (requester_node_id, request_packet_id)
+            WHERE tr.packet_row_id >= ? AND NOT ({_SHOWN_RUN})
+            """,
+            (since_id,),
+        )
+    ]
+    found = counts("packet_row_id >= :since", {"since": since_id})
+    if hidden:
+        found -= counts(
+            "packet_row_id IN (SELECT value FROM json_each(:hidden))",
+            {"hidden": json.dumps(hidden)},
+        )
+    return tuple(NodeCount(node, count) for node, count in _busiest(found)[:BUSIEST_NODES])
+
+
+def _busiest(found: Counter[Any]) -> list[tuple[Any, int]]:
+    return sorted(found.items(), key=lambda item: (-item[1], item[0]))
 
 
 def _matching_nodes(connection: sqlite3.Connection, query: str) -> set[int]:
@@ -762,7 +762,7 @@ def _run(
     packets: list[sqlite3.Row],
     route: TracerouteRoute,
     doubts: tuple[Doubt, ...],
-    spreading_factor: int | None,
+    radio_channel: str,
     positions: tuple[HeardPosition, ...],
 ) -> TracerouteRun:
     first = packets[0]
@@ -773,7 +773,8 @@ def _run(
         target_node_id=int(first["target_node_id"]),
         first_received_at=from_epoch_ms(first["first_received_at"]),
         channel=str(first["channel"]),
-        spreading_factor=spreading_factor,
+        radio_channel=radio_channel,
+        spreading_factor=channel_spreading_factor(radio_channel),
         request_packet_row_id=None if request is None else int(request["packet_row_id"]),
         request_receptions=None if request is None else int(request["reception_count"]),
         reply_packet_row_id=None if reply is None else int(reply["packet_row_id"]),

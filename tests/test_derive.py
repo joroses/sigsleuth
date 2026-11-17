@@ -232,6 +232,7 @@ def test_rederive_rebuilds_what_capture_derived(path: Path, connection: sqlite3.
 def test_link_rssi_totals_skip_missing_measurements_and_rebuild(
     path: Path, connection: sqlite3.Connection, batch_size: int
 ) -> None:
+    # An RSSI of 0 is missing; an SNR of 0 heard with an RSSI is a reading.
     for packet_id, (snr, rssi) in enumerate(((6.0, -100), (8.0, 0), (0.0, -120)), start=1):
         payload = application_envelope(
             portnums_pb2.PortNum.TEXT_MESSAGE_APP,
@@ -253,11 +254,11 @@ def test_link_rssi_totals_skip_missing_measurements_and_rebuild(
             ).fetchone()
         )
 
-    assert totals() == (3, 2, 14.0, 2, -220.0)
+    assert totals() == (3, 3, 14.0, 2, -220.0)
     connection.execute("UPDATE derived_state SET version = 0")
     migrate_database(path)
     assert rederive(connection, lambda: False, batch_size=batch_size)
-    assert totals() == (3, 2, 14.0, 2, -220.0)
+    assert totals() == (3, 3, 14.0, 2, -220.0)
 
 
 def test_an_interrupted_rederive_starts_again(path: Path, connection: sqlite3.Connection) -> None:
@@ -643,6 +644,17 @@ def test_links_keep_the_transmitters_preceding_radio_channel(
         port=portnums_pb2.PortNum.NEIGHBORINFO_APP,
         payload=neighbors.SerializeToString(),
     )
+    # The sender, last on MediumFast, lists RELAY, whose channel is unknown.
+    heard(
+        8,
+        "Test",
+        15,
+        listener=0xCCCCCCCC,
+        port=portnums_pb2.PortNum.NEIGHBORINFO_APP,
+        payload=mesh_pb2.NeighborInfo(
+            neighbors=[mesh_pb2.Neighbor(node_id=RELAY, snr=-5)]
+        ).SerializeToString(),
+    )
     heard(9, "LongSlow", 9)
     heard(9, "Test", 10)
     heard(9, "LongFast", 11)
@@ -669,15 +681,19 @@ def test_links_keep_the_transmitters_preceding_radio_channel(
 
     assert totals("direct", SENDER, gateway) == {
         "Unknown": (1, 1, 2.0, 1, -100.0),
-        "sfnarrow": (3, 3, -8.0, 3, -300.0),
+        "SFNarrow": (3, 3, -8.0, 3, -300.0),
         "MediumFast": (2, 2, 2.0, 2, -200.0),
         "LongSlow": (4, 4, -16.0, 4, -400.0),
         "LongFast": (1, 1, -4.0, 1, -100.0),
     }
     assert totals("direct", SENDER, 0xBBBBBBBB) == {"Unknown": (1, 1, 2.0, 1, -100.0)}
-    assert totals("direct", gateway, SENDER) == {"Unknown": (1, 1, -4.0, 1, -100.0)}
+    # The gateway has no channel; the sender that heard it directly was on MediumFast.
+    assert totals("direct", gateway, SENDER) == {"MediumFast": (1, 1, -4.0, 1, -100.0)}
+    gateway_channel = "SELECT channel FROM node_current WHERE node_id = ?"
+    assert connection.execute(gateway_channel, (gateway,)).fetchone()[0] is None
     assert totals("neighbor", SENDER, gateway) == {"MediumFast": (1, 1, -3.0, 0, 0.0)}
     assert totals("neighbor", RELAY, gateway) == {"Unknown": (1, 1, -7.0, 0, 0.0)}
+    assert totals("neighbor", RELAY, SENDER) == {"MediumFast": (1, 1, -5.0, 0, 0.0)}
     captured = derived(connection)
     original_channels = [tuple(r) for r in connection.execute("SELECT id, channel FROM packet")]
     connection.execute("UPDATE derived_state SET rebuilt = 0")

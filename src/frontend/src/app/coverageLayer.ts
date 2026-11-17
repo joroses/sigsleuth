@@ -13,7 +13,7 @@ import type {
   CoverageHeardNode,
   MapNode,
 } from "./api";
-import { relayByteText, relayGuessText } from "./nodeDisplay";
+import { nodeRelayByteText, relayGuessText } from "./nodeDisplay";
 
 // The map's signal survey coverage: square cells coloured by their SNR
 // margin, and lines from a chosen cell to the nodes heard there. Cells are Web
@@ -435,7 +435,7 @@ export function cellText(
 
 /** The plain words for how a heard node was identified. */
 export function heardHowText(node: CoverageHeardNode): string {
-  const byte = relayByteText(node.node_id & 0xff);
+  const byte = nodeRelayByteText(node.node_id);
   switch (node.how) {
     case "direct":
       return "Heard directly";

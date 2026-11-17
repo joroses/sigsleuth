@@ -32,7 +32,7 @@ from sigsleuth.db import (
 from sigsleuth.decode import interpret_payload, portnum_name, read_device_telemetry
 from sigsleuth.derive import HOUR_MS, direct_reception_sql
 from sigsleuth.firmware import FirmwareEstimate, estimate
-from sigsleuth.links import LinkKind
+from sigsleuth.links import LINK_KINDS, MAX_LINK_ROWS, LinkKind, MapLink, map_links
 from sigsleuth.opt_out import SHOWN_PACKET, is_opted_out, opted_out, shown_sql, unlinkable_packets
 from sigsleuth.packets import PacketPage, PacketPort, packet_rows
 from sigsleuth.positions import EstimatedPosition, node_estimate
@@ -585,21 +585,27 @@ class NodeContact:
     """A node linked with the page's node, or a gateway that heard its
     packets. node is None for a gateway with no row of its own. heard_packets
     counts the node's packets this gateway reported at or after both ends'
-    moved_at, of those read; heard_before_move says older receptions were
-    excluded. moved_at is the contact's last known move, None if never moved;
-    fewest_hops is the fewest hops one of them used to reach it (0 heard
-    directly), None when no report said. km is the distance between the two
-    nodes' reported positions now (db.reported_km), None when either is a
-    shared node number."""
+    last known move (node_current.moved_at), of those read;
+    heard_before_move says older receptions were excluded. fewest_hops is the
+    fewest hops one of them used to reach it (0 heard directly), None when no
+    report said. km is the distance between the two nodes' reported
+    positions now (db.reported_km), None when either is a shared node
+    number."""
 
     node_id: int
     node: NodeSummary | None
     links: tuple[ContactLink, ...]
-    moved_at: datetime | None
     heard_before_move: bool
     heard_packets: int
     fewest_hops: int | None
     km: float | None
+
+
+@dataclass(frozen=True)
+class ContactLine(MapLink):
+    """One of the node's links of link_kind as the Map draws it."""
+
+    link_kind: LinkKind
 
 
 @dataclass(frozen=True)
@@ -609,16 +615,17 @@ class NodeContactList:
     map hides) and the gateways that reported its newest packets in that
     window, nearest first, unplaced contacts last. packets counts the node's
     packets read for gateways; limited is True when older ones in the window
-    were left unread. moved_at is the page node's last known move, None if
-    never moved. Gateway counts exclude receptions before either end moved;
-    link facts retain the full window."""
+    were left unread. Gateway counts exclude receptions before either end
+    moved; link facts retain the full window. lines are the node's links in the
+    window that the Map would draw, with the Map's counts (links.map_links
+    with trusted)."""
 
     node_id: int
     since: datetime | None
-    moved_at: datetime | None
     items: tuple[NodeContact, ...]
     packets: int
     limited: bool
+    lines: tuple[ContactLine, ...]
 
 
 def node_contacts(
@@ -629,7 +636,7 @@ def node_contacts(
     rows; gateways from its newest MAX_CONTACT_PACKETS packets, counting only
     receptions at or after both ends' last known move."""
     if is_opted_out(connection, node_id):
-        return NodeContactList(node_id, since, None, (), 0, False)
+        return NodeContactList(node_id, since, (), 0, False, ())
     since_ms = 0 if since is None else to_epoch_ms(since)
     links: dict[int, list[ContactLink]] = defaultdict(list)
     # link_kind is listed so SQLite reads the window through the primary key.
@@ -719,7 +726,6 @@ def node_contacts(
                 unmeasured(link) if {node_id, other} & shared else link
                 for link in links.get(other, ())
             ),
-            moved_at=from_epoch_ms(moves[other]) if moves.get(other) is not None else None,
             heard_before_move=other in heard_before_move,
             heard_packets=heard.get(other, (0, None))[0],
             fewest_hops=heard.get(other, (0, None))[1],
@@ -731,10 +737,21 @@ def node_contacts(
     return NodeContactList(
         node_id=node_id,
         since=since,
-        moved_at=from_epoch_ms(moved_at) if moved_at is not None else None,
         items=tuple(items),
         packets=len(packets),
         limited=len(packets) == MAX_CONTACT_PACKETS,
+        lines=tuple(
+            ContactLine(**vars(link), link_kind=kind)
+            for kind in LINK_KINDS
+            for link in map_links(
+                connection,
+                link_kind=kind,
+                since=since,
+                limit=MAX_LINK_ROWS,
+                trusted=True,
+                node=node_id,
+            ).items
+        ),
     )
 
 
@@ -805,7 +822,7 @@ def node_list(
         condition, values = node_search(query)
         filters.append(condition)
     if channel is not None:
-        filters.append("channel = :channel")
+        filters.append("coalesce(channel, 'Unknown') = :channel")
         values["channel"] = channel
     if gateway:
         filters.append("last_gateway_at IS NOT NULL")
@@ -871,6 +888,7 @@ def node_list(
                 SELECT to_node_id, from_node_id, observations
                 FROM link_hour WHERE link_kind = 'traceroute' AND hour_start >= :since
             )
+            WHERE {shown_sql("other_id")}
             GROUP BY node_id
         ) AS traceroute USING (node_id)
         WHERE {where}
@@ -924,13 +942,14 @@ class NodeChannelList:
 
 
 def node_channels(connection: sqlite3.Connection) -> NodeChannelList:
-    """Node counts per radio channel (node_current.channel)."""
+    """Node counts per radio channel (node_current.channel), Unknown for
+    nodes with none, as the Map names them."""
     rows = connection.execute(
         f"""
-        SELECT channel, count(*) AS nodes
+        SELECT coalesce(channel, 'Unknown') AS channel, count(*) AS nodes
         FROM node_current
-        WHERE channel IS NOT NULL AND {shown_sql("node_id")}
-        GROUP BY channel
+        WHERE {shown_sql("node_id")}
+        GROUP BY 1
         ORDER BY nodes DESC, channel
         """
     ).fetchall()

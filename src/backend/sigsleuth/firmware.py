@@ -7,6 +7,13 @@ newer than 2.6.8 while running a 2.7 release, and missing traits prove nothing
 (licensed nodes send no public key on any version). The versions were checked
 against the protobufs each firmware release ships. Fields newer than
 the installed protobufs are found by their field number.
+
+A trait must be something only the firmware can send. Left out: the Client
+base role, which an app can set on firmware that predates it, and traffic
+management telemetry, whose field forks fill with a message of their own.
+Revisit 2026-11-16, 14 days of loranet.pl: of the nodes whose map report
+names their version, it was older than the claim for 4 of 4 with that
+telemetry and 3 of 32 with the role, and for 2 of 167 with any other trait.
 """
 
 import re
@@ -16,7 +23,6 @@ from dataclasses import dataclass
 from google.protobuf import unknown_fields  # type: ignore[attr-defined]
 from google.protobuf.message import DecodeError, Message
 from meshtastic.protobuf import (  # type: ignore[import-untyped]
-    config_pb2,
     mesh_pb2,
     portnums_pb2,
     telemetry_pb2,
@@ -38,13 +44,10 @@ TRAITS = {
     "public_key": Trait(20500, "its NodeInfo carries a public key"),
     "relay_byte": Trait(20600, "its packet headers carry the relay byte"),
     "unmessagable_flag": Trait(20608, "its NodeInfo says whether it accepts messages"),
-    "client_base_role": Trait(20709, "it uses the Client base role"),
     "node_status_port": Trait(20718, "it sends node status messages"),
     "noise_floor": Trait(20718, "its local statistics report a noise floor"),
-    "traffic_telemetry": Trait(20720, "it sends traffic management telemetry"),
     "key_node_number": Trait(20800, "its node number is derived from its public key"),
     "signature": Trait(20800, "it signs its packets"),
-    # Not in a release yet (2.8.0 is the newest); development builds send them.
     "ack_proof": Trait(20801, "its routing replies carry a delivery proof"),
     "paging_port": Trait(20801, "it sends pages"),
     "soil_water_telemetry": Trait(20801, "it sends soil and water telemetry"),
@@ -135,8 +138,6 @@ def _user_trait(sender_node_id: int, payload: bytes) -> str | None:
         return None
     if user.public_key and zlib.crc32(user.public_key) == sender_node_id:
         return "key_node_number"
-    if user.role == config_pb2.Config.DeviceConfig.Role.CLIENT_BASE:
-        return "client_base_role"
     if user.HasField("is_unmessagable"):
         return "unmessagable_flag"
     if user.public_key:
@@ -150,8 +151,6 @@ def _telemetry_trait(payload: bytes) -> str | None:
         return None
     if _has_field(telemetry, _TELEMETRY_SOIL_WATER):
         return "soil_water_telemetry"
-    if telemetry.HasField("traffic_management_stats"):
-        return "traffic_telemetry"
     if telemetry.HasField("local_stats") and telemetry.local_stats.noise_floor:
         return "noise_floor"
     return None

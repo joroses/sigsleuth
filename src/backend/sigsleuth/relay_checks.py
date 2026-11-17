@@ -52,7 +52,6 @@ from sigsleuth.relays import (
     RelayEvidence,
     RelayScores,
     RelayTerm,
-    channel_radio,
     node_km,
     nodes_by_byte,
 )
@@ -188,7 +187,7 @@ def relay_checks(
             list(found.receptions),
             packet.sender_node_id,
             at=to_epoch_ms(packet.first_received_at),
-            radio=channel_radio(packet.channel),
+            radio=found.radio,
             reception_ids=reception_ids,
             reach=reach,
         )

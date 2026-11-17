@@ -27,8 +27,8 @@ from sigsleuth.db import NodeSummary, to_epoch_ms
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import LINK_WINDOW_MS, ZERO_COST_ROLES
 from sigsleuth.opt_out import opted_out
-from sigsleuth.packets import PacketDetail, PacketReception, nodes_when_heard
-from sigsleuth.radio import great_circle_km, relay_byte_of
+from sigsleuth.packets import PacketDetail, PacketReception, nodes_when_heard, own_relay_byte
+from sigsleuth.radio import great_circle_km
 
 # Fit on a copy of live loranet.pl msh/#, 2026-10-09 to 10-16, with traceroute
 # request routes as truth; on 10-16 to 10-23 the best candidate was this sure
@@ -256,7 +256,7 @@ class _Facts:
                 continue
             gateway = reception.gateway_node_id
             self.own[gateway] = reception
-            if _own_byte(reception):
+            if own_relay_byte(reception, sender) == "gateway":
                 self.named_at[gateway].add(hops)
                 self.heard_at[gateway] = hops - 1
                 continue
@@ -277,7 +277,7 @@ class _Facts:
             return None
         if reception.direct:
             return self.sender, True
-        if _own_byte(reception) or reception.relay_node is None:
+        if own_relay_byte(reception, self.sender) == "gateway" or reception.relay_node is None:
             return None
         return reception.relay_node.node_id, reception.relay_node.how == "heard_directly"
 
@@ -487,9 +487,3 @@ def _hops_used(reception: PacketReception) -> int | None:
         return None
     hops = reception.hop_start - reception.hop_limit
     return hops if hops >= 0 else None
-
-
-def _own_byte(reception: PacketReception) -> bool:
-    """A gateway uploading its own rebroadcast: it heard the packet a hop
-    earlier than its header says."""
-    return not reception.direct and reception.relay_byte == relay_byte_of(reception.gateway_node_id)

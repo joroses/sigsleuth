@@ -32,7 +32,6 @@ const cell: CoverageCellDetail = {
       long_name: "Hilltop",
       short_name: "HILL",
       how: "gateway_link",
-      candidates: 3,
       measurements: 2,
       guessed: 2,
       average_snr: 3.5,
@@ -45,7 +44,6 @@ const cell: CoverageCellDetail = {
       long_name: "Far away",
       short_name: null,
       how: "direct",
-      candidates: 1,
       measurements: 1,
       guessed: 0,
       average_snr: 12.8,
@@ -62,8 +60,20 @@ describe("Coverage here", () => {
   it("chooses each unknown relay hint", () => {
     const choose = vi.fn();
     const candidates = [
-      { node_id: 0x0200001a, long_name: "Relay A", short_name: "A", km: 12 },
-      { node_id: 0x0300001a, long_name: "Relay B", short_name: "B", km: 20 },
+      {
+        node_id: 0x0200001a,
+        long_name: "Relay A",
+        short_name: "A",
+        km: 12,
+        estimated: false,
+      },
+      {
+        node_id: 0x0300001a,
+        long_name: "Relay B",
+        short_name: "B",
+        km: 20,
+        estimated: true,
+      },
     ];
     render(
       <CoverageCellDetails
@@ -81,6 +91,9 @@ describe("Coverage here", () => {
       />,
     );
 
+    // No km to a position only estimated from the node's links.
+    expect(screen.getByText(/12 km/)).toBeTruthy();
+    expect(screen.queryByText(/20 km/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Relay A" }));
     expect(choose).toHaveBeenCalledWith(0x0200001a);
     choose.mockClear();

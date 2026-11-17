@@ -237,6 +237,15 @@ export function relayByteText(relayByte: number): string {
   return relayByte.toString(16).padStart(2, "0");
 }
 
+/**
+ * The relay byte a node puts on the air, as text: its number's last byte,
+ * except that firmware sends ff for a number ending in 00, as 0 means no
+ * relay (relay_byte_of in radio.py).
+ */
+export function nodeRelayByteText(nodeId: number): string {
+  return relayByteText(nodeId & 0xff || 0xff);
+}
+
 /** The plain words for a relay guessed from its byte. */
 export function relayGuessText(
   how:
@@ -273,7 +282,7 @@ export function relayNodeTitle(relay: {
     | "sender_link"
     | "only_candidate";
 }): string {
-  const byte = relayByteText(relay.node_id & 0xff);
+  const byte = nodeRelayByteText(relay.node_id);
   if (relay.how === "heard_directly")
     return `Heard directly: the only node ending in ${byte} this gateway hears`;
   const text = relayGuessText(relay.how, byte);
@@ -283,18 +292,17 @@ export function relayNodeTitle(relay: {
 }
 
 /**
- * The tooltip of a relay byte that names no node, listing the maybes. A
- * gateway sending its own byte uploaded its own rebroadcast, so the byte
- * names it, not the node it heard.
+ * The tooltip of a relay byte that names no node, listing the maybes. No
+ * relay is named for the gateway's or the sender's own byte (relay_own).
  */
 export function relayMaybeTitle(reception: {
-  gateway_node_id: number;
   relay_byte: number | null;
+  relay_own: "gateway" | "sender" | null;
   relay_maybe: { node_id: number; name: string | null; km: number | null }[];
 }): string {
-  // Firmware sends FF for a number ending in 00, as 0 means no relay.
-  if (reception.relay_byte === (reception.gateway_node_id & 0xff || 0xff))
+  if (reception.relay_own === "gateway")
     return "This gateway's own byte: it uploaded its own rebroadcast";
+  if (reception.relay_own === "sender") return "The sender's own byte";
   const maybe = reception.relay_maybe
     .map(
       (node) =>
@@ -381,8 +389,42 @@ export function cellSize(cell: RoundingCell): string {
 }
 
 /** A reported firmware string without its build hash: "2.7.15.567b8ea" -> "2.7.15". */
-export function shortFirmware(version: string): string {
+function shortFirmware(version: string): string {
   return /^\d+\.\d+\.\d+/.exec(version)?.[0] ?? version;
+}
+
+/**
+ * A node's firmware as tables show it: the version its map report names,
+ * else "≥" the minimum its packets prove; text is null when neither is known.
+ * number sorts either as major * 10000 + minor * 100 + patch.
+ */
+export function firmwareCell(node: {
+  firmware_version: string | null;
+  firmware: { minimum: string; reason: string } | null;
+}): { text: string | null; title: string | undefined; number: number | null } {
+  const [text, title, version] =
+    node.firmware_version !== null
+      ? [
+          shortFirmware(node.firmware_version),
+          `${node.firmware_version}, from its map report`,
+          node.firmware_version,
+        ]
+      : node.firmware !== null
+        ? [
+            `≥ ${node.firmware.minimum}`,
+            `${node.firmware.minimum} or newer: ${node.firmware.reason}`,
+            node.firmware.minimum,
+          ]
+        : [null, undefined, ""];
+  const parts = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  return {
+    text,
+    title,
+    number:
+      parts === null
+        ? null
+        : Number(parts[1]) * 10000 + Number(parts[2]) * 100 + Number(parts[3]),
+  };
 }
 
 /** How a relay check placed a node (relay_checks.PlacedBy), in the page's words. */

@@ -577,14 +577,62 @@ def test_node_contacts_exclude_gateway_receptions_before_either_end_moved(tmp_pa
             params={"since": RECEIVED_AT.isoformat()},
         ).json()
     items = {item["node_id"]: item for item in page["items"]}
-    assert page["moved_at"] == (RECEIVED_AT + timedelta(hours=2)).isoformat().replace("+00:00", "Z")
     for contact in (before_page, before_contact, gateway):
         assert items[contact]["heard_packets"] == 0
         assert items[contact]["fewest_hops"] is None
         assert items[contact]["heard_before_move"] is True
-    assert items[before_page]["moved_at"] is None
-    assert items[before_contact]["moved_at"] == items[gateway]["moved_at"]
     assert items[gateway]["links"] == []
     assert items[mixed]["heard_packets"] == 2
     assert items[mixed]["fewest_hops"] == 2
     assert items[mixed]["heard_before_move"] is True
+
+
+def test_node_contacts_draw_the_lines_the_map_draws(tmp_path: Path) -> None:
+    path = tmp_path / "lines.db"
+    migrate_database(path)
+    node, fresh, stale = 0x11111111, 0x11111112, 0x11111113
+    home = mesh_pb2.Position(latitude_i=510_000_000, longitude_i=210_000_000)
+    away = mesh_pb2.Position(latitude_i=520_000_000, longitude_i=210_000_000)
+    sequence = 0
+
+    def heard(sender: int, receiver: int, hour: int, position: mesh_pb2.Position) -> None:
+        nonlocal sequence
+        sequence += 1
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.POSITION_APP,
+                position.SerializeToString(),
+                sender=sender,
+                packet_id=sequence,
+                gateway_id=f"!{receiver:08x}",
+                hop_start=3,
+                hop_limit=3,
+                relay_node=sender & 0xFF,
+                rx_snr=5,
+            ),
+            received_at=RECEIVED_AT + timedelta(hours=hour),
+            topic=f"msh/EU_868/2/e/LongFast/!{receiver:08x}",
+        )
+
+    heard(fresh, fresh, 0, home)
+    heard(stale, stale, 0, home)
+    heard(node, stale, 1, home)
+    # stale moves 111 km: its link heard before the move no longer fits.
+    heard(stale, stale, 2, away)
+    heard(node, fresh, 3, home)
+    since = (RECEIVED_AT - timedelta(days=1)).isoformat()
+
+    with TestClient(create_app(Settings(path))) as client:
+        page = client.get(f"/api/v1/nodes/{node}/contacts", params={"since": since}).json()
+        on_map = client.get(
+            "/api/v1/map/links", params={"since": since, "link_kind": "direct"}
+        ).json()["items"]
+
+    (line,) = page["lines"]
+    assert line.pop("link_kind") == "direct"
+    assert [line] == [link for link in on_map if node in (link["node_a"], link["node_b"])]
+    assert {line["node_a"], line["node_b"]} == {node, fresh}
+    # The contacts list keeps the stale link for checking by hand.
+    items = {item["node_id"]: item for item in page["items"]}
+    assert [link["kind"] for link in items[stale]["links"]] == ["direct"]

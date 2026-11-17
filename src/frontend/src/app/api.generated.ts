@@ -266,7 +266,8 @@ export interface paths {
      * Node Contact Page
      * @description Every node linked with this one since `since` (default all history)
      *     and the gateways that heard its newest packets then, with no map rule
-     *     hiding any, nearest first: for checking where it is.
+     *     hiding any, nearest first: for checking where it is. lines are its
+     *     links the Map would draw (map/links).
      */
     get: operations["node_contact_page_api_v1_nodes__node_id__contacts_get"];
     put?: never;
@@ -679,11 +680,11 @@ export interface paths {
      *     5,000 cells, from the measurements still true: none heard before its
      *     node last moved, and each either heard within
      *     SIGSLEUTH_RETENTION_DAYS or of a node seen since then, by MQTT or by
-     *     a survey hearing its packets. since filters when the measurements were heard. With
-     *     node, only the measurements where that node was the heard node,
-     *     including its own packets heard directly. channel keeps packets whose
-     *     sender last sent on that channel, as the map's channel filter does for
-     *     nodes. unknown keeps only measurements with an unidentified relay byte.
+     *     a survey hearing its packets. With node, only the measurements where
+     *     that node was the heard node, including its own packets heard
+     *     directly. channel keeps packets whose sender last sent on that
+     *     channel, as the map's channel filter does for nodes. unknown keeps
+     *     only measurements with an unidentified relay byte.
      */
     get: operations["coverage_cell_page_api_v1_coverage_cells_get"];
     put?: never;
@@ -750,7 +751,7 @@ export interface paths {
      * Coverage Cell Detail Page
      * @description One coverage cell's totals, the nodes heard there with how each
      *     was identified, unknown relay bytes and the newest 20 measurements,
-     *     filtered by since, node, channel and unknown as in the cell list.
+     *     filtered by node, channel and unknown as in the cell list.
      */
     get: operations["coverage_cell_detail_page_api_v1_coverage_cells__level___x___y__get"];
     put?: never;
@@ -1044,6 +1045,22 @@ export interface components {
       text: string | null;
     };
     /**
+     * ContactLine
+     * @description One of the node's links of link_kind as the Map draws it.
+     */
+    ContactLine: {
+      node_a: number;
+      node_b: number;
+      /** Format: date-time */
+      last_seen_at: string;
+      channel: string;
+      spreading_factor: number | null;
+      a_to_b: components["schemas"]["LinkDirection"];
+      b_to_a: components["schemas"]["LinkDirection"];
+      /** @enum {string} */
+      link_kind: "traceroute" | "direct" | "neighbor";
+    };
+    /**
      * ContactLink
      * @description One kind of link between a node and a contact since the window's
      *     start, both directions added up: observations as link_hour counts them,
@@ -1062,13 +1079,16 @@ export interface components {
     };
     /**
      * CoverageCandidate
-     * @description A possible relay, km from a measurement or a cell's centre.
+     * @description A possible relay, km from a measurement or a cell's centre. estimated:
+     *     placed only by estimate; pages leave out its km, the upload's reply keeps
+     *     it.
      */
     CoverageCandidate: {
       node_id: number;
       long_name: string | null;
       short_name: string | null;
       km: number;
+      estimated: boolean;
     };
     /**
      * CoverageCell
@@ -1094,9 +1114,8 @@ export interface components {
      * CoverageCellDetail
      * @description One cell: its centre and approximate width (size_m), its totals, the
      *     nodes heard there (at most CELL_MAX_NODES, most measurements first), the
-     *     unknown relays and the newest CELL_NEWEST measurements. measurements is 0
-     *     when the cell has none in the window. networks totals the SNR per radio
-     *     settings, most measurements first.
+     *     unknown relays and the newest CELL_NEWEST measurements. networks totals
+     *     the SNR per radio settings, most measurements first.
      */
     CoverageCellDetail: {
       level: number;
@@ -1154,14 +1173,12 @@ export interface components {
     /**
      * CoverageHeardNode
      * @description A node heard in a cell. how is the most certain way it was identified
-     *     there, candidates the most candidates the rule-outs left for one of its
-     *     measurements (heard_node), and guessed counts its measurements identified
-     *     by a guess. The map draws lines to it from its own nodes' positions,
-     *     which include estimates. average_snr is the
-     *     survey nodes' SNR as radios show it; a node transmits on one network, so
-     *     it mixes no radio settings. average_margin is the SNR above the survey
-     *     node's floor, as cells average it. channel is the node's latest channel,
-     *     None when unknown.
+     *     there, and guessed counts its measurements identified by a guess. The map
+     *     draws lines to it from its own nodes' positions, which include estimates.
+     *     average_snr is the survey nodes' SNR as radios show it; a node transmits
+     *     on one network, so it mixes no radio settings. average_margin is the SNR
+     *     above the survey node's floor, as cells average it. channel is the node's
+     *     latest channel, None when unknown.
      */
     CoverageHeardNode: {
       node_id: number;
@@ -1176,7 +1193,6 @@ export interface components {
         | "survey_link"
         | "only_candidate"
         | "unknown";
-      candidates: number;
       measurements: number;
       guessed: number;
       average_snr: number | null;
@@ -1521,13 +1537,16 @@ export interface components {
      *     cuts_off counts the nodes that lose every heard-graph path to the rest of
      *     the network (the biggest group left) when it goes quiet; no_solid_backup is
      *     the same on the solid graph. carries counts the nodes whose best path to a
-     *     big zone's hub passes through it. impact is the larger of cuts_off and
+     *     big zone's hub passes through it; that path passes through no CLIENT_MUTE
+     *     node. impact is the larger of cuts_off and
      *     no_solid_backup. only_solid_link_to lists the zones whose every solid
      *     link with this relay's zone passes through it: if it goes quiet, no solid
      *     link joins the two zones directly (_only_solid_links).
      *     neighbours counts its heard links. last_seen_at,
      *     battery_level (reported at battery_observed_at) and firmware are
      *     node_current's; firmware is None until a packet shows a firmware trait.
+     *     firmware_version is the one its latest map report names, None without one,
+     *     as on the Nodes page.
      */
     KeyRelay: {
       node_id: number;
@@ -1542,6 +1561,7 @@ export interface components {
       battery_level: number | null;
       battery_observed_at: string | null;
       firmware: components["schemas"]["FirmwareEstimate"] | null;
+      firmware_version: string | null;
     };
     /**
      * LinkDirection
@@ -1923,18 +1943,17 @@ export interface components {
      * @description A node linked with the page's node, or a gateway that heard its
      *     packets. node is None for a gateway with no row of its own. heard_packets
      *     counts the node's packets this gateway reported at or after both ends'
-     *     moved_at, of those read; heard_before_move says older receptions were
-     *     excluded. moved_at is the contact's last known move, None if never moved;
-     *     fewest_hops is the fewest hops one of them used to reach it (0 heard
-     *     directly), None when no report said. km is the distance between the two
-     *     nodes' reported positions now (db.reported_km), None when either is a
-     *     shared node number.
+     *     last known move (node_current.moved_at), of those read;
+     *     heard_before_move says older receptions were excluded. fewest_hops is the
+     *     fewest hops one of them used to reach it (0 heard directly), None when no
+     *     report said. km is the distance between the two nodes' reported
+     *     positions now (db.reported_km), None when either is a shared node
+     *     number.
      */
     NodeContact: {
       node_id: number;
       node: components["schemas"]["NodeSummary"] | null;
       links: components["schemas"]["ContactLink"][];
-      moved_at: string | null;
       heard_before_move: boolean;
       heard_packets: number;
       fewest_hops: number | null;
@@ -1947,17 +1966,18 @@ export interface components {
      *     map hides) and the gateways that reported its newest packets in that
      *     window, nearest first, unplaced contacts last. packets counts the node's
      *     packets read for gateways; limited is True when older ones in the window
-     *     were left unread. moved_at is the page node's last known move, None if
-     *     never moved. Gateway counts exclude receptions before either end moved;
-     *     link facts retain the full window.
+     *     were left unread. Gateway counts exclude receptions before either end
+     *     moved; link facts retain the full window. lines are the node's links in the
+     *     window that the Map would draw, with the Map's counts (links.map_links
+     *     with trusted).
      */
     NodeContactList: {
       node_id: number;
       since: string | null;
-      moved_at: string | null;
       items: components["schemas"]["NodeContact"][];
       packets: number;
       limited: boolean;
+      lines: components["schemas"]["ContactLine"][];
     };
     /** NodeCount */
     NodeCount: {
@@ -2228,12 +2248,12 @@ export interface components {
      *     the map's direct links use (is_direct_reception in derive.py).
      *     own_upload is a report from the sender itself: a node with its own MQTT
      *     connection uploads the packets it sends, so this is not a radio reception.
-     *     relay_node names the relay for a relay byte other than the sender's and
-     *     the gateway's, None when there is none or no rule names one; then
-     *     relay_maybe lists up to RELAY_MAYBE nodes that may have relayed it.
-     *     km is from the sender to the gateway, each placed as above (so an
-     *     estimate when gateway_estimated or the packet's sender_estimated); None
-     *     when either is not placed.
+     *     relay_own says whose own byte relay_byte is, by own_relay_byte; no relay
+     *     is named for it. Otherwise relay_node names the relay, None when there is
+     *     no byte or no rule names one; then relay_maybe lists up to RELAY_MAYBE
+     *     nodes that may have relayed it.
+     *     km is from the sender to the gateway, each placed as above, by
+     *     db.reported_km: None when either is not placed or only estimated.
      */
     PacketReception: {
       reception_id: number;
@@ -2259,6 +2279,7 @@ export interface components {
       direct: boolean;
       /** @default false */
       own_upload: boolean;
+      relay_own: ("gateway" | "sender") | null;
       relay_node: components["schemas"]["RelayNode"] | null;
       /** @default [] */
       relay_maybe: components["schemas"]["RelayMaybe"][];
@@ -2547,7 +2568,7 @@ export interface components {
     /**
      * RelayMaybe
      * @description A node that may have relayed a reception the score names no relay
-     *     for: km from the gateway, None when either is unplaced.
+     *     for: km from the gateway, None when either is unplaced or only estimated.
      */
     RelayMaybe: {
       node_id: number;
@@ -2764,8 +2785,9 @@ export interface components {
      * @description One measurement and its decisions. upload_node/upload_how are as
      *     saved; link is its survey link, link_nodes how many nodes survey
      *     evidence leaves it now (one makes a link). shown_node/shown_how are
-     *     what the map shows; changed: today names another node than upload, a
-     *     saved nearest guess reading as none.
+     *     what the map shows (coverage.SHOWN_COLUMNS). counted is whether the map
+     *     still counts the measurement at all. changed: today names another node
+     *     than upload, a saved nearest guess reading as none.
      */
     SurveyCheck: {
       measurement_id: number;
@@ -2801,6 +2823,7 @@ export interface components {
         | "survey_link"
         | "only_candidate"
         | "unknown";
+      counted: boolean;
       changed: boolean;
     };
     /**
@@ -2855,7 +2878,8 @@ export interface components {
      *     before). tier_hours is the first tier that finds it, None when none
      *     does. strongest_here_db is the survey node's own strongest direct
      *     signal of it within too_strong_km, which too_strong compares.
-     *     excluded: the measurement's sender or survey node, never its relay.
+     *     excluded: the measurement's sender or survey node, or a muted node
+     *     (CLIENT_MUTE), never its relay.
      *     candidate: survey evidence leaves it.
      */
     SurveyLinkNode: {
@@ -2868,7 +2892,7 @@ export interface components {
       tier_hours: number | null;
       too_strong: boolean;
       strongest_here_db: number | null;
-      excluded: ("sender" | "surveyor") | null;
+      excluded: ("sender" | "surveyor" | "muted") | null;
       candidate: boolean;
     };
     /** SurveyLinkRules */
@@ -3014,7 +3038,8 @@ export interface components {
      * @description A traceroute request and its reply, matched by requester and the
      *     request's packet ID; either may be missing. A window lists a run when it
      *     holds the run's earliest saved packet, which gives first_received_at
-     *     and channel. Its spreading_factor comes from the run's radio channel.
+     *     and channel, the name it was uploaded under. radio_channel is the run's
+     *     (traceroute_run), Unknown when not known, and gives its spreading_factor.
      *     The reception counts are the gateways that reported each packet. distance_km
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
@@ -3033,6 +3058,7 @@ export interface components {
       /** Format: date-time */
       first_received_at: string;
       channel: string;
+      radio_channel: string;
       spreading_factor: number | null;
       request_packet_row_id: number | null;
       request_receptions: number | null;
@@ -4229,7 +4255,6 @@ export interface operations {
         east: number;
         north: number;
         zoom: number;
-        since?: string | null;
         node?: number | null;
         channel?: string | null;
         unknown?: boolean;
@@ -4330,7 +4355,6 @@ export interface operations {
   coverage_cell_detail_page_api_v1_coverage_cells__level___x___y__get: {
     parameters: {
       query?: {
-        since?: string | null;
         node?: number | null;
         channel?: string | null;
         unknown?: boolean;

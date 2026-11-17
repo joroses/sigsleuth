@@ -13,7 +13,7 @@ from sigsleuth import db
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, to_epoch_ms
-from sigsleuth.derive import rederive
+from sigsleuth.derive import _save_run, rederive
 from sigsleuth.packets import nodes_when_heard, packet_detail, relayed_packet
 from sigsleuth.positions import positions_at, refresh_estimates
 
@@ -455,6 +455,26 @@ def test_the_distance_sort_puts_the_ends_farthest_apart_first(path: Path) -> Non
     ]
 
 
+def test_a_packet_measures_no_distance_to_an_estimated_gateway(path: Path) -> None:
+    gateway = 0xAAAAAAAA
+    place(path, A, 40.0, 2.0)
+    request_and_reply(path)
+    # The gateway reports no position; its one placed neighbour, A, puts its
+    # estimate on A, 0 km away.
+    hour_start = to_epoch_ms(NOW) - to_epoch_ms(NOW) % HOUR_MS
+    with closing(open_current_database(path)) as connection:
+        with connection:
+            link_hour(connection, A, gateway, hour_start, snr=[5.0])
+        refresh_estimates(connection)
+        [run] = get(path, "/api/v1/traceroutes")["items"]
+        request = packet_detail(connection, run["request_packet_row_id"])
+
+    assert request is not None
+    reception = next(r for r in request.receptions if r.gateway_node_id == gateway)
+    assert reception.gateway_estimated
+    assert reception.km is None
+
+
 def heard_only_far_away(path: Path, node_id: int) -> None:
     """Make node_id's position doubtful: its only direct-link partner is a
     gateway that was about 450 km from it when it heard it."""
@@ -740,7 +760,21 @@ def test_top_lists_count_runs_per_requester_and_leave_the_ends_out_of_relays(
     assert {"node_id": B, "count": 1} in top["targets"]
     # R1 and R2 relayed both the request and the reply.
     assert top["relays"] == [{"node_id": R1, "count": 2}, {"node_id": R2, "count": 2}]
-    assert top["channels"] == [{"channel": "LongFast", "count": 3}]
+    assert top["channels"] == [{"channel": "LongFast", "count": 2}]
+
+
+def test_top_lists_count_no_run_the_list_leaves_out(path: Path) -> None:
+    request_and_reply(path)  # A traces B, who opts out
+    traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=OTHER, packet_id=9, route=[R1], snr=[20])
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute("INSERT INTO node_opt_out (node_id) VALUES (?)", (B,))
+
+    top = get(path, "/api/v1/traceroutes/busiest")
+
+    assert top["requesters"] == [{"node_id": A, "count": 1}]
+    assert top["targets"] == [{"node_id": OTHER, "count": 1}]
+    assert top["relays"] == [{"node_id": R1, "count": 1}]
+    assert top["channels"] == [{"channel": "LongFast", "count": 1}]
 
 
 def place(
@@ -1316,6 +1350,7 @@ def test_packet_and_run_sf_use_radio_channel_evidence(
                 "WHERE packet_row_id = ? AND from_node_id = ?",
                 (radio_channel, packet_id, node),
             )
+        _save_run(connection, packet_id)  # as derive does when a hop is added
     # Later sender evidence must not fill an earlier packet's missing channel.
     traceroute(
         path,
@@ -1334,6 +1369,17 @@ def test_packet_and_run_sf_use_radio_channel_evidence(
     assert detail["spreading_factor"] == packet_sf
     assert run["spreading_factor"] == run_sf
     assert sorted(hop["snr_db"] for hop in detail["hops"]) == [2.0, 5.0]
+    # The explorer's channel picker and filter use the run's radio channel.
+    radio = run["radio_channel"]
+    assert radio == {7: "NarrowFast", 10: "MediumSlow", None: "Unknown"}[run_sf]
+    assert radio in {c["channel"] for c in get(path, "/api/v1/traceroutes/busiest")["channels"]}
+    listed = get(path, "/api/v1/traceroutes", channel=radio)["items"]
+    assert packet_id in {r["request_packet_row_id"] for r in listed}
+    # Relay scoring reads the same radio as the packet's signal colours.
+    with closing(open_current_database(path)) as connection:
+        found = relayed_packet(connection, packet_id, with_relays=False)
+    assert found is not None
+    assert (None if found.radio is None else found.radio.spreading_factor) == packet_sf
 
 
 def test_run_radio_channel_uses_hops_from_both_request_and_reply(path: Path) -> None:
@@ -1346,6 +1392,7 @@ def test_run_radio_channel_uses_hops_from_both_request_and_reply(path: Path) -> 
             "WHEN packet_row_id = (SELECT min(id) FROM packet) THEN 'Unknown' "
             "ELSE 'NarrowFast' END"
         )
+        _save_run(connection, connection.execute("SELECT min(id) FROM packet").fetchone()[0])
     [run] = get(path, "/api/v1/traceroutes")["items"]
     assert run["spreading_factor"] == 7
     assert get(path, f"/api/v1/packets/{run['request_packet_row_id']}")["spreading_factor"] is None
@@ -1356,5 +1403,6 @@ def test_run_radio_channel_uses_hops_from_both_request_and_reply(path: Path) -> 
             "UPDATE traceroute_hop SET radio_channel = 'MediumFast' "
             "WHERE packet_row_id = (SELECT min(id) FROM packet)"
         )
+        _save_run(connection, connection.execute("SELECT min(id) FROM packet").fetchone()[0])
     [run] = get(path, "/api/v1/traceroutes")["items"]
     assert run["spreading_factor"] is None

@@ -28,6 +28,16 @@ export function isSeenWindow(value: unknown): boolean {
 }
 
 /**
+ * The start of a window of `hours` ending at `now` (ms), back to the start of
+ * its hour as link totals count it, so a view's links, nodes and traceroutes
+ * cover the same span.
+ */
+export function windowStartMs(hours: number, now: number): number {
+  const start = now - hours * HOUR_MS;
+  return start - (start % HOUR_MS);
+}
+
+/**
  * The window, or else the narrowest wider one, that reaches back from `now`
  * to `at` (both in ms).
  */
@@ -38,7 +48,7 @@ export function windowReaching(
 ): SeenWindow {
   const index = SEEN_WINDOWS.findIndex((option) => option.id === window);
   const reaching = SEEN_WINDOWS.slice(index).find(
-    (option) => option.hours === null || now - option.hours * HOUR_MS <= at,
+    (option) => option.hours === null || windowStartMs(option.hours, now) <= at,
   );
   return reaching?.id ?? "all";
 }
@@ -70,8 +80,10 @@ export interface MapUrls {
 /** The map's API URLs for a window ending now; nodes and links share its start. */
 export function mapUrls(window: SeenWindow, now: number): MapUrls {
   const hours = SEEN_WINDOWS.find((option) => option.id === window)?.hours;
-  const ago = (hours: number) => new Date(now - hours * HOUR_MS).toISOString();
-  const since = hours == null ? undefined : ago(hours);
+  const since =
+    hours == null
+      ? undefined
+      : new Date(windowStartMs(hours, now)).toISOString();
   const links = (linkKind: LinkKind) => mapLinksUrl(linkKind, since);
   return {
     since,

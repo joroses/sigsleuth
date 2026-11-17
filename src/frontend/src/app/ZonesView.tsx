@@ -59,9 +59,11 @@ import {
   marginTier,
 } from "./linkQuality";
 import { SHARE_COLORS, tierOfShare } from "./mapNodeLayers";
+import { windowStartMs } from "./mapTimeFilter";
 import {
   formatKm,
   formatNodeId,
+  firmwareCell,
   formatRole,
   lineOfSightHref,
   mapHref,
@@ -106,7 +108,6 @@ const PAIR_ROWS = 10;
 const RELAY_ROWS = 10;
 // Longer node names are cut in the key relays table.
 const RELAY_NAME_LENGTH = 20;
-const HOUR_MS = 60 * 60 * 1000;
 // The warnings about a connection's solid links, which a zone's connections show.
 const SOLID_WARNINGS: PairWarning[] = [
   "no solid link",
@@ -553,8 +554,10 @@ export function ZonesView() {
                       selectedNodeId={selectedRelay}
                       km={openedLink.km}
                       since={new Date(
-                        Date.parse(shown.generated_at) -
-                          shown.window_hours * HOUR_MS,
+                        windowStartMs(
+                          shown.window_hours,
+                          Date.parse(shown.generated_at),
+                        ),
                       ).toISOString()}
                       linkSection={false}
                     />
@@ -1251,10 +1254,7 @@ function RelayCard({
           value={hours === null ? "—" : `${formatHours(hours)} ago`}
         />
         <DataItem label="Battery" value={formatBattery(relay.battery_level)} />
-        <DataItem
-          label="Firmware"
-          value={relay.firmware ? `≥ ${relay.firmware.minimum}` : "—"}
-        />
+        <DataItem label="Firmware" value={firmwareCell(relay).text ?? "—"} />
         {node?.estimated ? (
           <DataItem label="Position" value="Estimated from its neighbours" />
         ) : null}
@@ -2283,7 +2283,7 @@ function PairLinks({
 }) {
   const [open, setOpen] = useViewState<string | null>("zones.openRow", null);
   const since = new Date(
-    Date.parse(network.generated_at) - network.window_hours * HOUR_MS,
+    windowStartMs(network.window_hours, Date.parse(network.generated_at)),
   ).toISOString();
   const side = (zoneId: number) =>
     `${zoneId}. ${zones.get(zoneId)?.name ?? "Zone"} side`;
@@ -2437,7 +2437,7 @@ function relaySortValue(
     case "battery":
       return relay.battery_level;
     case "firmware":
-      return relay.firmware?.minimum ?? null;
+      return firmwareCell(relay).number;
     default:
       return relay[sort];
   }
@@ -2608,7 +2608,7 @@ function KeyRelays({
                 )}
                 {heading("Last seen", "last_seen")}
                 {heading("Battery", "battery")}
-                {heading("Firmware", "firmware", undefined, "Minimum firmware")}
+                {heading("Firmware", "firmware")}
               </tr>
             </thead>
             <tbody>
@@ -2712,14 +2712,8 @@ function KeyRelays({
                     >
                       {formatBattery(relay.battery_level)}
                     </td>
-                    <td
-                      title={
-                        relay.firmware
-                          ? `${relay.firmware.minimum} or newer: ${relay.firmware.reason}`
-                          : undefined
-                      }
-                    >
-                      {relay.firmware ? `≥ ${relay.firmware.minimum}` : "—"}
+                    <td title={firmwareCell(relay).title}>
+                      {firmwareCell(relay).text ?? "—"}
                     </td>
                   </tr>
                 );

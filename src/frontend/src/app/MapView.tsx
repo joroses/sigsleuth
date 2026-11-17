@@ -655,7 +655,12 @@ export function MapView({
       for (const link of links)
         if (linkableMap.has(link.node_a) && linkableMap.has(link.node_b))
           placed.push({ linkKind, link });
-    return findRoute(routeFrom, routeEnd, placed, zeroCostHops);
+    const muted = new Set(
+      [...linkableMap.values()]
+        .filter((node) => node.role === "CLIENT_MUTE")
+        .map((node) => node.node_id),
+    );
+    return findRoute(routeFrom, routeEnd, placed, zeroCostHops, muted);
   }, [
     routeFrom,
     routeEnd,

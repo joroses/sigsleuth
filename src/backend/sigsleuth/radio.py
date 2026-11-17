@@ -194,6 +194,17 @@ def preset_name(name: str) -> str | None:
     return _PRESET_NAMES.get(channel_key(name))
 
 
+def preset_name_sql(name: str) -> str:
+    """preset_name in SQL for the expression name, NULL for other names. Build
+    it when the statement runs, after the declared channels are known."""
+
+    def text(value: str) -> str:
+        return "'{}'".format(value.replace("'", "''"))
+
+    cases = " ".join(f"WHEN {text(key)} THEN {text(n)}" for key, n in _PRESET_NAMES.items())
+    return f"(CASE lower({name}) {cases} END)"
+
+
 def modem_preset_radio(modem_preset: str) -> Radio | None:
     """The radio settings of a modem preset, named as in map reports
     (LONG_FAST) or as its channel (LongFast), whatever the case; None if

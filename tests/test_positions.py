@@ -159,6 +159,17 @@ def test_an_estimate_ignores_a_neighbour_with_a_doubtful_position(
     assert estimate.neighbours == 3
 
 
+def test_an_estimate_ignores_neighbours_that_opted_out(connection: sqlite3.Connection) -> None:
+    # Placed among them, it would be drawn near where they are.
+    node(connection, NODE, None)
+    neighbours_around(connection, (0, 0))
+    connection.executemany("INSERT INTO node_opt_out (node_id) VALUES (?)", [(N2,), (N3,)])
+
+    estimate = estimates(connection)[NODE]
+
+    assert estimate.neighbours == 1
+
+
 def test_a_reported_altitude_alone_does_not_excuse_far_partners(
     connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -157,7 +157,7 @@ _FACTS_UPGRADES = {
       AND m.position_precision <= 32;
     """,
 }
-DERIVED_VERSION = 60
+DERIVED_VERSION = 62
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

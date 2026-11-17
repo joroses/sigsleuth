@@ -66,6 +66,7 @@ export type NodePositionHistory = Schemas["NodePositionHistory"];
 export type NodeContactList = Schemas["NodeContactList"];
 export type NodeContact = Schemas["NodeContact"];
 export type ContactLink = Schemas["ContactLink"];
+export type ContactLine = Schemas["ContactLine"];
 export type LinkRow = Schemas["LinkRow"];
 export type LinkTable = Schemas["LinkTable"];
 export type ZeroCostHop = Schemas["ZeroCostHop"];

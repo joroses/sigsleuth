@@ -64,6 +64,15 @@ describe("mapUrls", () => {
     },
   );
 
+  it("starts nodes and links at the hour their window starts in", () => {
+    const urls = mapUrls("1h", Date.parse("2026-10-25T04:58:00Z"));
+    const param = (url: string, name: string) =>
+      new URL(url, "http://localhost").searchParams.get(name);
+
+    expect(param(urls.nodes, "seen_since")).toBe("2026-10-25T03:00:00.000Z");
+    expect(param(urls.traceroute, "since")).toBe("2026-10-25T03:00:00.000Z");
+  });
+
   it("leaves all history without an activity or position cutoff", () => {
     const urls = mapUrls("all", Date.parse("2026-10-25T12:00:00Z"));
     const nodes = new URL(urls.nodes, "http://localhost");

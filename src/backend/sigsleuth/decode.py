@@ -210,7 +210,10 @@ def known_hop_start(
     """A header's hop start, None when unknown. 0 is firmware older than hop
     counts, except with no hops left on a packet whose relay byte is its
     sender's own: only firmware that fills in hop counts sends a relay byte, so
-    the sender sent it with no hops."""
+    the sender sent it with no hops. A header with more hops left than it
+    started with is unknown too."""
+    if hop_limit is not None and hop_limit > hop_start:
+        return None
     if hop_start or (hop_limit == 0 and relay_byte == relay_byte_of(sender_node_id)):
         return hop_start
     return None
@@ -231,13 +234,17 @@ def parse_delivery(topic: str, payload: bytes) -> ParsedDelivery:
 
     packet = envelope.packet
     relay_byte = int(packet.relay_node) or None
+    rx_rssi = int(packet.rx_rssi) or None
+    # A packet that never crossed the air (a gateway's own) has neither; a 0 dB
+    # SNR with an RSSI was measured.
+    rx_snr = None if rx_rssi is None and packet.rx_snr == 0 else round(float(packet.rx_snr), 2)
     hop_start = known_hop_start(
         int(packet.hop_start), int(packet.hop_limit), relay_byte, int(getattr(packet, "from"))
     )
     parsed = ParsedDelivery(
         gateway_node_id=node_number(envelope.gateway_id),
-        rx_snr=round(float(packet.rx_snr), 2) or None,
-        rx_rssi=int(packet.rx_rssi) or None,
+        rx_snr=rx_snr,
+        rx_rssi=rx_rssi,
         hop_start=hop_start,
         hop_limit=None if hop_start is None else int(packet.hop_limit),
         relay_byte=relay_byte,

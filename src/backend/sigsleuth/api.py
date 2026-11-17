@@ -460,7 +460,8 @@ def create_app(
     ) -> NodeContactList:
         """Every node linked with this one since `since` (default all history)
         and the gateways that heard its newest packets then, with no map rule
-        hiding any, nearest first: for checking where it is."""
+        hiding any, nearest first: for checking where it is. lines are its
+        links the Map would draw (map/links)."""
         return node_contacts(connection, node_id, since=_utc(since))
 
     @app.get("/api/v1/nodes/{node_id}/links")
@@ -793,7 +794,6 @@ def create_app(
         east: Annotated[float, Query(ge=-180, le=180)],
         north: Annotated[float, Query(ge=-90, le=90)],
         zoom: Annotated[float, Query(ge=0, le=24)],
-        since: datetime | None = None,
         node: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
         channel: str | None = None,
         unknown: bool = False,
@@ -803,11 +803,11 @@ def create_app(
         5,000 cells, from the measurements still true: none heard before its
         node last moved, and each either heard within
         SIGSLEUTH_RETENTION_DAYS or of a node seen since then, by MQTT or by
-        a survey hearing its packets. since filters when the measurements were heard. With
-        node, only the measurements where that node was the heard node,
-        including its own packets heard directly. channel keeps packets whose
-        sender last sent on that channel, as the map's channel filter does for
-        nodes. unknown keeps only measurements with an unidentified relay byte."""
+        a survey hearing its packets. With node, only the measurements where
+        that node was the heard node, including its own packets heard
+        directly. channel keeps packets whose sender last sent on that
+        channel, as the map's channel filter does for nodes. unknown keeps
+        only measurements with an unidentified relay byte."""
         if west > east or south > north:
             raise _invalid_parameters()
         query_start = time.perf_counter()
@@ -818,7 +818,6 @@ def create_app(
             east=east,
             north=north,
             zoom=zoom,
-            since=_utc(since),
             node=node,
             channel=channel,
             unknown=unknown,
@@ -872,14 +871,13 @@ def create_app(
         level: Annotated[int, ApiPath(ge=MIN_CELL_LEVEL, le=FINE_LEVEL)],
         x: Annotated[int, ApiPath(ge=0)],
         y: Annotated[int, ApiPath(ge=0)],
-        since: datetime | None = None,
         node: Annotated[int | None, Query(ge=1, le=0xFFFFFFFF)] = None,
         channel: str | None = None,
         unknown: bool = False,
     ) -> CoverageCellDetail:
         """One coverage cell's totals, the nodes heard there with how each
         was identified, unknown relay bytes and the newest 20 measurements,
-        filtered by since, node, channel and unknown as in the cell list."""
+        filtered by node, channel and unknown as in the cell list."""
         if x >= 1 << level or y >= 1 << level:
             raise _invalid_parameters()
         query_start = time.perf_counter()
@@ -888,7 +886,6 @@ def create_app(
             level,
             x,
             y,
-            since=_utc(since),
             node=node,
             channel=channel,
             unknown=unknown,
@@ -985,14 +982,20 @@ def create_app(
         """The `count` newest heard survey measurements before measurement
         `before_id`, relayed ones only unless `direct`, each with the node
         upload, its survey link and today's rules name."""
-        return survey_checks(connection, before_id=before_id, count=count, direct=direct)
+        return survey_checks(
+            connection,
+            before_id=before_id,
+            count=count,
+            alive_days=settings.retention_days,
+            direct=direct,
+        )
 
     @app.get("/api/v1/diagnostics/survey-checks/{measurement_id}", dependencies=[Admin])
     def survey_check_page(
         connection: Connection, measurement_id: Annotated[int, ApiPath(gt=0)]
     ) -> SurveyCheckDetail:
         """One survey measurement's decisions, term by term."""
-        page = survey_check(connection, measurement_id)
+        page = survey_check(connection, measurement_id, alive_days=settings.retention_days)
         if page is None:
             raise ApiError(404, "survey_check_not_found", "No such survey measurement.")
         return page

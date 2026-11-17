@@ -11,7 +11,12 @@ import {
 } from "./linkRows";
 import { LinkDetails } from "./LinkDetails";
 import { now } from "./clock";
-import { SEEN_WINDOWS, type SeenWindow, windowReaching } from "./mapTimeFilter";
+import {
+  SEEN_WINDOWS,
+  type SeenWindow,
+  windowReaching,
+  windowStartMs,
+} from "./mapTimeFilter";
 import { formatNodeId } from "./nodeDisplay";
 import { nodeSearchIndex, searchNodes } from "./nodeSearch";
 import { TracerouteExplorer } from "./TracerouteExplorer";
@@ -62,7 +67,6 @@ const LineOfSightView = lazy(() =>
   })),
 );
 
-const HOUR_MS = 60 * 60 * 1000;
 const ROWS_STEP = 100;
 
 type NodeMap = ReadonlyMap<number, NodeSummary>;
@@ -263,7 +267,7 @@ function windowStart(
     since:
       hours == null
         ? undefined
-        : new Date(chosenAt - hours * HOUR_MS).toISOString(),
+        : new Date(windowStartMs(hours, chosenAt)).toISOString(),
     chosenAt,
   };
 }

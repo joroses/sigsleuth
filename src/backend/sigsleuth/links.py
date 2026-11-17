@@ -208,15 +208,16 @@ def map_links(
     trusted: bool = False,
     max_km: float | None = None,
     with_free_hops: bool = False,
+    node: int | None = None,
 ) -> MapLinkList:
     """Links from one link kind's hourly totals since the start of
-    since's hour, one per node pair and channel; only channel's when given,
-    so the limit applies to that channel alone. With trusted, the map's view
+    since's hour, one per node pair and channel; only channel's and node's
+    when given, so the limit applies to those alone. With trusted, the map's view
     of where nodes are now: only the hours that still match (TRUSTED_HOUR),
     and only the links that fit where it draws their nodes (_fits_now), at
     most max_km apart when given. with_free_hops adds the links' 0-cost
     directions now (free_hops)."""
-    rows = _hourly_links(connection, link_kind, since, limit, channel, trusted)
+    rows = _hourly_links(connection, link_kind, since, limit, channel, trusted, node=node)
     kept = rows[:limit]
     if trusted:
         nodes = nodes_by_id(connection, {n for row in kept for n in (row["node_a"], row["node_b"])})

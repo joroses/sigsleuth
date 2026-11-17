@@ -18,7 +18,7 @@ from sigsleuth.nodes import CURRENT_PRECISION_SQL, NodePosition, node_position, 
 from sigsleuth.opt_out import is_opted_out, shown_sql, unlinkable_packets
 from sigsleuth.places import nearest_city
 from sigsleuth.positions import EstimatedPosition
-from sigsleuth.radio import PRESET_RADIOS, channel_key
+from sigsleuth.radio import preset_name_sql
 
 # A chatty sender farther than this from any town of 15,000 people has no region.
 SENDER_PLACE_KM = 50
@@ -49,15 +49,13 @@ def _radio_sql(table: str, radio: str | None) -> str:
     sender's latest preset by then, else Unknown. No condition for None."""
     if radio is None:
         return ""
-    names = ", ".join("'{}'".format(channel_key(name).replace("'", "''")) for name in PRESET_RADIOS)
-    return f"""AND CASE WHEN lower({table}.channel) IN ({names}) THEN {table}.channel
-        ELSE coalesce((
+    return f"""AND coalesce({preset_name_sql(f"{table}.channel")}, (
             SELECT radio.channel FROM node_channel AS radio
             WHERE radio.node_id = {table}.sender_node_id
               AND radio.observed_at <= {table}.first_received_at
               AND radio.packet_row_id <= {table}.id
             ORDER BY radio.observed_at DESC, radio.packet_row_id LIMIT 1
-        ), 'Unknown') END = :radio"""
+        ), 'Unknown') = :radio"""
 
 
 # A sender's text reach channel: the one where a text reached the most other

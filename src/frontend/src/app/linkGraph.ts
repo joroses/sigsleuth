@@ -65,13 +65,15 @@ function stepCost(observations: number): number {
  * The likeliest route (stepCost) a packet sent with the highest hop limit can
  * take on one radio channel, with its hops as Meshtastic counts them: each relay spends one, except
  * a relay over a 0-hop direction after the first. A relay needs a hop left,
- * even a 0-hop one. Null when none connects them.
+ * even a 0-hop one. A muted node (CLIENT_MUTE) never rebroadcasts, so it may
+ * start or end the route but not relay it. Null when none connects them.
  */
 export function findRoute<T extends { link: MapLink }>(
   from: number,
   to: number,
   links: readonly T[],
   zeroCost: readonly ZeroCostHop[] = [],
+  muted: ReadonlySet<number> = new Set(),
 ): { links: T[]; hops: number } | null {
   if (from === to) return null;
   const free = zeroCostSet(zeroCost);
@@ -144,6 +146,7 @@ export function findRoute<T extends { link: MapLink }>(
           found = reached;
           continue;
         }
+        if (muted.has(step.to)) continue;
         const known = best.get(state(reached));
         if (known !== undefined && known.cost <= reached.cost) continue;
         best.set(state(reached), reached);

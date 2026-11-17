@@ -129,6 +129,20 @@ describe("findRoute", () => {
     expect(pairs(findRoute(1, 2, [oneWay]))).toEqual([[1, 2]]);
   });
 
+  it("never relays through a muted node, which may still end the route", () => {
+    const through = [heard(1, 2, 50), heard(2, 3, 50)];
+    const around = [heard(1, 4, 5), heard(4, 3, 5)];
+    expect(
+      pairs(findRoute(1, 3, [...through, ...around], [], new Set([2]))),
+    ).toEqual([
+      [1, 4],
+      [4, 3],
+    ]);
+    expect(pairs(findRoute(1, 2, through, [], new Set([2])))).toEqual([[1, 2]]);
+    expect(pairs(findRoute(2, 3, through, [], new Set([2])))).toEqual([[2, 3]]);
+    expect(findRoute(1, 3, through, [], new Set([2]))).toBeNull();
+  });
+
   it("keeps one radio channel, including a quieter way through the same relay", () => {
     const on = (channel: string, a: number, b: number, count: number) => {
       const item = heard(a, b, count);

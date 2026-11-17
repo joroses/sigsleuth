@@ -211,8 +211,9 @@ class Relayed:
 class NodeRadio:
     """What a node's packets and map report say about its radio:
     the settings its channel name and its map report's preset give (None
-    when they tell none), its map report's firmware, and when it last
-    reported a packet as a gateway."""
+    when they tell none), its map report's firmware (None too when its
+    packets prove a newer one: a stale report), and when it last reported a
+    packet as a gateway."""
 
     channel: Radio | None
     preset: Radio | None
@@ -339,7 +340,9 @@ def node_radios(connection: sqlite3.Connection, nodes: set[int]) -> dict[int, No
         )
         for row in connection.execute(
             """
-            SELECT n.node_id, n.channel, n.last_gateway_at, r.modem_preset, r.firmware_number
+            SELECT n.node_id, n.channel, n.last_gateway_at, r.modem_preset,
+                   iif(n.firmware_minimum > r.firmware_number, NULL, r.firmware_number)
+                       AS firmware_number
             FROM node_current AS n LEFT JOIN map_report AS r USING (node_id)
             WHERE n.node_id IN (SELECT value FROM json_each(?))
             """,

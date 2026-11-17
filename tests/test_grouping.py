@@ -68,16 +68,16 @@ def test_sliding_inactivity_window_keeps_matching_chain_in_one_group(path: Path)
     assert count(path, "packet") == 1
 
 
-def test_inactivity_window_joins_just_under_thirty_minutes_and_splits_at_boundary(
+def test_inactivity_window_joins_just_under_a_day_and_splits_at_boundary(
     path: Path,
 ) -> None:
     joined = [
         group(path, packet_id=7),
-        group(path, packet_id=7, received_at=RECEIVED_AT + timedelta(minutes=30, milliseconds=-1)),
+        group(path, packet_id=7, received_at=RECEIVED_AT + timedelta(days=1, milliseconds=-1)),
     ]
     split = [
         group(path, packet_id=8),
-        group(path, packet_id=8, received_at=RECEIVED_AT + timedelta(minutes=30)),
+        group(path, packet_id=8, received_at=RECEIVED_AT + timedelta(days=1)),
     ]
     assert joined[0] is not None and joined[0] == joined[1]
     assert split[0] is not None and split[1] is not None and split[0] != split[1]

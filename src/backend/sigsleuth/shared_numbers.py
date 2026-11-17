@@ -520,7 +520,9 @@ def link_radios(
         """,
         {"node": node_id, "limit": MAX_RADIO_PACKETS, "since": since_ms},
     ):
-        channel = link_channel(connection, row, node_id, channels)
+        channel = link_channel(
+            connection, row, node_id, channels, receiver=int(row["gateway_node_id"])
+        )
         found["direct", int(row["gateway_node_id"]), channel].add(bytes(row["mac_address"]))
     for row in connection.execute(
         """

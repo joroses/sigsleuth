@@ -68,11 +68,11 @@ def test_node_number_from_the_public_key_proves_2_8(path: Path) -> None:
 
 
 def test_the_minimum_only_rises(path: Path) -> None:
-    send(path, 1, node_info(OLD_NODE, 1, role=config_pb2.Config.DeviceConfig.CLIENT_BASE))
+    send(path, 1, node_info(OLD_NODE, 1, is_unmessagable=False))
     send(path, 2, node_info(OLD_NODE, 2, public_key=KEY))
     assert firmware(path, OLD_NODE) == {
-        "minimum": "2.7.9",
-        "reason": "it uses the Client base role",
+        "minimum": "2.6.8",
+        "reason": "its NodeInfo says whether it accepts messages",
     }
 
     # Soil and water telemetry (field 11) is newer than the installed protobufs.
@@ -82,6 +82,16 @@ def test_the_minimum_only_rises(path: Path) -> None:
         "minimum": "2.8.1",
         "reason": "it sends soil and water telemetry",
     }
+
+
+def test_what_an_app_or_a_fork_can_send_proves_nothing(path: Path) -> None:
+    # An app can set a role the firmware predates, and forks fill telemetry
+    # field 9 (traffic management) with a message of their own.
+    send(path, 1, node_info(OLD_NODE, 1, role=config_pb2.Config.DeviceConfig.CLIENT_BASE))
+    traffic = telemetry_pb2.Telemetry(time=1).SerializeToString() + b"\x4a\x02\x08\x01"
+    send(path, 2, application_envelope(TELEMETRY, traffic, sender=OLD_NODE, packet_id=2))
+
+    assert firmware(path, OLD_NODE) is None
 
 
 def test_a_signed_packet_proves_2_8(path: Path) -> None:

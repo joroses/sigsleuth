@@ -153,6 +153,36 @@ def test_why_names_no_relay_byte_and_candidates_ruled_out_by_signal(
     assert client.get(f"{CHECKS}/{no_byte['measurement_id']}").json()["candidates"] == []
 
 
+def test_a_muted_node_heard_nearby_is_listed_but_never_the_link(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    node(connection, RELAY, PHONE[0] + 0.01)
+    connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (RELAY,))
+    upload(client, direct(1, RELAY, heard_at_ms=at), relayed(2, heard_at_ms=at))
+    [check] = checks(client)
+    assert (check["link"], check["link_nodes"]) == (None, 0)
+    [linked] = client.get(f"{CHECKS}/{check['measurement_id']}").json()["survey_link"]
+    assert (linked["node_id"], linked["excluded"], linked["candidate"]) == (RELAY, "muted", False)
+
+
+def test_survey_checks_say_when_the_map_no_longer_counts_a_measurement(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    node(connection, RELAY, PHONE[0] + 0.01)
+    upload(client, direct(1, RELAY, heard_at_ms=at), relayed(2, heard_at_ms=at))
+    [check] = checks(client)
+    assert (node_id(check["shown_node"]), check["shown_how"]) == (RELAY, "survey_link")
+    assert check["counted"]
+    # RELAY moved since: the map no longer counts what it was heard by.
+    connection.execute("UPDATE node_current SET moved_at = ? WHERE node_id = ?", (now_ms(), RELAY))
+    [check] = checks(client)
+    assert (node_id(check["shown_node"]), check["shown_how"]) == (RELAY, "survey_link")
+    assert not check["counted"]
+    assert not client.get(f"{CHECKS}/{check['measurement_id']}").json()["check"]["counted"]
+
+
 def test_survey_checks_list_newest_heard_first_and_page_on(client: TestClient) -> None:
     at = now_ms() - DAY_MS
     # Uploaded out of order, as a phone that was offline sends them.

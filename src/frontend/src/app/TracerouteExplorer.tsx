@@ -659,7 +659,15 @@ function RunTable({
                 <td>
                   <Packets run={run} />
                 </td>
-                <td>{run.channel}</td>
+                <td
+                  title={
+                    run.channel !== run.radio_channel
+                      ? `Uploaded as ${run.channel}`
+                      : undefined
+                  }
+                >
+                  {run.radio_channel}
+                </td>
               </tr>
               {open === key ? (
                 <tr className="links-expanded">

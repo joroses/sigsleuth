@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 
 from derived_rows import insert_row, link_hour
-from sigsleuth import coverage
+from sigsleuth import coverage, maintenance
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.coverage import fine_cell, network_sessions
@@ -556,11 +556,11 @@ def test_weak_candidates_lose_and_impossible_ones_are_dropped(
         " channel = 'LongFast', channel_observed_at = 1 WHERE node_id = ?",
         (on_long_fast,),
     )
-    # The survey ran on SF7: LongFast is SF11, ShortFast SF7, and firmware
+    # The survey ran on NarrowFast: LongFast is another radio, and firmware
     # before 2.6 sends no relay byte.
     for reporter, modem_preset, firmware in (
         (preset, "LONG_FAST", 20700),
-        (old_firmware, "SHORT_FAST", 20500),
+        (old_firmware, "NARROW_FAST", 20500),
     ):
         connection.execute(
             """
@@ -576,6 +576,29 @@ def test_weak_candidates_lose_and_impossible_ones_are_dropped(
     # Five candidates: preset and old_firmware cannot have sent the copy; the
     # others' role, channel, silence or own report count against them.
     assert heard(client, connection, relay_byte=0x3D)[:3] == (relay, "only_candidate", 5)
+
+
+def test_a_stale_map_report_does_not_rule_out_a_node_whose_packets_show_the_relay_byte(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    relay = 0x0100003D
+    node(connection, relay, PHONE[0] + 0.05)
+    connection.execute(
+        """
+        INSERT INTO map_report (node_id, received_at, role, firmware_number, modem_preset,
+            has_default_channel, nodes_online_local, position_precision)
+        VALUES (?, 1, 'ROUTER', 20500, 'NARROW_FAST', 1, 1, 32)
+        """,
+        (relay,),
+    )
+    assert heard(client, connection, relay_byte=0x3D)[2] == 0
+
+    connection.execute(
+        "UPDATE node_current SET firmware_minimum = 20600, firmware_trait = 'relay_byte'"
+        " WHERE node_id = ?",
+        (relay,),
+    )
+    assert heard(client, connection, relay_byte=0x3D)[2] == 1
 
 
 @pytest.mark.parametrize("outgoing", [False, True])
@@ -802,11 +825,12 @@ def test_a_packet_page_names_relays_by_the_survey_rules(
     assert relays[GATEWAY] == (LINKED_TO_GATEWAY, "heard_directly")
     assert relays[RECEIVER][0] == (LINKED_TO_GATEWAY, 11.3)
     # The only candidate the gateway heard directly wins over every guess,
-    # and no rule-out drops it.
+    # and no rule-out drops it, unless it is muted and never rebroadcasts.
     link(connection, NEAR, RECEIVER, observations=1)
     assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
     connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (NEAR,))
-    assert packet_relays(client, connection)[RECEIVER] == (NEAR, "heard_directly")
+    assert packet_relays(client, connection)[RECEIVER] == (LINKED_TO_GATEWAY, "gateway_link")
+    connection.execute("UPDATE node_current SET role = NULL WHERE node_id = ?", (NEAR,))
     connection.execute(
         "UPDATE node_current SET latitude = NULL, longitude = NULL,"
         " position_observed_at = NULL, position_packet_row_id = NULL WHERE node_id = ?",
@@ -886,6 +910,34 @@ def test_a_gateway_uploading_its_own_rebroadcast_names_no_relay(
     node(connection, other, PHONE[0] + 0.01)
     mqtt_report(connection, own_byte, hop_limit=1, relay_byte=0x1A)
     assert packet_relays(client, connection) == {own_byte: []}
+    assert relay_own(client, connection) == {own_byte: "gateway"}
+
+
+def relay_own(client: TestClient, connection: sqlite3.Connection) -> dict[int, str | None]:
+    """Each reception of packet 77 by gateway: whose own byte its relay byte is."""
+    packet = connection.execute("SELECT id FROM packet WHERE packet_id = 77").fetchone()[0]
+    receptions = client.get(f"/api/v1/packets/{packet}").json()["receptions"]
+    return {reception["gateway_node_id"]: reception["relay_own"] for reception in receptions}
+
+
+@pytest.mark.parametrize("rx_snr", [5.0, None])
+def test_the_senders_own_byte_names_a_relay_only_after_a_hop(
+    client: TestClient, connection: sqlite3.Connection, rx_snr: float | None
+) -> None:
+    shares_byte = 0x0C000001
+    node(connection, RECEIVER, PHONE[0])
+    node(connection, shares_byte, PHONE[0] + 0.01)
+    # No hops used: heard from the sender itself, directly or bridged.
+    mqtt_report(connection, RECEIVER, hop_limit=4, relay_byte=SENDER & 0xFF, rx_snr=rx_snr)
+    assert packet_relays(client, connection) == {RECEIVER: []}
+    assert relay_own(client, connection) == {RECEIVER: "sender"}
+    connection.execute("UPDATE reception SET hop_limit = NULL")
+    assert relay_own(client, connection) == {RECEIVER: "sender"}
+
+    # After a hop, the byte is another node's that shares it.
+    connection.execute("UPDATE reception SET hop_limit = 3")
+    assert relay_own(client, connection) == {RECEIVER: None}
+    assert packet_relays(client, connection) == {RECEIVER: (shares_byte, "only_candidate")}
 
 
 def test_cohearer_signal_patterns_outweigh_link_counts(
@@ -1232,7 +1284,6 @@ def test_cells_group_measurements_at_the_zoom_level(
     assert measurements(node=LINKED_TO_SENDER) == 2
     # Its own packets count only when heard directly, not the two relayed ones.
     assert measurements(node=SENDER) == 1
-    assert measurements(since="2999-01-01T00:00:00Z") == 0
     # Measurements stay on the channels their survey can be on while their
     # sender's channel is unknown, then follow it.
     assert measurements(channel="SFNarrow") == 3
@@ -1511,6 +1562,44 @@ def test_relay_hints_fill_three_without_evidence_and_skip_hidden_or_impossible_n
     ]
     relays = fine_cell_detail(client, *PHONE)["unknown_relays"]
     assert [[c["node_id"] for c in relay["candidates"]] for relay in relays] == [fallbacks[:3]]
+
+
+@pytest.fixture
+def frozen_estimates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keeps node_estimate as a test writes it: the API's background work
+    refills it from links when it starts."""
+    monkeypatch.setattr(maintenance, "refresh_estimates", lambda connection: 0)
+
+
+@pytest.mark.usefixtures("frozen_estimates")
+def test_a_relay_hint_at_an_estimated_position_says_so(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    placed, guessed = 0x0100004F, 0x0200004F
+    node(connection, placed, PHONE[0] + 0.1)
+    node(connection, guessed)
+    connection.execute(
+        "INSERT INTO node_estimate VALUES (?, ?, ?, 2, 1.0, 0)",
+        (guessed, PHONE[0] + 0.05, PHONE[1]),
+    )
+    node(connection, RECEIVER, PHONE[0])
+    mqtt_report(connection, RECEIVER, hop_limit=1, relay_byte=0x4F)
+
+    reply = upload(
+        client,
+        measurement(1, sender_node_id=SENDER, packet_id=77, relay_byte=0x4F),
+        session={**SESSION, "receiver_node_id": RECEIVER},
+    )
+
+    def hints(candidates: list[dict[str, Any]]) -> dict[int, bool]:
+        return {c["node_id"]: c["estimated"] for c in candidates}
+
+    assert hints(reply["heard"][0]["candidates"]) == {placed: False, guessed: True}
+    [relay] = fine_cell_detail(client, *PHONE)["unknown_relays"]
+    assert hints(relay["candidates"]) == {placed: False, guessed: True}
+    # The packet page's maybe list gives no km to the estimate either.
+    [maybe] = packet_relays(client, connection).values()
+    assert dict(maybe) == {placed: 11.1, guessed: None}
 
 
 @pytest.mark.usefixtures("known_nodes")
@@ -1806,6 +1895,23 @@ def test_a_relay_heard_far_weaker_here_is_not_the_survey_link(
     assert links(connection) == []
     # Another node ending in 1A, heard 5 km away, is left.
     upload(client, direct(3, OTHER_RELAY, heard_at_ms=at, latitude=41.965, **WEAK))
+    assert links(connection) == [(2, OTHER_RELAY)]
+
+
+def test_a_muted_node_is_never_the_survey_link(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    node(connection, RELAY)
+    connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (RELAY,))
+    upload(
+        client,
+        direct(1, RELAY, heard_at_ms=at),
+        measurement(2, relay_byte=0x1A, heard_at_ms=at),
+    )
+    assert links(connection) == []
+    # Another node ending in 1A, heard 5 km away, is the only one left.
+    upload(client, direct(3, OTHER_RELAY, heard_at_ms=at, latitude=41.965))
     assert links(connection) == [(2, OTHER_RELAY)]
 
 

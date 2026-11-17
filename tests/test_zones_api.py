@@ -1,4 +1,5 @@
 import itertools
+import sqlite3
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -7,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from derived_rows import link_hour
-from sigsleuth import api
+from sigsleuth import api, db
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, now_ms, open_current_database
@@ -114,6 +115,48 @@ def test_a_lone_relay_between_two_groups_cuts_them_off(path: Path) -> None:
     # The key relay row carries the node's own state for the key relays table.
     assert relay["last_seen_at"] is not None
     assert (relay["battery_level"], relay["firmware"]) == (None, None)
+    assert relay["firmware_version"] is None
+
+
+def test_a_key_relay_carries_the_firmware_its_map_report_names(path: Path) -> None:
+    relayed_triangles(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            INSERT INTO map_report (node_id, received_at, role, firmware_version,
+                firmware_number, modem_preset, has_default_channel, nodes_online_local,
+                position_precision)
+            VALUES (?, 1, 'ROUTER', '2.7.15.567b8ea', 20715, 'LONG_FAST', 1, 1, 32)
+            """,
+            (R,),
+        )
+
+    relay = key_relay(get_zones(path), R)
+
+    assert relay is not None and relay["firmware_version"] == "2.7.15.567b8ea"
+
+
+def test_a_muted_node_on_the_strongest_path_is_no_key_relay(path: Path) -> None:
+    muted, weaker = 31, 32
+    for a, b in [(X1, X2), (X2, X3), (X1, X3), (Y1, Y2), (Y2, Y3), (Y1, Y3), (X1, muted)]:
+        link(path, a, b)
+    link(path, muted, Y1)
+    for a, b in [(X1, weaker), (weaker, Y1)]:
+        link(path, a, b, snr=-5.0)
+    for node_id in (X1, X2, X3, Y1, Y2, Y3, muted, weaker):
+        node(path, node_id)
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (muted,)
+        )
+
+    body = get_zones(path)
+
+    # Muted, it never rebroadcasts: the weaker relay carries the other side.
+    assert key_relay(body, muted) is None
+    relay = key_relay(body, weaker)
+    assert relay is not None
+    assert relay["carries"] == 3
 
 
 def test_a_weak_one_way_bypass_leaves_the_relay_with_no_solid_backup(path: Path) -> None:
@@ -486,9 +529,10 @@ BROADCAST = 0xFFFFFFFF
 Z1, Z2, Z3, Z4 = 21, 22, 23, 24
 
 
-def texts(path: Path, sender: int, *gateway_sets: tuple[int, ...]) -> None:
-    """One broadcast text on LongFast from the sender per set of gateways that reported it."""
-    seen = now_ms()
+def texts(path: Path, sender: int, *gateway_sets: tuple[int, ...], seen: int | None = None) -> None:
+    """One broadcast text on LongFast from the sender per set of gateways that
+    reported it, at seen (default now)."""
+    seen = now_ms() if seen is None else seen
     with closing(open_current_database(path)) as connection, connection:
         for gateways in gateway_sets:
             text_id = connection.execute(
@@ -571,6 +615,24 @@ def test_a_pair_pools_texts_with_a_chatty_sender_weighing_as_twenty(path: Path) 
     assert item["share"] == 0.84  # (20 + 1) / (20 + 4 + 1)
     sender_zone = zone(body, zone_of, X1)
     assert (sender_zone["text_senders"], sender_zone["text_count"]) == (3, 45)
+
+
+def test_texts_count_from_the_start_of_the_windows_first_hour(
+    path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hour = 1_800_000_000_000 - 1_800_000_000_000 % HOUR_MS
+    monkeypatch.setattr(db, "fixed_now_ms", hour + 30 * 60_000)
+    zone_of = three_groups(path)
+    window_start = hour - 72 * HOUR_MS
+    # 72 hours before now is half past; the text 20 minutes earlier counts,
+    # the one before the hour does not. Saved in time order, as capture does.
+    texts(path, X1, (X2, Y1), seen=window_start - 60_000)
+    texts(path, X1, (X2, Y1), seen=window_start + 10 * 60_000)
+
+    item = reach(get_zones(path), zone_of, X1, Y1)
+
+    assert item is not None
+    assert item["texts"] == 1
 
 
 def test_a_zone_with_no_gateway_has_no_text_reach(path: Path) -> None:

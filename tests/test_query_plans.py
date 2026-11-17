@@ -358,10 +358,9 @@ def survey_upload(now: datetime) -> dict[str, object]:
 
 def coverage_requests(client: TestClient, now: datetime) -> Iterator[str]:
     """The coverage layer's requests, around the survey upload."""
-    day = (now - timedelta(days=1)).isoformat().replace("+00:00", "Z")
     area = "west=4&south=51&east=6&north=53&zoom=12"
     yield f"/api/v1/coverage/cells?{area}"
-    yield f"/api/v1/coverage/cells?{area}&since={day}&node={REQUESTER}&channel=LongFast"
+    yield f"/api/v1/coverage/cells?{area}&node={REQUESTER}&channel=LongFast"
     yield f"/api/v1/coverage/extent?node={REQUESTER}"
     yield f"/api/v1/coverage/extent?node={REQUESTER}&channel=LongFast"
     yield "/api/v1/coverage/nodes?west=4&south=51&east=6&north=53"

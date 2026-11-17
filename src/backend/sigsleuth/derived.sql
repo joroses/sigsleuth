@@ -244,14 +244,16 @@ CREATE INDEX traceroute_hop_to ON traceroute_hop (to_node_id);
 -- shows (route_, the packet, reception and direction whose report holds it)
 -- is the route that worked from its earliest reply with one, else from its
 -- earliest request with one (reached), otherwise its longest route. ends_
--- is its first packet with an ends_km. A run is in a window, and is deleted,
--- with its first packet.
+-- is its first packet with an ends_km. radio_channel is the run's radio
+-- channel (link_channels.packet_radio_channel over all its packets' hops),
+-- else 'Unknown'. A run is in a window, and is deleted, with its first packet.
 CREATE TABLE traceroute_run (
     requester_node_id INTEGER NOT NULL,
     request_packet_id INTEGER NOT NULL,
     target_node_id INTEGER NOT NULL,  -- the first packet's
     first_packet_row_id INTEGER NOT NULL REFERENCES packet(id) ON DELETE CASCADE,
     channel TEXT NOT NULL,  -- the first packet's
+    radio_channel TEXT NOT NULL,
     reached INTEGER NOT NULL CHECK (reached IN (0, 1)),
     route_packet_row_id INTEGER NOT NULL,
     route_reception_id INTEGER NOT NULL,

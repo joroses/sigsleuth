@@ -564,12 +564,15 @@ def reach_by_partner(
 
 def _estimates(connection: sqlite3.Connection, since_ms: int) -> list[EstimatedPosition]:
     """Estimates for the linked nodes with no reported position, from the
-    link hours since since_ms that the map trusts (links.TRUSTED_HOUR)."""
+    link hours since since_ms that the map trusts (links.TRUSTED_HOUR).
+    Opted-out neighbours place nobody: an estimate would draw their place."""
+    hidden = opted_out(connection)
     reported = {
         int(row[0]): (float(row[1]), float(row[2]))
         for row in connection.execute(
             "SELECT node_id, latitude, longitude FROM node_current WHERE latitude IS NOT NULL"
         )
+        if int(row[0]) not in hidden
     }
     neighbours: dict[int, _Neighbours] = defaultdict(lambda: _Neighbours({}, {}))
     for a, b, traceroute, observations in connection.execute(

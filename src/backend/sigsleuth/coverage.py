@@ -17,8 +17,8 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
   (opt_out.refresh_opt_outs), a few seeks each.
 - Each measurement is saved with its cell, its SNR margin and the node it
   heard (heard_node), decided once, at upload (schema.sql says why). A survey
-  link (refresh_survey_links), from survey evidence alone, can name a relay
-  later, and wins over upload's name.
+  link (refresh_survey_links), from survey evidence and roles alone, can name
+  a relay later, and wins over upload's name.
 - The reply names each usable measurement's heard node as the map reads it,
   for the phone's relay list; a resent batch reads what was saved. It also
   says what the measurement adds to the map (new_flags).
@@ -33,7 +33,7 @@ import math
 import sqlite3
 from bisect import bisect_left
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Literal
@@ -47,7 +47,6 @@ from sigsleuth.db import (
     nodes_by_id,
     now_ms,
     optional_from_epoch_ms,
-    to_epoch_ms,
     transaction,
 )
 from sigsleuth.decode import known_hop_start
@@ -212,12 +211,15 @@ class Upload(BaseModel):
 
 @dataclass(frozen=True)
 class CoverageCandidate:
-    """A possible relay, km from a measurement or a cell's centre."""
+    """A possible relay, km from a measurement or a cell's centre. estimated:
+    placed only by estimate; pages leave out its km, the upload's reply keeps
+    it."""
 
     node_id: int
     long_name: str | None
     short_name: str | None
     km: float
+    estimated: bool
 
 
 @dataclass(frozen=True)
@@ -508,7 +510,9 @@ def saved_heard(
             km = None if place is None else node_km(place, (row["latitude"], row["longitude"]))
             if place is not None and km is not None:
                 candidates.append(
-                    CoverageCandidate(node, place.long_name, place.short_name, round(km, 1))
+                    CoverageCandidate(
+                        node, place.long_name, place.short_name, round(km, 1), place.estimated
+                    )
                 )
                 if len(candidates) == CELL_CANDIDATES:
                     break
@@ -570,7 +574,7 @@ def new_flags(
         "session": session_row_id,
         "seqs": json.dumps(sorted(seqs)),
         "network": json.dumps(network_sessions(connection, session_row_id)),
-        "alive_since": _filter_values(connection, None, None, alive_days)["alive_since"],
+        "alive_since": alive_since(alive_days),
     }
     rows = connection.execute(
         f"""
@@ -919,9 +923,10 @@ def refresh_survey_links(
     With session_row_id, only the sessions on its network
     (network_sessions); else every session (rederive).
 
-    Links read saved measurements alone, so each call re-checks the
-    measurements in its window against all their evidence: the order uploads
-    arrive in makes no difference."""
+    Links read saved measurements and the roles nodes have now
+    (muted_nodes), so each call re-checks the measurements in its window
+    against all their evidence: the order uploads arrive in makes no
+    difference."""
     reach = SURVEY_LINK_TIERS_MS[-1]
     targets = sessions = None
     if session_row_id is not None:
@@ -950,6 +955,7 @@ def refresh_survey_links(
         {"start": start - reach, "end": end + reach, "sessions": json.dumps(sessions)},
     ).fetchall()
     heard = heard_directly(rows)
+    muted = muted_nodes(connection, heard)
     relayed = [
         row
         for row in rows
@@ -961,7 +967,7 @@ def refresh_survey_links(
     # thousands of measurements per upload, and capture waits on the write.
     changed = []
     for row in relayed:
-        found = survey_candidates(heard, row)
+        found = survey_candidates(heard, row, muted=muted)
         link = found[0] if len(found) == 1 else None
         if link != row["linked"]:
             changed.append((int(row["id"]), link))
@@ -1054,10 +1060,29 @@ def heard_tier(
     )
 
 
+def muted_nodes(connection: sqlite3.Connection, heard: DirectReceptions) -> frozenset[int]:
+    """The nodes in heard whose role is CLIENT_MUTE now, which never
+    rebroadcast. Only the current role is kept, so a node muted after a
+    survey loses the links of packets it relayed before: on route truth,
+    0.5% of true relays carry the role (docs/relay-evidence.md)."""
+    nodes = {node for by_byte in heard.by_radio.values() for n in by_byte.values() for node in n}
+    if not nodes:
+        return frozenset()
+    rows = connection.execute(
+        """
+        SELECT node_id FROM node_current
+        WHERE node_id IN (SELECT value FROM json_each(?)) AND role = 'CLIENT_MUTE'
+        """,
+        (json.dumps(sorted(nodes)),),
+    )
+    return frozenset(int(row[0]) for row in rows)
+
+
 def survey_candidates(
     heard: DirectReceptions,
     row: Mapping[str, Any],
     *,
+    muted: Collection[int],
     km: float = SURVEY_LINK_KM,
     tiers_ms: Sequence[int] = SURVEY_LINK_TIERS_MS,
 ) -> list[int]:
@@ -1066,7 +1091,7 @@ def survey_candidates(
     sending the same relay byte within km of the phone, in the
     first tier (ms either side) that has any. A survey link when exactly one.
     A node never relays its own packet, a survey node never records its own
-    rebroadcast, and a too_strong node is left out."""
+    rebroadcast, and a muted (muted_nodes) or too_strong node is left out."""
     nodes = heard.nodes(row)
     excluded = (row["sender_node_id"], row["receiver_node_id"])
     for tier in tiers_ms:
@@ -1074,6 +1099,7 @@ def survey_candidates(
             node
             for node, receptions in nodes.items()
             if node not in excluded
+            and node not in muted
             and _heard_near(receptions, row, tier, km)
             and not too_strong(receptions, row)
         ]
@@ -1250,6 +1276,11 @@ _HEARD_OPTED_OUT = opted_out_sql(_HEARD)
 _SHOWN = f"CASE WHEN {_HEARD_OPTED_OUT} THEN NULL ELSE {_HEARD} END"
 _SHOWN_HOW = f"CASE WHEN {_HEARD_OPTED_OUT} THEN 'unknown' ELSE {_HOW} END"
 _SHOWN_GUESSED = f"({_SHOWN_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
+# What the map shows for a measurement on _MEASUREMENTS, for pages that list
+# measurements beside it: its node and how, and whether it counts at all
+# (_ALIVE_SQL, with :alive_since from alive_since).
+SHOWN_COLUMNS = f"""{_SHOWN} AS shown_node, {_SHOWN_HOW} AS shown_how,
+    (1 {_ALIVE_SQL}) AS counted"""
 
 
 def _point_filters(node: int | None, channel: str | None, *, unknown: bool = False) -> str:
@@ -1274,8 +1305,14 @@ def _filter_values(
         "node": node,
         "channel": channel,
         "other_sessions": json.dumps(other_sessions(connection, channel)),
-        "alive_since": now_ms() - alive_days * DAY_MS if alive_days else 0,
+        "alive_since": alive_since(alive_days),
     }
+
+
+def alive_since(alive_days: int) -> int:
+    """_ALIVE_SQL's :alive_since (epoch ms). alive_days is how long
+    node_current remembers an unseen node (retention_days, 0 for ever)."""
+    return now_ms() - alive_days * DAY_MS if alive_days else 0
 
 
 def other_sessions(connection: sqlite3.Connection, channel: str | None) -> list[int]:
@@ -1337,7 +1374,6 @@ def coverage_cells(
     east: float,
     north: float,
     zoom: float,
-    since: datetime | None,
     node: int | None,
     channel: str | None = None,
     unknown: bool = False,
@@ -1369,8 +1405,7 @@ def coverage_cells(
                count(DISTINCT {_SHOWN}) AS nodes, sum({_SHOWN_GUESSED}) AS guessed
         FROM {_MEASUREMENTS}
         JOIN coverage_session AS s ON s.id = m.session_row_id
-        WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
-          AND m.heard_at >= :since{filters}
+        WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1{filters}
         GROUP BY 1, 2
         ORDER BY measurements DESC, x, y
         LIMIT :limit
@@ -1381,7 +1416,6 @@ def coverage_cells(
             "x1": x1,
             "y0": y0,
             "y1": y1,
-            "since": 0 if since is None else to_epoch_ms(since),
             "limit": MAX_CELLS + 1,
             **_filter_values(connection, node, channel, alive_days),
         },
@@ -1537,20 +1571,17 @@ def coverage_nodes(
 @dataclass(frozen=True)
 class CoverageHeardNode:
     """A node heard in a cell. how is the most certain way it was identified
-    there, candidates the most candidates the rule-outs left for one of its
-    measurements (heard_node), and guessed counts its measurements identified
-    by a guess. The map draws lines to it from its own nodes' positions,
-    which include estimates. average_snr is the
-    survey nodes' SNR as radios show it; a node transmits on one network, so
-    it mixes no radio settings. average_margin is the SNR above the survey
-    node's floor, as cells average it. channel is the node's latest channel,
-    None when unknown."""
+    there, and guessed counts its measurements identified by a guess. The map
+    draws lines to it from its own nodes' positions, which include estimates.
+    average_snr is the survey nodes' SNR as radios show it; a node transmits
+    on one network, so it mixes no radio settings. average_margin is the SNR
+    above the survey node's floor, as cells average it. channel is the node's
+    latest channel, None when unknown."""
 
     node_id: int
     long_name: str | None
     short_name: str | None
     how: HeardHow
-    candidates: int
     measurements: int
     guessed: int
     average_snr: float | None
@@ -1609,9 +1640,8 @@ class CoverageCellNetwork:
 class CoverageCellDetail:
     """One cell: its centre and approximate width (size_m), its totals, the
     nodes heard there (at most CELL_MAX_NODES, most measurements first), the
-    unknown relays and the newest CELL_NEWEST measurements. measurements is 0
-    when the cell has none in the window. networks totals the SNR per radio
-    settings, most measurements first."""
+    unknown relays and the newest CELL_NEWEST measurements. networks totals
+    the SNR per radio settings, most measurements first."""
 
     level: int
     x: int
@@ -1634,7 +1664,6 @@ def coverage_cell(
     x: int,
     y: int,
     *,
-    since: datetime | None,
     node: int | None = None,
     channel: str | None = None,
     unknown: bool = False,
@@ -1645,14 +1674,13 @@ def coverage_cell(
     coverage_cells."""
     shift = FINE_LEVEL - level
     where = """
-        m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1 AND m.heard_at >= :since
+        m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1
     """ + _point_filters(node, channel, unknown=unknown)
     values = {
         "x0": x << shift,
         "x1": ((x + 1) << shift) - 1,
         "y0": y << shift,
         "y1": ((y + 1) << shift) - 1,
-        "since": 0 if since is None else to_epoch_ms(since),
         **_filter_values(connection, node, channel, alive_days),
     }
     totals = connection.execute(
@@ -1682,7 +1710,6 @@ def coverage_cell(
                avg(m.rx_snr) AS average_snr, avg(m.margin_db) AS average_margin,
                max(m.heard_at) AS last_heard_at,
                min(CASE {_HOW} {how_rank} END) AS how_rank,
-               max(m.candidates) AS candidates,
                (SELECT channel FROM node_current WHERE node_id = {_HEARD}) AS channel
         FROM {_MEASUREMENTS}
         WHERE {where} AND {_HEARD} IS NOT NULL AND NOT {_HEARD_OPTED_OUT}
@@ -1816,7 +1843,9 @@ def relay_candidates(
             if cannot_relay(evidence.radios.get(node), radios):
                 continue
             near.append(
-                CoverageCandidate(node, summary.long_name, summary.short_name, round(km, 1))
+                CoverageCandidate(
+                    node, summary.long_name, summary.short_name, round(km, 1), summary.estimated
+                )
             )
             if len(near) == CELL_CANDIDATES:
                 break
@@ -1925,7 +1954,6 @@ def _heard_node(row: sqlite3.Row, summary: NodeSummary | None) -> CoverageHeardN
         long_name=None if summary is None else summary.long_name,
         short_name=None if summary is None else summary.short_name,
         how=_HOW_ORDER[int(row["how_rank"])],
-        candidates=int(row["candidates"]),
         measurements=int(row["measurements"]),
         guessed=int(row["guessed"]),
         average_snr=_round(row["average_snr"]),

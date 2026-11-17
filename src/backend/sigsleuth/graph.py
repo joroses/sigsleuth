@@ -22,6 +22,7 @@ from __future__ import annotations
 import heapq
 import math
 from collections import defaultdict
+from collections.abc import Set
 
 import networkx as nx
 
@@ -118,16 +119,19 @@ def zones(graph: nx.Graph[int]) -> dict[int, int]:
     return {node: number for number, members in enumerate(kept, 1) for node in members}
 
 
-def carriers(graph: nx.Graph[int], roots: list[int]) -> dict[int, int]:
+def carriers(
+    graph: nx.Graph[int], roots: list[int], *, ends: Set[int] = frozenset()
+) -> dict[int, int]:
     """For each node, how many nodes reach a root through it on their best path.
 
     A node's count is the smaller side it splits the root's best-path tree
     into, so the root's own side cannot inflate it, taking the root where that
-    is largest. Nodes on no path count 0 and are left out.
+    is largest. Nodes in ends never relay: a path may end at one but not pass
+    through it. Nodes on no path count 0 and are left out.
     """
     carries: dict[int, int] = defaultdict(int)
     for root in roots:
-        order, parent = _best_paths(graph, root)
+        order, parent = _best_paths(graph, root, ends)
         size = dict.fromkeys(order, 1)
         for node in reversed(order):
             if (step := parent[node]) is not None:
@@ -140,11 +144,13 @@ def carriers(graph: nx.Graph[int], roots: list[int]) -> dict[int, int]:
     return dict(carries)
 
 
-def _best_paths(graph: nx.Graph[int], root: int) -> tuple[list[int], dict[int, int | None]]:
+def _best_paths(
+    graph: nx.Graph[int], root: int, ends: Set[int]
+) -> tuple[list[int], dict[int, int | None]]:
     """Each node's best path to root: the strongest weakest link (by margin),
-    then the fewest hops. A Dijkstra-style search, so the hop tie-break is only
-    approximate. Returns the nodes in the order they were settled, root first,
-    and each node's next step toward root."""
+    then the fewest hops, passing through no node in ends. A Dijkstra-style
+    search, so the hop tie-break is only approximate. Returns the nodes in the
+    order they were settled, root first, and each node's next step toward root."""
     best: dict[int, tuple[float, int]] = {root: (math.inf, 0)}
     parent: dict[int, int | None] = {root: None}
     queue: list[tuple[float, int, int]] = [(-math.inf, 0, root)]
@@ -156,6 +162,8 @@ def _best_paths(graph: nx.Graph[int], root: int) -> tuple[list[int], dict[int, i
             continue
         settled.add(node)
         order.append(node)
+        if node in ends and node != root:
+            continue
         bottleneck = best[node][0]
         for other, link in graph[node].items():
             if other in settled:

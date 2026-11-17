@@ -211,8 +211,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/nodes/{node}/contacts?since={week}"
     yield f"/api/v1/nodes/{node}/links?since={week}"
     # The node page's All window (perf.db 2026-11-02, busiest nodes: links
-    # 53-58 ms, contacts 64-106 ms).
-    yield f"/api/v1/nodes/{node}/contacts"
+    # 53-58 ms). Contacts also draw the node's Map lines over all history:
+    # 213 ms, against 136 ms without them, on a machine about 1.4 times
+    # slower than the one these budgets were set on (perf.db 2026-11-17).
+    yield f"/api/v1/nodes/{node}/contacts", 200
     yield f"/api/v1/nodes/{node}/links"
     yield "/api/v1/map/nodes"
     yield f"/api/v1/map/nodes?seen_since={day}&position_since={fortnight}"

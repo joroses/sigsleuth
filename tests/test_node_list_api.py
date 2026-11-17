@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ def add_node(
     seen_minutes_ago: int = 0,
     short_name: str | None = None,
     long_name: str | None = None,
-    channel: str = "LongFast",
+    channel: str | None = "LongFast",
     gateway: bool = False,
 ) -> None:
     seen_at = NOW - seen_minutes_ago * 60_000
@@ -39,7 +40,7 @@ def add_node(
             has_encrypted_report, first_received_at, last_received_at, reception_count
         ) VALUES (?, ?, 4294967295, 1, 1, 0, ?, ?, 1)
         """,
-        (channel, node_id, seen_at, seen_at),
+        ("PKI" if channel is None else channel, node_id, seen_at, seen_at),
     ).lastrowid
     connection.execute(
         """
@@ -53,7 +54,7 @@ def add_node(
             seen_at,
             packet_row_id,
             channel,
-            seen_at,
+            None if channel is None else seen_at,
             seen_at,
             seen_at if gateway else None,
             short_name,
@@ -117,7 +118,10 @@ def test_search_matches_names_hex_id_and_number(
 
 
 def test_channel_and_gateway_filters(named: Path) -> None:
+    with closing(open_current_database(named)) as connection:
+        add_node(connection, 9, seen_minutes_ago=15, channel=None)
     assert ids(nodes(named, channel="MediumFast")) == [0x12345678]
+    assert ids(nodes(named, channel="Unknown")) == [9]
     assert ids(nodes(named, gateway="true")) == [0x12345678]
     item = nodes(named, gateway="true")["items"][0]
     assert item["last_gateway_at"] is not None
@@ -128,6 +132,7 @@ def test_channel_and_gateway_filters(named: Path) -> None:
     assert channels == [
         {"channel": "LongFast", "nodes": 2},
         {"channel": "MediumFast", "nodes": 1},
+        {"channel": "Unknown", "nodes": 1},
     ]
 
 
@@ -148,6 +153,22 @@ def test_default_traceroute_sort_puts_most_linked_nodes_first(path: Path) -> Non
     assert ids(page) == [1, 2, 4, 3]
     counts = [(item["traceroute_neighbours"], item["traceroute_hops"]) for item in page["items"]]
     assert counts == [(2, 4), (2, 2), (1, 3), (1, 1)]
+
+
+def test_traceroute_counts_leave_out_neighbours_that_opted_out(path: Path) -> None:
+    connection = open_current_database(path)
+    for node_id in (1, 2, 3):
+        add_node(connection, node_id, seen_minutes_ago=node_id)
+    add_hop(connection, 1, 2, hours_ago=0)
+    add_hop(connection, 1, 3, hours_ago=0)
+    add_hop(connection, 3, 1, hours_ago=1)
+    with connection:
+        connection.execute("INSERT INTO node_opt_out (node_id) VALUES (3)")
+    connection.close()
+
+    (item,) = [item for item in nodes(path)["items"] if item["node_id"] == 1]
+
+    assert (item["traceroute_neighbours"], item["traceroute_hops"]) == (1, 1)
 
 
 def test_pages_with_offset_and_counts_every_match(path: Path) -> None:

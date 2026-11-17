@@ -44,6 +44,7 @@ function report(
     reached: gateway === T,
     direct: false,
     own_upload: false,
+    relay_own: null,
     relay_node: null,
     relay_maybe: [],
     km: null,

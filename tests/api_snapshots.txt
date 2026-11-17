@@ -255,6 +255,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 702832197
       name: "Node 5e45"
@@ -280,6 +281,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 1770269756
       name: "Node 2c3c"
@@ -305,6 +307,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 1770269756
       name: "Node 2c3c"
@@ -399,6 +402,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 2224775088
       name: "Node 5fb0"
@@ -441,6 +445,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 3655149723
       name: "Node 289b"
@@ -483,6 +488,7 @@ receptions: 4 items
     reached: false
     direct: false
     own_upload: false
+    relay_own: null
     relay_node:
       node_id: 861938604
       name: "Node 23ac"
@@ -800,8 +806,8 @@ items: 20 items
     air_util_tx: 0
     firmware_version: null
     firmware:
-      minimum: "2.7.9"
-      reason: "it uses the Client base role"
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
   - node_id: 4269814177
     long_name: "Node 31a1"
     short_name: "31a1"
@@ -849,8 +855,8 @@ items: 20 items
     air_util_tx: 0.293417
     firmware_version: null
     firmware:
-      minimum: "2.7.9"
-      reason: "it uses the Client base role"
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
   - node_id: 1128132236
     long_name: "Node ee8c"
     short_name: "ee8c"
@@ -871,8 +877,8 @@ items: 20 items
     air_util_tx: null
     firmware_version: null
     firmware:
-      minimum: "2.7.9"
-      reason: "it uses the Client base role"
+      minimum: "2.6.8"
+      reason: "its NodeInfo says whether it accepts messages"
   - node_id: 4269814177
     long_name: "Node 31a1"
     short_name: "31a1"
@@ -1135,6 +1141,28 @@ items: 20 items
     firmware:
       minimum: "2.5.0"
       reason: "its NodeInfo carries a public key"
+  - node_id: 3854082185
+    long_name: "Node a089"
+    short_name: "a089"
+    role: "CLIENT_BASE"
+    hardware_model: "XIAO_NRF52_KIT"
+    channel: "ShortFast"
+    last_sent_at: "2026-10-11T16:23:03.348000Z"
+    last_sent_packet_row_id: 31091
+    last_gateway_at: null
+    position_observed_at: "2026-10-11T16:23:03.348000Z"
+    altitude_meters: null
+    traceroute_hops: 0
+    traceroute_neighbours: 0
+    packets: 16
+    broadcast_texts: 0
+    utilization_observed_at: null
+    channel_utilization: null
+    air_util_tx: null
+    firmware_version: null
+    firmware:
+      minimum: "2.5.0"
+      reason: "its NodeInfo carries a public key"
   - node_id: 409975644
     long_name: "Node bb5c"
     short_name: "bb5c"
@@ -1153,28 +1181,6 @@ items: 20 items
     utilization_observed_at: "2026-10-10T22:33:47.973000Z"
     channel_utilization: 0.708333
     air_util_tx: 0.00497222
-    firmware_version: null
-    firmware:
-      minimum: "2.5.0"
-      reason: "its NodeInfo carries a public key"
-  - node_id: 2224795636
-    long_name: "Node aff4"
-    short_name: "aff4"
-    role: "CLIENT"
-    hardware_model: "HELTEC_V3"
-    channel: "ShortFast"
-    last_sent_at: "2026-10-11T16:20:37.220000Z"
-    last_sent_packet_row_id: 31070
-    last_gateway_at: null
-    position_observed_at: null
-    altitude_meters: null
-    traceroute_hops: 0
-    traceroute_neighbours: 0
-    packets: 12
-    broadcast_texts: 0
-    utilization_observed_at: "2026-10-11T13:49:28.787000Z"
-    channel_utilization: 3.97833
-    air_util_tx: 0.244083
     firmware_version: null
     firmware:
       minimum: "2.5.0"
@@ -1384,9 +1390,11 @@ total: 1
 
 ## GET /api/v1/nodes/channels
 
-channels: 2 items
+channels: 3 items
   - channel: "ShortFast"
     nodes: 643
+  - channel: "Unknown"
+    nodes: 18
   - channel: "MediumFast"
     nodes: 5
 
@@ -1625,7 +1633,6 @@ limited: false
 
 node_id: 3655149723
 since: "2026-10-04T16:25:30.812000Z"
-moved_at: null
 items: 40 items
   - node_id: 3562709820
     node:
@@ -1642,7 +1649,6 @@ items: 40 items
         min_km: 0.9
         max_km: 0.9
         last_seen_at: "2026-10-10T20:12:38.139000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 0
     fewest_hops: null
@@ -1667,7 +1673,6 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T16:21:06.845000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 86
     fewest_hops: 0
@@ -1687,13 +1692,61 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T01:30:38.419000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 0
     fewest_hops: null
     km: 1.5
 packets: 87
 limited: false
+lines: 46 items
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+      average_rssi: null
+    b_to_a:
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
+      average_rssi: null
+    link_kind: "traceroute"
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+      average_rssi: null
+    b_to_a:
+      observations: 960
+      snr_samples: 960
+      average_snr: 12.25
+      average_rssi: null
+    link_kind: "traceroute"
+  - node_a: 2933499666
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 577
+      snr_samples: 577
+      average_snr: -3.01
+      average_rssi: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -6.5
+      average_rssi: null
+    link_kind: "traceroute"
 
 ## GET /api/v1/nodes/3655149723/links?since=2026-10-04T16:25:30.812000Z
 
@@ -1804,7 +1857,6 @@ zero_cost_hops: 3 items
 
 node_id: 3655149723
 since: null
-moved_at: null
 items: 40 items
   - node_id: 3562709820
     node:
@@ -1821,7 +1873,6 @@ items: 40 items
         min_km: 0.9
         max_km: 0.9
         last_seen_at: "2026-10-10T20:12:38.139000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 0
     fewest_hops: null
@@ -1846,7 +1897,6 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T16:21:06.845000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 86
     fewest_hops: 0
@@ -1866,13 +1916,61 @@ items: 40 items
         min_km: 1.5
         max_km: 1.5
         last_seen_at: "2026-10-11T01:30:38.419000Z"
-    moved_at: null
     heard_before_move: false
     heard_packets: 0
     fewest_hops: null
     km: 1.5
 packets: 87
 limited: false
+lines: 46 items
+  - node_a: 1770149960
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 0
+      snr_samples: 0
+      average_snr: null
+      average_rssi: null
+    b_to_a:
+      observations: 420
+      snr_samples: 420
+      average_snr: -3
+      average_rssi: null
+    link_kind: "traceroute"
+  - node_a: 2658555076
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 1
+      snr_samples: 1
+      average_snr: 11
+      average_rssi: null
+    b_to_a:
+      observations: 960
+      snr_samples: 960
+      average_snr: 12.25
+      average_rssi: null
+    link_kind: "traceroute"
+  - node_a: 2933499666
+    node_b: 3655149723
+    last_seen_at: "2026-10-11T16:21:06.845000Z"
+    channel: "ShortFast"
+    spreading_factor: 7
+    a_to_b:
+      observations: 577
+      snr_samples: 577
+      average_snr: -3.01
+      average_rssi: null
+    b_to_a:
+      observations: 3
+      snr_samples: 3
+      average_snr: -6.5
+      average_rssi: null
+    link_kind: "traceroute"
 
 ## GET /api/v1/nodes/3655149723/links
 
@@ -2736,8 +2834,8 @@ items: 31 items
     spreading_factor: 7
     a_to_b:
       observations: 125
-      snr_samples: 124
-      average_snr: 5.03
+      snr_samples: 125
+      average_snr: 4.99
       average_rssi: -85.85
     b_to_a:
       observations: 0
@@ -3450,6 +3548,7 @@ items: 50 items
     target_node_id: 2933499666
     first_received_at: "2026-10-11T16:21:06.845000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: null
     request_receptions: null
@@ -3492,6 +3591,7 @@ items: 50 items
     target_node_id: 3079613937
     first_received_at: "2026-10-11T15:56:32.706000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 30918
     request_receptions: 3
@@ -3566,6 +3666,7 @@ items: 50 items
     target_node_id: 3665045164
     first_received_at: "2026-10-11T15:55:55.822000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 30914
     request_receptions: 4
@@ -3658,6 +3759,7 @@ items: 50 items
     target_node_id: 2224739564
     first_received_at: "2026-10-11T13:21:47.100000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 29629
     request_receptions: 2
@@ -3732,6 +3834,7 @@ items: 50 items
     target_node_id: 3677317560
     first_received_at: "2026-10-11T15:16:29.244000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 30572
     request_receptions: 4
@@ -3806,6 +3909,7 @@ items: 50 items
     target_node_id: 3909797273
     first_received_at: "2026-10-11T13:34:03.991000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 29711
     request_receptions: 4
@@ -3910,6 +4014,7 @@ items: 50 items
     target_node_id: 702832197
     first_received_at: "2026-10-10T21:01:23.075000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 23090
     request_receptions: 4
@@ -3984,6 +4089,7 @@ items: 50 items
     target_node_id: 96879053
     first_received_at: "2026-10-11T07:17:14.361000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: null
     request_receptions: null
@@ -4058,6 +4164,7 @@ items: 50 items
     target_node_id: 2749076957
     first_received_at: "2026-10-10T20:59:37.997000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 23073
     request_receptions: 4
@@ -4162,6 +4269,7 @@ items: 1 items
     target_node_id: 1317786337
     first_received_at: "2026-10-11T06:09:12.404000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 26709
     request_receptions: 4
@@ -4266,6 +4374,7 @@ items: 1 items
     target_node_id: 1317786337
     first_received_at: "2026-10-11T06:09:12.404000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 26709
     request_receptions: 4
@@ -4382,6 +4491,7 @@ items: 50 items
     target_node_id: 2224739564
     first_received_at: "2026-10-11T13:21:47.100000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 29629
     request_receptions: 2
@@ -4456,6 +4566,7 @@ items: 50 items
     target_node_id: 2715019224
     first_received_at: "2026-10-11T13:40:40.353000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 29760
     request_receptions: 4
@@ -4530,6 +4641,7 @@ items: 50 items
     target_node_id: 1129708344
     first_received_at: "2026-10-09T14:26:24.768000Z"
     channel: "ShortFast"
+    radio_channel: "ShortFast"
     spreading_factor: 7
     request_packet_row_id: 9796
     request_receptions: 4
@@ -4791,7 +4903,7 @@ relays: 10 items
     count: 440
 channels: 1 items
   - channel: "ShortFast"
-    count: 501
+    count: 443
 nodes: 27 items
   - node_id: 77393344
     long_name: "Node edc0"
@@ -4840,9 +4952,9 @@ relays: 10 items
     count: 1094
 channels: 2 items
   - channel: "ShortFast"
-    count: 1317
+    count: 1160
   - channel: "MediumFast"
-    count: 2
+    count: 1
 nodes: 27 items
   - node_id: 96879053
     long_name: "Node 41cd"
@@ -5059,6 +5171,7 @@ key_relays: 43 items
     firmware:
       minimum: "2.5.0"
       reason: "its NodeInfo carries a public key"
+    firmware_version: null
   - node_id: 1770269756
     zone_id: 1
     impact: 8
@@ -5073,6 +5186,7 @@ key_relays: 43 items
     firmware:
       minimum: "2.6.8"
       reason: "its NodeInfo says whether it accepts messages"
+    firmware_version: null
   - node_id: 1094571126
     zone_id: 4
     impact: 6
@@ -5087,6 +5201,7 @@ key_relays: 43 items
     firmware:
       minimum: "2.5.0"
       reason: "its NodeInfo carries a public key"
+    firmware_version: null
 text_hours: 60 items
   - hour_start: "2026-10-08T15:00:00Z"
     count: 3

@@ -7,14 +7,21 @@ its routes, hops and payload show such a node as unknown (opt_out.py).
 """
 
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal
 
 from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
-from sigsleuth.db import NodeSummary, from_epoch_ms, nodes_by_id, optional_text, to_epoch_ms
+from sigsleuth.db import (
+    NodeSummary,
+    from_epoch_ms,
+    nodes_by_id,
+    optional_text,
+    reported_km,
+    to_epoch_ms,
+)
 from sigsleuth.decode import describe_payload, portnum_name
 from sigsleuth.derive import direct_reception_sql, is_direct_reception
 from sigsleuth.diagnostics import describe_reason
@@ -27,7 +34,7 @@ from sigsleuth.links import (
     route_hop_costs,
 )
 from sigsleuth.opt_out import SHOWN_PACKET, opted_out
-from sigsleuth.radio import Radio, distance_km, relay_byte_of
+from sigsleuth.radio import Radio, relay_byte_of
 from sigsleuth.relays import (
     COHEARER_WINDOW_MS,
     DirectSignal,
@@ -36,7 +43,6 @@ from sigsleuth.relays import (
     RelayScores,
     ScoredHow,
     channel_radio,
-    channel_spreading_factor,
     direct_receptions,
     direct_signals,
     node_km,
@@ -122,6 +128,10 @@ RelayNodeHow = Literal[
     "only_candidate",
 ]
 
+# Whose own byte a reception's relay byte is, so that no relay is named for
+# it (own_relay_byte).
+OwnRelayByte = Literal["gateway", "sender"]
+
 
 @dataclass(frozen=True)
 class RelayNode:
@@ -138,7 +148,7 @@ class RelayNode:
 @dataclass(frozen=True)
 class RelayMaybe:
     """A node that may have relayed a reception the score names no relay
-    for: km from the gateway, None when either is unplaced."""
+    for: km from the gateway, None when either is unplaced or only estimated."""
 
     node_id: int
     name: str | None
@@ -163,12 +173,12 @@ class PacketReception:
     the map's direct links use (is_direct_reception in derive.py).
     own_upload is a report from the sender itself: a node with its own MQTT
     connection uploads the packets it sends, so this is not a radio reception.
-    relay_node names the relay for a relay byte other than the sender's and
-    the gateway's, None when there is none or no rule names one; then
-    relay_maybe lists up to RELAY_MAYBE nodes that may have relayed it.
-    km is from the sender to the gateway, each placed as above (so an
-    estimate when gateway_estimated or the packet's sender_estimated); None
-    when either is not placed.
+    relay_own says whose own byte relay_byte is, by own_relay_byte; no relay
+    is named for it. Otherwise relay_node names the relay, None when there is
+    no byte or no rule names one; then relay_maybe lists up to RELAY_MAYBE
+    nodes that may have relayed it.
+    km is from the sender to the gateway, each placed as above, by
+    db.reported_km: None when either is not placed or only estimated.
     """
 
     reception_id: int
@@ -189,6 +199,7 @@ class PacketReception:
     reached: bool = False
     direct: bool = False
     own_upload: bool = False
+    relay_own: OwnRelayByte | None = None
     relay_node: RelayNode | None = None
     relay_maybe: tuple[RelayMaybe, ...] = ()
     km: float | None = None
@@ -274,21 +285,6 @@ def packet_detail(
     if row is None:
         return None
     sender = int(row["sender_node_id"])
-    receptions, places = _receptions(connection, row, hidden, for_page=True)
-    receptions = _with_relays(
-        connection,
-        receptions,
-        sender,
-        at=int(row["first_received_at"]),
-        radio=channel_radio(str(row["channel"])),
-        hidden=set() if include_hidden_relays else hidden,
-    )
-    payload = (
-        None
-        if row["application_payload"] is None or row["portnum"] is None
-        else describe_payload(int(row["portnum"]), row["application_payload"], hidden)
-    )
-    reason = row["unreadable_reason"]
     saved_hops = connection.execute(
         """
         SELECT from_node_id, to_node_id, snr_db, radio_channel,
@@ -297,6 +293,22 @@ def packet_detail(
         """,
         (packet_row_id,),
     ).fetchall()
+    radio = packet_channel_radio(connection, row, [hop["radio_channel"] for hop in saved_hops])
+    receptions, places = _receptions(connection, row, hidden, for_page=True)
+    receptions = _with_relays(
+        connection,
+        receptions,
+        sender,
+        at=int(row["first_received_at"]),
+        radio=radio,
+        hidden=set() if include_hidden_relays else hidden,
+    )
+    payload = (
+        None
+        if row["application_payload"] is None or row["portnum"] is None
+        else describe_payload(int(row["portnum"]), row["application_payload"], hidden)
+    )
+    reason = row["unreadable_reason"]
     hops = tuple(
         TracerouteHop(
             int(hop["from_node_id"]),
@@ -346,9 +358,7 @@ def packet_detail(
                 connection, int(row["first_received_at"]), _relay_ids(receptions), for_page=True
             ).values()
         ),
-        spreading_factor=channel_spreading_factor(
-            packet_radio_channel(connection, row, (hop["radio_channel"] for hop in saved_hops))
-        ),
+        spreading_factor=None if radio is None else radio.spreading_factor,
         traceroute=traceroute,
         reply_route=reply_route,
         hop_costs=()
@@ -369,12 +379,14 @@ def packet_detail(
 @dataclass(frozen=True)
 class RelayedPacket:
     """A shown packet and its receptions before relay names are attached.
-    relays is None when naming is skipped or no copy needs it. Callers
-    must hide opted-out candidates before serving them."""
+    relays is None when naming is skipped or no copy needs it. radio is
+    the packet's radio channel's settings (packet_channel_radio). Callers must
+    hide opted-out candidates before serving them."""
 
     packet: PacketRow
     receptions: tuple[PacketReception, ...]
     relays: "PacketRelays | None"
+    radio: Radio | None
 
 
 def relayed_packet(
@@ -386,6 +398,7 @@ def relayed_packet(
     if row is None:
         return None
     receptions, _ = _receptions(connection, row, hidden)
+    radio = packet_channel_radio(connection, row)
     return RelayedPacket(
         packet_row(row),
         tuple(receptions),
@@ -394,11 +407,30 @@ def relayed_packet(
             receptions,
             int(row["sender_node_id"]),
             at=int(row["first_received_at"]),
-            radio=channel_radio(str(row["channel"])),
+            radio=radio,
         )
         if with_relays
         else None,
+        radio,
     )
+
+
+def packet_channel_radio(
+    connection: sqlite3.Connection, row: sqlite3.Row, hop_channels: Sequence[str] | None = None
+) -> Radio | None:
+    """The settings of a shown packet's radio channel (packet_radio_channel),
+    for its relays and its signal colours alike; None when unknown.
+    hop_channels are its saved traceroute hops' radio channels, read when
+    not given."""
+    if hop_channels is None:
+        hop_channels = [
+            hop[0]
+            for hop in connection.execute(
+                "SELECT radio_channel FROM traceroute_hop WHERE packet_row_id = ?",
+                (int(row["packet_row_id"]),),
+            )
+        ]
+    return channel_radio(packet_radio_channel(connection, row, hop_channels))
 
 
 def _shown_packet(
@@ -618,6 +650,22 @@ class PacketRelays:
     namings: Mapping[int, ReceptionNaming]
 
 
+def own_relay_byte(reception: PacketReception, sender: int) -> OwnRelayByte | None:
+    """Whose own byte the reception's relay byte is, so that no relay is named:
+    the gateway's when it uploaded its own rebroadcast; the sender's when no
+    hops were used or they are unknown. After a hop or more, the sender's
+    byte is another node's that shares it, and is named as any other byte."""
+    if not reception.direct and reception.relay_byte == relay_byte_of(reception.gateway_node_id):
+        return "gateway"
+    if reception.relay_byte == relay_byte_of(sender) and (
+        reception.hop_start is None
+        or reception.hop_limit is None
+        or reception.hop_start == reception.hop_limit
+    ):
+        return "sender"
+    return None
+
+
 def reception_route_prefix(reception: PacketReception) -> tuple[int | None, ...] | None:
     """The upstream traceroute without the reporting gateway's appended tail."""
     if reception.paths is None:
@@ -637,9 +685,8 @@ def relay_namings(
     reception_ids: set[int] | None = None,
     reach: Mapping[int, float] | None = None,
 ) -> PacketRelays | None:
-    """How each selected reception whose relay byte is neither the sender's nor the
-    gateway's (a gateway sending its own byte uploaded its own rebroadcast)
-    gets its relay named, by coverage's rules (relays.py) with the gateway
+    """How each selected reception with a relay byte that is no one's own
+    (own_relay_byte) gets its relay named, by coverage's rules (relays.py) with the gateway
     in the survey node's place, where it was when heard:
 
     1. heard_directly: the only candidate the gateway heard directly within
@@ -655,9 +702,7 @@ def relay_namings(
         for reception in receptions
         if reception.relay_byte
         and (reception_ids is None or reception.reception_id in reception_ids)
-        and not reception.direct
-        and reception.relay_byte
-        not in (relay_byte_of(sender), relay_byte_of(reception.gateway_node_id))
+        and own_relay_byte(reception, sender) is None
     ]
     if not relayed:
         return None
@@ -726,11 +771,13 @@ def name_copy(
     signals: Mapping[tuple[int, int], DirectSignal],
 ) -> ReceptionNaming:
     """The ReceptionNaming of one copy, from how often its receiver heard
-    each candidate directly (direct, by (node, receiver))."""
+    each candidate directly (direct, by (node, receiver)). A muted node
+    (CLIENT_MUTE) never rebroadcasts, so being heard names it no relay."""
     heard = {
         node: direct[node, copy.receiver]
         for node in evidence.candidates(copy)
         if direct.get((node, copy.receiver), 0) > 0
+        and ((place := evidence.placed.get(node)) is None or place.role != "CLIENT_MUTE")
     }
     skipped = len(heard) == 1 and skips_shortcut(copy, next(iter(heard)), signals)
     return ReceptionNaming(copy, heard, score_relays(evidence, copy, signals, set(heard)), skipped)
@@ -783,12 +830,18 @@ def _with_relays(
             node_relay = RelayNode(relay[0], name(relay[0]), candidates, relay[1])
             named.append(replace(reception, relay_node=node_relay))
             continue
-        position = naming.copy.position
+        # No km to or from an estimate, as for reported_km.
+        position = None if reception.gateway_estimated else naming.copy.position
         maybe = []
         for node in naming.scores.hints():
             if node in hidden:
                 continue
-            km = None if position is None else node_km(found.evidence.placed.get(node), position)
+            place = found.evidence.placed.get(node)
+            km = (
+                None
+                if position is None or place is None or place.estimated
+                else node_km(place, position)
+            )
             maybe.append(RelayMaybe(node, name(node), None if km is None else round(km, 1)))
             if len(maybe) == RELAY_MAYBE:
                 break
@@ -848,12 +901,13 @@ def _packet_reception(
             reached=reached_end(report, is_return=report.is_reply),
         )
     sender_node_id = int(packet["sender_node_id"])
-    return replace(
+    detail = replace(
         detail,
         direct=is_direct_reception(sender_node_id, gateway_node_id, detail),
         own_upload=gateway_node_id == sender_node_id,
-        km=None if gateway_node_id == sender_node_id else distance_km(sender, gateway),
+        km=None if gateway_node_id == sender_node_id else reported_km(sender, gateway),
     )
+    return replace(detail, relay_own=own_relay_byte(detail, sender_node_id))
 
 
 def _traceroute_report(

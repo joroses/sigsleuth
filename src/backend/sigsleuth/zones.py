@@ -49,6 +49,7 @@ from sigsleuth.db import (
     nodes_by_id,
     now_ms,
     optional_from_epoch_ms,
+    optional_text,
     reported_km,
 )
 from sigsleuth.decode import UNKNOWN_NODE
@@ -236,13 +237,16 @@ class KeyRelay:
     cuts_off counts the nodes that lose every heard-graph path to the rest of
     the network (the biggest group left) when it goes quiet; no_solid_backup is
     the same on the solid graph. carries counts the nodes whose best path to a
-    big zone's hub passes through it. impact is the larger of cuts_off and
+    big zone's hub passes through it; that path passes through no CLIENT_MUTE
+    node. impact is the larger of cuts_off and
     no_solid_backup. only_solid_link_to lists the zones whose every solid
     link with this relay's zone passes through it: if it goes quiet, no solid
     link joins the two zones directly (_only_solid_links).
     neighbours counts its heard links. last_seen_at,
     battery_level (reported at battery_observed_at) and firmware are
     node_current's; firmware is None until a packet shows a firmware trait.
+    firmware_version is the one its latest map report names, None without one,
+    as on the Nodes page.
     """
 
     node_id: int
@@ -257,6 +261,7 @@ class KeyRelay:
     battery_level: int | None
     battery_observed_at: datetime | None
     firmware: FirmwareEstimate | None
+    firmware_version: str | None
 
 
 @dataclass(frozen=True)
@@ -345,7 +350,10 @@ def network_zones(
     link_limit: int,
 ) -> NetworkZones:
     now = now_ms()
+    # From the start of its hour, as link totals count, so texts cover the
+    # same span as links.
     since_ms = now - window_hours * HOUR_MS
+    since_ms -= since_ms % HOUR_MS
     since = from_epoch_ms(since_ms)
     channels = _channel_links(connection, since_ms)
     if channel is None and channels:
@@ -406,7 +414,11 @@ def network_zones(
         zone_of,
         graph.cuts(heard),
         graph.cuts(solid),
-        graph.carriers(heard, roots),
+        graph.carriers(
+            heard,
+            roots,
+            ends={node for node, summary in nodes.items() if summary.role == "CLIENT_MUTE"},
+        ),
         _only_solid_links(zone_pairs),
         nodes,
     )
@@ -436,7 +448,7 @@ def network_zones(
 
 
 def _channel_links(connection: sqlite3.Connection, since_ms: int) -> tuple[ChannelLinks, ...]:
-    """Every channel's traceroute links since the start of since_ms's hour,
+    """Every channel's traceroute links since since_ms, an hour's start,
     most first, counted apart from the links so a busy channel cannot hide a
     quiet one."""
     rows = connection.execute(
@@ -451,7 +463,7 @@ def _channel_links(connection: sqlite3.Connection, since_ms: int) -> tuple[Chann
         WHERE {shown_sql("node_a")} AND {shown_sql("node_b")}
         GROUP BY channel ORDER BY links DESC, channel
         """,
-        (since_ms - since_ms % HOUR_MS, UNKNOWN_NODE),
+        (since_ms, UNKNOWN_NODE),
     ).fetchall()
     return tuple(
         ChannelLinks(str(row["channel"]), int(row["links"]))
@@ -1029,7 +1041,7 @@ def _key_relays(
     nodes: dict[int, NodeSummary],
 ) -> tuple[KeyRelay, ...]:
     """Key relays, highest impact first (carries breaks ties). CLIENT_MUTE
-    nodes never relay, so they are left out."""
+    nodes never relay, so they are left out (carries already passes none)."""
     top_carriers = sorted(carries, key=lambda node: (-carries[node], node))[:TOP_CARRIERS]
     candidates = (
         {node for node, count in cuts_off.items() if count >= KEY_RELAY_CUT}
@@ -1046,9 +1058,10 @@ def _key_relays(
     for row in connection.execute(
         """
         SELECT relays.value AS node_id, last_seen_at, battery_level, battery_observed_at,
-               firmware_minimum, firmware_trait
+               firmware_minimum, firmware_trait, m.firmware_version
         FROM json_each(?) AS relays
         LEFT JOIN node_current ON node_current.node_id = relays.value
+        LEFT JOIN map_report AS m ON m.node_id = relays.value
         """,
         (json.dumps(relays),),
     ):
@@ -1068,6 +1081,7 @@ def _key_relays(
                 battery_level=row["battery_level"],
                 battery_observed_at=optional_from_epoch_ms(row["battery_observed_at"]),
                 firmware=estimate(row["firmware_minimum"], row["firmware_trait"]),
+                firmware_version=optional_text(row["firmware_version"]),
             )
         )
     return tuple(sorted(rows, key=lambda row: (-row.impact, -row.carries, row.node_id)))

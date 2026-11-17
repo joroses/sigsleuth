@@ -12,6 +12,7 @@ import type { KeyRelay, MapLink } from "./api";
 import { ApplicationBar, DIAGNOSTICS_LINKED } from "./ui";
 import { loadSetting } from "./remember";
 import { forgetKept } from "./useApi";
+import { windowStartMs } from "./mapTimeFilter";
 
 const packet = {
   packet_row_id: 7,
@@ -71,6 +72,11 @@ function stubClipboard() {
 function hoursBefore(url: string, name: string): number {
   const at = new URL(url, "http://localhost").searchParams.get(name);
   return (Date.now() - Date.parse(at ?? "")) / 3_600_000;
+}
+
+/** How many hours back a window of `hours` reaches now: it starts at the hour. */
+function windowHours(hours: number): number {
+  return (Date.now() - windowStartMs(hours, Date.now())) / 3_600_000;
 }
 
 describe("Packet detail", () => {
@@ -996,10 +1002,10 @@ describe("Node detail", () => {
                   ? {
                       node_id: node.node_id,
                       since: null,
-                      moved_at: null,
                       items: [],
                       packets: 0,
                       limited: false,
+                      lines: [],
                     }
                   : { items: [], packets: [], next_before_id: null },
         ),
@@ -1016,7 +1022,10 @@ describe("Node detail", () => {
         .filter((url) => url.startsWith(`/api/v1/nodes/286331153/${path}`));
     await vi.waitFor(() => expect(requested("contacts")).toHaveLength(1));
     for (const path of ["links", "contacts"])
-      expect(hoursBefore(requested(path)[0], "since")).toBeCloseTo(7 * 24, 1);
+      expect(hoursBefore(requested(path)[0], "since")).toBeCloseTo(
+        windowHours(7 * 24),
+        1,
+      );
 
     fireEvent.change(await screen.findByLabelText("Window"), {
       target: { value: "all" },
@@ -1817,10 +1826,13 @@ describe("Diagnostics", () => {
       },
       shown_node: { node_id: 0x0500001a, name: "Hill" },
       shown_how: "survey_link",
+      counted: true,
       changed: false,
     };
+    // One the map no longer counts (its node moved since) is grouped apart.
+    const moved = { ...check, measurement_id: 8, counted: false };
     const list = {
-      checks: [check],
+      checks: [check, moved],
       oldest_at: check.heard_at,
       newest_at: check.heard_at,
       next_before_id: 9,
@@ -1857,6 +1869,9 @@ describe("Diagnostics", () => {
     window.location.hash = "#diagnostics/relays/surveys";
     expect(
       await screen.findByRole("button", { name: "Survey link 1" }),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "No longer on the map 1" }),
     ).not.toBeNull();
     expect(asked()).toContain("/api/v1/diagnostics/survey-checks?count=50");
     fireEvent.click(
@@ -2591,6 +2606,7 @@ describe("Map text reach", () => {
         {
           ...reception,
           own_upload: false,
+          relay_own: null,
           paths: {
             forward: { reached: false, nodes: [2, 3, 4], snr_db: [3, 4] },
             return_path: null,
@@ -2774,7 +2790,10 @@ describe("Map text reach", () => {
     const links = fetchMock.mock.calls
       .map(([url]) => url)
       .filter((url) => url.startsWith("/api/v1/map/links?"));
-    expect(hoursBefore(links.at(-1) ?? "", "since")).toBeCloseTo(7 * 24, 0);
+    expect(hoursBefore(links.at(-1) ?? "", "since")).toBeCloseTo(
+      windowHours(7 * 24),
+      0,
+    );
     expect(
       (screen.getByLabelText("Last seen within") as HTMLSelectElement).value,
     ).toBe("7d");
@@ -2955,7 +2974,7 @@ describe("Map text reach", () => {
       for (const url of [reach, nodes])
         expect(
           hoursBefore(url ?? "", url === reach ? "since" : "seen_since"),
-        ).toBeCloseTo(24, 1);
+        ).toBeCloseTo(windowHours(24), 1);
       // The saved role filter would hide Madrid. Its Chatty row waits behind
       // the selected node's details.
       expect(
@@ -3428,7 +3447,7 @@ describe("Links", () => {
       "http://test",
     ).searchParams.get("since")!;
     expect(
-      Math.abs(Date.now() - 7 * 24 * 3_600_000 - Date.parse(since)),
+      Math.abs(windowStartMs(7 * 24, Date.now()) - Date.parse(since)),
     ).toBeLessThan(60_000);
     // The kept choices come back on the next visit from the menu.
     cleanup();
@@ -3447,7 +3466,7 @@ describe("Links", () => {
       "http://test",
     ).searchParams.get("since")!;
     expect(
-      Math.abs(Date.now() - 3_600_000 - Date.parse(keptSince)),
+      Math.abs(windowStartMs(1, Date.now()) - Date.parse(keptSince)),
     ).toBeLessThan(60_000);
   });
 
@@ -3877,7 +3896,9 @@ describe("Traceroute explorer", () => {
     expect(keptQuery.has("successful")).toBe(true);
     expect(keptQuery.has("node")).toBe(false);
     expect(
-      Math.abs(Date.now() - 3_600_000 - Date.parse(keptQuery.get("since")!)),
+      Math.abs(
+        windowStartMs(1, Date.now()) - Date.parse(keptQuery.get("since")!),
+      ),
     ).toBeLessThan(60_000);
   });
 

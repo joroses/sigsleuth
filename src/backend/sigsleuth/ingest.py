@@ -59,9 +59,9 @@ from sigsleuth.reported import save_map_report, save_packet
 LOGGER = logging.getLogger(__name__)
 MAX_PAYLOAD_BYTES = 65_536
 MAX_TOPIC_BYTES = 1_024
-# Revisit if Diagnostics shows identical content split back-to-back (too
-# short), or one packet mixing texts or position jumps (too long).
-GROUPING_INACTIVITY_WINDOW_MS = 30 * 60 * 1_000
+# A day: some gateways report a packet hours after the others, with the same
+# content, while a sender reusing a packet ID within days was not seen.
+GROUPING_INACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1_000
 
 
 @dataclass(frozen=True)

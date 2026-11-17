@@ -132,8 +132,8 @@ export function CoverageCellDetails({
                             onClick={() => onChooseNode(node.node_id)}
                           >
                             {nodeLabel(node)}
-                          </button>{" "}
-                          ({node.km} km)
+                          </button>
+                          {node.estimated ? null : ` (${node.km} km)`}
                         </Fragment>
                       ))}
                     </span>
@@ -160,7 +160,7 @@ export function CoverageCellDetails({
             </li>
             <li>
               <LegendLine dashes="4 4" />
-              Guessed from MQTT, or the only node that could have relayed it
+              Guessed from MQTT
             </li>
           </ul>
         </>

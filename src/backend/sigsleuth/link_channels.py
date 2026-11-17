@@ -17,9 +17,30 @@ def link_channel(
     channels: Channels,
     *,
     packet_hops: bool = True,
+    receiver: int | None = None,
 ) -> str:
-    channel = str(row["channel"])
-    if preset_name(channel) is not None:
+    """The radio channel of a hop from `transmitter` in the row's packet.
+
+    Pass `receiver` for a direct reception or a neighbour listing: one radio
+    hop has one radio channel, so when the transmitter's is unknown the
+    receiver's is the link's. The transmitter's own channel stays unknown.
+    """
+    channel = _node_channel(connection, row, transmitter, channels, packet_hops=packet_hops)
+    if channel == "Unknown" and receiver is not None:
+        return _node_channel(connection, row, receiver, channels, packet_hops=packet_hops)
+    return channel
+
+
+def _node_channel(
+    connection: sqlite3.Connection,
+    row: sqlite3.Row,
+    transmitter: int,
+    channels: Channels,
+    *,
+    packet_hops: bool,
+) -> str:
+    channel = preset_name(str(row["channel"]))
+    if channel is not None:
         return channel
     key = (int(row["packet_row_id"]), transmitter)
     if key not in channels:
@@ -93,8 +114,8 @@ def record_channel(
     connection: sqlite3.Connection, row: sqlite3.Row, nodes: set[int], *, channel: str | None = None
 ) -> None:
     # Packet order breaks ties even when a readable route arrives late.
-    channel = str(row["channel"]) if channel is None else channel
-    if not nodes or preset_name(channel) is None:
+    channel = preset_name(str(row["channel"]) if channel is None else channel)
+    if not nodes or channel is None:
         return
     observed_at, packet_id = int(row["first_received_at"]), int(row["packet_row_id"])
     connection.executemany(

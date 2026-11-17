@@ -166,11 +166,10 @@ export function NodePositionMinimap({
         ? contactLayers(
             node.node_id,
             contactsState.data.items,
-            links?.items ?? [],
+            contactsState.data.lines,
             links?.zero_cost_hops ?? [],
             current,
             { traceroutes: showTraceroutes, gateways: showGateways },
-            contactsState.data.moved_at,
           )
         : null,
     // current is rebuilt each render; its place is what matters.
@@ -488,16 +487,16 @@ function ContactsNote({
     contacts.unplaced > 0
       ? ` · ${contacts.unplaced.toLocaleString()} unplaced`
       : "";
-  const moved =
-    contacts.moved > 0
-      ? ` · ${contacts.moved.toLocaleString()} left out after a move`
+  const hidden =
+    contacts.hidden > 0
+      ? ` · ${contacts.hidden.toLocaleString()} not on the Map`
       : "";
   const words = windowText(linkWindow);
   return (
     <span className="data-line">
       {words[0].toUpperCase() + words.slice(1)}:{" "}
       {contacts.marks.length.toLocaleString()} contacts drawn{unplaced}
-      {moved} · click one for its distances
+      {hidden} · click one for its distances
     </span>
   );
 }

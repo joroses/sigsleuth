@@ -35,7 +35,7 @@ def main() -> None:
 def hidden(connection: sqlite3.Connection, retention_days: int) -> None:
     """What the map stops showing, and why."""
     alive = coverage._ALIVE_SQL.removeprefix(" AND ")
-    values = coverage._filter_values(None, None, retention_days)
+    values = {"alive_since": coverage.alive_since(retention_days)}
     total, cells = connection.execute(
         "SELECT count(*), count(DISTINCT cell_x || ',' || cell_y) FROM coverage_measurement"
     ).fetchone()
@@ -82,6 +82,7 @@ def survey_links(connection: sqlite3.Connection) -> None:
         """
     ).fetchall()
     heard = coverage.heard_directly(rows)
+    muted = coverage.muted_nodes(connection, heard)
     relayed = [row for row in rows if row["heard_how"] != "direct"]
     print(
         f"\nSurvey links over {len(relayed):,} relayed measurements: how many they name, and "
@@ -93,7 +94,7 @@ def survey_links(connection: sqlite3.Connection) -> None:
             tiers = (HOUR_MS, days * DAY_MS)
             linked = both = same = 0
             for row in relayed:
-                found = coverage.survey_candidates(heard, row, km=km, tiers_ms=tiers)
+                found = coverage.survey_candidates(heard, row, muted=muted, km=km, tiers_ms=tiers)
                 if len(found) != 1:
                     continue
                 linked += 1

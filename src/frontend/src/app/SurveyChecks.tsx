@@ -100,8 +100,12 @@ function same(a: CheckNode | null, b: CheckNode | null): boolean {
   return a !== null && b !== null && a.node_id === b.node_id;
 }
 
+const NOT_COUNTED =
+  "Heard before its node moved, or old and its node not seen since";
+
 /** Why the map shows what it shows, to group the list by. */
 function whyOf(check: SurveyCheck): string {
+  if (!check.counted) return "No longer on the map";
   if (check.upload_how === "direct") return "Heard directly";
   if (check.shown_how === "survey_link") return "Survey link";
   if (check.shown_node !== null) {
@@ -176,8 +180,10 @@ function SurveyList({
   const rates = [
     {
       label: "Named on the map",
-      title: "Relayed measurements the map names a node for",
-      agree: relayed.filter((check) => check.shown_node !== null).length,
+      title: "Relayed measurements the map counts and names a node for",
+      agree: relayed.filter(
+        (check) => check.counted && check.shown_node !== null,
+      ).length,
       total: relayed.length,
     },
     {
@@ -385,7 +391,7 @@ function Decision({
 }
 
 function SurveyRow({ check }: { check: SurveyCheck }) {
-  const linkShown = check.shown_how === "survey_link";
+  const linkShown = check.counted && check.shown_how === "survey_link";
   const today = check.today;
   return (
     <tr>
@@ -396,6 +402,14 @@ function SurveyRow({ check }: { check: SurveyCheck }) {
         >
           <ShortTime value={check.heard_at} />
         </a>
+        {check.counted ? null : (
+          <>
+            {" "}
+            <Badge tone="neutral" title={NOT_COUNTED}>
+              not on the map
+            </Badge>
+          </>
+        )}
       </td>
       <td>{nodeText(check.surveyor)}</td>
       <td>{nodeText(check.sender)}</td>
@@ -405,7 +419,7 @@ function SurveyRow({ check }: { check: SurveyCheck }) {
         <Decision
           node={check.upload_node}
           how={check.upload_how}
-          shown={!linkShown}
+          shown={check.counted && !linkShown}
         />
       </td>
       <td>
@@ -559,13 +573,19 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
 
       <section className="relay-check-verdict" aria-label="Decisions">
         <dl>
+          {check.counted ? null : (
+            <div>
+              <dt>On the map</dt>
+              <dd>Not counted: {NOT_COUNTED.toLowerCase()}</dd>
+            </div>
+          )}
           <div>
             <dt>At upload</dt>
             <dd>
               <Decision
                 node={check.upload_node}
                 how={check.upload_how}
-                shown={check.shown_how !== "survey_link"}
+                shown={check.counted && check.shown_how !== "survey_link"}
               />
             </dd>
           </div>
@@ -576,7 +596,7 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
                 <Decision
                   node={check.link}
                   how={null}
-                  shown={check.shown_how === "survey_link"}
+                  shown={check.counted && check.shown_how === "survey_link"}
                 />
               ) : (
                 <span className="muted">
@@ -644,7 +664,8 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
             with any within {detail.link_rules.km} km decides: exactly one is
             the survey link. A copy over {detail.link_rules.too_strong_db} dB
             stronger than this survey node heard a node within{" "}
-            {detail.link_rules.too_strong_km} km rules that node out.
+            {detail.link_rules.too_strong_km} km rules that node out, and a
+            muted node (CLIENT_MUTE) never rebroadcasts.
           </p>
         </div>
         <SurveyLinkTable detail={detail} />
@@ -818,6 +839,7 @@ function hoursText(hours: number | null): string {
 function linkResult(node: SurveyLinkNode, detail: SurveyCheckDetail): string {
   if (node.excluded === "sender") return "the sender";
   if (node.excluded === "surveyor") return "the survey node";
+  if (node.excluded === "muted") return "muted: never rebroadcasts";
   if (node.too_strong) {
     return `ruled out: over ${detail.link_rules.too_strong_db} dB too strong`;
   }

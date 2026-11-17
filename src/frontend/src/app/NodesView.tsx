@@ -16,7 +16,7 @@ import {
   formatRole,
   mapHref,
   nodeHref,
-  shortFirmware,
+  firmwareCell,
 } from "./nodeDisplay";
 import { useSetting, useViewState } from "./remember";
 import { useApi } from "./useApi";
@@ -345,7 +345,7 @@ function NodeRow({ node, now }: { node: NodeListItem; now: number }) {
       <td>
         <MapCell node={node} now={now} />
       </td>
-      <td>{node.channel}</td>
+      <td>{node.channel ?? "Unknown"}</td>
       <td className="wide-only">{node.role && formatRole(node.role)}</td>
       <td>
         {node.last_gateway_at !== null ? (
@@ -397,25 +397,9 @@ function NodeRow({ node, now }: { node: NodeListItem; now: number }) {
       <td className="wide-only number">
         <Utilization node={node} value={node.air_util_tx} />
       </td>
-      {node.firmware_version !== null ? (
-        <td
-          className="wide-only"
-          title={`${node.firmware_version}, from its map report`}
-        >
-          {shortFirmware(node.firmware_version)}
-        </td>
-      ) : (
-        <td
-          className="wide-only"
-          title={
-            node.firmware
-              ? `${node.firmware.minimum} or newer: ${node.firmware.reason}`
-              : undefined
-          }
-        >
-          {node.firmware && `≥ ${node.firmware.minimum}`}
-        </td>
-      )}
+      <td className="wide-only" title={firmwareCell(node).title}>
+        {firmwareCell(node).text}
+      </td>
       <td
         className="wide-only node-hardware"
         title={

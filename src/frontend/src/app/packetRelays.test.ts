@@ -37,6 +37,7 @@ function heard(
     reached: false,
     direct: hops === 0,
     own_upload: false,
+    relay_own: null,
     relay_node: null,
     relay_maybe: [],
     km: null,

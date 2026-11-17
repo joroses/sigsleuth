@@ -62,11 +62,19 @@ derive._count_link
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
+derive._derive_route
+  SEARCH traceroute_hop USING PRIMARY KEY
 derive._sync_hop_observations
   SEARCH traceroute_packet USING INDEX traceroute_packet_run
   SEARCH packet USING PRIMARY KEY
 derive._save_traceroute
   SEARCH traceroute_packet USING PRIMARY KEY
+derive._save_run
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+  SEARCH traceroute_packet USING PRIMARY KEY
+  SEARCH packet USING PRIMARY KEY
+derive._save_run
+  SEARCH traceroute_hop USING PRIMARY KEY
 derive._save_run
   SEARCH traceroute_packet USING INDEX traceroute_packet_run
   SEARCH traceroute_packet USING PRIMARY KEY
@@ -159,6 +167,8 @@ coverage.refresh_survey_links
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
+coverage.muted_nodes
+  SEARCH node_current USING PRIMARY KEY
 coverage.new_flags
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
   SEARCH coverage_relay USING PRIMARY KEY
@@ -244,6 +254,13 @@ packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+packets.packet_detail
+  SEARCH traceroute_hop USING PRIMARY KEY
+link_channels._node_channel
+  SEARCH node_shared USING PRIMARY KEY
+link_channels._node_channel
+  SEARCH node_channel USING PRIMARY KEY
+  SEARCH packet_radio USING PRIMARY KEY
 packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
@@ -256,13 +273,6 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-packets.packet_detail
-  SEARCH traceroute_hop USING PRIMARY KEY
-link_channels.link_channel
-  SEARCH node_shared USING PRIMARY KEY
-link_channels.link_channel
-  SEARCH node_channel USING PRIMARY KEY
-  SEARCH packet_radio USING PRIMARY KEY
 
 ## GET /api/v1/packets/11
 
@@ -272,6 +282,8 @@ packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+packets.packet_detail
+  SEARCH traceroute_hop USING PRIMARY KEY
 packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
@@ -284,8 +296,6 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-packets.packet_detail
-  SEARCH traceroute_hop USING PRIMARY KEY
 packets._reply_route
   SEARCH traceroute_packet USING INDEX traceroute_packet_run
   SEARCH packet USING PRIMARY KEY
@@ -306,6 +316,8 @@ packets._shown_packet
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+packets.packet_detail
+  SEARCH traceroute_hop USING PRIMARY KEY
 packets._receptions
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
   SEARCH node_current USING PRIMARY KEY
@@ -368,8 +380,6 @@ relays.direct_signals
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
-packets.packet_detail
-  SEARCH traceroute_hop USING PRIMARY KEY
 flood_routes.route_links
   SEARCH link_hour USING PRIMARY KEY
 flood_routes.one_hop_links
@@ -702,6 +712,42 @@ db.nodes_by_id
   SEARCH node_estimate USING PRIMARY KEY
 shared_numbers.shared_nodes
   SCAN node_shared
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/nodes/168430090/links?since=<time>
 
@@ -752,6 +798,42 @@ db.nodes_by_id
   SEARCH node_estimate USING PRIMARY KEY
 shared_numbers.shared_nodes
   SCAN node_shared
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+links.unlikely_links
+  SCAN long_link
+links._hourly_links
+  SEARCH link_hour USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SCAN node_current
+  SCAN node_doubtful
+  SCAN node_shared
+  SCAN node_doubtful
+  SCAN node_shared
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 
 ## GET /api/v1/nodes/168430090/links
 
@@ -1205,8 +1287,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1297,8 +1377,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1383,8 +1461,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1420,8 +1496,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1463,8 +1537,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1509,8 +1581,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1599,8 +1669,6 @@ traceroute_explorer.traceroute_runs
   SEARCH packet USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-traceroute_explorer.traceroute_runs
-  SEARCH traceroute_hop USING PRIMARY KEY
 links.doubtful_nodes
   SCAN node_doubtful
 shared_numbers.shared_nodes
@@ -1700,16 +1768,16 @@ db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
   SEARCH packet USING PRIMARY KEY
-traceroute_explorer.busiest_traceroutes.<locals>.busiest
-  SCAN traceroute_run
-traceroute_explorer.busiest_traceroutes.<locals>.busiest
-  SEARCH traceroute_run USING INDEX traceroute_run_first
-traceroute_explorer.busiest_traceroutes.<locals>.busiest
-  SEARCH traceroute_hop USING PRIMARY KEY
-  SEARCH traceroute_hop USING PRIMARY KEY
 traceroute_explorer.busiest_traceroutes
+  SEARCH traceroute_run USING INDEX traceroute_run_first
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer._busiest_relays
   SEARCH traceroute_packet USING PRIMARY KEY
-  SEARCH packet USING PRIMARY KEY
+  SEARCH traceroute_run USING PRIMARY KEY
+  SEARCH traceroute_packet USING INDEX traceroute_packet_run
+traceroute_explorer._busiest_relays.<locals>.counts
+  SEARCH traceroute_hop USING PRIMARY KEY
+  SEARCH traceroute_hop USING PRIMARY KEY
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
@@ -1750,6 +1818,7 @@ zones._text_reach
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 zones._key_relays
   SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
 zones._text_hours
   SEARCH node_activity_hour USING INDEX node_activity_text
 zones._active_channels
@@ -2183,6 +2252,8 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+packets.packet_channel_radio
+  SEARCH traceroute_hop USING PRIMARY KEY
 
 ## GET /api/v1/diagnostics/relay-checks/30
 
@@ -2205,6 +2276,8 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+packets.packet_channel_radio
+  SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 relays.node_radios
@@ -2278,6 +2351,8 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+packets.packet_channel_radio
+  SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 relays.node_radios
@@ -2351,6 +2426,8 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+packets.packet_channel_radio
+  SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 relays.node_radios
@@ -2409,11 +2486,15 @@ survey_checks.survey_checks
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_relay USING PRIMARY KEY
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 opt_out.opted_out
   SCAN node_opt_out
 coverage.survey_receptions
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
+coverage.muted_nodes
+  SEARCH node_current USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 links.limited_nodes
@@ -2473,7 +2554,7 @@ coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
 
-## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12&since=<time>&node=168430090&channel=LongFast
+## GET /api/v1/coverage/cells?west=4&south=51&east=6&north=53&zoom=12&node=168430090&channel=LongFast
 
 coverage.other_sessions
   SCAN coverage_session
@@ -2636,6 +2717,8 @@ positions.direct_partners
   SCAN far_partner
 positions._traceroute_corroborated
   SEARCH link_hour USING PRIMARY KEY
+opt_out.opted_out
+  SCAN node_opt_out
 positions._estimates
   SCAN node_current
 positions._estimates
@@ -2810,6 +2893,8 @@ positions.direct_partners
 positions.direct_partners
   SCAN far_partner
   SCAN far_partner
+opt_out.opted_out
+  SCAN node_opt_out
 positions._estimates
   SCAN node_current
 positions._estimates

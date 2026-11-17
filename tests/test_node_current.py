@@ -199,10 +199,10 @@ def test_only_radio_channels_set_the_node_channel(tmp_path: Path) -> None:
             connection.close()
 
     assert send("PKI", 0) is None
-    assert send("longfast", 1) == "longfast"
+    assert send("longfast", 1) == "LongFast"
     # Private messages and chat channels go out on the same radio.
-    assert send("PKI", 2) == "longfast"
-    assert send("TEST", 3) == "longfast"
+    assert send("PKI", 2) == "LongFast"
+    assert send("TEST", 3) == "LongFast"
     assert send("MediumFast", 4) == "MediumFast"
 
 
@@ -237,36 +237,43 @@ def test_of_two_channels_heard_at_once_the_first_stays_after_a_rebuild(tmp_path:
     assert node_channel() == "LongSlow"
 
 
-def test_node_channel_filter_keeps_links_with_the_observed_spelling(tmp_path: Path) -> None:
+def test_a_radio_channel_in_any_case_is_one_channel(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)
-    ingest(
-        path,
-        application_envelope(
-            portnums_pb2.PortNum.TEXT_MESSAGE_APP,
-            b"hi",
-            channel_id="longfast",
-            hop_start=3,
-            hop_limit=3,
-            relay_node=0x11,
-            rx_snr=5,
-            rx_rssi=-90,
-        ),
-        received_at=datetime(2026, 9, 19, 12, tzinfo=UTC),
-        topic="msh/EU_868/2/e/longfast/!aaaaaaaa",
-    )
+    for sender, channel in ((0x11111111, "longfast"), (0x22222222, "LongFast")):
+        ingest(
+            path,
+            application_envelope(
+                portnums_pb2.PortNum.TEXT_MESSAGE_APP,
+                b"hi",
+                sender=sender,
+                channel_id=channel,
+                hop_start=3,
+                hop_limit=3,
+                relay_node=sender & 0xFF,
+                rx_snr=5,
+                rx_rssi=-90,
+            ),
+            received_at=datetime(2026, 9, 19, 12, tzinfo=UTC),
+            topic=f"msh/EU_868/2/e/{channel}/!aaaaaaaa",
+        )
     connection = open_database(path)
     try:
-        channel = node_channels(connection).channels[0].channel
+        # The gateway sent nothing, so the Nodes page counts it as Unknown.
+        assert [(item.channel, item.nodes) for item in node_channels(connection).channels] == [
+            ("LongFast", 2),
+            ("Unknown", 1),
+        ]
         links = map_links(
             connection,
             link_kind="direct",
             since=None,
             limit=100,
-            channel=channel,
+            channel="LongFast",
         ).items
         assert [(link.node_a, link.node_b, link.channel) for link in links] == [
-            (0x11111111, 0xAAAAAAAA, "longfast")
+            (0x11111111, 0xAAAAAAAA, "LongFast"),
+            (0x22222222, 0xAAAAAAAA, "LongFast"),
         ]
     finally:
         connection.close()
@@ -456,7 +463,7 @@ def test_hop_channels_preserve_activity_and_ignore_unobserved_destinations(tmp_p
     assert state(target) == ()
     route("longfast", 1, 1)
     assert state(relay) == (
-        "longfast",
+        "LongFast",
         to_epoch_ms(now + timedelta(minutes=1)),
         None,
         to_epoch_ms(now + timedelta(minutes=1)),

@@ -27,7 +27,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 ## Code
 
 - One backend, one frontend, direct function and database calls. Split code only when it makes a feature clearer or easier to test. No interfaces, repositories, service classes, empty folders, caches, queues, extra databases or services without a measured need.
-- Shared interpretations (grouping, links, traceroutes) live in the backend; presentation-only maths may stay in the frontend. The page shows a backend verdict; it never decides it again from the rounded numbers it displays. API and frontend change together, no backward compatibility.
+- Shared interpretations (grouping, links, traceroutes) live in the backend; presentation-only maths may stay in the frontend. The page shows a backend verdict; it never decides it again from the rounded numbers it displays. A rule change reaches every place that decides the same thing (grep for it), or says why not: not "muted nodes never relay" in Zones only, but also in the Map's route and the packet page. API and frontend change together, no backward compatibility.
 - Rule changes apply to new traffic; keep existing derived rows when usable. Raise `DERIVED_VERSION` only for incompatible derived-table changes or requested historical recalculation. No upgrade code, calculation versions, provenance tables or integrity checks.
 - A failed part degrades its own section, never the whole page or response.
 - Add files, dependencies and processes only when behaviour needs them. Setup and checks stay behind `scripts/setup.sh` and `scripts/verify.sh`.

@@ -22,7 +22,7 @@ Size work for a big mesh, not the public test broker. 14 days of loranet.pl `msh
 - Per-load reads use an index, a bounded query or a small derived table kept by `derive.py` (like `node_current`); never total millions of rows per request behind a cache.
 - Bound API requests with limits or pagination.
 - Current node state is thousands of rows; hourly totals and traceroute summaries grow with traffic.
-- Measure on a realistic database; `scripts/perf.py` times every page against a budget.
+- Measure on a realistic database; `scripts/perf.py` times every page beside the previous run, and against your budgets file if you keep one.
 
 ## Code
 

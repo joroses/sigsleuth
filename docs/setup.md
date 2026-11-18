@@ -31,7 +31,7 @@ After changing an API response class, run `./scripts/api-types.sh` to regenerate
 
 ## Performance
 
-- `uv run --locked python scripts/perf.py`: times a rebuild of the derived tables, every page (`tests/page_requests.py`), retention and the estimate refill on `data/perf.db` against their budgets, beside the previous run. Run it before merging a change to a page's query. Time on your development machine; a small server is a few times slower.
+- `uv run --locked python scripts/perf.py`: times a rebuild of the derived tables, every page (`tests/page_requests.py`), retention and the estimate refill on `data/perf.db`, beside the previous run. Run it before merging a change to a page's query. Budgets depend on the machine, so each developer keeps their own in `data/perf-budgets.toml` (the format is in the script's docstring); without one it only times. A small server is a few times slower than a development machine.
 - `data/perf.db` should be a copy of a big, busy instance. From a running container (a consistent copy, safe while capture writes):
 
   ```bash

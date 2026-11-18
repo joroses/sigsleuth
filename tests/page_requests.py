@@ -2,10 +2,6 @@
 and scripts/perf.py.
 
 When you add a page or a request, add its URL here so all of them cover it.
-
-scripts/perf.py fails when a request's median on data/perf.db takes longer than
-its budget: BUDGET_MS, or the larger one yielded beside a request that is heavy
-by design. Give a request more time only with a reason beside it.
 """
 
 from collections.abc import Iterator
@@ -19,12 +15,6 @@ from meshtastic.protobuf import portnums_pb2  # type: ignore[import-untyped]
 
 from sigsleuth.db import first_packet_row_id_since, now_ms, open_current_database
 
-# Budgets are medians on a development machine on data/perf.db, a copy of a busy
-# instance's database (docs/setup.md). A small server runs about 3.5
-# times slower, so 150 ms here is about half a second there.
-BUDGET_MS = 150
-# Live 2026-10-12: traceroute 287 ms, direct 210 ms, neighbour 143 ms.
-WEEK_LINKS_BUDGET_MS = {"traceroute": 400, "direct": 300, "neighbor": 200}
 # About seven hours of live loranet.pl, most of the recorded sample.
 FLOOD_PACKETS = 20_000
 
@@ -149,18 +139,6 @@ def pick_subjects(database_path: Path) -> Subjects:
 
 def page_requests(now: datetime, subjects: Subjects) -> Iterator[str]:
     """The requests the pages make, with the parameters they send."""
-    for url, _ in budgeted_page_requests(now, subjects):
-        yield url
-
-
-def budgeted_page_requests(now: datetime, subjects: Subjects) -> Iterator[tuple[str, int]]:
-    """Each request with its time budget in milliseconds."""
-    for request in requests(now, subjects):
-        yield request if isinstance(request, tuple) else (request, BUDGET_MS)
-
-
-def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int]]:
-    """A URL, or (URL, budget) when the request may take longer than BUDGET_MS."""
     day = (now - timedelta(days=1)).isoformat().replace("+00:00", "Z")
     three_days = (now - timedelta(days=3)).isoformat().replace("+00:00", "Z")
     week = (now - timedelta(days=7)).isoformat().replace("+00:00", "Z")
@@ -176,10 +154,10 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/packets?limit=50&sender={node}&heard_directly_by={neighbour}"
     yield "/api/v1/packets/ports"
     yield f"/api/v1/packets/{subjects.packet}"
-    # perf.db 2026-10-30: 315 ms to name relays across a busy traceroute's copies.
-    yield f"/api/v1/packets/{subjects.traceroute_packet}", 400
-    # perf.db 2026-10-30: 420 ms; asked for only when the relay map opens.
-    yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes", 500
+    # Names relays across a busy traceroute's copies.
+    yield f"/api/v1/packets/{subjects.traceroute_packet}"
+    # Asked for only when the relay map opens.
+    yield f"/api/v1/packets/{subjects.flood_packet}/flood-routes"
     for sort in ("last_sent", "traceroute", "packets", "texts"):
         yield f"/api/v1/nodes?sort={sort}&limit=20&offset=0"
     for sort in (
@@ -210,18 +188,16 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     yield f"/api/v1/nodes/{node}/positions"
     yield f"/api/v1/nodes/{node}/contacts?since={week}"
     yield f"/api/v1/nodes/{node}/links?since={week}"
-    # The node page's All window (perf.db 2026-11-02, busiest nodes: links
-    # 53-58 ms). Contacts also draw the node's Map lines over all history:
-    # 213 ms, against 136 ms without them, on a machine about 1.4 times
-    # slower than the one these budgets were set on (perf.db 2026-11-17).
-    yield f"/api/v1/nodes/{node}/contacts", 200
+    # The node page's All window. Contacts also draw the node's Map lines over
+    # all history.
+    yield f"/api/v1/nodes/{node}/contacts"
     yield f"/api/v1/nodes/{node}/links"
     yield "/api/v1/map/nodes"
     yield f"/api/v1/map/nodes?seen_since={day}&position_since={fortnight}"
     # What the map opens on: the last 3 days, traceroute links only. Its
-    # links add up every hourly row of the 3 days (549 ms live 2026-10-12).
+    # links add up every hourly row of the 3 days.
     yield f"/api/v1/map/nodes?seen_since={three_days}&position_since={fortnight}"
-    yield f"/api/v1/map/links?link_kind=traceroute&since={three_days}", 250
+    yield f"/api/v1/map/links?link_kind=traceroute&since={three_days}"
     yield f"/api/v1/map/text-senders?since={three_days}"
     # The map opens on its busiest channel, so Chatty nodes asks for it.
     yield f"/api/v1/map/text-senders?since={three_days}&channel={channel}"
@@ -230,9 +206,9 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
         yield f"/api/v1/links?link_kind={kind}&since={day}"
         # Longer windows add up more hourly rows than the output limit bounds.
         # Seven days is a chosen window; the page opens on 24 hours.
-        yield f"/api/v1/links?link_kind={kind}&since={week}", WEEK_LINKS_BUDGET_MS[kind]
+        yield f"/api/v1/links?link_kind={kind}&since={week}"
     # The map loads every traceroute link in history at once (2 MB on live).
-    yield "/api/v1/map/links?link_kind=traceroute", 650
+    yield "/api/v1/map/links?link_kind=traceroute"
     yield f"/api/v1/map/text-senders?since={day}"
     # The coverage layer's heard nodes, over the whole world.
     yield f"/api/v1/coverage/nodes?west=-180&south=-85&east=180&north=85&channel={channel}"
@@ -259,7 +235,7 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
         f"&node={name}&next_to=!{neighbour:08x}&channel={channel}&min_hops=1&successful=true"
     )
     # A busy relay over all history ranks every run it is on.
-    yield f"/api/v1/traceroutes?sort=route&limit=50&offset=0&node=!{node:08x}", 500
+    yield f"/api/v1/traceroutes?sort=route&limit=50&offset=0&node=!{node:08x}"
     yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}&channel={channel}"
     yield f"/api/v1/traceroutes/hops?node_a={node}&node_b={neighbour}&since={day}&channel=Unknown"
     # Line of sight from a Links row, where the pair was when last heard.
@@ -276,9 +252,9 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     )
     yield f"/api/v1/traceroutes/busiest?since={day}"
     # Counts every hop row of the week; the explorer opens on 24 hours.
-    yield f"/api/v1/traceroutes/busiest?since={week}", 300
+    yield f"/api/v1/traceroutes/busiest?since={week}"
     # Zones runs its graph analysis on every request.
-    yield "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4", 300
+    yield "/api/v1/zones?window_hours=72&per_day=2&min_margin_db=4"
     yield "/api/v1/diagnostics/summary"
     yield "/api/v1/diagnostics/doubtful-nodes"
     yield "/api/v1/diagnostics/device-conflicts?after_node=0&count=30"
@@ -286,28 +262,22 @@ def requests(now: datetime, subjects: Subjects) -> Iterator[str | tuple[str, int
     for only in ("shared", "one_at_a_time", "keys"):
         yield f"/api/v1/diagnostics/device-conflicts?after_node=0&count=30&only={only}"
         yield f"/api/v1/diagnostics/device-conflicts?after_node={node}&count=30&only={only}"
-    # Revisit 2026-11-02: perf.db, 14 days, 460k link hours; reach review takes
-    # 0.4 s for 30 pairs and 0.95 s for 300 (163-243 ms before it), allowing
-    # 1.2 s for operator pages.
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=30", 1200
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest", 1200
-    yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely", 1200
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=300&only=signal", 1200
-    yield "/api/v1/diagnostics/longest-links?offset=0&count=300&only=unconfirmed", 1200
-    yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}", 1200
-    # An operator page over 25 traceroutes
-    # (perf.db 2026-10-27: 0.9 s warm, 2.5 s cold).
-    yield "/api/v1/diagnostics/relay-checks?count=25", 1500
-    # perf.db 2026-10-30: 306-352 ms to explain one busy packet's relay naming.
-    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}", 400
-    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}?receiver=gateway", 400
+    # Operator pages: each reviews the reach of every pair it lists.
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=30"
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest"
+    yield "/api/v1/diagnostics/longest-links?offset=30&count=300&only=unlikely"
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=300&only=signal"
+    yield "/api/v1/diagnostics/longest-links?offset=0&count=300&only=unconfirmed"
+    yield f"/api/v1/diagnostics/longest-links?offset=0&count=300&node={node}"
+    # An operator page over 25 traceroutes.
+    yield "/api/v1/diagnostics/relay-checks?count=25"
+    # Explains one busy packet's relay naming.
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
+    yield f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}?receiver=gateway"
     # The same copy as if heard by a node with no direct links elsewhere.
     yield (
-        (
-            f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
-            "?latitude=52.0&longitude=19.0"
-        ),
-        400,
+        f"/api/v1/diagnostics/relay-checks/{subjects.relayed_reception}"
+        "?latitude=52.0&longitude=19.0"
     )
     # Survey uploads beside them (the sample has none: tests/test_survey_checks.py).
     yield "/api/v1/diagnostics/survey-checks?count=25"

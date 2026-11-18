@@ -1,7 +1,8 @@
 """Time a rebuild of the derived tables, every page's requests, a retention
 batch and the estimate refill on a copy of a busy instance's database.
 
-Usage: uv run --locked python scripts/perf.py [--runs 5] [--baseline FILE] [DATABASE]
+Usage: uv run --locked python scripts/perf.py [--runs 5] [--baseline FILE]
+    [--budgets FILE] [DATABASE]
 
 DATABASE defaults to data/perf.db (docs/setup.md shows how to copy
 one). Its derived tables are rebuilt from its facts on every run, once, and
@@ -15,9 +16,20 @@ estimate refill run inside transactions that are rolled back, so every run
 measures the same database. The requests come from tests/page_requests.py.
 
 Each run's medians are saved in data/perf-results/, and printed beside those of
---baseline, by default the previous run (latest.json). The script exits with an
-error, listing them, when any median is over its budget (BUDGET_MS and the
-larger budgets in tests/page_requests.py, and those of capture's jobs here).
+--baseline, by default the previous run (latest.json).
+
+Budgets depend on the machine, so they are kept out of the repository: --budgets
+(by default data/perf-budgets.toml, if there is one) is a TOML file whose
+[budgets] table maps glob patterns of the printed names to milliseconds; the
+first pattern that matches a name gives its budget, so put a catch-all "*" last:
+
+    [budgets]
+    "rebuild derived tables" = 300_000
+    "/api/v1/diagnostics/longest-links*" = 1_000
+    "*" = 150
+
+The script exits with an error, listing them, when any median is over its
+budget or a request fails, and lists patterns that matched nothing.
 """
 
 import argparse
@@ -26,9 +38,11 @@ import sqlite3
 import subprocess
 import sys
 import time
+import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime, timedelta
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -54,16 +68,11 @@ from sigsleuth.shared_numbers import refresh_shared_numbers
 from sigsleuth.terrain import refresh_long_links
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-from page_requests import budgeted_page_requests, pick_subjects
+from page_requests import page_requests, pick_subjects
 
 DAY_MS = 86_400_000
 RESULTS = Path("data/perf-results")
-# Capture's jobs hold the write lock, so deliveries wait meanwhile.
-RETENTION_BUDGET_MS = 300
-REFILL_BUDGET_MS = 600
-# Laptop time on 15 days of a busy subscription (9.8 M receptions): 110 s,
-# 2026-10-20; the server takes about 4.6 times as long.
-REBUILD_BUDGET_MS = 150_000
+BUDGETS = Path("data/perf-budgets.toml")
 
 
 def main() -> None:
@@ -71,12 +80,13 @@ def main() -> None:
     parser.add_argument("database", nargs="?", type=Path, default=Path("data/perf.db"))
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--baseline", type=Path, default=RESULTS / "latest.json")
+    parser.add_argument("--budgets", type=Path, default=BUDGETS)
     arguments = parser.parse_args()
 
     if not arguments.database.exists():
         raise SystemExit(f"No {arguments.database}: copy a busy instance's (docs/setup.md)")
     migrate_database(arguments.database)
-    timer = Timer(arguments.runs, arguments.baseline)
+    timer = Timer(arguments.runs, arguments.baseline, arguments.budgets)
     with closing(open_current_database(arguments.database)) as connection:
         database = describe(connection)
         timer.start(database)
@@ -88,6 +98,9 @@ def main() -> None:
         time_capture_jobs(connection, timer)
     time_pages(arguments.database, timer)
     timer.save(database)
+    unused = [pattern for pattern in timer.budgets if pattern not in timer.matched]
+    if unused:
+        print(f"\nBudget patterns that matched nothing: {', '.join(unused)}")
     if timer.over_budget:
         print("\nOver budget or failed:")
         for line in timer.over_budget:
@@ -107,7 +120,6 @@ def time_rebuild(connection: sqlite3.Connection, timer: "Timer") -> None:
     timer.time(
         "rebuild derived tables",
         lambda: rederive_tables(connection, lambda: False),
-        REBUILD_BUDGET_MS,
         runs=1,
     )
     if judged:
@@ -140,23 +152,13 @@ def time_capture_jobs(connection: sqlite3.Connection, timer: "Timer") -> None:
     timer.time(
         f"retention: delete {RETENTION_BATCH_SIZE:,} packets",
         lambda: _delete_oldest_packets(connection, RETENTION_BATCH_SIZE, cutoff),
-        RETENTION_BUDGET_MS,
     )
     timer.time(
         "retention: trim nodes, positions and hourly totals",
         lambda: _prune_current_state(connection, cutoff),
-        RETENTION_BUDGET_MS,
     )
-    timer.time(
-        "capture: refill shared node numbers",
-        lambda: refresh_shared_numbers(connection),
-        REFILL_BUDGET_MS,
-    )
-    timer.time(
-        "capture: refill estimated positions",
-        lambda: refresh_estimates(connection),
-        REFILL_BUDGET_MS,
-    )
+    timer.time("capture: refill shared node numbers", lambda: refresh_shared_numbers(connection))
+    timer.time("capture: refill estimated positions", lambda: refresh_estimates(connection))
 
 
 @contextmanager
@@ -171,7 +173,7 @@ def rolled_back(connection: sqlite3.Connection) -> Iterator[None]:
 def time_pages(path: Path, timer: "Timer") -> None:
     client = TestClient(create_app(Settings(path)))
     now = from_epoch_ms(db.now_ms())
-    for url, budget_ms in budgeted_page_requests(now, pick_subjects(path)):
+    for url in page_requests(now, pick_subjects(path)):
         response = client.get(url)
         if response.status_code != 200:
             print(f"{url}: HTTP {response.status_code}")
@@ -181,10 +183,7 @@ def time_pages(path: Path, timer: "Timer") -> None:
         label = label.replace(iso(now - timedelta(days=3)), "<3 days>")
         label = label.replace(iso(now - timedelta(days=7)), "<week>")
         timer.time(
-            label,
-            lambda url=url: client.get(url),
-            budget_ms,
-            f"{len(response.content) / 1000:,.0f} kB",
+            label, lambda url=url: client.get(url), f"{len(response.content) / 1000:,.0f} kB"
         )
 
 
@@ -197,8 +196,15 @@ class Timer:
     """Times calls, printing each one's median and slowest run beside its
     median in the baseline, saves the medians and collects those over budget."""
 
-    def __init__(self, runs: int, baseline: Path) -> None:
+    def __init__(self, runs: int, baseline: Path, budgets: Path) -> None:
         self.runs = runs
+        self.budgets: dict[str, float] = {}
+        self.matched: set[str] = set()
+        if budgets.exists():
+            with budgets.open("rb") as file:
+                self.budgets = tomllib.load(file)["budgets"]
+        elif budgets != BUDGETS:
+            raise SystemExit(f"No budgets at {budgets}")
         self.medians: dict[str, float] = {}
         self.over_budget: list[str] = []
         self.baseline: dict[str, float] = {}
@@ -211,14 +217,16 @@ class Timer:
             raise SystemExit(f"No baseline at {baseline}")
 
     def start(self, database: str) -> None:
-        print(f"{database}\n{self.compared_with}\n")
+        print(f"{database}\n{self.compared_with}")
+        if not self.budgets:
+            print(f"No budgets ({BUDGETS}): times only")
+        print()
         print(f"{'median':>11}  {'slowest':>11}  {'baseline':>11}  {'change':>6}")
 
     def time(
         self,
         name: str,
         call: Callable[[], object],
-        budget_ms: float,
         note: str = "",
         runs: int | None = None,
     ) -> None:
@@ -235,10 +243,19 @@ class Timer:
             change = f"{(median - before) / before:+.0%}" if before else ""
             compared = f"{before:8.1f} ms  {change:>6}"
         shown = f"{name} ({note})" if note else name
-        if median > budget_ms:
+        budget_ms = self.budget(name)
+        if budget_ms is not None and median > budget_ms:
             self.over_budget.append(f"{median:6.0f} ms, budget {budget_ms:g} ms: {name}")
             shown += f"  OVER {budget_ms:g} ms"
         print(f"{median:8.1f} ms  {timings[-1]:8.1f} ms  {compared}  {shown}", flush=True)
+
+    def budget(self, name: str) -> float | None:
+        """The budget of the first pattern that matches the name."""
+        for pattern, budget_ms in self.budgets.items():
+            if fnmatchcase(name, pattern):
+                self.matched.add(pattern)
+                return budget_ms
+        return None
 
     def save(self, database: str) -> None:
         RESULTS.mkdir(parents=True, exist_ok=True)

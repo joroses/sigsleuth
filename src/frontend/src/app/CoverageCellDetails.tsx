@@ -236,6 +236,7 @@ function HeardNodeItem({
         {node.measurements.toLocaleString()} ·{" "}
         <MarginDot margin={node.average_margin} />
         {snr(node.average_snr)} SNR
+        {node.average_rssi === null ? null : ` ${node.average_rssi} dBm`}
       </span>
       <span className="muted coverage-how">
         {heardHowText(node)}

@@ -1394,6 +1394,29 @@ def test_a_cell_totals_snr_per_network(client: TestClient) -> None:
     ] == [(7, 62.5, 2, 11.0, 18.5), (11, 250.0, 1, -12.0, 5.5)]
 
 
+def test_a_cell_averages_each_heard_nodes_rssi_without_unrecorded_ones(
+    client: TestClient,
+) -> None:
+    # An RSSI of 0 means the radio recorded none.
+    direct = {
+        "sender_node_id": SENDER,
+        "hop_start": 3,
+        "hop_limit": 3,
+        "relay_byte": SENDER & 0xFF,
+    }
+    upload(
+        client,
+        measurement(1, rx_rssi=-80, **direct),
+        measurement(2, rx_rssi=-91, **direct),
+        measurement(3, rx_rssi=0, **direct),
+    )
+    cell = client.get("/api/v1/coverage/cells", params={**AREA, "zoom": 11}).json()["cells"][0]
+
+    detail = client.get(f"/api/v1/coverage/cells/17/{cell['x']}/{cell['y']}").json()
+
+    assert [(n["measurements"], n["average_rssi"]) for n in detail["heard_nodes"]] == [(3, -86)]
+
+
 def test_a_cell_has_a_spreading_factor_only_when_its_surveys_share_one(
     client: TestClient,
 ) -> None:

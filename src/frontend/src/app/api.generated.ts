@@ -1177,7 +1177,8 @@ export interface components {
      *     draws lines to it from its own nodes' positions, which include estimates.
      *     average_snr is the survey nodes' SNR as radios show it; a node transmits
      *     on one network, so it mixes no radio settings. average_margin is the SNR
-     *     above the survey node's floor, as cells average it. channel is the node's
+     *     above the survey node's floor, as cells average it. average_rssi is in
+     *     dBm, from the measurements that recorded one. channel is the node's
      *     latest channel, None when unknown.
      */
     CoverageHeardNode: {
@@ -1197,6 +1198,7 @@ export interface components {
       guessed: number;
       average_snr: number | null;
       average_margin: number | null;
+      average_rssi: number | null;
       channel: string | null;
       /** Format: date-time */
       last_heard_at: string;

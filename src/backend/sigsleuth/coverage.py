@@ -1575,7 +1575,8 @@ class CoverageHeardNode:
     draws lines to it from its own nodes' positions, which include estimates.
     average_snr is the survey nodes' SNR as radios show it; a node transmits
     on one network, so it mixes no radio settings. average_margin is the SNR
-    above the survey node's floor, as cells average it. channel is the node's
+    above the survey node's floor, as cells average it. average_rssi is in
+    dBm, from the measurements that recorded one. channel is the node's
     latest channel, None when unknown."""
 
     node_id: int
@@ -1586,6 +1587,7 @@ class CoverageHeardNode:
     guessed: int
     average_snr: float | None
     average_margin: float | None
+    average_rssi: int | None
     channel: str | None
     last_heard_at: datetime
 
@@ -1708,7 +1710,7 @@ def coverage_cell(
         SELECT {_HEARD} AS heard_node_id, count(*) AS measurements,
                sum({_GUESSED_SQL}) AS guessed,
                avg(m.rx_snr) AS average_snr, avg(m.margin_db) AS average_margin,
-               max(m.heard_at) AS last_heard_at,
+               avg(nullif(m.rx_rssi, 0)) AS average_rssi, max(m.heard_at) AS last_heard_at,
                min(CASE {_HOW} {how_rank} END) AS how_rank,
                (SELECT channel FROM node_current WHERE node_id = {_HEARD}) AS channel
         FROM {_MEASUREMENTS}
@@ -1958,6 +1960,7 @@ def _heard_node(row: sqlite3.Row, summary: NodeSummary | None) -> CoverageHeardN
         guessed=int(row["guessed"]),
         average_snr=_round(row["average_snr"]),
         average_margin=_round(row["average_margin"]),
+        average_rssi=None if row["average_rssi"] is None else round(row["average_rssi"]),
         channel=row["channel"],
         last_heard_at=from_epoch_ms(row["last_heard_at"]),
     )

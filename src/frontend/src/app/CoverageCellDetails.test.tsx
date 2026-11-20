@@ -36,6 +36,7 @@ const cell: CoverageCellDetail = {
       guessed: 2,
       average_snr: 3.5,
       average_margin: null,
+      average_rssi: null,
       channel: null,
       last_heard_at: "2026-09-25T10:00:00Z",
     },
@@ -48,6 +49,7 @@ const cell: CoverageCellDetail = {
       guessed: 0,
       average_snr: 12.8,
       average_margin: null,
+      average_rssi: -97,
       channel: "LongFast",
       last_heard_at: "2026-09-25T09:00:00Z",
     },
@@ -116,5 +118,18 @@ describe("Coverage here", () => {
     expect(
       screen.getByRole("link", { name: "Far away" }).getAttribute("href"),
     ).toBe("#nodes/7");
+  });
+
+  it("shows a heard node's average RSSI when its radios recorded one", () => {
+    render(
+      <CoverageCellDetails
+        detail={{ data: cell, error: null, loading: false }}
+        isDrawn={() => true}
+        onChooseNode={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/12\.8 dB SNR -97 dBm/)).toBeTruthy();
+    expect(screen.queryByText(/3\.5 dB SNR .*dBm/)).toBeNull();
   });
 });

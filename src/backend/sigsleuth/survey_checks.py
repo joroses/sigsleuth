@@ -433,7 +433,9 @@ def survey_check(
     reports: list[RelayCheckReport] = []
     if found is not None:
         score = found.score
-        candidates, keys = explain_candidates(found.evidence, score.copy, score.scores, {}, hidden)
+        candidates, keys = explain_candidates(
+            connection, found.evidence, score.copy, score.scores, {}, hidden
+        )
         cohearers = set(score.copy.cohearers())
         reports = _reports(connection, row, score.copy, cohearers, hidden)
         explained = explain_evidence(

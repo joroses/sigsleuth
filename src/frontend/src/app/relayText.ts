@@ -10,6 +10,7 @@ export const HOW_LABELS: Record<How, string> = {
   heard_directly: "Heard directly",
   receiver_heard: "Heard by the gateway",
   gateway_link: "Links with co-hearers",
+  near_link: "Links with nodes nearby",
   sender_link: "Links with the sender",
   reported: "Reported one hop earlier",
   only_candidate: "Distance",

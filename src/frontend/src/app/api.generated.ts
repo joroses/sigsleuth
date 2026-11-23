@@ -1190,6 +1190,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "survey_link"
         | "only_candidate"
@@ -1220,6 +1221,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "survey_link"
         | "only_candidate"
@@ -2381,6 +2383,7 @@ export interface components {
             | "sender_link"
             | "reported"
             | "only_candidate"
+            | "near_link"
           )
         | null;
       outcome: ("right" | "wrong" | "undecided") | null;
@@ -2408,7 +2411,9 @@ export interface components {
      *     gateway's direct receptions of it around the packet. activity_hours is
      *     the hour it was last active nearest the packet, in hours from it
      *     (negative before); None when none is within ACTIVE_MS. own_hop_limit is
-     *     the hops left in its own report of the packet.
+     *     the hops left in its own report of the packet. near_partner is its most
+     *     observed near partner (relays.near_partners), near_km that one's km from
+     *     the receiver, near_observations the total over all of them.
      *     possible is false when it cannot have sent the copy (firmware, map
      *     report preset); it then has no probability, score or terms. score is the
      *     sum of its terms' scores; evidence: one of them ties it to the copy, as
@@ -2435,6 +2440,9 @@ export interface components {
       activity_hours: number | null;
       last_gateway_at: string | null;
       own_hop_limit: number | null;
+      near_partner: components["schemas"]["RelayCheckNode"] | null;
+      near_km: number | null;
+      near_observations: number;
       possible: boolean;
       probability: number | null;
       score: number | null;
@@ -2594,7 +2602,8 @@ export interface components {
         | "gateway_link"
         | "sender_link"
         | "reported"
-        | "only_candidate";
+        | "only_candidate"
+        | "near_link";
     };
     /** RelayPlace */
     RelayPlace: {
@@ -2662,7 +2671,11 @@ export interface components {
         | "channel_other"
         | "inactive"
         | "rheard"
-        | "r_rssi";
+        | "r_rssi"
+        | "nlink"
+        | "nlink_log"
+        | "nlink_km"
+        | "nlink_any";
       value: number;
       score: number;
     };
@@ -2808,6 +2821,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "nearest"
         | "only_candidate"
@@ -2821,6 +2835,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "survey_link"
         | "only_candidate"
@@ -2917,6 +2932,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "nearest"
         | "only_candidate"
@@ -3098,7 +3114,9 @@ export interface components {
      *     link's evidence (link_evidence): km from the measurement, its time minus
      *     the measurement's (ms, negative before), whether the measurement's own
      *     survey node heard it and its RSSI (None when not recorded); None for
-     *     other hows.
+     *     other hows. A near link's most observed near partner (relays.near_partners)
+     *     and its km from the measurement, at upload; None for other hows, and
+     *     when the name saved earlier differs from this upload's.
      */
     UploadHeard: {
       seq: number;
@@ -3108,6 +3126,7 @@ export interface components {
         | "direct"
         | "reported"
         | "gateway_link"
+        | "near_link"
         | "sender_link"
         | "survey_link"
         | "only_candidate"
@@ -3118,6 +3137,8 @@ export interface components {
       link_offset_ms: number | null;
       link_mine: boolean | null;
       link_rssi: number | null;
+      near_node_id: number | null;
+      near_km: number | null;
       /** @default false */
       new_cell: boolean;
       /** @default false */

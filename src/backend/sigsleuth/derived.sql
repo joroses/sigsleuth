@@ -293,6 +293,10 @@ CREATE TABLE link_hour (
 ) STRICT, WITHOUT ROWID;
 -- Also gives each direction's longest km without reading the table.
 CREATE INDEX link_hour_pair ON link_hour (from_node_id, to_node_id, km);
+-- A node's links either way over some hours, without reading the table
+-- (relays.near_links): by link_hour_pair, a busy packet page took 380 ms.
+CREATE INDEX link_hour_from ON link_hour (from_node_id, hour_start, observations, snr_count);
+CREATE INDEX link_hour_to ON link_hour (to_node_id, hour_start, observations, snr_count);
 
 -- Hourly counts of traceroute request hops whose cost is known
 -- (traceroute_hop.free), per direction, message and radio channel, once per packet:

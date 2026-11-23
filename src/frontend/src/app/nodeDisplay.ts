@@ -252,6 +252,7 @@ export function relayGuessText(
     | "receiver_heard"
     | "reported"
     | "gateway_link"
+    | "near_link"
     | "sender_link"
     | "only_candidate",
   byte: string,
@@ -263,6 +264,8 @@ export function relayGuessText(
       return "Guess: it relayed the packet (MQTT), maybe not the copy heard here";
     case "gateway_link":
       return "Guess: linked to a gateway that heard the same copy";
+    case "near_link":
+      return "Guess: linked to a node nearby";
     case "sender_link":
       return "Guess: linked to the sender";
     case "only_candidate":
@@ -279,6 +282,7 @@ export function relayNodeTitle(relay: {
     | "receiver_heard"
     | "reported"
     | "gateway_link"
+    | "near_link"
     | "sender_link"
     | "only_candidate";
 }): string {

@@ -23,6 +23,8 @@ from typing import Literal
 from sigsleuth.db import NodeSummary, nodes_by_id
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.firmware import TRAITS
+from sigsleuth.links import limited_nodes
+from sigsleuth.opt_out import opted_out_sql
 from sigsleuth.positions import own_reach, radio_links, traceroute_hops
 from sigsleuth.radio import (
     PRESET_RADIOS,
@@ -49,6 +51,20 @@ COHEARER_WINDOW_MS = 7 * DAY_MS
 # SNR_SPREAD_DB; a node no co-hearer knows could show any SNR in SNR_WIDTH_DB.
 SNR_SPREAD_DB = 2.6
 SNR_WIDTH_DB = 31.0
+# A candidate is heard near the receiver when a node with a reported position
+# within NEAR_KM of it has direct links with the candidate, either way, in the
+# NEAR_MS before the copy's hour: the score's form of a survey link, which
+# shares the distance. Measured 2026-11-22 on loranet.pl route truth (every
+# 8th traceroute, 22,660 copies): 99% of true relays have such a node, 7% of
+# other candidates. 20 km did as well, 10 km and links in one direction named
+# fewer; without traceroute hops it named fewer still. Lacking one counts
+# against a candidate only where another has one (nlink_any): where no node
+# near the receiver hears anything, its absence tells nothing. That gave
+# fewer names with the true relay hidden (3,895 to 3,760). A 30-day window
+# named about as many as 7 days. Revisit after the next refit, or once
+# survey uploads give route truth.
+NEAR_KM = 30
+NEAR_MS = 7 * DAY_MS
 
 # What relay_terms reads for each candidate (WEIGHTS); 0 when it tells nothing,
 # as for a node SigSleuth does not know.
@@ -79,43 +95,50 @@ RelayTerm = Literal[
     "inactive",
     "rheard",
     "r_rssi",
+    "nlink",
+    "nlink_log",
+    "nlink_km",
+    "nlink_any",
 ]
 # A conditional logit over each copy's candidates and a node SigSleuth does
-# not know (UNKNOWN_SCORE), assuming 1% of relays are unknown. Fitted
-# 2026-10-27 on route truth from live loranet.pl, 13-27 Oct (every 8th
-# traceroute, 29,142 copies; receivers with and without links of their own):
-# beside the ladder, 26,610 right / 152 wrong without the gateway's links,
-# 28,675 / 117 with them, against 23,105 / 465 and 28,612 / 179. Weights are
-# per mesh: refit with scripts/relay-fit.py.
+# not know (UNKNOWN_SCORE), assuming 1% of relays are unknown. Refitted
+# 2026-11-22 with the near link terms on route truth from loranet.pl,
+# 2026-09-28 to 10-12 (every 8th traceroute, 22,660 copies): out of fold,
+# 21,290 right / 124 wrong without the gateway's links and 22,400 / 74 with
+# them. Weights are per mesh: refit with scripts/relay-fit.py.
 WEIGHTS: dict[RelayTerm, float] = {
-    "unplaced": -8.15,
-    "estimated": -0.81,
-    "log_km": -2.12,
-    "beyond_reach": 2.16,
-    "near5": -0.48,
-    "in_reach": 1.77,
-    "receiver_far": -3.52,
-    "glink": 1.29,
-    "glink_log": 0.63,
-    "slink": 2.05,
-    "slink_log": 0.54,
-    "sender_far": -0.55,
-    "snr_llr": 0.19,
-    "rep_plus1": 2.38,
-    "rep_same": -0.02,
-    "rep_other": -4.72,
-    "role_router": 3.41,
-    "role_router_late": 1.42,
-    "role_client": -0.6,
-    "role_mute": -3.02,
-    "role_none": -0.19,
-    "channel_same": 1.36,
-    "channel_other": -2.96,
-    "inactive": -5.87,
-    "rheard": 4.92,
-    "r_rssi": 1.0,
+    "unplaced": -3.39,
+    "estimated": -0.18,
+    "log_km": -1.35,
+    "beyond_reach": 0.01,
+    "near5": 1.00,
+    "in_reach": -0.04,
+    "receiver_far": 0.03,
+    "glink": 1.43,
+    "glink_log": 0.49,
+    "slink": 1.68,
+    "slink_log": 0.31,
+    "sender_far": -1.01,
+    "snr_llr": 0.10,
+    "rep_plus1": 0.30,
+    "rep_same": -0.84,
+    "rep_other": -5.39,
+    "role_router": 3.09,
+    "role_router_late": 2.25,
+    "role_client": 0.50,
+    "role_mute": -2.01,
+    "role_none": -0.44,
+    "channel_same": 3.51,
+    "channel_other": -0.05,
+    "inactive": -4.78,
+    "rheard": 3.55,
+    "r_rssi": 1.15,
+    "nlink": 2.46,
+    "nlink_log": 0.46,
+    "nlink_km": -0.79,
+    "nlink_any": -3.81,
 }
-UNKNOWN_SCORE = -4.93
+UNKNOWN_SCORE = -2.11
 NAME_PROBABILITY = 0.8
 ROLE_TERMS: dict[str | None, RelayTerm] = {
     "ROUTER": "role_router",
@@ -128,7 +151,7 @@ ROLE_TERMS: dict[str | None, RelayTerm] = {
 # channel let an unplaced ROUTER nothing linked to the copy beat an unknown
 # node.
 EVIDENCE_TERMS: frozenset[RelayTerm] = frozenset(
-    {"in_reach", "near5", "glink", "slink", "rep_plus1", "rheard"}
+    {"in_reach", "near5", "glink", "slink", "rep_plus1", "rheard", "nlink"}
 )
 # The evidence families a name is worded by, largest contribution first.
 WORDING: dict[RelayTerm, "ScoredHow"] = {
@@ -142,11 +165,17 @@ WORDING: dict[RelayTerm, "ScoredHow"] = {
     "near5": "only_candidate",
     "rheard": "receiver_heard",
     "r_rssi": "receiver_heard",
+    "nlink": "near_link",
+    "nlink_log": "near_link",
+    "nlink_km": "near_link",
 }
 # How a score names a relay, by the evidence that adds most (wording):
-# receiver_heard, the receiver heard it directly (packet pages only), and
-# only_candidate, distance: the likeliest nearby, not the only one.
-ScoredHow = Literal["gateway_link", "sender_link", "reported", "only_candidate", "receiver_heard"]
+# receiver_heard, the receiver heard it directly (packet pages only),
+# near_link, linked with nodes near the receiver, and only_candidate,
+# distance: the likeliest nearby, not the only one.
+ScoredHow = Literal[
+    "gateway_link", "sender_link", "reported", "only_candidate", "receiver_heard", "near_link"
+]
 # A gateway's report: gateway, hops left, relay byte and SNR.
 Report = tuple[int, int | None, int | None, float | None]
 
@@ -222,13 +251,33 @@ class NodeRadio:
 
 
 @dataclass(frozen=True)
+class NearPartner:
+    """A node with a reported position and links with a candidate,
+    either way: where it is, the hours of those links in time order, and the
+    running total of their observations before each hour (one more than
+    hours, the last being the total)."""
+
+    latitude: float
+    longitude: float
+    hours: tuple[int, ...]
+    totals: tuple[int, ...]
+
+    def observations(self, start: int, end: int) -> int:
+        """Observations in the hours from start up to, not including, end."""
+        return (
+            self.totals[bisect_left(self.hours, end)] - self.totals[bisect_left(self.hours, start)]
+        )
+
+
+@dataclass(frozen=True)
 class RelayEvidence:
     """What naming relays reads once per upload or packet: the nodes sending
     each relay byte, their radio links (positions.radio_links), their
     traceroute hops with the senders of one-hop copies
     (positions.traceroute_hops), where they and the senders are, their reach
     (positions.own_reach) and radio, the hours they sent a packet or appeared
-    in a traceroute, and the first hour that history holds."""
+    in a traceroute, the first hour that history holds, and each candidate's
+    near partners (near_partners), for the receivers' places it was read for."""
 
     by_byte: Mapping[int, list[int]]
     radio_links: Mapping[int, Mapping[int, int]]
@@ -238,6 +287,7 @@ class RelayEvidence:
     radios: Mapping[int, NodeRadio]
     active_hours: Mapping[int, list[int]]
     history_from: int | None
+    near: Mapping[int, Mapping[int, NearPartner]] = field(default_factory=dict)
 
     def candidates(self, relayed: Relayed) -> list[int]:
         """The known nodes sending the copy's relay byte, other than its
@@ -266,13 +316,15 @@ def relay_evidence(
     links_around: int | None = None,
     one_hop_senders: Collection[int] = (),
     reach: Mapping[int, float] | None = None,
+    places: Collection[tuple[float, float]] = (),
 ) -> RelayEvidence:
     """The RelayEvidence for naming relays of these bytes for these senders,
     around these times (epoch ms), heard on these radio settings (empty
     when unknown). Radio links are those of the last day, or of a day either
     side of links_around (positions.radio_links); traceroute hops are read
     only for one_hop_senders, the senders of copies heard after one hop.
-    Candidates that cannot_relay get no activity, reach or links."""
+    Near partners are read for receivers at these places. Candidates that
+    cannot_relay get no activity, reach or links."""
     by_byte = nodes_by_byte(connection, relay_bytes)
     candidates = {node for nodes in by_byte.values() for node in nodes}
     placed = nodes_by_id(connection, candidates | senders)
@@ -309,6 +361,7 @@ def relay_evidence(
         history_from=connection.execute(
             "SELECT min(hour_start) FROM node_activity_hour"
         ).fetchone()[0],
+        near=near_links(connection, possible, places, heard),
     )
     silent = {node for node in possible if any(not _active(evidence, node, at) for at in heard)}
     if silent:
@@ -327,6 +380,130 @@ def relay_evidence(
         for node in silent:
             active_hours[node] = sorted(set(active_hours[node]))
     return evidence
+
+
+def near_links(
+    connection: sqlite3.Connection,
+    candidates: Collection[int],
+    places: Collection[tuple[float, float]],
+    times: Collection[int],
+) -> dict[int, dict[int, NearPartner]]:
+    """Each candidate's links, either way and in the NEAR_MS before
+    the hour of any of times, with nodes that may be near partners for a
+    receiver at one of places: a reported position within NEAR_KM of it,
+    trusted (links.trusted_sql) and not opted out. A candidate's links from
+    before its last move do not count. Direct and neighbour links count
+    their observations, traceroute hops those with an SNR."""
+    if not candidates or not places or not times:
+        return {}
+    first, last = (time - time % HOUR_MS for time in (min(times), max(times)))
+    start = first - NEAR_MS
+    limited = limited_nodes(connection, start)
+    partners = _placed_near(connection, places, limited)
+    if not partners:
+        return {}
+    # A candidate's links from before its last move were heard from its old
+    # place. Doubtful and shared candidates keep every hour (coalesce): near
+    # links never read a candidate's own position.
+    moved = limited & set(candidates)
+    # Times in one hour share one window: summed per pair, a busy packet
+    # page reads a tenth of the rows.
+    hour = "hour_start" if last > first else ":bucket"
+    rows: dict[tuple[int, int], dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    for end, other, index in (
+        ("from_node_id", "to_node_id", "link_hour_from"),
+        ("to_node_id", "from_node_id", "link_hour_to"),
+    ):
+        for node, partner, at, count in connection.execute(
+            f"""
+            SELECT {end}, {other}, {hour},
+                   sum(iif(link_kind = 'traceroute', snr_count, observations))
+            FROM link_hour INDEXED BY {index}
+            WHERE {end} IN (SELECT value FROM json_each(:candidates))
+              AND hour_start >= :start AND hour_start < :last
+              AND {other} IN (SELECT value FROM json_each(:partners))
+              AND (link_kind != 'traceroute' OR snr_count > 0)
+              AND ({end} NOT IN (SELECT value FROM json_each(:moved))
+                   OR hour_start
+                      >= (SELECT coalesce(moved_at, 0) FROM node_current WHERE node_id = {end}))
+            GROUP BY 1, 2, 3
+            """,
+            {
+                "candidates": json.dumps(sorted(candidates)),
+                "partners": json.dumps(sorted(partners)),
+                "moved": json.dumps(sorted(moved)),
+                "start": start,
+                "last": last,
+                "bucket": last - HOUR_MS,
+            },
+        ):
+            if node != partner and count:
+                rows[int(node), int(partner)][int(at)] += int(count)
+    found: dict[int, dict[int, NearPartner]] = defaultdict(dict)
+    for (node, partner), by_hour in rows.items():
+        hours = sorted(by_hour)
+        totals = [0]
+        for at in hours:
+            totals.append(totals[-1] + by_hour[at])
+        found[node][partner] = NearPartner(*partners[partner], tuple(hours), tuple(totals))
+    return found
+
+
+def _placed_near(
+    connection: sqlite3.Connection, places: Collection[tuple[float, float]], limited: set[int]
+) -> dict[int, tuple[float, float]]:
+    """near_links' possible partners within NEAR_KM of any of places, but
+    limited ones (links.limited_nodes)."""
+    # 1 km steps keep a long drive's thousands of fixes to a few hundred.
+    spots = sorted({(round(lat, 2), round(lon, 2)) for lat, lon in places})
+    margin = NEAR_KM / 111 + 0.01
+    widest = max(margin / max(math.cos(math.radians(lat)), 0.01) for lat, _ in spots)
+    found = {}
+    for node, latitude, longitude in connection.execute(
+        f"""
+        SELECT node_id, latitude, longitude FROM node_current
+        WHERE latitude BETWEEN :south AND :north AND longitude BETWEEN :west AND :east
+          AND node_id NOT IN (SELECT value FROM json_each(:limited))
+          AND NOT {opted_out_sql("node_id")}
+        """,
+        {
+            "south": spots[0][0] - margin,
+            "north": spots[-1][0] + margin,
+            "west": min(lon for _, lon in spots) - widest,
+            "east": max(lon for _, lon in spots) + widest,
+            "limited": json.dumps(sorted(limited)),
+        },
+    ):
+        first = bisect_left(spots, (latitude - margin, -math.inf))
+        for index in range(first, len(spots)):
+            lat, lon = spots[index]
+            if lat > latitude + margin:
+                break
+            # The rounding moves a place up to 0.8 km.
+            if great_circle_km(latitude, longitude, lat, lon) <= NEAR_KM + 1:
+                found[int(node)] = (float(latitude), float(longitude))
+                break
+    return found
+
+
+def near_partners(
+    evidence: RelayEvidence, relayed: Relayed, node: int
+) -> list[tuple[int, float, int]]:
+    """A candidate's near partners for a copy, as (partner, km from the
+    receiver, observations in the NEAR_MS before the copy's hour), most
+    observed first; none without the receiver's place. The receiver is never
+    its own partner: a gateway's own direct receptions are rheard."""
+    if relayed.position is None:
+        return []
+    end = relayed.at - relayed.at % HOUR_MS
+    found = []
+    for partner, near in evidence.near.get(node, {}).items():
+        if partner == relayed.receiver:
+            continue
+        km = great_circle_km(*relayed.position, near.latitude, near.longitude)
+        if km <= NEAR_KM and (count := near.observations(end - NEAR_MS, end)):
+            found.append((partner, km, count))
+    return sorted(found, key=lambda found: (-found[2], found[1], found[0]))
 
 
 def node_radios(connection: sqlite3.Connection, nodes: set[int]) -> dict[int, NodeRadio]:
@@ -486,10 +663,12 @@ def relay_terms(
     relayed: Relayed,
     signals: Mapping[tuple[int, int], DirectSignal],
     heard: Collection[int] = (),
+    among: Collection[int] | None = None,
 ) -> dict[int, dict[RelayTerm, float]]:
-    """Each possible candidate's non-zero terms (WEIGHTS). heard holds the
-    candidates the receiver heard directly around the copy; none for a
-    survey receiver."""
+    """Each possible candidate's non-zero terms (WEIGHTS), or only those
+    among some when a caller rules others out. heard holds the candidates
+    the receiver heard directly around the copy; none for a survey
+    receiver."""
     # Co-hearers whose own byte differs: one sending it may upload its own rebroadcast.
     sounding = [
         (gateway, snr)
@@ -511,6 +690,8 @@ def relay_terms(
     cohearers = relayed.cohearers()
     found = {}
     for node in possible(evidence, relayed):
+        if among is not None and node not in among:
+            continue
         terms: dict[RelayTerm, float] = {}
         place = evidence.placed.get(node)
         reach = evidence.reach.get(node, 0.0)
@@ -578,7 +759,14 @@ def relay_terms(
             terms["inactive"] = 1
         if node in heard:
             terms["rheard"] = 1
+        if near := near_partners(evidence, relayed, node):
+            terms["nlink"] = 1
+            terms["nlink_log"] = math.log1p(sum(count for _, _, count in near))
+            terms["nlink_km"] = math.log1p(min(km for _, km, _ in near))
         found[node] = {term: value for term, value in terms.items() if value}
+    if any("nlink" in terms for terms in found.values()):
+        for terms in found.values():
+            terms["nlink_any"] = 1
     return found
 
 

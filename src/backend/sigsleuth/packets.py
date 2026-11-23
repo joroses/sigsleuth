@@ -126,6 +126,7 @@ RelayNodeHow = Literal[
     "sender_link",
     "reported",
     "only_candidate",
+    "near_link",
 ]
 
 # Whose own byte a reception's relay byte is, so that no relay is named for
@@ -706,6 +707,14 @@ def relay_namings(
     ]
     if not relayed:
         return None
+    decision_places = nodes_when_heard(
+        connection, at, {reception.gateway_node_id for reception in relayed}
+    )
+    positions = {
+        gateway: (place.latitude, place.longitude)
+        for gateway, place in decision_places.items()
+        if place.latitude is not None and place.longitude is not None
+    }
     evidence = relay_evidence(
         connection,
         {int(reception.relay_byte) for reception in relayed if reception.relay_byte},
@@ -715,6 +724,7 @@ def relay_namings(
         links_around=at,
         one_hop_senders={sender},
         reach=reach,
+        places=list(positions.values()),
     )
     pairs = [
         (node, reception.gateway_node_id)
@@ -737,16 +747,10 @@ def relay_namings(
     for reception in receptions:
         if (route := reception_route_prefix(reception)) is not None:
             route_prefixes[reception.gateway_node_id] = route
-    decision_places = nodes_when_heard(
-        connection, at, {reception.gateway_node_id for reception in relayed}
-    )
     namings = {}
     for reception in relayed:
         gateway = reception.gateway_node_id
-        position = None
-        place = decision_places.get(gateway)
-        if place is not None and place.latitude is not None and place.longitude is not None:
-            position = (place.latitude, place.longitude)
+        position = positions.get(gateway)
         copy = Relayed(
             sender=sender,
             receiver=gateway,

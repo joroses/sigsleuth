@@ -16,7 +16,7 @@ A square's colour is the average margin of its measurements: how far the SNR sit
 
 1. **Directly**: the survey node heard the sender itself, by the rule links use: no hops used, the relay byte is the sender's own, and a signal was measured.
 2. **Survey link**: a relayed packet names only the last byte of its relay's number. When exactly one node with that byte was heard directly by a survey node on the same radio settings within 30 km and an hour of the measurement (or, if none, 60 days), it is the relay. A node is left out when the packet arrived more than 30 dB stronger (RSSI, plus the SNR when negative) than the same survey node heard it directly within 1 km (60 days either side): a relay cannot be much louder than its own packets from the same place, though it can be quieter. A node whose role is CLIENT_MUTE is left out too, as it never rebroadcasts; its role is read as it is now. Later uploads can add or change survey links.
-3. **Guessed from MQTT**: otherwise, the [relay evidence](relay-evidence.md) score names one at upload, once, from what MQTT knew then: every node with that byte that could have sent it (the 30 dB rule too) gets a probability from its distance and reach, the gateways' reports of the same packet, its radio links and its role, and so does a node SigSleuth does not know. The likeliest is named when at least 80% likely and something ties it to the copy.
+3. **Guessed from MQTT**: otherwise, the [relay evidence](relay-evidence.md) score names one at upload, once, from what MQTT knew then: every node with that byte that could have sent it (the 30 dB rule too) gets a probability from its distance, the gateways' reports of the same packet, its radio links, its links with nodes within 30 km of the phone and its role, and so does a node SigSleuth does not know. The likeliest is named when at least 80% likely and something ties it to the copy.
 4. **Unknown**: none is named. The upload's reply and the square's details then suggest up to three nodes with that byte, likeliest first.
 
 Clicking a square, also through a node's name drawn over it, draws lines from its centre to where each heard node is now: solid for 1 and 2, dashed for 3. Its details say how each node was named.
@@ -32,7 +32,7 @@ Not being seen by MQTT does not mean a node is gone: surveys matter most where n
 
 The upload's reply says what each measurement adds: a new square, a new relay byte in it, or a sender newly heard directly there. Only surveys on the same radio settings count.
 
-For a survey link, the reply also gives the relay's direct reception closest in time: how far away and how long before or after it was, and whether the same survey node heard it.
+For a survey link, the reply also gives the relay's direct reception closest in time: how far away and how long before or after it was, and whether the same survey node heard it. For a near link, it gives the node near the phone most often linked with the relay, and how far it is.
 
 ## Nodes that do not allow MQTT
 

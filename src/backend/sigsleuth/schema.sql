@@ -125,7 +125,7 @@ CREATE TABLE coverage_measurement (
     cell_y INTEGER NOT NULL,
     heard_node_id INTEGER,
     heard_how TEXT NOT NULL CHECK (heard_how IN ('direct', 'reported', 'gateway_link',
-        'sender_link', 'nearest', 'only_candidate', 'unknown')),
+        'near_link', 'sender_link', 'nearest', 'only_candidate', 'unknown')),
     candidates INTEGER NOT NULL CHECK (candidates >= 0),
     margin_db REAL,
     UNIQUE (session_row_id, seq)

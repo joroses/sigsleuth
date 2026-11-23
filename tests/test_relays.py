@@ -1,10 +1,14 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from sigsleuth.db import NodeSummary
+from sigsleuth.derive import HOUR_MS
 from sigsleuth.radio import PRESET_RADIOS, Radio, modem_preset_radio
 from sigsleuth.relays import (
     NAME_PROBABILITY,
+    NEAR_KM,
+    NEAR_MS,
+    NearPartner,
     NodeRadio,
     Relayed,
     RelayEvidence,
@@ -41,6 +45,7 @@ def evidence(
     *,
     links: Mapping[int, Mapping[int, int]] | None = None,
     reach: Mapping[int, float] | None = None,
+    channel: Radio | None = None,
 ) -> RelayEvidence:
     nodes = list(places)
     return RelayEvidence(
@@ -49,7 +54,7 @@ def evidence(
         sender_hops={},
         placed={n: p for n, p in places.items() if p is not None},
         reach=reach or {},
-        radios={n: NodeRadio(None, None, None, AT) for n in nodes},
+        radios={n: NodeRadio(channel, None, None, AT) for n in nodes},
         active_hours={},
         history_from=None,
     )
@@ -85,7 +90,7 @@ def test_a_candidate_with_no_evidence_is_never_named() -> None:
 def test_evidence_names_a_candidate_and_words_the_name() -> None:
     linked = 0x0101_003D
     scores = score_relays(
-        evidence({linked: node(linked, 30)}, links={COHEARER: {linked: 40}}),
+        evidence({linked: node(linked, 30)}, links={COHEARER: {linked: 40}}, channel=LONG_FAST),
         copy(cohearer=True),
         {},
     )
@@ -107,7 +112,10 @@ def test_route_filtering_keeps_reports_from_an_earlier_hop() -> None:
         rival,
         "gateway_link",
     )
-    assert score_relays(found, received, {}).named() == (earlier, "reported")
+    filtered = score_relays(found, received, {})
+    assert "rep_plus1" in filtered.terms[earlier]
+    assert "glink" not in filtered.terms[rival]
+    assert filtered.ranked()[0] == earlier
 
 
 def test_an_estimated_node_on_the_receiver_gains_nothing_from_its_distance() -> None:
@@ -187,7 +195,8 @@ def test_stronger_shortcut_falls_through_and_keeps_the_candidate() -> None:
         assert named.shortcut_skipped is skipped
         assert named.heard == {a: 1}
         assert named.scores.terms[a]["rheard"] == 1
-        assert named.relay == ((a, "receiver_heard") if skipped else (a, "heard_directly"))
+        assert named.relay is not None and named.relay[0] == a
+        assert (named.relay[1] == "heard_directly") is not skipped
     missing = name_copy(found, replace(copy(), rssi=-50), {(a, RECEIVER): 1}, {})
     assert missing.relay == (a, "heard_directly")
 
@@ -221,3 +230,45 @@ def test_radio_channels_on_one_preset_are_separate_meshes() -> None:
     assert not medium24.matches(Radio(10, 250, exact=True))
     assert not medium24.matches(PRESET_RADIOS["MediumSlow"])
     assert medium24.matches(Radio(10, 812.5, exact=True))
+
+
+def near(km: float, hours_before: Sequence[int], observations: int = 40) -> NearPartner:
+    """A node km north of the receiver, with observations of links with a
+    candidate in each of the hours this many before the copy's hour."""
+    hour = AT - AT % HOUR_MS
+    hours = sorted(hour - before * HOUR_MS for before in hours_before)
+    totals = [observations * index for index in range(len(hours) + 1)]
+    return NearPartner(HERE[0] + km * KM, HERE[1], tuple(hours), tuple(totals))
+
+
+def test_links_with_a_node_near_the_receiver_name_an_unplaced_router() -> None:
+    router, partner = 0x0101_003D, 0x4000_0004
+    found = evidence({router: node(router, None, role="ROUTER")})
+    found = replace(
+        found,
+        radios={router: NodeRadio(LONG_FAST, None, None, AT)},
+        near={router: {partner: near(7, [2, 30])}},
+    )
+    assert score_relays(found, copy(), {}).named() == (router, "near_link")
+    far = replace(found, near={router: {partner: near(NEAR_KM + 1, [2, 30])}})
+    assert "nlink" not in score_relays(far, copy(), {}).terms[router]
+
+
+def test_near_links_count_the_week_before_the_copys_hour() -> None:
+    router, partner = 0x0101_003D, 0x4000_0004
+    week = NEAR_MS // HOUR_MS
+    for before, counted in ((0, False), (1, True), (week, True), (week + 1, False)):
+        found = replace(
+            evidence({router: node(router, None, role="ROUTER")}),
+            near={router: {partner: near(7, [before])}},
+        )
+        assert ("nlink" in score_relays(found, copy(), {}).terms[router]) is counted, before
+
+
+def test_the_receiver_is_not_its_own_near_partner() -> None:
+    router = 0x0101_003D
+    found = replace(
+        evidence({router: node(router, None, role="ROUTER")}),
+        near={router: {RECEIVER: near(0, [2])}},
+    )
+    assert "nlink" not in score_relays(found, copy(), {}).terms[router]

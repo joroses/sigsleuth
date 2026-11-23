@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from sigsleuth.packets import PacketReception
 from sigsleuth.relay_checks import route_hint, route_relay
+from sigsleuth.relays import NEAR_KM
 from sigsleuth.traceroute import ReportPaths, RoutePath
 
 REQUESTER, RELAY_A, RELAY_B, GATEWAY, TARGET = (
@@ -146,4 +147,27 @@ def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClie
             url, params={"receiver": "gateway", "latitude": 52.0, "longitude": 19.0}
         ).status_code
         == 400
+    )
+
+
+def test_a_moved_survey_receiver_reads_near_partners_around_its_place(
+    sample_client: TestClient,
+) -> None:
+    checks = sample_client.get("/api/v1/diagnostics/relay-checks?count=500").json()["checks"]
+    for check in checks:
+        url = f"/api/v1/diagnostics/relay-checks/{check['reception_id']}"
+        survey = sample_client.get(url).json()
+        linked = [c for c in survey["candidates"] if c["near_partner"] is not None]
+        if linked:
+            break
+    assert linked
+    assert all(0 <= c["near_km"] <= NEAR_KM and c["near_observations"] > 0 for c in linked)
+    at = survey["receiver"]
+    # About 330 km north of the gateway, where no node of the sample stands.
+    away = sample_client.get(
+        url, params={"latitude": at["latitude"] + 3, "longitude": at["longitude"]}
+    ).json()
+    assert all(
+        (c["near_partner"], c["near_km"], c["near_observations"]) == (None, None, 0)
+        for c in away["candidates"]
     )

@@ -7,9 +7,9 @@ Truth is every relayed traceroute reception whose own route names its relay
 twice:
 
 - survey: a receiver at the gateway with no links of its own. The gateway's
-  own report, its links in candidates' reach and the sender's traceroute
-  hops from the packet's hour on are left out, so the copy's own route
-  cannot name its relay;
+  own report, its links in candidates' reach, the gateway as a near partner
+  and the sender's traceroute hops from the packet's hour on are left out,
+  so the copy's own route cannot name its relay;
 - page: as packet pages read it, with the gateway's direct receptions
   (heard directly first when it heard exactly one candidate, unless
   packets.skips_shortcut).
@@ -135,6 +135,10 @@ def collect(connection: sqlite3.Connection, every: int) -> list[Copy]:
                     if any(partner != gateway for partner in reach)
                 },
                 sender_hops=hops_before,
+                near={
+                    node: {p: near for p, near in partners.items() if p != gateway}
+                    for node, partners in evidence.near.items()
+                },
             )
             copy = replace(
                 naming.copy,

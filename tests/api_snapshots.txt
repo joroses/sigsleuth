@@ -5244,7 +5244,7 @@ revision: null
 api_started_at: "2026-10-11T16:25:30.812000Z"
 api_uptime_seconds: 0
 database:
-  facts_version: 5
+  facts_version: 6
   row_counts:
     reception: 106266
     packet: 31095
@@ -6282,7 +6282,7 @@ checks: 46 items
       relay:
         node_id: 3655149723
         name: "Node 289b"
-      how: "sender_link"
+      how: "near_link"
       outcome: "right"
       why: "named"
       likeliest:
@@ -6326,7 +6326,7 @@ checks: 46 items
       relay:
         node_id: 3655149723
         name: "Node 289b"
-      how: "sender_link"
+      how: "near_link"
       outcome: "right"
       why: "named"
       likeliest:
@@ -6370,7 +6370,7 @@ checks: 46 items
       relay:
         node_id: 3655149723
         name: "Node 289b"
-      how: "gateway_link"
+      how: "near_link"
       outcome: "right"
       why: "named"
       likeliest:
@@ -6414,19 +6414,19 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 1
+    probability: 0.999
     route_probability: null
   survey:
     relay:
       node_id: 2224775088
       name: "Node 5fb0"
-    how: "gateway_link"
+    how: "near_link"
     outcome: null
     why: "named"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.992
+    probability: 0.988
     route_probability: null
   candidates: 11
   possible: 11
@@ -6488,20 +6488,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -15.31
+    score: -12.58
     evidence: false
-    terms: 7 items
+    terms: 8 items
       - term: "log_km"
         value: 5.13
-        score: -10.88
+        score: -6.93
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.13
-        score: 4.6
+        score: -4.78
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -6522,20 +6525,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -14.9
+    score: -11.65
     evidence: false
-    terms: 6 items
+    terms: 7 items
       - term: "log_km"
         value: 5.27
-        score: -11.17
+        score: -7.12
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.27
-        score: 4.9
+        score: -4.78
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -6556,20 +6562,23 @@ candidates: 11 items
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
-    probability: 0.0001
-    score: -5
+    probability: 0
+    score: -5.47
     evidence: false
-    terms: 3 items
+    terms: 4 items
       - term: "log_km"
         value: 3.83
-        score: -8.13
-      - term: "beyond_reach"
-        value: 0.82
-        score: 1.77
+        score: -5.18
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
       - term: "channel_same"
         value: 1
-        score: 1.36
+        score: 3.51
 unknown_probability: 0.0001
 reports: 4 items
   - reception_id: 90660
@@ -6644,7 +6653,7 @@ links: 1 items
 activity_from: "2026-10-08T15:00:00Z"
 rules:
   name_probability: 0.8
-  unknown_score: -4.93
+  unknown_score: -2.11
   name_km: 20
   far_km: 50
   active_hours: 24
@@ -6677,19 +6686,19 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 1
+    probability: 0.999
     route_probability: null
   survey:
     relay:
       node_id: 2224775088
       name: "Node 5fb0"
-    how: "gateway_link"
+    how: "near_link"
     outcome: null
     why: "named"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.992
+    probability: 0.988
     route_probability: null
   candidates: 11
   possible: 11
@@ -6751,20 +6760,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -15.31
+    score: -12.58
     evidence: false
-    terms: 7 items
+    terms: 8 items
       - term: "log_km"
         value: 5.13
-        score: -10.88
+        score: -6.93
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.13
-        score: 4.6
+        score: -4.78
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -6785,20 +6797,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -14.9
+    score: -11.65
     evidence: false
-    terms: 6 items
+    terms: 7 items
       - term: "log_km"
         value: 5.27
-        score: -11.17
+        score: -7.12
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.27
-        score: 4.9
+        score: -4.78
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -6819,20 +6834,23 @@ candidates: 11 items
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -5
+    score: -5.47
     evidence: false
-    terms: 3 items
+    terms: 4 items
       - term: "log_km"
         value: 3.83
-        score: -8.13
-      - term: "beyond_reach"
-        value: 0.82
-        score: 1.77
+        score: -5.18
+      - term: "nlink_any"
+        value: 1
+        score: -3.81
       - term: "channel_same"
         value: 1
-        score: 1.36
+        score: 3.51
 unknown_probability: 0
 reports: 4 items
   - reception_id: 90660
@@ -6903,7 +6921,7 @@ links: []
 activity_from: "2026-10-08T15:00:00Z"
 rules:
   name_probability: 0.8
-  unknown_score: -4.93
+  unknown_score: -2.11
   name_km: 20
   far_km: 50
   active_hours: 24
@@ -6936,7 +6954,7 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 1
+    probability: 0.999
     route_probability: null
   survey:
     relay:
@@ -6948,7 +6966,7 @@ check:
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.998
+    probability: 0.985
     route_probability: null
   candidates: 11
   possible: 11
@@ -7010,20 +7028,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -15.3
+    score: -8.93
     evidence: false
     terms: 7 items
       - term: "log_km"
         value: 5.26
-        score: -11.14
+        score: -7.09
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.25
-        score: 4.87
+        score: -4.78
+      - term: "channel_same"
+        value: 1
+        score: 3.51
   - key: 799443888
     node_id: 799443888
     name: "Node 8bb0"
@@ -7044,20 +7065,23 @@ candidates: 11 items
     activity_hours: null
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
     probability: 0
-    score: -14.89
+    score: -8.05
     evidence: false
     terms: 6 items
       - term: "log_km"
         value: 5.43
-        score: -11.51
+        score: -7.33
       - term: "inactive"
         value: 1
-        score: -5.87
-      - term: "beyond_reach"
-        value: 2.43
-        score: 5.25
+        score: -4.78
+      - term: "channel_same"
+        value: 1
+        score: 3.51
   - key: 1116113328
     node_id: 1116113328
     name: "Node 89b0"
@@ -7078,21 +7102,24 @@ candidates: 11 items
     activity_hours: -0.2
     last_gateway_at: null
     own_hop_limit: null
+    near_partner: null
+    near_km: null
+    near_observations: 0
     possible: true
-    probability: 0
-    score: -8.49
+    probability: 0.0012
+    score: -2.27
     evidence: false
     terms: 4 items
       - term: "log_km"
         value: 4.31
-        score: -9.15
+        score: -5.82
+      - term: "channel_same"
+        value: 1
+        score: 3.51
       - term: "receiver_far"
         value: 1
-        score: -3.52
-      - term: "beyond_reach"
-        value: 1.31
-        score: 2.82
-unknown_probability: 0.0011
+        score: 0.03
+unknown_probability: 0.0014
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -7166,7 +7193,7 @@ links: 1 items
 activity_from: "2026-10-08T15:00:00Z"
 rules:
   name_probability: 0.8
-  unknown_score: -4.93
+  unknown_score: -2.11
   name_km: 20
   far_km: 50
   active_hours: 24

@@ -62,6 +62,7 @@ from sigsleuth.radio import (
 from sigsleuth.relays import (
     DAY_MS,
     FAR_KM,
+    NEAR_KM,
     DirectSignal,
     NodeRadio,
     Relayed,
@@ -70,6 +71,7 @@ from sigsleuth.relays import (
     cannot_relay,
     channel_radio,
     direct_signals,
+    near_partners,
     node_km,
     node_radios,
     possible,
@@ -92,8 +94,9 @@ MQTT_MATCH_MS = HOUR_MS
 # fork), which reads only its own receptions and looks back 30 days. Pooled
 # survey nodes rarely cover the same weeks, so 60 days lets one name the
 # relays of another (2026-10-17). Not measured against the truth yet:
-# scripts/coverage-backtest.py compares other bounds.
-SURVEY_LINK_KM = 30
+# scripts/coverage-backtest.py compares other bounds. The distance is the
+# score's near links' (relays.NEAR_KM): both name a node heard near the phone.
+SURVEY_LINK_KM = NEAR_KM
 SURVEY_LINK_TIERS_MS = (HOUR_MS, 60 * DAY_MS)
 # A relayed copy cannot arrive much stronger than its relay's own packets
 # heard from the same place (too_strong). Measured with gateways standing in
@@ -114,14 +117,34 @@ MAX_MERCATOR_LATITUDE = 85.05112878
 # How upload decided the heard node (heard_node), as saved. Uploads no longer
 # guess nearest; the map reads saved nearest rows as unknown.
 SavedHow = Literal[
-    "direct", "reported", "gateway_link", "sender_link", "nearest", "only_candidate", "unknown"
+    "direct",
+    "reported",
+    "gateway_link",
+    "near_link",
+    "sender_link",
+    "nearest",
+    "only_candidate",
+    "unknown",
 ]
 # How the map names the heard node: as saved, or survey_link (coverage_relay).
 HeardHow = Literal[
-    "direct", "reported", "gateway_link", "sender_link", "survey_link", "only_candidate", "unknown"
+    "direct",
+    "reported",
+    "gateway_link",
+    "near_link",
+    "sender_link",
+    "survey_link",
+    "only_candidate",
+    "unknown",
 ]
 # The guesses, drawn dashed: direct and survey_link come from a direct reception.
-GUESSED: tuple[HeardHow, ...] = ("reported", "gateway_link", "sender_link", "only_candidate")
+GUESSED: tuple[HeardHow, ...] = (
+    "reported",
+    "gateway_link",
+    "near_link",
+    "sender_link",
+    "only_candidate",
+)
 
 # A survey direct reception: when, where, by which survey node, its signal
 # (signal_db) and its RSSI.
@@ -230,7 +253,9 @@ class UploadHeard:
     link's evidence (link_evidence): km from the measurement, its time minus
     the measurement's (ms, negative before), whether the measurement's own
     survey node heard it and its RSSI (None when not recorded); None for
-    other hows."""
+    other hows. A near link's most observed near partner (relays.near_partners)
+    and its km from the measurement, at upload; None for other hows, and
+    when the name saved earlier differs from this upload's."""
 
     seq: int
     node_id: int | None
@@ -240,6 +265,8 @@ class UploadHeard:
     link_offset_ms: int | None = None
     link_mine: bool | None = None
     link_rssi: int | None = None
+    near_node_id: int | None = None
+    near_km: float | None = None
     new_cell: bool = False
     new_byte: bool = False
     new_direct: bool = False
@@ -421,7 +448,23 @@ def save_upload(
     for h in saved_heard(connection, session_row_id, maybe):
         cell, byte, direct = news.get(h.seq, (False, False, False))
         heard.append(replace(h, new_cell=cell, new_byte=byte, new_direct=direct))
-    named = nodes_by_id(connection, {h.node_id for h in heard if h.node_id is not None})
+    # The near partner behind a near link decided now; a resent measurement's
+    # saved name may be another.
+    near = {
+        m.seq: point.heard
+        for m, point in zip(usable, points, strict=True)
+        if point.heard.near is not None
+    }
+    for index, h in enumerate(heard):
+        decided = near.get(h.seq)
+        if h.how == "near_link" and decided is not None and decided.node_id == h.node_id:
+            assert decided.near is not None
+            partner, km = decided.near
+            heard[index] = replace(h, near_node_id=partner, near_km=round(km, 1))
+    named = nodes_by_id(
+        connection,
+        {node for h in heard for node in (h.node_id, h.near_node_id) if node is not None},
+    )
     return UploadResult(
         saved=saved,
         already_saved=len(rows) - saved,
@@ -632,6 +675,8 @@ class HeardNode:
     how: SavedHow
     candidates: int
     maybe: tuple[int, ...] = ()
+    # A near link's most observed near partner and its km.
+    near: tuple[int, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -712,6 +757,7 @@ def relay_evidence(
         },
         links_around=links_around,
         reach=reach,
+        places=[(row["latitude"], row["longitude"]) for row in rows],
     )
 
 
@@ -771,7 +817,8 @@ def heard_node(
         return HeardNode(sender, "direct", 1)
     if not row["relay_byte"]:
         return HeardNode(None, "unknown", 0)
-    scores = score_measurement(connection, evidence, direct, row).scores
+    score = score_measurement(connection, evidence, direct, row)
+    scores = score.scores
     if not scores.terms:
         return HeardNode(None, "unknown", 0)
     named = scores.named()
@@ -779,7 +826,11 @@ def heard_node(
     # A survey receiver hears no candidate in relay_terms' heard.
     if named is None or named[1] == "receiver_heard":
         return HeardNode(None, "unknown", len(scores.terms), maybe)
-    return HeardNode(named[0], named[1], len(scores.terms), maybe)
+    near = None
+    if named[1] == "near_link":
+        partner, km, _ = near_partners(evidence, score.copy, named[0])[0]
+        near = (partner, km)
+    return HeardNode(named[0], named[1], len(scores.terms), maybe, near)
 
 
 @dataclass(frozen=True)
@@ -834,9 +885,7 @@ def score_measurement(
         if left
         else {}
     )
-    terms = {
-        node: found for node, found in relay_terms(evidence, copy, signals).items() if node in left
-    }
+    terms = relay_terms(evidence, copy, signals, among=left)
     return MeasurementScore(
         copy, tuple(ruled_out), signals, RelayScores(terms, relay_probabilities(terms))
     )
@@ -1231,6 +1280,7 @@ _HOW_ORDER: tuple[HeardHow, ...] = (
     "direct",
     "survey_link",
     "gateway_link",
+    "near_link",
     "reported",
     "sender_link",
     "only_candidate",
@@ -1815,6 +1865,7 @@ def relay_candidates(
         set(),
         [at for _, at in copies],
         radios=radios,
+        places=[place],
     )
     hidden = opted_out(connection)
     found = []

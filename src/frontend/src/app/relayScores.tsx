@@ -60,6 +60,10 @@ const TERM_LABELS: Record<Term, string> = {
   inactive: "not active",
   rheard: "heard by the gateway",
   r_rssi: "receiver RSSI match",
+  nlink: "linked to a node nearby",
+  nlink_log: "links nearby",
+  nlink_km: "distance to the nearest linked node",
+  nlink_any: "some candidate linked nearby",
 };
 
 export function RouteBadge() {
@@ -151,6 +155,10 @@ export function CandidateTable({
                 <span className="column-note">of its reach</span>
               </th>
               <th>
+                Linked nearby
+                <span className="column-note">observations</span>
+              </th>
+              <th>
                 Own report
                 <span className="column-note">hops left</span>
               </th>
@@ -237,6 +245,9 @@ export function CandidateTable({
                   />
                 </td>
                 <td>
+                  <NearText candidate={candidate} />
+                </td>
+                <td>
                   {candidate.own_hop_limit === null ? (
                     <span className="muted">no report</span>
                   ) : (
@@ -290,6 +301,17 @@ function KmOf({ km, limit }: { km: number | null; limit: number }) {
     <>
       {close ? km.toFixed(1) : formatKm(km)}
       <span className="muted"> of {formatKm(limit)}</span>
+    </>
+  );
+}
+
+/** The most observed node near the receiver linked with it, and all such links. */
+function NearText({ candidate }: { candidate: RelayCandidate }) {
+  if (candidate.near_partner === null) return <span className="muted">—</span>;
+  return (
+    <>
+      <NodeRef node={candidate.near_partner} /> {formatKm(candidate.near_km)} km
+      <span className="muted"> · {candidate.near_observations}</span>
     </>
   );
 }

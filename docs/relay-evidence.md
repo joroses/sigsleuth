@@ -1,6 +1,6 @@
 # Relay evidence: which sources name a relay
 
-Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages named relays by the 2026-10-18 decision below, and by one score since 2026-10-27 ([Decision: one score](#decision-one-score-2026-10-27)). Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
+Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages named relays by the 2026-10-18 decision below, by one score since 2026-10-27 ([Decision: one score](#decision-one-score-2026-10-27)), and with near links since 2026-11-22 ([Near links](#near-links-2026-11-22)). Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
 
 ## The problem
 
@@ -126,7 +126,7 @@ Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of n
 
 - **Candidates**: every node sending the byte except those that cannot have sent the copy: firmware without the relay byte, or a map report preset on another spreading factor or bandwidth. Unplaced, CLIENT_MUTE, silent, far and other-channel nodes stay in, with terms against them. So does a node SigSleuth does not know, the unknown option, scoring `UNKNOWN_SCORE`.
 - **Score**: each candidate's terms times their weights (`WEIGHTS`), summed. A softmax over the candidates and the unknown option gives each a probability.
-- **Name**: the likeliest candidate, dashed, when its probability is at least 0.8 and an evidence term counts for it: within its reach (20 km floor), within 5 km, linked to a co-hearer or (after one hop) the sender, reported one hop earlier, heard directly by the receiving gateway, or a signal that matches better than an unknown node's. Without the evidence rule, role and channel let an unplaced ROUTER with nothing tying it to the copy beat the unknown option. The name is worded by the evidence family that adds most to its score; a role never words one.
+- **Name**: the likeliest candidate, dashed, when its probability is at least 0.8 and an evidence term counts for it: within its reach (20 km floor), within 5 km, linked to a co-hearer, (after one hop) the sender or a node near the receiver, reported one hop earlier, heard directly by the receiving gateway, or a signal that matches better than an unknown node's. Without the evidence rule, role and channel let an unplaced ROUTER with nothing tying it to the copy beat the unknown option. The name is worded by the evidence family that adds most to its score; a role never words one.
 - **Estimated nodes on the receiver**: no distance terms for an estimated node within 1 km of the receiver. Its estimate comes from the nodes that heard it, so its 0 km is circular. Dropping distance for every estimated node cost about 1,400 right names.
 - **No name**: up to three candidates with evidence, likeliest first, on packet pages, upload replies and the coverage cell (scored there as a copy heard at the cell's centre).
 
@@ -139,11 +139,56 @@ Measured on a copy of live loranet.pl `msh/#`, 13–27 October, every 8th tracer
 
 Calibration, packet pages where heard directly does not decide: names at 0.8–0.9 were right 81% of the time, at 0.99 or more 99.8%. Without role terms the score failed both receivers: it named fewer right and more wrong than the ladder. With them, distance would otherwise word nearly every name. Without the unknown option, wrong names with the true relay hidden rise two to three times. A hearing-rate term (how often each co-hearer hears the candidate) added nothing on ordinary copies at a 1% unknown share and cost 290 ms per busy page; not used.
 
-What the weights say: distance falls steeply to about 50 km, then flattens (`log_km`, `beyond_reach`, `receiver_far`); being within reach and links count for a candidate; reporting the packet with other hops left, not being active within a day, an unplaced node and CLIENT_MUTE count strongly against it; ROUTER counts for it, as route truth sits on routers' paths. With no role or links, a lone candidate is named only within about 10 km.
+What the weights say: distance counts against a candidate on a log scale (`log_km`), and under 5 km for it; links with co-hearers, the sender and nodes near the receiver count for it; reporting the packet with other hops left, not being active within a day, an unplaced node, CLIENT_MUTE and lacking a near link where another candidate has one count strongly against it; ROUTER and the copy's radio channel count for it, as route truth sits on routers' paths. Reach barely counts (Near links, below).
 
 Weights are per mesh. To refit on another network, or after a firmware change: `uv run --locked --with numpy python scripts/relay-fit.py DATABASE`. It prints out-of-fold figures for the refit and the current table, then a table to paste into `relays.py`. Packet pages score at read time, and upload names are saved facts, so no derived table needs a rebuild.
 
 Revisit at ground level: surveys have no route truth yet, and route truth favours routers.
+
+## Near links (2026-11-22)
+
+A relay is usually a node that nodes near the receiver routinely hear, or that hears them. A candidate's near partners are nodes with a reported position within 30 km of the receiver (`NEAR_KM`, the survey links' distance) that are trusted (not doubtful, shared or moved since) and not opted out. Each has links with the candidate, either way, in the week before the copy's hour: direct receptions, neighbour lists, and traceroute hops with an SNR (`relays.near_links`). A candidate's links from before its own last move do not count. The receiver is never its own partner. Four terms read them:
+
+- `nlink`: the candidate has a near partner;
+- `nlink_log`: log1p of the partners' observations;
+- `nlink_km`: log1p of the km to the nearest partner;
+- `nlink_any`: on every candidate of a copy where some candidate has a near partner. Lacking one then counts against a candidate only where others have one: where nothing near the receiver hears anyone, it tells nothing.
+
+A name worded by them reads "linked to a node nearby". The upload reply gives the most observed partner and its km.
+
+Measured on loranet.pl route truth, 2026-09-28 to 10-12, every 8th traceroute (22,660 copies per mode), out of fold (right / wrong / wrong with the true relay hidden):
+
+| Table | Survey stand-in | Packet page |
+|---|---|---|
+| 2026-10-27, as shipped | 19,964 / 113 / 3,667 | 22,186 / 64 / 4,272 |
+| Refitted without near links | 20,097 / 138 / 3,652 | 22,223 / 60 / 4,057 |
+| Refitted with near links | 21,290 / 124 / 3,755 | 22,400 / 74 / 4,069 |
+
+99% of true relays have a near partner, 7% of other candidates. Against the refit without them (survey stand-in):
+
+| Variant | Right | Wrong | Hidden |
+|---|---|---|---|
+| 10 km | +755 | −23 | +361 |
+| 20 km | +1,051 | −17 | +259 |
+| 30 km | +1,190 | −17 | +243 |
+| 30 km, partners that heard the candidate only | +715 | −23 | +564 |
+| 30 km, without traceroute hops | +299 | −9 | +358 |
+| 30 km with `nlink_any` | +1,196 | −17 | +108 |
+
+20 km did about as well as 30, which was kept so near links and survey links share one distance. A 30-day window named about as many as 7 days.
+
+The refit moved the other weights too:
+
+- Reach now counts for little (`in_reach`, `beyond_reach` and `receiver_far` near 0), so distance falls past a candidate's reach as well.
+- A report one hop earlier counts less (`rep_plus1` 2.38 to 0.30).
+- The radio channel counts more (`channel_same` 1.36 to 3.51).
+- A candidate's own signal pattern counts half as much (`snr_llr` 0.19 to 0.10).
+
+With no near links and no rival, a candidate with no role is named by distance within about 15 km on the copy's channel, and within about 2 km when its channel is unknown. Revisit when the fit moves again, or with route truth from surveys.
+
+Survey links stay their own rule, which wins. A phone hears a node directly a few times, too few for a term that counts links, and folding them in left more relays unnamed where no gateway hears anything. Revisit once surveys upload the traceroutes they hear.
+
+Two covering indexes on `link_hour` read the partners, by node and hour (`link_hour_from`, `link_hour_to`). On the timing copy the busiest packet page went from 219 ms to 276 ms (380 ms more by `link_hour_pair` alone), the node page's contacts got 20% faster, and a rebuild of the derived tables slower (about 250 s against 200 s).
 
 ## Decision (2026-10-18)
 
@@ -228,6 +273,7 @@ Every relayed name stays a guess unless it is solid. Since 2026-10-27 a guess is
 | Survey link | solid | Heard directly nearby: the only node ending in 1a a survey heard |
 | Gateway heard it and others directly (packet page, `receiver_heard`) | dashed | Guess: likeliest node ending in 1a this gateway hears |
 | Links with a co-hearer or its signal, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
+| Links with nodes near the receiver, `near_link` | dashed | Guess: linked to a node nearby |
 | `sender_link` | dashed | Guess: linked to the sender |
 | `reported` | dashed | Guess: it relayed the packet (MQTT), maybe not the copy heard here |
 | Distance, `only_candidate` | dashed | Guess: the likeliest node ending in 1a nearby |

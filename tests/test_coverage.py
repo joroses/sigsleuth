@@ -16,6 +16,7 @@ from sigsleuth.config import Settings
 from sigsleuth.coverage import fine_cell, network_sessions
 from sigsleuth.db import migrate_database, now_ms, open_current_database, recreate_derived
 from sigsleuth.derive import rederive
+from sigsleuth.relays import NEAR_MS, near_links
 from sigsleuth.retention import apply_retention
 
 SESSION = {
@@ -90,7 +91,14 @@ def test_an_upload_saves_its_measurements_once(
         measurement(2, rx_snr=0.0, rx_rssi=None),
     ]
     first = {"new_cell": True, "new_byte": True, "new_direct": False}
-    no_link = {"link_km": None, "link_offset_ms": None, "link_mine": None, "link_rssi": None}
+    no_link = {
+        "link_km": None,
+        "link_offset_ms": None,
+        "link_mine": None,
+        "link_rssi": None,
+        "near_node_id": None,
+        "near_km": None,
+    }
     assert upload(client, *batch) == {
         "saved": 2,
         "already_saved": 0,
@@ -244,6 +252,8 @@ def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> No
                 "link_offset_ms": None,
                 "link_mine": None,
                 "link_rssi": None,
+                "near_node_id": None,
+                "near_km": None,
                 "new_cell": True,
                 "new_byte": True,
                 "new_direct": False,
@@ -344,6 +354,15 @@ def node(connection: sqlite3.Connection, node_id: int, latitude: float | None = 
     )
 
 
+def on_channel(connection: sqlite3.Connection, *nodes: int) -> None:
+    """Nodes whose packets were heard on the survey's radio channel, as a
+    relay's usually are."""
+    connection.executemany(
+        "UPDATE node_current SET channel = 'SFNarrow', channel_observed_at = ? WHERE node_id = ?",
+        [(now_ms(), node) for node in nodes],
+    )
+
+
 def link(
     connection: sqlite3.Connection,
     a: int,
@@ -379,7 +398,7 @@ def mqtt_report(
             INSERT INTO packet (channel, sender_node_id, recipient_node_id, packet_id,
                 has_decoded_report, has_encrypted_report, first_received_at,
                 last_received_at, reception_count)
-            VALUES ('LongFast', ?, 4294967295, 77, 1, 0, ?, ?, 1)
+            VALUES ('SFNarrow', ?, 4294967295, 77, 1, 0, ?, ?, 1)
             """,
             (SENDER, heard, heard),
         ).lastrowid
@@ -405,13 +424,14 @@ def place_known_nodes(connection: sqlite3.Connection) -> None:
     node(connection, NEAR, PHONE[0] + 0.098)
     node(connection, LINKED_TO_SENDER, PHONE[0] + 0.1)
     node(connection, LINKED_TO_GATEWAY, PHONE[0] + 0.102)
+    on_channel(connection, NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY)
     node(connection, GATEWAY, PHONE[0] + 0.5)
     link_known_nodes(connection)
 
 
 def link_known_nodes(connection: sqlite3.Connection) -> None:
-    link(connection, LINKED_TO_SENDER, SENDER)
-    link(connection, LINKED_TO_GATEWAY, GATEWAY)
+    link(connection, LINKED_TO_SENDER, SENDER, observations=10)
+    link(connection, LINKED_TO_GATEWAY, GATEWAY, observations=10)
 
 
 def heard(client: TestClient, connection: sqlite3.Connection, **fields: Any) -> tuple[Any, ...]:
@@ -456,19 +476,20 @@ def test_a_sender_heard_directly_is_the_heard_node(
     )
 
 
-@pytest.mark.usefixtures("known_nodes")
-def test_a_gateway_that_rebroadcast_the_packet_within_its_reach_is_the_heard_node(
+def test_a_nearby_gateway_that_rebroadcast_the_packet_is_named_by_its_report(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     rebroadcaster, far = 0x04_00_00_1A, 0x05_00_00_1A
     node(connection, rebroadcaster, PHONE[0] + 0.05)
     node(connection, far, PHONE[0] + 0.3)
-    # Both heard the packet with two hops left, then relayed it. far is 33 km
-    # away, past the 20 km a node with no longer link is named within.
+    on_channel(connection, rebroadcaster, far)
+    # Both heard the packet with two hops left, then relayed it. far's report
+    # does not outweigh its 33 km; the one 6 km away is named, by its report
+    # once it sends one.
     mqtt_report(connection, far, hop_limit=2, relay_byte=0x33)
-    assert heard(client, connection)[:3] == (None, "unknown", 5)
+    assert heard(client, connection)[:3] == (rebroadcaster, "only_candidate", 2)
     mqtt_report(connection, rebroadcaster, hop_limit=2, relay_byte=0x33)
-    assert heard(client, connection)[:3] == (rebroadcaster, "reported", 5)
+    assert heard(client, connection)[:3] == (rebroadcaster, "reported", 2)
 
 
 @pytest.mark.usefixtures("known_nodes")
@@ -505,30 +526,6 @@ def test_relay_guesses_need_radio_evidence(
     assert heard(client, connection)[:2] == (LINKED_TO_GATEWAY, "gateway_link")
 
 
-def test_a_relays_own_reach_counts_for_or_against_it(
-    client: TestClient, connection: sqlite3.Connection
-) -> None:
-    router, short, gateway = 0x0600002C, 0x0700002C, 0x0B0B0B03
-    node(connection, router, PHONE[0] + 0.5)
-    node(connection, short, PHONE[0] - 0.72)
-    node(connection, gateway, PHONE[0])
-    link(connection, router, 0x0C0C0C01, km=100.0)
-    link(connection, short, 0x0C0C0C02, km=3.0)
-    # The gateway heard the rebroadcast and lists both as neighbours, short
-    # more often.
-    link(connection, router, gateway, kind="neighbor")
-    link(connection, short, gateway, kind="neighbor", observations=10)
-    mqtt_report(connection, gateway, hop_limit=1, relay_byte=0x2C)
-    # 80 km away, short is past its 3 km and the 50 km floor; the router is
-    # 55 km away, within its 100 km. Neither is likely enough to name.
-    assert suggested(client, connection, relay_byte=0x2C) == [router, short]
-    # 40 km from short and 96 km from the router.
-    assert suggested(client, connection, relay_byte=0x2C, latitude=PHONE[0] - 0.36) == [
-        short,
-        router,
-    ]
-
-
 def test_weak_candidates_lose_and_impossible_ones_are_dropped(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
@@ -550,7 +547,9 @@ def test_weak_candidates_lose_and_impossible_ones_are_dropped(
             packets=1,
             last_sent_at=sent,
         )
+    on_channel(connection, mute, preset, old_firmware, silent, earlier, relay)
     connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (mute,))
+    connection.execute("UPDATE node_current SET role = 'CLIENT' WHERE node_id = ?", (relay,))
     connection.execute(
         "UPDATE node_current SET last_sent_at = 1, last_sent_packet_row_id = 1,"
         " channel = 'LongFast', channel_observed_at = 1 WHERE node_id = ?",
@@ -622,6 +621,7 @@ def test_traceroute_hours_keep_a_relay_active_around_the_measurement(
 ) -> None:
     relay = 0x0100003D
     node(connection, relay, PHONE[0] + 0.05)
+    on_channel(connection, relay)
     at = now_ms() - now_ms() % 3_600_000 - 4 * DAY_MS
     insert_row(
         connection,
@@ -645,6 +645,7 @@ def test_a_batch_checks_activity_at_each_measurements_time(
 ) -> None:
     relay = 0x0100003D
     node(connection, relay, PHONE[0] + 0.05)
+    on_channel(connection, relay)
     hour = now_ms() - now_ms() % 3_600_000
     for sender, at in ((SENDER, hour - 8 * DAY_MS), (relay, hour)):
         insert_row(
@@ -676,8 +677,9 @@ def test_a_lone_candidate_is_named_only_nearby(
 ) -> None:
     relay = 0x0100004F
     node(connection, relay, PHONE[0] + 0.3)
+    on_channel(connection, relay)
     assert heard(client, connection, relay_byte=0x4F)[:3] == (None, "unknown", 1)
-    # A 40 km link of its own reaches the phone, but 33 km is still far.
+    # A 40 km link of its own makes no difference: 33 km is far.
     link(connection, relay, 0x0C0C0C01, km=40.0)
     assert heard(client, connection, relay_byte=0x4F)[:3] == (None, "unknown", 1)
     assert heard(client, connection, relay_byte=0x4F, latitude=PHONE[0] + 0.23)[:3] == (
@@ -819,11 +821,11 @@ def test_a_packet_page_names_relays_by_the_survey_rules(
         (LINKED_TO_GATEWAY, 11.3),
     ]
     # GATEWAY heard the same copy, and heard LINKED_TO_GATEWAY directly
-    # itself: that names it there and makes it the likeliest here.
+    # itself: that names it there and here.
     mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
     relays = packet_relays(client, connection)
     assert relays[GATEWAY] == (LINKED_TO_GATEWAY, "heard_directly")
-    assert relays[RECEIVER][0] == (LINKED_TO_GATEWAY, 11.3)
+    assert relays[RECEIVER] == (LINKED_TO_GATEWAY, "gateway_link")
     # The only candidate the gateway heard directly wins over every guess,
     # and no rule-out drops it, unless it is muted and never rebroadcasts.
     link(connection, NEAR, RECEIVER, observations=1)
@@ -844,6 +846,7 @@ def test_after_one_hop_traceroute_hops_with_the_sender_name_the_relay(
 ) -> None:
     for relay, latitude in ((NEAR, 0.098), (LINKED_TO_SENDER, 0.1), (LINKED_TO_GATEWAY, 0.102)):
         node(connection, relay, PHONE[0] + latitude)
+    on_channel(connection, NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY)
     one_hop = {"hop_start": 2, "hop_limit": 1}
 
     def hops(a: int, b: int, snr: list[float]) -> None:
@@ -856,13 +859,13 @@ def test_after_one_hop_traceroute_hops_with_the_sender_name_the_relay(
     assert heard(client, connection, **one_hop)[:2] == (None, "unknown")
     # A router no gateway hears directly: only traceroutes show it hearing
     # the sender, or the sender hearing it.
-    hops(LINKED_TO_GATEWAY, SENDER, [-7.0])
+    hops(LINKED_TO_GATEWAY, SENDER, [-7.0] * 10)
     assert heard(client, connection, **one_hop)[:2] == (LINKED_TO_GATEWAY, "sender_link")
     # They add up with radio links. Two linked to the sender leave the copy
     # undecided, the one with more links likeliest.
-    link(connection, LINKED_TO_SENDER, SENDER, observations=2)
+    link(connection, LINKED_TO_SENDER, SENDER, observations=20)
     assert suggested(client, connection, **one_hop)[:2] == [LINKED_TO_SENDER, LINKED_TO_GATEWAY]
-    hops(SENDER, LINKED_TO_GATEWAY, [-6.0, -5.0])
+    hops(SENDER, LINKED_TO_GATEWAY, [-6.0, -5.0] * 10)
     assert suggested(client, connection, **one_hop)[:2] == [LINKED_TO_GATEWAY, LINKED_TO_SENDER]
     # After more hops the relay need not have heard the sender.
     assert heard(client, connection)[:2] == (None, "unknown")
@@ -945,9 +948,11 @@ def test_cohearer_signal_patterns_outweigh_link_counts(
 ) -> None:
     other_gateway = 0x0B0B0B05
     for candidate in (NEAR, LINKED_TO_GATEWAY):
-        node(connection, candidate, PHONE[0] + 0.3)
+        node(connection, candidate, PHONE[0] + 0.1)
+    on_channel(connection, NEAR, LINKED_TO_GATEWAY)
+    # The co-hearers stand 55 km away, so their links are no near links.
     for gateway in (GATEWAY, other_gateway, RECEIVER):
-        node(connection, gateway, PHONE[0])
+        node(connection, gateway, PHONE[0] if gateway == RECEIVER else PHONE[0] + 0.5)
         mqtt_report(
             connection,
             gateway,
@@ -967,7 +972,7 @@ def test_cohearer_signal_patterns_outweigh_link_counts(
                 snr=[snr] * readings,
             )
 
-    # 33 km away, neither is likely enough to name.
+    # Neither is likely enough to name.
     def likeliest() -> list[int]:
         return [node for node, _ in packet_relays(client, connection)[RECEIVER]]
 
@@ -1002,8 +1007,10 @@ def test_traceroute_cohearers_share_only_the_receivers_route_version(
     upstream, other_upstream, target = 0x0C000006, 0x0C000007, 0x0C000008
     for candidate in (NEAR, LINKED_TO_GATEWAY):
         node(connection, candidate, PHONE[0] + 0.1)
+    on_channel(connection, NEAR, LINKED_TO_GATEWAY)
+    # The co-hearers stand 55 km away, so their links are no near links.
     for gateway in (RECEIVER, GATEWAY, witness):
-        node(connection, gateway, PHONE[0])
+        node(connection, gateway, PHONE[0] if gateway == RECEIVER else PHONE[0] + 0.5)
         mqtt_report(connection, gateway, hop_limit=1, relay_byte=0x1A)
     for candidate, gateway, count, snr in (
         (NEAR, witness, 3, 5.0),
@@ -1192,12 +1199,11 @@ def test_signal_profiles_use_only_the_previous_seven_completed_days(
         if hours < -24:
             link(connection, candidate, GATEWAY, kind="neighbor")
 
-    guess = heard(client, connection, heard_at_ms=heard_at)
-    assert guess[:2] == (expected, "gateway_link" if expected else "unknown")
-    packet = packet_relays(client, connection)[RECEIVER]
-    assert packet == (
-        (expected, "gateway_link") if expected else [(NEAR, 11.1), (LINKED_TO_GATEWAY, 11.1)]
-    )
+    heard(client, connection, heard_at_ms=heard_at)
+    measurement = connection.execute("SELECT max(id) FROM coverage_measurement").fetchone()[0]
+    check = client.get(f"/api/v1/diagnostics/survey-checks/{measurement}").json()
+    terms = {c["node_id"]: {t["term"] for t in c["terms"]} for c in check["candidates"]}
+    assert ("snr_llr" in terms[NEAR]) is (expected is not None)
 
 
 @pytest.mark.parametrize("report", ["other-hop", "other-byte", "own-upload"])
@@ -1354,7 +1360,7 @@ def test_a_cell_lists_its_heard_nodes_and_newest_measurements(
         (n["node_id"], n["how"], n["measurements"], n["average_margin"], n["channel"])
         for n in detail["heard_nodes"]
     ] == [
-        (LINKED_TO_SENDER, "sender_link", 1, 20.2, None),
+        (LINKED_TO_SENDER, "sender_link", 1, 20.2, "SFNarrow"),
         (SENDER, "direct", 1, 20.2, "NarrowFast"),
     ]
     assert detail["unknown_relays"] == [{"relay_byte": None, "measurements": 1, "candidates": []}]
@@ -1500,6 +1506,7 @@ def test_a_guessed_relay_keeps_its_measurements_while_it_is_alive(
 ) -> None:
     relay, old = 0x0100004E, now_ms() - 20 * DAY_MS
     node(connection, relay, PHONE[0] + 0.05)
+    on_channel(connection, relay)
     upload(
         client,
         measurement(1, relay_byte=0x4E, heard_at_ms=old),
@@ -1650,10 +1657,11 @@ def test_upload_replies_suggest_relays_at_each_saved_position(
     assert [c["node_id"] for c in candidates] == [NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY]
     assert candidates[0]["short_name"] == "Near"
     assert [c["km"] for c in candidates] == [10.9, 11.1, 11.3]
+    # 5° north, nearest first.
     assert [c["node_id"] for c in reply["heard"][1]["candidates"]] == [
-        NEAR,
-        LINKED_TO_SENDER,
         LINKED_TO_GATEWAY,
+        LINKED_TO_SENDER,
+        NEAR,
     ]
     assert [h["candidates"] for h in reply["heard"][2:]] == [[], []]
     assert reply["nodes"] == []
@@ -1672,6 +1680,7 @@ def test_upload_relay_hints_exclude_each_packets_sender_and_receiver(
     node(connection, sender, PHONE[0] + 0.0985)
     node(connection, receiver, PHONE[0] + 0.0995)
     node(connection, fourth, PHONE[0] + 0.2)
+    on_channel(connection, sender, receiver, fourth)
     reply = upload(
         client,
         measurement(1, sender_node_id=sender, latitude=PHONE[0], hop_limit=1),
@@ -2245,3 +2254,91 @@ def test_unknown_relay_extent_matches_the_count_in_view(client: TestClient) -> N
     assert detail["heard_nodes"] == []
     assert unknown_relays(detail) == [(0x91, 1)]
     assert len(detail["newest"]) == 1
+
+
+def test_an_upload_named_by_a_near_link_names_the_partner_and_its_km(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    router, partner = 0x06_00_00_1A, 0x0D000001
+    node(connection, router)
+    connection.execute("UPDATE node_current SET role = 'ROUTER' WHERE node_id = ?", (router,))
+    on_channel(connection, router)
+    node(connection, partner, PHONE[0] + 0.05)
+    connection.execute("UPDATE node_current SET long_name = 'Hill' WHERE node_id = ?", (partner,))
+    link_hour(connection, router, partner, now_ms() - 2 * 3_600_000, observations=10)
+
+    reply = upload(
+        client,
+        measurement(
+            1, sender_node_id=SENDER, latitude=PHONE[0], hop_start=4, hop_limit=1, relay_byte=0x1A
+        ),
+    )
+
+    (answer,) = reply["heard"]
+    assert (answer["node_id"], answer["how"]) == (router, "near_link")
+    assert (answer["near_node_id"], answer["near_km"]) == (partner, 5.6)
+    assert {"node_id": partner, "long_name": "Hill"}.items() <= next(
+        n for n in reply["nodes"] if n["node_id"] == partner
+    ).items()
+
+
+def test_near_links_read_for_several_hours_count_each_copys_week(
+    connection: sqlite3.Connection,
+) -> None:
+    partner, hour = 0x0D000001, 3_600_000
+    node(connection, NEAR)
+    node(connection, partner, PHONE[0] + 0.05)
+    now = now_ms()
+    for before, observations in ((2, 1), (5, 10), (30, 100)):
+        link_hour(connection, NEAR, partner, now - before * hour, observations=observations)
+    earlier = now - 3 * hour
+
+    both = near_links(connection, {NEAR}, [PHONE], [earlier, now])[NEAR][partner]
+
+    for at in (earlier, now):
+        start = at - at % hour
+        alone = near_links(connection, {NEAR}, [PHONE], [at])[NEAR][partner]
+        assert both.observations(start - NEAR_MS, start) == alone.observations(
+            start - NEAR_MS, start
+        )
+    assert both.observations(earlier - earlier % hour - NEAR_MS, earlier - earlier % hour) == 110
+
+
+def test_a_moved_candidates_links_from_before_its_move_are_no_near_links(
+    connection: sqlite3.Connection,
+) -> None:
+    partner, hour = 0x0D000001, 3_600_000
+    node(connection, NEAR)
+    node(connection, partner, PHONE[0] + 0.05)
+    now = now_ms()
+    link_hour(connection, NEAR, partner, now - 30 * hour, observations=100)
+    link_hour(connection, NEAR, partner, now - 2 * hour, observations=1)
+    moved = now - 10 * hour
+    connection.execute("UPDATE node_current SET moved_at = ? WHERE node_id = ?", (moved, NEAR))
+
+    found = near_links(connection, {NEAR}, [PHONE], [now])[NEAR][partner]
+
+    assert found.observations(0, now) == 1
+
+
+def test_near_links_read_both_ways_and_leave_out_doubtful_moved_and_opted_out_nodes(
+    connection: sqlite3.Connection,
+) -> None:
+    hears, heard_by, doubtful, moved, hidden, far, unmeasured = range(0x0D000001, 0x0D000008)
+    node(connection, NEAR)
+    for partner in (hears, heard_by, doubtful, moved, hidden, unmeasured):
+        node(connection, partner, PHONE[0] + 0.05)
+    node(connection, far, PHONE[0] + 0.5)
+    insert_row(connection, "node_doubtful", node_id=doubtful, partners=3, median_km=200.0)
+    connection.execute("UPDATE node_current SET moved_at = ? WHERE node_id = ?", (now_ms(), moved))
+    insert_row(connection, "node_opt_out", node_id=hidden)
+    before = now_ms() - 2 * 3_600_000
+    link_hour(connection, NEAR, heard_by, before)
+    link_hour(connection, hears, NEAR, before)
+    for partner in (doubtful, moved, hidden, far):
+        link_hour(connection, NEAR, partner, before)
+    link_hour(connection, NEAR, unmeasured, before, link_kind="traceroute", observations=5)
+
+    found = near_links(connection, {NEAR}, [PHONE], [now_ms()])
+
+    assert set(found[NEAR]) == {hears, heard_by}

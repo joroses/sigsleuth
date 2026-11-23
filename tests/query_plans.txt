@@ -146,6 +146,14 @@ positions.reach_by_partner
   SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
+relays._placed_near
+  SCAN node_current
+relays.near_links
+  SEARCH link_hour USING INDEX link_hour_from
+  SEARCH node_current USING PRIMARY KEY
+relays.near_links
+  SEARCH link_hour USING INDEX link_hour_to
+  SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH link_hour USING PRIMARY KEY
 coverage._survey_direct
@@ -330,6 +338,9 @@ reported.positions_when_heard
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
+reported.positions_when_heard
+  SEARCH node_position USING PRIMARY KEY
+  SEARCH node_position USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 relays.node_radios
@@ -377,9 +388,6 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
-reported.positions_when_heard
-  SEARCH node_position USING PRIMARY KEY
-  SEARCH node_position USING PRIMARY KEY
 flood_routes.route_links
   SEARCH link_hour USING PRIMARY KEY
 flood_routes.one_hop_links
@@ -694,7 +702,8 @@ opt_out.unlinkable_packets
 opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
 nodes.node_contacts
-  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING INDEX link_hour_from
+  SEARCH link_hour USING INDEX link_hour_to
 db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
@@ -780,7 +789,8 @@ links.zero_cost_hops
 opt_out.is_opted_out
   SEARCH node_opt_out USING PRIMARY KEY
 nodes.node_contacts
-  SEARCH link_hour USING PRIMARY KEY
+  SEARCH link_hour USING INDEX link_hour_from
+  SEARCH link_hour USING INDEX link_hour_to
 db.first_packet_row_id_since
   SEARCH packet
 db.first_packet_row_id_since
@@ -2163,7 +2173,7 @@ diagnostics._long_links
 
 diagnostics.longest_links
   SEARCH link_hour USING INDEX link_hour_pair
-  SCAN link_hour USING INDEX link_hour_pair
+  SEARCH link_hour USING INDEX link_hour_to
 diagnostics._long_links
   SEARCH link_hour USING INDEX link_hour_pair
   SCAN node_current
@@ -2475,6 +2485,8 @@ relays.direct_receptions
   SEARCH link_hour USING INDEX link_hour_pair
 relays.direct_signals
   SEARCH link_hour USING INDEX link_hour_pair
+relays._placed_near
+  SCAN node_current
 reported.positions_when_heard
   SEARCH node_position USING PRIMARY KEY
   SEARCH node_position USING PRIMARY KEY
@@ -2539,6 +2551,14 @@ positions.traceroute_hops
   SEARCH link_hour USING INDEX link_hour_pair
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
+relays._placed_near
+  SCAN node_current
+relays.near_links
+  SEARCH link_hour USING INDEX link_hour_from
+  SEARCH node_current USING PRIMARY KEY
+relays.near_links
+  SEARCH link_hour USING INDEX link_hour_to
+  SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH link_hour USING PRIMARY KEY
 coverage.mqtt_reports

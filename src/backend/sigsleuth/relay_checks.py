@@ -52,6 +52,8 @@ from sigsleuth.relays import (
     RelayEvidence,
     RelayScores,
     RelayTerm,
+    near_links,
+    near_partners,
     node_km,
     nodes_by_byte,
 )
@@ -372,7 +374,9 @@ class RelayCandidate:
     gateway's direct receptions of it around the packet. activity_hours is
     the hour it was last active nearest the packet, in hours from it
     (negative before); None when none is within ACTIVE_MS. own_hop_limit is
-    the hops left in its own report of the packet.
+    the hops left in its own report of the packet. near_partner is its most
+    observed near partner (relays.near_partners), near_km that one's km from
+    the receiver, near_observations the total over all of them.
     possible is false when it cannot have sent the copy (firmware, map
     report preset); it then has no probability, score or terms. score is the
     sum of its terms' scores; evidence: one of them ties it to the copy, as
@@ -398,6 +402,9 @@ class RelayCandidate:
     activity_hours: float | None
     last_gateway_at: datetime | None
     own_hop_limit: int | None
+    near_partner: RelayCheckNode | None
+    near_km: float | None
+    near_observations: int
     possible: bool
     probability: float | None
     score: float | None
@@ -533,12 +540,19 @@ def relay_check(
     if found is None or found.relays is None or reception_id not in found.relays.namings:
         return None
     hidden = opted_out(connection)
-    naming = found.relays.namings[reception_id]
+    relays = found.relays
+    naming = relays.namings[reception_id]
     if receiver_mode == "survey":
         copy = replace(
             naming.copy, receiver=CHOSEN_RECEIVER, position=receiver_at or naming.copy.position
         )
-        naming = name_copy(found.relays.evidence, copy, {}, found.relays.signals)
+        if receiver_at is not None:
+            # Near partners were read around the gateways only.
+            candidates = {node for nodes in relays.evidence.by_byte.values() for node in nodes}
+            near = near_links(connection, candidates, [receiver_at], [copy.at])
+            relays = replace(relays, evidence=replace(relays.evidence, near=near))
+            found = replace(found, relays=relays)
+        naming = name_copy(relays.evidence, copy, {}, relays.signals)
     # In gateway mode the check's survey answer stays a survey receiver's.
     checks = _checks(found, hidden, {reception_id: naming} if receiver_mode == "survey" else None)
     check = checks[reception_id]
@@ -561,8 +575,8 @@ def relay_check(
         **_route(found, reception, hidden),
         **_explained(connection, found, naming, reception, checks, hidden),
         activity_from=None
-        if found.relays.evidence.history_from is None
-        else from_epoch_ms(found.relays.evidence.history_from),
+        if relays.evidence.history_from is None
+        else from_epoch_ms(relays.evidence.history_from),
         rules=RelayRules(
             name_probability=NAME_PROBABILITY,
             unknown_score=UNKNOWN_SCORE,
@@ -666,7 +680,7 @@ def _explained(
     """The candidates, reports, signals and links of one naming."""
     assert found.relays is not None
     evidence, copy, scores = found.relays.evidence, naming.copy, naming.scores
-    candidates, keys = explain_candidates(evidence, copy, scores, naming.heard, hidden)
+    candidates, keys = explain_candidates(connection, evidence, copy, scores, naming.heard, hidden)
     cohearers = set(copy.cohearers())
     target_prefix = reception_route_prefix(target)
     at = to_epoch_ms(found.packet.first_received_at)
@@ -781,6 +795,7 @@ def explain_evidence(
 
 
 def explain_candidates(
+    connection: sqlite3.Connection,
     evidence: RelayEvidence,
     copy: Relayed,
     scores: RelayScores,
@@ -802,6 +817,11 @@ def explain_candidates(
     if copy.one_hop and sender is not None and sender.latitude is not None:
         if sender.longitude is not None:
             sender_at = (sender.latitude, sender.longitude)
+    # Near partners are never opted out (relays.near_links).
+    names = nodes_by_id(
+        connection,
+        {near[0][0] for node in nodes if (near := near_partners(evidence, copy, node))},
+    )
 
     candidates = []
     for node in nodes:
@@ -818,6 +838,13 @@ def explain_candidates(
             nearest = min(close, key=lambda hour: abs(hour - copy.at))
         receiver_km = None if copy.position is None else node_km(place, copy.position)
         sender_km = None if sender_at is None else node_km(place, sender_at)
+        near = near_partners(evidence, copy, node)
+        partner = None
+        if near:
+            summary = names.get(near[0][0])
+            partner = RelayCheckNode(
+                near[0][0], None if summary is None else summary.long_name or summary.short_name
+            )
         terms = scores.terms.get(node)
         weighted = sorted(
             (
@@ -850,6 +877,9 @@ def explain_candidates(
                 if radio is None or radio.last_gateway_at is None
                 else from_epoch_ms(radio.last_gateway_at),
                 own_hop_limit=own.get(node),
+                near_partner=partner,
+                near_km=round(near[0][1], 1) if near else None,
+                near_observations=sum(count for _, _, count in near),
                 possible=terms is not None,
                 probability=None if terms is None else round(scores.probabilities[node], 4),
                 score=None if terms is None else round(sum(item.score for item in weighted), 2),

@@ -104,6 +104,47 @@ def test_facts_version_1_keeps_its_measurements_and_gets_a_new_databases_table(
     connection.close()
 
 
+def test_facts_version_5_keeps_its_measurements_and_takes_near_links(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    schema = Path(db.__file__).with_name("schema.sql").read_text(encoding="utf-8")
+    version_5 = schema.replace("'near_link', ", "")
+    assert version_5 != schema
+    derived = Path(db.__file__).with_name("derived.sql").read_text(encoding="utf-8")
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        version_5
+        + derived
+        + f"""
+        INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1, '');
+        PRAGMA user_version = 5;
+        INSERT INTO coverage_session (uuid, receiver_node_id, first_uploaded_at, last_uploaded_at)
+        VALUES ('session', 1, 0, 0);
+        INSERT INTO coverage_measurement (session_row_id, seq, heard_at, latitude, longitude,
+            sender_node_id, ok_to_mqtt, default_key, cell_x, cell_y, heard_node_id, heard_how,
+            candidates)
+        VALUES (1, 1, 0, 41.9, 1.6, 7, 1, 0, 0, 0, 9, 'reported', 2);
+        """
+    )
+    connection.close()
+    new_path = tmp_path / "new.db"
+    migrate_database(new_path)
+
+    assert migrate_database(path) == FACTS_VERSION
+    connection = sqlite3.connect(path)
+    connection.execute("UPDATE coverage_measurement SET heard_how = 'near_link'")
+    rows = connection.execute(
+        "SELECT seq, heard_node_id, heard_how, ok_to_mqtt, default_key FROM coverage_measurement"
+    )
+    assert [tuple(row) for row in rows] == [(1, 9, "near_link", 1, 0)]
+    assert connection.execute("SELECT rebuilt FROM derived_state").fetchone() == (0,)
+    new = sqlite3.connect(new_path)
+    for pragma in ("table_info", "index_list"):
+        query = f"PRAGMA {pragma}(coverage_measurement)"
+        assert connection.execute(query).fetchall() == new.execute(query).fetchall()
+    new.close()
+    connection.close()
+
+
 def test_connection_can_follow_a_request_between_worker_threads(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)

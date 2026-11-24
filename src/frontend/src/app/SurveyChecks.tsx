@@ -16,12 +16,15 @@ import {
   NodeRef,
   ReportTable,
   ScoreTable,
+  SHOW_UNKNOWN_FROM,
   SignalTable,
+  WhyComparison,
 } from "./relayScores";
 import {
   CheckNode,
   HOW_LABELS,
   WHY_LABELS,
+  byProbability,
   byteText,
   hopsText,
   nodeText,
@@ -216,7 +219,7 @@ function SurveyList({
 
   return (
     <>
-      <div className="section-intro compact">
+      <div className="section-intro compact relay-check-intro">
         <h3>Survey uploads</h3>
         <p>
           Relayed survey measurements and the node each heard, decided three
@@ -539,7 +542,30 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
   const cohearers = detail.reports.filter(
     (report) => report.kind === "cohearer",
   );
+  const earlierCount = detail.reports.filter(
+    (report) => report.kind === "earlier",
+  ).length;
   const scored = check.relay_byte !== null && check.upload_how !== "direct";
+  const possible = detail.candidates.filter((candidate) => candidate.possible);
+  const possibleSorted = byProbability(possible);
+  const compareKey =
+    check.link?.node_id ??
+    (check.upload_how !== "nearest" ? check.upload_node?.node_id : null) ??
+    null;
+  const compareCandidate =
+    compareKey === null
+      ? undefined
+      : possible.find((candidate) => candidate.key === compareKey);
+  const compareLabel =
+    compareCandidate !== undefined &&
+    check.link?.node_id === compareCandidate.key
+      ? "Survey link"
+      : "At upload";
+  const signalGatewaysCount = new Set(
+    detail.signals.map((signal) => signal.gateway_node_id),
+  ).size;
+  const linkedCandidatesCount = new Set(detail.links.map((link) => link.key))
+    .size;
   return (
     <>
       <div className="detail-heading">
@@ -621,14 +647,38 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
         </dl>
       </section>
 
+      <section aria-labelledby="survey-why-heading">
+        <h3 id="survey-why-heading">Why today&apos;s rules decided this</h3>
+        <p
+          className={`relay-step-result ${check.today.why === "named" ? "decides" : ""}`}
+        >
+          {todayResult(detail)}
+        </p>
+        {scored ? (
+          <WhyComparison
+            detail={detail}
+            top={possibleSorted[0]}
+            compare={compareCandidate}
+            topLabel={check.today.node !== null ? "Named" : "Top"}
+            compareLabel={compareLabel}
+            routeKey={null}
+            showGatewayHistory={false}
+            showUnknown={
+              check.today.why === "unknown" ||
+              check.today.node === null ||
+              detail.unknown_probability >= SHOW_UNKNOWN_FROM
+            }
+            senderNodeId={check.sender.node_id}
+          />
+        ) : null}
+      </section>
+
       <section aria-labelledby="survey-map-heading">
         <div className="section-intro compact">
           <h3 id="survey-map-heading">Where they are</h3>
           <p>
-            R is the phone where it heard the packet. Candidates and the sender
-            are where they are now, else estimated from their neighbours
-            (hollow); S marks where the sender was when heard, when it reported
-            a position by then.
+            R is the phone where it heard the packet; candidates and sender at
+            current or estimated positions.
           </p>
         </div>
         <RelayCheckMap
@@ -645,15 +695,15 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
           <span className="relay-map-sender now">S</span> sender{" "}
           <span className="relay-map-node left">with evidence</span>{" "}
           <span className="relay-map-node out">without</span>{" "}
-          <span className="relay-map-node left estimated">estimated</span> ·
-          solid circle: reach or {detail.rules.name_km} km · dashed: reach or{" "}
-          {detail.rules.far_km} km (named green, clicked yellow)
+          <span className="relay-map-node left estimated">estimated</span> ·{" "}
+          {detail.rules.near_km} km circle around R: near-links radius · named
+          green, clicked yellow
         </p>
       </section>
 
       <section aria-labelledby="survey-link-heading">
         <div className="section-intro compact">
-          <h3 id="survey-link-heading">1. Survey link</h3>
+          <h3 id="survey-link-heading">Survey link</h3>
           <p>
             Nodes sending byte{" "}
             {check.relay_byte ? byteText(check.relay_byte) : "—"} that any
@@ -672,75 +722,78 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
       </section>
 
       {scored ? (
-        <>
-          <section aria-labelledby="survey-candidates-heading">
-            <div className="section-intro compact">
-              <h3 id="survey-candidates-heading">
-                2. Candidates: {detail.candidates.length} known node
-                {detail.candidates.length === 1 ? "" : "s"} send byte{" "}
-                {byteText(check.relay_byte ?? 0)}
-              </h3>
-              <p>
-                Today&apos;s rules, with the links around the hour it was heard.
-                Firmware without the relay byte, a map report on another
-                spreading factor, or a copy over{" "}
-                {detail.link_rules.too_strong_db} dB stronger than this survey
-                node heard the candidate nearby rules it out.
-              </p>
+        <section className="relay-details-list" aria-label="Advanced details">
+          <details className="relay-details">
+            <summary>
+              Exact score terms &amp; all {detail.candidates.length} candidates
+              {possible.length < detail.candidates.length
+                ? ` (${possible.length} eligible)`
+                : ""}
+            </summary>
+            <div className="relay-details-body">
+              <ScoreTable detail={detail} routeKey={null} />
+              <CandidateTable
+                detail={detail}
+                routeKey={null}
+                selected={selected}
+                onSelect={setSelected}
+                ruledOut={{
+                  keys: detail.ruled_out,
+                  db: detail.link_rules.too_strong_db,
+                }}
+                heardColumn={false}
+              />
             </div>
-            <CandidateTable
-              detail={detail}
-              routeKey={null}
-              selected={selected}
-              onSelect={setSelected}
-              ruledOut={{
-                keys: detail.ruled_out,
-                db: detail.link_rules.too_strong_db,
-              }}
-              heardColumn={false}
-            />
-          </section>
+          </details>
 
-          <section aria-labelledby="survey-score-heading">
-            <div className="section-intro compact">
-              <h3 id="survey-score-heading">3. Scores</h3>
-              <p>
-                As on traceroute copies, with the phone as a receiver with no
-                links of its own.
-              </p>
-            </div>
-            <p
-              className={`relay-step-result ${check.today.why === "named" ? "decides" : ""}`}
-            >
-              {todayResult(detail)}
-            </p>
-            <ScoreTable detail={detail} routeKey={null} />
-            <SignalTable detail={detail} routeKey={null} />
-            <LinkTable detail={detail} sender={check.sender} routeKey={null} />
-          </section>
-
-          <section aria-labelledby="survey-reports-heading">
-            <div className="section-intro compact">
-              <h3 id="survey-reports-heading">
-                4. MQTT reports of the same packet
-              </h3>
+          <details className="relay-details">
+            <summary>
+              MQTT reports ({detail.reports.length} total · {cohearers.length}{" "}
+              co-hearer{cohearers.length === 1 ? "" : "s"} · {earlierCount}{" "}
+              earlier)
+            </summary>
+            <div className="relay-details-body">
               {detail.reports.length > 0 ? (
-                <p>
-                  Co-hearers ({cohearers.length}) reported the same rebroadcast:
-                  same relay byte and hops left.
-                </p>
-              ) : null}
+                <ReportTable reports={detail.reports} routes={false} />
+              ) : (
+                <StatusPanel>No gateway reported this packet.</StatusPanel>
+              )}
             </div>
-            {detail.reports.length > 0 ? (
-              <ReportTable reports={detail.reports} routes={false} />
-            ) : (
-              <StatusPanel>No gateway reported this packet.</StatusPanel>
-            )}
-          </section>
-        </>
-      ) : (
-        <p className="relay-step-result">{todayResult(detail)}</p>
-      )}
+          </details>
+
+          {signalGatewaysCount > 0 ? (
+            <details className="relay-details">
+              <summary>
+                Direct signal profiles ({signalGatewaysCount} gateway
+                {signalGatewaysCount === 1 ? "" : "s"})
+              </summary>
+              <div className="relay-details-body">
+                <SignalTable
+                  detail={detail}
+                  routeKey={null}
+                  includeReceiver={false}
+                />
+              </div>
+            </details>
+          ) : null}
+
+          {detail.links.length > 0 ? (
+            <details className="relay-details">
+              <summary>
+                Co-hearer &amp; sender links ({linkedCandidatesCount} candidate
+                {linkedCandidatesCount === 1 ? "" : "s"})
+              </summary>
+              <div className="relay-details-body">
+                <LinkTable
+                  detail={detail}
+                  sender={check.sender}
+                  routeKey={null}
+                />
+              </div>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
     </>
   );
 }

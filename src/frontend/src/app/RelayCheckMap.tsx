@@ -25,11 +25,10 @@ const EARTH_KM = 6371;
 type Place = { latitude: number; longitude: number };
 
 /**
- * One relay check on a map: the receiver and the co-hearers (squares), the
- * sender, every placed candidate coloured by whether any evidence ties it to
- * the copy, the route the copy took, and the far (dashed) and within
- * (solid) reach of the route's relay, the named ones and the selected
- * candidate.
+ * One relay check on a map: the receiver with its near-links radius and the
+ * co-hearers (squares), the sender, every placed candidate coloured by whether
+ * any evidence ties it to the copy, the route the copy took, and the selected
+ * candidate's reach when clicked.
  */
 export function RelayCheckMap({
   detail,
@@ -152,10 +151,10 @@ export function RelayCheckMap({
       const receiver = add(
         detail.receiver,
         label(
-          `relay-map-gateway receiver ${detail.receiver.placed_by}`,
+          `relay-map-gateway receiver ${detail.receiver.placed_by}${movable ? " movable" : ""}`,
           "R",
           movable
-            ? `Receiver: ${PLACED_BY[detail.receiver.placed_by]}; drag to move`
+            ? `Receiver: ${PLACED_BY[detail.receiver.placed_by]}, drag to move`
             : `Receiver: ${PLACED_BY[detail.receiver.placed_by]}`,
         ),
         movable,
@@ -168,42 +167,49 @@ export function RelayCheckMap({
     return () => markers.forEach((marker) => marker.remove());
   }, [map, detail, selected, onSelect, routeKey, named, movable]);
 
-  // Reach circles, the route and the sender's move.
   useEffect(() => {
     if (map === null) return;
     const colours = getComputedStyle(document.documentElement);
     const colour = (name: string) => colours.getPropertyValue(name).trim();
-    const circled = detail.candidates.filter(
-      (candidate) =>
-        candidate.latitude !== null &&
-        (candidate.key === routeKey ||
-          named.has(candidate.key) ||
-          candidate.key === selected),
-    );
+    const ring = colour("--marker-ring");
+    const circleFeatures = [];
+    if (detail.receiver !== null) {
+      circleFeatures.push({
+        type: "Feature" as const,
+        properties: { tone: ring, kind: "near" },
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [circle(detail.receiver, detail.rules.near_km)],
+        },
+      });
+    }
+    const picked =
+      selected === null
+        ? undefined
+        : detail.candidates.find(
+            (candidate) =>
+              candidate.key === selected &&
+              candidate.latitude !== null &&
+              candidate.longitude !== null,
+          );
+    if (picked !== undefined) {
+      circleFeatures.push({
+        type: "Feature" as const,
+        properties: { tone: ring, kind: "reach" },
+        geometry: {
+          type: "Polygon" as const,
+          coordinates: [
+            circle(
+              picked as Place,
+              Math.max(picked.reach_km, detail.rules.name_km),
+            ),
+          ],
+        },
+      });
+    }
     map.getSource<maplibregl.GeoJSONSource>(CIRCLES)?.setData({
       type: "FeatureCollection",
-      features: circled.flatMap((candidate) => {
-        const tone =
-          candidate.key === selected
-            ? colour("--marker-ring")
-            : candidate.key === routeKey
-              ? colour("--blue")
-              : colour("--accent");
-        return [
-          {
-            km: Math.max(candidate.reach_km, detail.rules.far_km),
-            out: 1,
-          },
-          { km: Math.max(candidate.reach_km, detail.rules.name_km), out: 0 },
-        ].map(({ km, out }) => ({
-          type: "Feature" as const,
-          properties: { tone, out },
-          geometry: {
-            type: "Polygon" as const,
-            coordinates: [circle(candidate as Place, km)],
-          },
-        }));
-      }),
+      features: circleFeatures,
     });
     map.getSource<maplibregl.GeoJSONSource>(ROUTE)?.setData({
       type: "FeatureCollection",
@@ -268,30 +274,30 @@ function addLayers(map: maplibregl.Map) {
       data: { type: "FeatureCollection", features: [] },
     });
   }
-  // A faint fill shows the reach when the whole view is inside it.
   map.addLayer({
-    id: `${CIRCLES}-fill`,
+    id: `${CIRCLES}-near-fill`,
     type: "fill",
     source: CIRCLES,
-    filter: ["==", ["get", "out"], 0],
-    paint: { "fill-color": ["get", "tone"], "fill-opacity": 0.06 },
+    filter: ["==", ["get", "kind"], "near"],
+    paint: { "fill-color": ["get", "tone"], "fill-opacity": 0.04 },
   });
   map.addLayer({
-    id: `${CIRCLES}-out`,
+    id: `${CIRCLES}-near-line`,
     type: "line",
     source: CIRCLES,
-    filter: ["==", ["get", "out"], 1],
+    filter: ["==", ["get", "kind"], "near"],
     paint: {
       "line-color": ["get", "tone"],
       "line-width": 1.5,
-      "line-dasharray": [3, 2],
+      "line-opacity": 0.45,
+      "line-dasharray": [4, 3],
     },
   });
   map.addLayer({
-    id: `${CIRCLES}-name`,
+    id: `${CIRCLES}-reach`,
     type: "line",
     source: CIRCLES,
-    filter: ["==", ["get", "out"], 0],
+    filter: ["==", ["get", "kind"], "reach"],
     paint: { "line-color": ["get", "tone"], "line-width": 2 },
   });
   map.addLayer({

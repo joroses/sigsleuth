@@ -37,7 +37,7 @@ from sigsleuth.packets import (
     relay_namings,
     relayed_packet,
 )
-from sigsleuth.positions import own_reach
+from sigsleuth.positions import RECENT_HOURS, reach_by_partner, traceroute_hops
 from sigsleuth.radio import relay_byte_of
 from sigsleuth.relays import (
     ACTIVE_MS,
@@ -45,6 +45,7 @@ from sigsleuth.relays import (
     FAR_KM,
     NAME_KM,
     NAME_PROBABILITY,
+    NEAR_KM,
     UNKNOWN_SCORE,
     WEIGHTS,
     DirectSignal,
@@ -102,8 +103,8 @@ class RelayCheck:
     route_relay is the node before the gateway in the copy's own route, with
     that hop's SNR; None when the route names none (route_relay below).
     page is what the packet page names (heard directly first); survey what
-    a receiver at the gateway with no links of its own names, as for a
-    survey measurement. candidates counts the nodes sending the byte,
+    a simulated survey receiver at the gateway names (hiding the gateway's
+    own history and report). candidates counts the nodes sending the byte,
     possible those that may have sent the copy. route_relay_possible is
     None when the route's relay is no candidate. mixed: reports with the
     same byte and hops left carry different upstream route prefixes."""
@@ -178,7 +179,8 @@ def relay_checks(
     candidates = {
         node for nodes in nodes_by_byte(connection, relay_bytes).values() for node in nodes
     }
-    reach = own_reach(connection, candidates, from_km=NAME_KM) if candidates else {}
+    partners = reach_by_partner(connection, candidates, from_km=NAME_KM) if candidates else {}
+    reach = {node: max(p.values()) for node, p in partners.items()}
     checks: list[RelayCheck] = []
     times = []
     for found, reception_ids in packets:
@@ -193,7 +195,9 @@ def relay_checks(
             reception_ids=reception_ids,
             reach=reach,
         )
-        checks.extend(_checks(replace(found, relays=relays), hidden).values())
+        with_relays = replace(found, relays=relays)
+        hops_before = _sender_hops_before(connection, with_relays, candidates)
+        checks.extend(_checks(with_relays, hidden, partners, hops_before).values())
     return RelayCheckList(
         checks=tuple(checks),
         traceroutes=len(ids),
@@ -243,8 +247,64 @@ def route_hint(reception: PacketReception) -> int | None:
     return terminal if relay_byte_of(terminal) == reception.relay_byte else None
 
 
+def survey_stand_in(
+    evidence: RelayEvidence,
+    copy: Relayed,
+    *,
+    partners: Mapping[int, Mapping[int, float]],
+    sender_hops: Mapping[int, Mapping[int, int]],
+    position: tuple[float, float] | None = None,
+) -> tuple[RelayEvidence, Relayed]:
+    """Hide the reporting gateway so `copy` scores as a survey phone with no
+    MQTT history of its own."""
+    gateway = copy.receiver
+    survey_evidence = replace(
+        evidence,
+        reach={
+            node: max(km for partner, km in reach.items() if partner != gateway)
+            for node, reach in partners.items()
+            if node in evidence.reach and any(partner != gateway for partner in reach)
+        },
+        sender_hops=sender_hops,
+        near={
+            node: {partner: near for partner, near in near_map.items() if partner != gateway}
+            for node, near_map in evidence.near.items()
+        },
+    )
+    survey_copy = replace(
+        copy,
+        receiver=CHOSEN_RECEIVER,
+        position=copy.position if position is None else position,
+        reports=[report for report in copy.reports if report[0] != gateway],
+    )
+    return survey_evidence, survey_copy
+
+
+def _sender_hops_before(
+    connection: sqlite3.Connection,
+    found: RelayedPacket,
+    candidates: set[int],
+) -> dict[int, dict[int, int]]:
+    """The sender's traceroute hops from before the packet's hour: a
+    stand-in phone could not have known the hour's own."""
+    if found.relays is None or not any(n.copy.one_hop for n in found.relays.namings.values()):
+        return {}
+    at = to_epoch_ms(found.packet.first_received_at)
+    hour = at - at % HOUR_MS
+    return traceroute_hops(
+        connection,
+        {found.packet.sender_node_id},
+        candidates,
+        around=hour - 1 - RECENT_HOURS * HOUR_MS,
+    )
+
+
 def _checks(
-    found: RelayedPacket, hidden: set[int], instead: Mapping[int, ReceptionNaming] | None = None
+    found: RelayedPacket,
+    hidden: set[int],
+    partners: Mapping[int, Mapping[int, float]],
+    sender_hops: Mapping[int, Mapping[int, int]],
+    instead: Mapping[int, ReceptionNaming] | None = None,
 ) -> dict[int, RelayCheck]:
     """Checks with a survey receiver at each gateway, unless overridden."""
     if found.relays is None:
@@ -315,8 +375,13 @@ def _checks(
     for reception_id, original in namings.items():
         naming = (instead or {}).get(reception_id)
         if naming is None:
-            copy = replace(original.copy, receiver=CHOSEN_RECEIVER)
-            naming = name_copy(relays.evidence, copy, {}, relays.signals)
+            survey_evidence, copy = survey_stand_in(
+                relays.evidence,
+                original.copy,
+                partners=partners,
+                sender_hops=sender_hops,
+            )
+            naming = name_copy(survey_evidence, copy, {}, relays.signals)
         reception = by_id[reception_id]
         truth = truths.get(reception_id)
         true_relay = None if truth is None else truth[0]
@@ -484,6 +549,7 @@ class RelayRules:
     unknown_score: float
     name_km: float
     far_km: float
+    near_km: float
     active_hours: float
     heard_days: float
 
@@ -497,7 +563,7 @@ class RelayCheckDetail:
     do. one_hop: the copy was heard after one hop, which the sender terms
     need.
 
-    The survey receiver has no direct links and starts at the gateway's
+    The survey receiver hides the reporting gateway and starts at its
     position. Gateway mode reproduces the gateway's own naming. moved
     means the survey receiver was placed elsewhere on the page."""
 
@@ -536,25 +602,52 @@ def relay_check(
     row = connection.execute(
         "SELECT packet_row_id FROM reception WHERE id = ?", (reception_id,)
     ).fetchone()
-    found = None if row is None else relayed_packet(connection, int(row[0]))
-    if found is None or found.relays is None or reception_id not in found.relays.namings:
+    found = None if row is None else relayed_packet(connection, int(row[0]), with_relays=False)
+    if found is None:
         return None
+    relay_bytes = {int(r.relay_byte) for r in found.receptions if r.relay_byte}
+    candidates = {
+        node for nodes in nodes_by_byte(connection, relay_bytes).values() for node in nodes
+    }
+    partners = reach_by_partner(connection, candidates, from_km=NAME_KM) if candidates else {}
+    relays = relay_namings(
+        connection,
+        list(found.receptions),
+        found.packet.sender_node_id,
+        at=to_epoch_ms(found.packet.first_received_at),
+        radio=found.radio,
+        reach={node: max(p.values()) for node, p in partners.items()},
+    )
+    if relays is None or reception_id not in relays.namings:
+        return None
+    found = replace(found, relays=relays)
     hidden = opted_out(connection)
-    relays = found.relays
     naming = relays.namings[reception_id]
+    candidates = {node for nodes in relays.evidence.by_byte.values() for node in nodes}
+    hops_before = _sender_hops_before(connection, found, candidates)
     if receiver_mode == "survey":
-        copy = replace(
-            naming.copy, receiver=CHOSEN_RECEIVER, position=receiver_at or naming.copy.position
-        )
+        evidence = relays.evidence
         if receiver_at is not None:
             # Near partners were read around the gateways only.
-            candidates = {node for nodes in relays.evidence.by_byte.values() for node in nodes}
-            near = near_links(connection, candidates, [receiver_at], [copy.at])
-            relays = replace(relays, evidence=replace(relays.evidence, near=near))
-            found = replace(found, relays=relays)
-        naming = name_copy(relays.evidence, copy, {}, relays.signals)
+            near = near_links(connection, candidates, [receiver_at], [naming.copy.at])
+            evidence = replace(evidence, near=near)
+        survey_evidence, copy = survey_stand_in(
+            evidence,
+            naming.copy,
+            partners=partners,
+            sender_hops=hops_before,
+            position=receiver_at,
+        )
+        naming = name_copy(survey_evidence, copy, {}, relays.signals)
+        found = replace(found, relays=replace(relays, evidence=survey_evidence))
     # In gateway mode the check's survey answer stays a survey receiver's.
-    checks = _checks(found, hidden, {reception_id: naming} if receiver_mode == "survey" else None)
+    checks = _checks(
+        found,
+        hidden,
+        partners,
+        hops_before,
+        {reception_id: naming} if receiver_mode == "survey" else None,
+    )
     check = checks[reception_id]
     reception = next(r for r in found.receptions if r.reception_id == reception_id)
     places = _places(connection, found, reception, hidden)
@@ -582,6 +675,7 @@ def relay_check(
             unknown_score=UNKNOWN_SCORE,
             name_km=NAME_KM,
             far_km=FAR_KM,
+            near_km=NEAR_KM,
             active_hours=ACTIVE_MS / HOUR_MS,
             heard_days=COHEARER_WINDOW_MS / (24 * HOUR_MS),
         ),
@@ -695,7 +789,7 @@ def _explained(
         if gateway in hidden:
             continue
         kind: Literal["receiver", "sender", "cohearer", "earlier", "other"] = "other"
-        if gateway == copy.receiver:
+        if gateway == copy.receiver or reception.reception_id == target.reception_id:
             kind = "receiver"
         elif gateway == copy.sender:
             kind = "sender"
@@ -748,7 +842,8 @@ def _explained(
     gateways = [
         report.gateway.node_id
         for report in reports
-        if (report.signal or report.kind == "receiver") and report.gateway.node_id is not None
+        if (report.signal or (report.kind == "receiver" and copy.receiver != CHOSEN_RECEIVER))
+        and report.gateway.node_id is not None
     ]
     return {
         "candidates": candidates,

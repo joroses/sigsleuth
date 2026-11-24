@@ -2456,8 +2456,8 @@ export interface components {
      *     route_relay is the node before the gateway in the copy's own route, with
      *     that hop's SNR; None when the route names none (route_relay below).
      *     page is what the packet page names (heard directly first); survey what
-     *     a receiver at the gateway with no links of its own names, as for a
-     *     survey measurement. candidates counts the nodes sending the byte,
+     *     a simulated survey receiver at the gateway names (hiding the gateway's
+     *     own history and report). candidates counts the nodes sending the byte,
      *     possible those that may have sent the copy. route_relay_possible is
      *     None when the route's relay is no candidate. mixed: reports with the
      *     same byte and hops left carry different upstream route prefixes.
@@ -2490,7 +2490,7 @@ export interface components {
      *     do. one_hop: the copy was heard after one hop, which the sender terms
      *     need.
      *
-     *     The survey receiver has no direct links and starts at the gateway's
+     *     The survey receiver hides the reporting gateway and starts at its
      *     position. Gateway mode reproduces the gateway's own naming. moved
      *     means the survey receiver was placed elsewhere on the page.
      */
@@ -2623,6 +2623,7 @@ export interface components {
       unknown_score: number;
       name_km: number;
       far_km: number;
+      near_km: number;
       active_hours: number;
       heard_days: number;
     };

@@ -6417,16 +6417,14 @@ check:
     probability: 0.999
     route_probability: null
   survey:
-    relay:
-      node_id: 2224775088
-      name: "Node 5fb0"
-    how: "near_link"
+    relay: null
+    how: null
     outcome: null
-    why: "named"
+    why: "below"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.988
+    probability: 0.628
     route_probability: null
   candidates: 11
   possible: 11
@@ -6566,7 +6564,7 @@ candidates: 11 items
     near_km: null
     near_observations: 0
     possible: true
-    probability: 0
+    probability: 0.0001
     score: -5.47
     evidence: false
     terms: 4 items
@@ -6579,7 +6577,7 @@ candidates: 11 items
       - term: "channel_same"
         value: 1
         score: 3.51
-unknown_probability: 0.0001
+unknown_probability: 0.0038
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -6592,9 +6590,9 @@ reports: 4 items
     snr_db: 2.75
     rssi_dbm: -106
     direct: false
-    kind: "cohearer"
+    kind: "receiver"
     sends_byte: false
-    signal: true
+    signal: false
     route_relay: null
     route_hint:
       node_id: 2224775088
@@ -6638,24 +6636,15 @@ reports: 4 items
       node_id: 861938604
       name: "Node 23ac"
     route_conflict: false
-signals: 1 items
-  - key: 2224775088
-    gateway_node_id: 2658512488
-    snr_count: 31
-    snr_mean_db: 2.20161
-    rssi_count: 31
-    rssi_mean_dbm: -106.452
-links: 1 items
-  - key: 2224775088
-    node_id: 2658512488
-    radio: 18
-    traceroute: 0
+signals: []
+links: []
 activity_from: "2026-10-08T15:00:00Z"
 rules:
   name_probability: 0.8
   unknown_score: -2.11
   name_km: 20
   far_km: 50
+  near_km: 30
   active_hours: 24
   heard_days: 7
 
@@ -6689,16 +6678,14 @@ check:
     probability: 0.999
     route_probability: null
   survey:
-    relay:
-      node_id: 2224775088
-      name: "Node 5fb0"
-    how: "near_link"
+    relay: null
+    how: null
     outcome: null
-    why: "named"
+    why: "below"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.988
+    probability: 0.628
     route_probability: null
   candidates: 11
   possible: 11
@@ -6924,6 +6911,7 @@ rules:
   unknown_score: -2.11
   name_km: 20
   far_km: 50
+  near_km: 30
   active_hours: 24
   heard_days: 7
 
@@ -6957,16 +6945,14 @@ check:
     probability: 0.999
     route_probability: null
   survey:
-    relay:
-      node_id: 2224775088
-      name: "Node 5fb0"
-    how: "gateway_link"
+    relay: null
+    how: null
     outcome: null
-    why: "named"
+    why: "below"
     likeliest:
       node_id: 2224775088
       name: "Node 5fb0"
-    probability: 0.985
+    probability: 0.766
     route_probability: null
   candidates: 11
   possible: 11
@@ -7069,7 +7055,7 @@ candidates: 11 items
     near_km: null
     near_observations: 0
     possible: true
-    probability: 0
+    probability: 0.0001
     score: -8.05
     evidence: false
     terms: 6 items
@@ -7106,7 +7092,7 @@ candidates: 11 items
     near_km: null
     near_observations: 0
     possible: true
-    probability: 0.0012
+    probability: 0.0191
     score: -2.27
     evidence: false
     terms: 4 items
@@ -7119,7 +7105,7 @@ candidates: 11 items
       - term: "receiver_far"
         value: 1
         score: 0.03
-unknown_probability: 0.0014
+unknown_probability: 0.0225
 reports: 4 items
   - reception_id: 90660
     gateway:
@@ -7132,9 +7118,9 @@ reports: 4 items
     snr_db: 2.75
     rssi_dbm: -106
     direct: false
-    kind: "cohearer"
+    kind: "receiver"
     sends_byte: false
-    signal: true
+    signal: false
     route_relay: null
     route_hint:
       node_id: 2224775088
@@ -7178,24 +7164,15 @@ reports: 4 items
       node_id: 861938604
       name: "Node 23ac"
     route_conflict: false
-signals: 1 items
-  - key: 2224775088
-    gateway_node_id: 2658512488
-    snr_count: 31
-    snr_mean_db: 2.20161
-    rssi_count: 31
-    rssi_mean_dbm: -106.452
-links: 1 items
-  - key: 2224775088
-    node_id: 2658512488
-    radio: 18
-    traceroute: 0
+signals: []
+links: []
 activity_from: "2026-10-08T15:00:00Z"
 rules:
   name_probability: 0.8
   unknown_score: -2.11
   name_km: 20
   far_km: 50
+  near_km: 30
   active_hours: 24
   heard_days: 7
 

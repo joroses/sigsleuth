@@ -1895,6 +1895,224 @@ describe("Diagnostics", () => {
     );
   });
 
+  it("shares mode between relay checks list and detail and filters by outcome pills", async () => {
+    const check = {
+      packet_row_id: 10,
+      reception_id: 55,
+      received_at: "2026-09-19T09:00:00Z",
+      sender: { node_id: 0x11111111, name: "Sender" },
+      gateway: { node_id: 0x22222222, name: "GW1" },
+      relay_byte: 0x1a,
+      hop_start: 3,
+      hop_limit: 2,
+      route_relay: { node_id: 0x0500001a, name: "TrueRelay" },
+      route_snr_db: 4.5,
+      page: {
+        relay: { node_id: 0x0500001a, name: "TrueRelay" },
+        how: "heard_directly",
+        outcome: "right",
+        why: "heard_directly",
+        likeliest: { node_id: 0x0500001a, name: "TrueRelay" },
+        probability: 0.9,
+        route_probability: 0.9,
+      },
+      survey: {
+        relay: null,
+        how: null,
+        outcome: "undecided",
+        why: "below",
+        likeliest: { node_id: 0x0600001a, name: "OtherNode" },
+        probability: 0.62,
+        route_probability: 0.18,
+      },
+      candidates: 2,
+      possible: 2,
+      route_relay_possible: true,
+      mixed: false,
+    };
+    const baseDetail = {
+      check,
+      moved: false,
+      channel: "LongFast",
+      spreading_factor: 11,
+      bandwidth_khz: 250,
+      one_hop: true,
+      shortcut_skipped: false,
+      receiver: {
+        node_id: 0,
+        latitude: 52.0,
+        longitude: 21.0,
+        placed_by: "now",
+      },
+      sender: {
+        node_id: 0x11111111,
+        latitude: 52.1,
+        longitude: 21.1,
+        placed_by: "now",
+      },
+      sender_when_heard: null,
+      route: [],
+      route_snr_db: [],
+      route_places: [],
+      candidates: [
+        {
+          key: 0x0600001a,
+          node_id: 0x0600001a,
+          name: "OtherNode",
+          short_name: "OTHR",
+          role: "ROUTER",
+          latitude: 52.01,
+          longitude: 21.01,
+          estimated: false,
+          channel_spreading_factor: 11,
+          channel_bandwidth_khz: 250,
+          preset_spreading_factor: null,
+          preset_bandwidth_khz: null,
+          firmware: 20600,
+          receiver_km: 4.1,
+          sender_km: 8.0,
+          reach_km: 20.0,
+          heard_directly: 0,
+          activity_hours: 0,
+          last_gateway_at: null,
+          own_hop_limit: null,
+          near_partner: { node_id: 0x33333333, name: "NearBuddy" },
+          near_km: 4.0,
+          near_observations: 42,
+          possible: true,
+          probability: 0.62,
+          score: 1.5,
+          evidence: true,
+          terms: [
+            { term: "nlink", value: 1, score: 2.46 },
+            { term: "nlink_any", value: 1, score: -3.81 },
+            { term: "log_km", value: 1.6, score: -2.16 },
+          ],
+        },
+        {
+          key: 0x0500001a,
+          node_id: 0x0500001a,
+          name: "TrueRelay",
+          short_name: "TRUE",
+          role: "CLIENT",
+          latitude: 52.2,
+          longitude: 21.2,
+          estimated: false,
+          channel_spreading_factor: 11,
+          channel_bandwidth_khz: 250,
+          preset_spreading_factor: null,
+          preset_bandwidth_khz: null,
+          firmware: 20600,
+          receiver_km: 31.0,
+          sender_km: 12.0,
+          reach_km: 20.0,
+          heard_directly: 14,
+          activity_hours: 0,
+          last_gateway_at: null,
+          own_hop_limit: null,
+          near_partner: null,
+          near_km: null,
+          near_observations: 0,
+          possible: true,
+          probability: 0.18,
+          score: 0.2,
+          evidence: false,
+          terms: [{ term: "nlink_any", value: 1, score: -3.81 }],
+        },
+      ],
+      unknown_probability: 0.2,
+      reports: [
+        {
+          reception_id: 55,
+          gateway: { node_id: 0x22222222, name: "GW1" },
+          latitude: 52.0,
+          longitude: 21.0,
+          hop_limit: 2,
+          relay_byte: 0x1a,
+          snr_db: 4.5,
+          rssi_dbm: -98,
+          direct: false,
+          kind: "receiver",
+          sends_byte: false,
+          signal: false,
+          route_relay: { node_id: 0x0500001a, name: "TrueRelay" },
+          route_hint: null,
+          route_conflict: false,
+        },
+      ],
+      signals: [],
+      links: [],
+      activity_from: null,
+      rules: {
+        name_probability: 0.8,
+        unknown_score: -2.11,
+        name_km: 20,
+        far_km: 50,
+        near_km: 30,
+        active_hours: 24,
+        heard_days: 7,
+      },
+    };
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        jsonResponse(
+          url === "/api/v1/diagnostics/relay-checks?count=25"
+            ? {
+                checks: [check],
+                traceroutes: 1,
+                oldest_at: check.received_at,
+                newest_at: check.received_at,
+                next_before_id: null,
+              }
+            : url === "/api/v1/diagnostics/relay-checks/55"
+              ? { ...baseDetail, receiver_mode: "survey" }
+              : url === "/api/v1/diagnostics/relay-checks/55?receiver=gateway"
+                ? {
+                    ...baseDetail,
+                    receiver_mode: "gateway",
+                    receiver: { ...baseDetail.receiver, node_id: 0x22222222 },
+                  }
+                : summary,
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const asked = () => fetch.mock.calls.map(([url]) => url);
+
+    window.location.hash = "#diagnostics/relays";
+    render(<App />);
+
+    expect(await screen.findByText(/top: OtherNode 62%/)).not.toBeNull();
+    expect(screen.getByText(/scored 18%/)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Packet page/ }));
+    expect(loadSetting("relayChecks.answer")).toBe("page");
+    expect(
+      await screen.findByText("None of these copies are shown."),
+    ).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^All / }));
+    expect(loadSetting("relayChecks.show")).toBe("all");
+
+    const table = await screen.findByRole("table");
+    fireEvent.click(within(table).getAllByRole("link")[0]);
+    await waitFor(() =>
+      expect(asked()).toContain(
+        "/api/v1/diagnostics/relay-checks/55?receiver=gateway",
+      ),
+    );
+    expect(
+      await screen.findByText(
+        "Switch to Survey simulation to move the receiver.",
+      ),
+    ).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Survey simulation" }));
+    await waitFor(() =>
+      expect(asked()).toContain("/api/v1/diagnostics/relay-checks/55"),
+    );
+    expect(loadSetting("relayChecks.answer")).toBe("survey");
+  });
+
   it("loads ID conflicts on demand and pages by node ID", async () => {
     const first = "/api/v1/diagnostics/device-conflicts?after_node=0&count=30";
     const next = "/api/v1/diagnostics/device-conflicts?after_node=17&count=30";

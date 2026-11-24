@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { MouseEvent, useEffect, useMemo, useState } from "react";
 
 import {
   RelayAnswer,
@@ -21,13 +21,15 @@ import {
   NodeRef,
   ReportTable,
   ScoreTable,
+  SHOW_UNKNOWN_FROM,
   SignalTable,
+  WhyComparison,
 } from "./relayScores";
 import {
   HOW_LABELS,
   WHY_LABELS,
+  byProbability,
   byteText,
-  candidateName,
   hopsText,
   nodeText,
   percent,
@@ -42,12 +44,24 @@ type Answer = "survey" | "page";
 type Outcome = NonNullable<RelayAnswer["outcome"]>;
 type Show = Outcome | "not_right" | "all";
 
-const ANSWERS: { value: Answer; label: string }[] = [
-  { value: "survey", label: "Survey receiver (no links of its own)" },
-  { value: "page", label: "Packet page (heard directly first)" },
+const ANSWERS: {
+  value: Answer;
+  label: string;
+  subtitle: string;
+}[] = [
+  {
+    value: "survey",
+    label: "Survey simulation",
+    subtitle: "gateway hidden",
+  },
+  {
+    value: "page",
+    label: "Packet page",
+    subtitle: "as reporting gateway",
+  },
 ];
 const SHOWS: { value: Show; label: string }[] = [
-  { value: "not_right", label: "Wrong and undecided" },
+  { value: "not_right", label: "Wrong & undecided" },
   { value: "wrong", label: "Wrong" },
   { value: "undecided", label: "Undecided" },
   { value: "right", label: "Right" },
@@ -76,6 +90,12 @@ export function RelayChecks({
   surveys?: boolean;
   measurementId?: number | null;
 }) {
+  // List and detail share one active mode so opening a row keeps its mode.
+  const [answer, setAnswer] = useSetting<Answer>(
+    "relayChecks.answer",
+    "survey",
+    (value) => ANSWERS.some((item) => item.value === value),
+  );
   // Each list loads once it is first shown, and stays loaded while the
   // other or an open item is shown, so going back to it is instant.
   const [listShown, setListShown] = useState(!surveys && receptionId === null);
@@ -101,6 +121,8 @@ export function RelayChecks({
         <div hidden={surveys || receptionId !== null}>
           <CheckList
             key={generation}
+            answer={answer}
+            onAnswer={setAnswer}
             onQueue={setQueue}
             onRefresh={() => setGeneration((value) => value + 1)}
           />
@@ -110,6 +132,8 @@ export function RelayChecks({
         <CheckDetail
           key={receptionId}
           receptionId={receptionId}
+          mode={answer}
+          onMode={setAnswer}
           queue={queue}
         />
       ) : null}
@@ -142,19 +166,29 @@ function shows(outcome: Outcome | null, show: Show): boolean {
   return outcome === show;
 }
 
+function modeCounts(checks: RelayCheck[], mode: Answer) {
+  const counts = { right: 0, wrong: 0, undecided: 0 };
+  for (const check of checks) {
+    const outcome = check[mode].outcome;
+    if (outcome !== null) counts[outcome] += 1;
+  }
+  const named = counts.right + counts.wrong;
+  const total = named + counts.undecided;
+  return { ...counts, named, total };
+}
+
 function CheckList({
+  answer,
+  onAnswer,
   onQueue,
   onRefresh,
 }: {
+  answer: Answer;
+  onAnswer: (answer: Answer) => void;
   /** The checks listed, in order, for the open copy's previous and next. */
   onQueue: (ids: number[]) => void;
   onRefresh: () => void;
 }) {
-  const [answer, setAnswer] = useSetting<Answer>(
-    "relayChecks.answer",
-    "survey",
-    (value) => ANSWERS.some((item) => item.value === value),
-  );
   const [show, setShow] = useSetting<Show>(
     "relayChecks.show",
     "not_right",
@@ -178,41 +212,7 @@ function CheckList({
   );
   const data = state.data;
   const checks = useMemo(() => data?.checks ?? [], [data]);
-  const counts = { right: 0, wrong: 0, undecided: 0 };
-  let likeliestRight = 0;
-  let likeliestChecked = 0;
-  for (const check of checks) {
-    const given = check[answer];
-    const outcome = given.outcome;
-    if (outcome !== null) counts[outcome] += 1;
-    const routeId = check.route_relay?.node_id;
-    if (outcome !== null && routeId !== undefined && routeId !== null) {
-      likeliestChecked += 1;
-      if (given.likeliest?.node_id === routeId) likeliestRight += 1;
-    }
-  }
-  const named = counts.right + counts.wrong;
-  const total = named + counts.undecided;
-  const rates = [
-    {
-      label: "Accuracy when named",
-      title: "Named relay matches the route",
-      right: counts.right,
-      total: named,
-    },
-    {
-      label: "Named",
-      title: "Copies with a named relay",
-      right: named,
-      total,
-    },
-    {
-      label: "Likeliest correct",
-      title: "Top-scored candidate matches the route",
-      right: likeliestRight,
-      total: likeliestChecked,
-    },
-  ];
+  const counts = modeCounts(checks, answer);
   const kept = checks.filter((check) => shows(check[answer].outcome, show));
   const whys = new Map<string, number>();
   for (const check of kept) {
@@ -228,84 +228,119 @@ function CheckList({
     onQueue(queueKey === "" ? [] : queueKey.split(",").map(Number));
   }, [queueKey, onQueue]);
 
+  const outcomeCounts: Record<Show, number> = {
+    not_right: counts.wrong + counts.undecided,
+    wrong: counts.wrong,
+    undecided: counts.undecided,
+    right: counts.right,
+    all: counts.total,
+  };
+
   return (
     <>
-      <div className="section-intro compact">
+      <div className="section-intro compact relay-check-intro">
         <p>
-          A traceroute carries its own route, so when a gateway hears one, we
-          know which node passed it on. Only copies that also carry a relay byte
-          are used. Each check compares that true relay with the one SigSleuth
-          guessed. Open one to see how every possible relay scored.
+          Traceroutes carry their own route, so SigSleuth uses them to benchmark
+          both simulated Survey phones and Packet pages. Survey uploads are real
+          phone measurements with no route truth.
         </p>
-      </div>
-      <div className="nodes-toolbar">
-        <select
-          aria-label="Answer"
-          value={answer}
-          onChange={(event) => setAnswer(event.target.value as Answer)}
-        >
-          {ANSWERS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Show"
-          value={show}
-          onChange={(event) => {
-            setShow(event.target.value as Show);
-            setWhy(null);
-          }}
-        >
-          {SHOWS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Traceroutes per load"
-          value={count}
-          onChange={(event) => setCount(Number(event.target.value))}
-        >
-          {COUNTS.map((value) => (
-            <option key={value} value={value}>
-              {value} traceroutes
-            </option>
-          ))}
-        </select>
-        <button type="button" className="secondary-button" onClick={onRefresh}>
-          Refresh
-        </button>
       </div>
       {state.error !== null ? (
         <StatusPanel tone="error">{state.error}</StatusPanel>
       ) : data === null ? (
-        <StatusPanel>Checking the newest {count} traceroutes…</StatusPanel>
+        <>
+          <div className="nodes-toolbar">
+            <select
+              aria-label="Traceroutes per load"
+              value={count}
+              onChange={(event) => setCount(Number(event.target.value))}
+            >
+              {COUNTS.map((value) => (
+                <option key={value} value={value}>
+                  {value} traceroutes
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRefresh}
+            >
+              Refresh
+            </button>
+          </div>
+          <StatusPanel>Checking the newest {count} traceroutes…</StatusPanel>
+        </>
       ) : (
         <>
-          <dl className="relay-check-rates" aria-label="Loaded check rates">
-            {rates.map((rate) => (
-              <div key={rate.label}>
-                <dt title={rate.title}>{rate.label}</dt>
-                <dd>
-                  {rate.total === 0
-                    ? "—"
-                    : `${((100 * rate.right) / rate.total).toFixed(1)}%`}{" "}
-                  <span className="muted">
-                    {rate.right} / {rate.total}
+          <div className="relay-mode-cards" role="group" aria-label="Mode">
+            {ANSWERS.map((item) => {
+              const stats = modeCounts(checks, item.value);
+              const accuracy =
+                stats.named === 0
+                  ? "—"
+                  : `${((100 * stats.right) / stats.named).toFixed(1)}%`;
+              const namedRate =
+                stats.total === 0
+                  ? "—"
+                  : `${((100 * stats.named) / stats.total).toFixed(1)}%`;
+              return (
+                <button
+                  type="button"
+                  key={item.value}
+                  className="relay-mode-card"
+                  aria-pressed={answer === item.value}
+                  onClick={() => onAnswer(item.value)}
+                >
+                  <span className="relay-mode-card-title">
+                    <strong>{item.label}</strong>
+                    <span className="muted"> ({item.subtitle})</span>
                   </span>
-                </dd>
-              </div>
-            ))}
-          </dl>
+                  <span className="relay-mode-card-stats">
+                    {accuracy} accurate when named · {namedRate} named ·{" "}
+                    {stats.wrong} wrong · {stats.undecided} undecided
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="nodes-toolbar">
+            <div className="relay-outcome-pills" role="group" aria-label="Show">
+              {SHOWS.map((item) => (
+                <button
+                  type="button"
+                  key={item.value}
+                  className="relay-why"
+                  aria-pressed={show === item.value}
+                  onClick={() => {
+                    setShow(item.value);
+                    setWhy(null);
+                  }}
+                >
+                  {item.label} <strong>{outcomeCounts[item.value]}</strong>
+                </button>
+              ))}
+            </div>
+            <select
+              aria-label="Traceroutes per load"
+              value={count}
+              onChange={(event) => setCount(Number(event.target.value))}
+            >
+              {COUNTS.map((value) => (
+                <option key={value} value={value}>
+                  {value} traceroutes
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onRefresh}
+            >
+              Refresh
+            </button>
+          </div>
           <p className="relay-check-counts">
-            {(["right", "wrong", "undecided"] as const).map((outcome) => (
-              <Badge key={outcome} tone={OUTCOME_TONES[outcome]}>
-                {counts[outcome]} {outcome}
-              </Badge>
-            ))}
             <span className="muted">
               {checks.length} loaded copies in {data.traceroutes} traceroutes
               {data.oldest_at !== null && data.newest_at !== null ? (
@@ -341,10 +376,10 @@ function CheckList({
                     <th>Heard</th>
                     <th>Result</th>
                     <th>Why</th>
+                    <th>Byte</th>
                     <th>Route says</th>
-                    <th>Relay</th>
+                    <th>Named relay</th>
                     <th>Sender → gateway</th>
-                    <th>Byte · hops</th>
                     <th
                       className="number"
                       title="Candidates that could have sent this copy"
@@ -390,15 +425,25 @@ function CheckList({
 
 function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
   const given = check[answer];
-  const relay = given.relay ?? given.likeliest;
+  const href = relayChecksHref(check.reception_id);
   const differs =
     given.relay !== null &&
     given.likeliest !== null &&
     given.relay.node_id !== given.likeliest.node_id;
+  const ends = `${nodeText(check.sender)} → ${nodeText(check.gateway)}`;
+  function openRow(event: MouseEvent) {
+    if (
+      (event.target as Element).closest("a") !== null ||
+      window.getSelection()?.toString()
+    ) {
+      return;
+    }
+    window.location.hash = href;
+  }
   return (
-    <tr>
+    <tr className="clickable-row" onClick={openRow}>
       <td>
-        <a className="text-button" href={relayChecksHref(check.reception_id)}>
+        <a className="text-button" href={href}>
           <ShortTime value={check.received_at} />
         </a>
       </td>
@@ -408,19 +453,29 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
         ) : null}
         {check.mixed ? <MixedBadge /> : null}
       </td>
-      <td>{whyOf(check, answer)}</td>
+      <td className="relay-check-why">{whyOf(check, answer)}</td>
+      <td>{byteText(check.relay_byte)}</td>
       <td>
         {check.route_relay === null ? "—" : nodeText(check.route_relay)}
         {check.route_snr_db !== null ? (
           <span className="muted"> {check.route_snr_db} dB</span>
         ) : null}
         {given.route_probability !== null ? (
-          <span className="muted"> · {percent(given.route_probability)}</span>
+          <span className="column-note">
+            scored {percent(given.route_probability)}
+          </span>
         ) : null}
       </td>
       <td>
-        {relay === null ? (
-          <span className="muted">—</span>
+        {given.relay === null ? (
+          <>
+            <span className="muted">None</span>
+            {given.likeliest !== null ? (
+              <span className="column-note">
+                top: {nodeText(given.likeliest)} {percent(given.probability)}
+              </span>
+            ) : null}
+          </>
         ) : (
           <>
             <Badge
@@ -429,30 +484,23 @@ function CheckRow({ check, answer }: { check: RelayCheck; answer: Answer }) {
                   ? "neutral"
                   : OUTCOME_TONES[given.outcome]
               }
-              title={
-                given.relay === null ? "Likeliest, not named" : "Named relay"
-              }
+              title="Named relay"
             >
-              {nodeText(relay)}
+              {nodeText(given.relay)}
             </Badge>
             {!differs && given.likeliest !== null ? (
               <span className="muted"> {percent(given.probability)}</span>
             ) : null}
-            {differs ? (
+            {differs && given.likeliest !== null ? (
               <span className="column-note">
-                Likeliest {nodeText(given.likeliest)}{" "}
-                {percent(given.probability)}
+                top: {nodeText(given.likeliest)} {percent(given.probability)}
               </span>
             ) : null}
           </>
         )}
       </td>
-      <td>
-        {nodeText(check.sender)} → {nodeText(check.gateway)}
-      </td>
-      <td>
-        {byteText(check.relay_byte)} ·{" "}
-        {hopsText(check.hop_start, check.hop_limit)}
+      <td className="relay-check-ends" title={ends}>
+        {ends}
       </td>
       <td className="number">{check.possible}</td>
     </tr>
@@ -469,21 +517,26 @@ function MixedBadge() {
 
 function CheckDetail({
   receptionId,
+  mode,
+  onMode,
   queue,
 }: {
   receptionId: number;
+  mode: Answer;
+  onMode: (mode: Answer) => void;
   queue: number[];
 }) {
-  const [receiverMode, setReceiverMode] = useViewState<"survey" | "gateway">(
-    "relayChecks.receiverMode",
-    "survey",
-  );
   const [receiverAt, setReceiverAt] = useViewState<[number, number] | null>(
     "relayChecks.receiverAt",
     null,
   );
+  const receiverMode = mode === "page" ? "gateway" : "survey";
   const state = useApi<RelayCheckDetail>(
-    relayCheckUrl(receptionId, receiverAt, receiverMode),
+    relayCheckUrl(
+      receptionId,
+      receiverMode === "survey" ? receiverAt : null,
+      receiverMode,
+    ),
   );
   // The last answer stays shown while a moved receiver's loads, so the map
   // keeps its view.
@@ -523,14 +576,12 @@ function CheckDetail({
       ) : (
         <CheckScores
           detail={shown}
+          mode={mode}
           updating={state.loading}
-          onReceiver={(at) => {
-            setReceiverMode("survey");
-            setReceiverAt(at);
-          }}
-          onMode={(mode) => {
+          onReceiver={(at) => setReceiverAt(at)}
+          onMode={(nextMode) => {
             setReceiverAt(null);
-            setReceiverMode(mode);
+            onMode(nextMode);
           }}
         />
       )}
@@ -538,26 +589,116 @@ function CheckDetail({
   );
 }
 
+function firmwareText(version: number | null): string {
+  if (version === null) return "—";
+  return `${Math.floor(version / 10000)}.${Math.floor(version / 100) % 100}.${version % 100}`;
+}
+
+function ineligibleReason(
+  check: RelayCheck,
+  candidates: RelayCheckDetail["candidates"],
+): string | null {
+  if (check.route_relay === null || check.route_relay_possible === true) {
+    return null;
+  }
+  if (check.route_relay_possible === null) {
+    return `True relay wasn’t scored: not in known nodes for byte ${byteText(check.relay_byte)}.`;
+  }
+  const routeCandidate = candidates.find(
+    (candidate) => candidate.key === check.route_relay?.node_id,
+  );
+  if (
+    routeCandidate?.firmware !== null &&
+    routeCandidate?.firmware !== undefined &&
+    routeCandidate.firmware < 20600
+  ) {
+    return `True relay wasn’t eligible: firmware ${firmwareText(routeCandidate.firmware)} predates relay bytes.`;
+  }
+  if (
+    routeCandidate?.preset_spreading_factor !== null &&
+    routeCandidate?.preset_spreading_factor !== undefined
+  ) {
+    return `True relay wasn’t eligible: map report uses ${radioSettings(routeCandidate.preset_spreading_factor, routeCandidate.preset_bandwidth_khz)}.`;
+  }
+  return "True relay wasn’t eligible to send this copy.";
+}
+
+function otherModeHint(check: RelayCheck, activeMode: Answer): string | null {
+  const otherMode: Answer = activeMode === "survey" ? "page" : "survey";
+  const current = check[activeMode];
+  const other = check[otherMode];
+  if (
+    current.outcome === other.outcome &&
+    current.relay?.node_id === other.relay?.node_id
+  ) {
+    return null;
+  }
+  const otherLabel =
+    ANSWERS.find((item) => item.value === otherMode)?.label ?? otherMode;
+  if (other.outcome === "right") {
+    const how =
+      other.how !== null ? ` (${HOW_LABELS[other.how].toLowerCase()})` : "";
+    return `${otherLabel} got this right${how}`;
+  }
+  if (other.outcome === "wrong") {
+    return `${otherLabel} got this wrong (${nodeText(other.relay)})`;
+  }
+  return `${otherLabel} left this undecided`;
+}
+
 function CheckScores({
   detail,
+  mode,
   updating,
   onReceiver,
   onMode,
 }: {
   detail: RelayCheckDetail;
+  mode: Answer;
   updating: boolean;
   /** Moves the survey receiver; null resets its position. */
   onReceiver: (at: [number, number] | null) => void;
-  onMode: (mode: "survey" | "gateway") => void;
+  onMode: (mode: Answer) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const check = detail.check;
   const candidates = detail.candidates;
   const possible = candidates.filter((candidate) => candidate.possible);
+  const possibleSorted = byProbability(possible);
   const heard = candidates.filter((candidate) => candidate.heard_directly > 0);
   const routeKey = check.route_relay?.node_id ?? null;
-  // What this receiver names: the survey answer, or the gateway's own.
+  const routeCandidate =
+    routeKey === null
+      ? undefined
+      : candidates.find((candidate) => candidate.key === routeKey);
   const given = detail.receiver_mode === "gateway" ? check.page : check.survey;
+  const activeMode: Answer =
+    detail.receiver_mode === "gateway" ? "page" : "survey";
+  const otherHint = otherModeHint(check, activeMode);
+  const ineligible = ineligibleReason(check, candidates);
+  const cohearersCount = detail.reports.filter(
+    (report) => report.kind === "cohearer",
+  ).length;
+  const earlierCount = detail.reports.filter(
+    (report) => report.kind === "earlier",
+  ).length;
+  const signalReports = detail.reports.filter(
+    (report) =>
+      report.signal ||
+      (detail.receiver_mode === "gateway" && report.kind === "receiver"),
+  );
+  const signalGatewaysCount = new Set(
+    detail.signals
+      .filter((signal) =>
+        signalReports.some(
+          (report) => report.gateway.node_id === signal.gateway_node_id,
+        ),
+      )
+      .map((signal) => signal.gateway_node_id),
+  ).size;
+  const linkedCandidatesCount = new Set(detail.links.map((link) => link.key))
+    .size;
+
   return (
     <>
       <div className="detail-heading">
@@ -586,10 +727,41 @@ function CheckScores({
         </div>
       </div>
 
+      <div className="relay-mode-bar">
+        <div className="relay-mode-switch" role="group" aria-label="Mode">
+          {ANSWERS.map((item) => (
+            <button
+              type="button"
+              key={item.value}
+              className="relay-why"
+              aria-pressed={mode === item.value}
+              onClick={() => onMode(item.value)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {updating ? <span className="muted">Updating…</span> : null}
+        {otherHint !== null ? (
+          <span className="muted">
+            {otherHint} —{" "}
+            <button
+              type="button"
+              className="text-button"
+              onClick={() =>
+                onMode(activeMode === "survey" ? "page" : "survey")
+              }
+            >
+              switch
+            </button>
+          </span>
+        ) : null}
+      </div>
+
       <section className="relay-check-verdict" aria-label="Result">
-        <dl>
+        <dl className="relay-check-verdict-grid">
           <div>
-            <dt>Route says</dt>
+            <dt>True relay (from route)</dt>
             <dd>
               <NodeRef node={check.route_relay} />
               {check.route_snr_db !== null ? (
@@ -599,18 +771,24 @@ function CheckScores({
             </dd>
           </div>
           <div>
-            <dt>Packet page names</dt>
+            <dt>
+              {detail.receiver_mode === "gateway"
+                ? "Packet page guessed"
+                : "Survey simulation guessed"}
+            </dt>
             <dd>
-              <Answered answer={check.page} />
-            </dd>
-          </div>
-          <div>
-            <dt>Survey receiver names</dt>
-            <dd>
-              <Answered answer={check.survey} />
+              <Answered answer={given} />
+              {given.relay === null ? (
+                <span className="column-note">
+                  {scoreResult(given, detail)}
+                </span>
+              ) : null}
             </dd>
           </div>
         </dl>
+        {ineligible !== null ? (
+          <p className="relay-check-warning muted">{ineligible}</p>
+        ) : null}
         {check.mixed ? (
           <p className="relay-check-warning">
             <MixedBadge /> Gateways report different paths for copies with the
@@ -620,31 +798,64 @@ function CheckScores({
         ) : null}
       </section>
 
+      <section aria-labelledby="relay-why-heading">
+        <h3 id="relay-why-heading">Why it decided this</h3>
+        {given.why === "heard_directly" ? (
+          <p className="relay-step-result decides">
+            Decided before scoring: gateway heard only{" "}
+            <NodeRef node={given.relay} /> directly{" "}
+            {heard[0]?.heard_directly ?? 1}× in the last{" "}
+            {detail.rules.heard_days} days.
+          </p>
+        ) : (
+          <>
+            {detail.shortcut_skipped ? (
+              <p className="relay-step-result">
+                Direct-hearing shortcut skipped: copy RSSI is over 15 dB
+                stronger than{" "}
+                {heard[0] !== undefined
+                  ? nodeText({ node_id: heard[0].node_id, name: heard[0].name })
+                  : "the sole candidate"}
+                ’s usual RSSI, so scoring decided.
+              </p>
+            ) : null}
+            <WhyComparison
+              detail={detail}
+              top={possibleSorted[0]}
+              compare={routeCandidate?.possible ? routeCandidate : undefined}
+              topLabel={given.relay !== null ? "Named" : "Top"}
+              compareLabel="Route relay"
+              routeKey={routeKey}
+              showGatewayHistory={detail.receiver_mode === "gateway"}
+              showUnknown={
+                given.why === "unknown" ||
+                given.relay === null ||
+                detail.unknown_probability >= SHOW_UNKNOWN_FROM
+              }
+              senderNodeId={check.sender.node_id}
+              gatewayNodeId={check.gateway.node_id}
+            />
+          </>
+        )}
+      </section>
+
       <section aria-labelledby="relay-map-heading">
         <div className="section-intro compact">
           <h3 id="relay-map-heading">Where they are</h3>
           <PlacementNotes detail={detail} />
         </div>
-        <select
-          aria-label="Receiver"
-          value={detail.receiver_mode}
-          onChange={(event) =>
-            onMode(event.target.value as "survey" | "gateway")
-          }
-        >
-          <option value="survey">Survey receiver</option>
-          <option value="gateway">Reporting gateway</option>
-        </select>
         <RelayCheckMap
           detail={detail}
           viewKey={check.reception_id}
           routeKey={routeKey}
-          namedKeys={[check.page.relay, check.survey.relay].flatMap((node) =>
+          namedKeys={[given.relay].flatMap((node) =>
             node?.node_id == null ? [] : [node.node_id],
           )}
           selected={selected}
           onSelect={setSelected}
-          onReceiver={onReceiver}
+          onReceiver={
+            detail.receiver_mode === "survey" ? onReceiver : undefined
+          }
         />
         <p className="relay-map-legend">
           <span className="relay-map-gateway receiver">R</span> receiver{" "}
@@ -653,14 +864,14 @@ function CheckScores({
           <span className="relay-map-node left">with evidence</span>{" "}
           <span className="relay-map-node out">without</span>{" "}
           <span className="relay-map-node left estimated">estimated</span> ·
-          blue line: the route · solid circle: reach or {detail.rules.name_km}{" "}
-          km, within which counts for it · dashed: reach or{" "}
-          {detail.rules.far_km} km, beyond which counts against it (route&apos;s
-          relay blue, named green, clicked yellow)
+          blue line: route · {detail.rules.near_km} km circle around R:
+          near-links radius · route&apos;s relay blue, named green, clicked
+          yellow
         </p>
         <p className="relay-map-move">
-          {updating ? <span className="muted">Updating… </span> : null}
-          {detail.moved ? (
+          {detail.receiver_mode === "gateway" ? (
+            "Switch to Survey simulation to move the receiver."
+          ) : detail.moved ? (
             <button
               type="button"
               className="secondary-button"
@@ -674,101 +885,71 @@ function CheckScores({
         </p>
       </section>
 
-      <section aria-labelledby="relay-candidates-heading">
-        <div className="section-intro compact">
-          <h3 id="relay-candidates-heading">
-            1. Candidates: {candidates.length} known node
-            {candidates.length === 1 ? "" : "s"} send byte{" "}
-            {byteText(check.relay_byte)}
-          </h3>
-          <p>
-            {possible.length} may have sent this copy. Firmware without the
-            relay byte, or a map report on other radio settings, rules out the
-            rest; everything else only counts for or against a candidate.
-          </p>
-        </div>
-        <CandidateTable
-          detail={detail}
-          routeKey={routeKey}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      </section>
+      <section className="relay-details-list" aria-label="Advanced details">
+        <details className="relay-details">
+          <summary>
+            Exact score terms &amp; all {candidates.length} candidates
+            {possible.length < candidates.length
+              ? ` (${possible.length} eligible)`
+              : ""}
+          </summary>
+          <div className="relay-details-body">
+            <ScoreTable detail={detail} routeKey={routeKey} />
+            <CandidateTable
+              detail={detail}
+              routeKey={routeKey}
+              selected={selected}
+              onSelect={setSelected}
+            />
+          </div>
+        </details>
 
-      <section aria-labelledby="relay-heard-heading">
-        <div className="section-intro compact">
-          <h3 id="relay-heard-heading">2. Heard directly (packet page only)</h3>
-          <p>
-            The packet page names the only candidate this gateway heard directly
-            within {detail.rules.heard_days} days of the packet, unless this
-            copy is over 15 dB stronger than its usual RSSI. When it heard more,
-            each of them counts as heard by the gateway in its score. Survey
-            measurements skip this.
-          </p>
-        </div>
-        <p
-          className={`relay-step-result ${given.why === "heard_directly" ? "decides" : ""}`}
-        >
-          {detail.receiver_mode === "survey"
-            ? "The survey receiver has no direct links: nothing to read."
-            : detail.shortcut_skipped
-              ? "The copy is over 15 dB stronger than the sole candidate’s usual RSSI: the score decides."
-              : heard.length === 0
-                ? "It heard none directly: the score decides."
-                : heard.length === 1
-                  ? `It heard only ${candidateName(heard[0])} directly (${heard[0].heard_directly} times): the packet page names it.`
-                  : `It heard ${heard.length} directly (${heard
-                      .map(
-                        (candidate) =>
-                          `${candidateName(candidate)} ${candidate.heard_directly}`,
-                      )
-                      .join(", ")}): not one, so the score decides.`}
-        </p>
-      </section>
+        <details className="relay-details">
+          <summary>
+            Gateway reports ({detail.reports.length} total · {cohearersCount}{" "}
+            co-hearer{cohearersCount === 1 ? "" : "s"} · {earlierCount} earlier)
+          </summary>
+          <div className="relay-details-body">
+            <ReportTable
+              reports={detail.reports}
+              copyGateway={
+                detail.receiver_mode === "survey" ? check.gateway.node_id : null
+              }
+            />
+          </div>
+        </details>
 
-      <section aria-labelledby="relay-score-heading">
-        <div className="section-intro compact">
-          <h3 id="relay-score-heading">3. Scores</h3>
-          <p>
-            Each term times its weight adds to a candidate&apos;s score; a node
-            SigSleuth does not know scores {detail.rules.unknown_score}. The
-            scores give each a probability, and the likeliest is named at{" "}
-            {Math.round(detail.rules.name_probability * 100)}% or more when one
-            of its terms ties it to the copy: within reach, under 5 km, linked
-            to a co-hearer or the sender, reported one hop earlier, heard by the
-            gateway, or a matching signal.
-          </p>
-        </div>
-        <p
-          className={`relay-step-result ${given.relay !== null && given.why !== "heard_directly" ? "decides" : ""}`}
-        >
-          {scoreResult(given, detail)}
-        </p>
-        <ScoreTable detail={detail} routeKey={routeKey} />
-        <SignalTable detail={detail} routeKey={routeKey} />
-        <LinkTable
-          detail={detail}
-          sender={detail.check.sender}
-          routeKey={routeKey}
-        />
-      </section>
+        {signalGatewaysCount > 0 ? (
+          <details className="relay-details">
+            <summary>
+              Direct signal profiles ({signalGatewaysCount} gateway
+              {signalGatewaysCount === 1 ? "" : "s"})
+            </summary>
+            <div className="relay-details-body">
+              <SignalTable
+                detail={detail}
+                routeKey={routeKey}
+                includeReceiver={detail.receiver_mode === "gateway"}
+              />
+            </div>
+          </details>
+        ) : null}
 
-      <section aria-labelledby="relay-reports-heading">
-        <div className="section-intro compact">
-          <h3 id="relay-reports-heading">4. Every gateway&apos;s report</h3>
-          <p>
-            Co-hearers heard the same rebroadcast: same relay byte and hops
-            left. Each traceroute report names its own last relay.
-          </p>
-        </div>
-        <ReportTable
-          reports={detail.reports}
-          copyGateway={
-            detail.receiver_mode === "survey"
-              ? detail.check.gateway.node_id
-              : null
-          }
-        />
+        {detail.links.length > 0 ? (
+          <details className="relay-details">
+            <summary>
+              Co-hearer &amp; sender links ({linkedCandidatesCount} candidate
+              {linkedCandidatesCount === 1 ? "" : "s"})
+            </summary>
+            <div className="relay-details-body">
+              <LinkTable
+                detail={detail}
+                sender={check.sender}
+                routeKey={routeKey}
+              />
+            </div>
+          </details>
+        ) : null}
       </section>
     </>
   );
@@ -860,25 +1041,20 @@ function PlacementNotes({ detail }: { detail: RelayCheckDetail }) {
   const { receiver, sender, sender_when_heard: heard } = detail;
   const moved =
     sender !== null && heard !== null ? kmBetween(sender, heard) : null;
+  const receiverText =
+    receiver === null
+      ? "Receiver unplaced"
+      : receiver.placed_by === "chosen"
+        ? "Receiver placed on map"
+        : detail.receiver_mode === "survey"
+          ? `Receiver at ${nodeText(detail.check.gateway)}’s position (${PLACED_BY[receiver.placed_by]})`
+          : `Receiver at ${nodeText(detail.check.gateway)} (${PLACED_BY[receiver.placed_by]})`;
   return (
     <p>
-      Receiver{" "}
-      {receiver === null
-        ? "unplaced: no distance counts."
-        : receiver.placed_by === "chosen"
-          ? "placed on this page."
-          : detail.receiver_mode === "survey"
-            ? `at ${nodeText(detail.check.gateway)}'s position (${PLACED_BY[receiver.placed_by]}).`
-            : `${nodeText(detail.check.gateway)}: ${PLACED_BY[receiver.placed_by]}.`}{" "}
-      The score places the candidates and the sender where they are now, else
-      estimated from their neighbours (hollow).{" "}
-      {sender === null
-        ? "The sender is unplaced."
-        : heard === null
-          ? `The sender is ${PLACED_BY[sender.placed_by]}; it reported no position by the packet.`
-          : moved !== null && moved >= 0.5
-            ? `The sender is ${PLACED_BY[sender.placed_by]}, ${formatKm(moved)} km from where it was when heard (dotted line).`
-            : `The sender is ${PLACED_BY[sender.placed_by]}, which is where it was when heard.`}
+      {receiverText}; candidates and sender at current or estimated positions
+      {moved !== null && moved >= 0.5
+        ? `, sender moved ${formatKm(moved)} km since heard (dotted line).`
+        : "."}
     </p>
   );
 }

@@ -5825,6 +5825,11 @@ div.zones-zone-end .link-end-name {
   overflow: hidden;
 }
 
+/* The switch above already spaces the list from the tabs. */
+.section-intro.compact.relay-check-intro {
+  margin-top: 0;
+}
+
 .relay-check-kinds a {
   padding: var(--space-1) var(--space-3);
   color: var(--muted);
@@ -5849,6 +5854,59 @@ div.zones-zone-end .link-end-name {
 
 .survey-shown {
   font-weight: 650;
+}
+
+.relay-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+}
+
+.relay-mode-card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.relay-mode-card:hover {
+  border-color: var(--muted);
+}
+
+.relay-mode-card[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.relay-mode-card-stats {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.relay-outcome-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.relay-mode-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.relay-mode-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 .relay-check-rates {
@@ -5927,6 +5985,18 @@ div.zones-zone-end .link-end-name {
   font-size: var(--text-sm);
 }
 
+/* Sender → gateway, cut short; the row's title holds both names. */
+.relay-check-table td.relay-check-ends {
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.relay-check-table td.relay-check-why {
+  min-width: 9rem;
+  white-space: normal;
+}
+
 .relay-check-table .number,
 .relay-candidate-table .number,
 .relay-step-table .number,
@@ -5983,6 +6053,64 @@ div.zones-zone-end .link-end-name {
 .relay-route-mark {
   color: var(--text);
   font-weight: 650;
+}
+
+.relay-check-verdict-grid {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.relay-why-table :is(th, td) {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  vertical-align: top;
+}
+
+.relay-why-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.relay-why-fact {
+  display: block;
+}
+
+.relay-why-points {
+  display: inline-block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.relay-why-points.for {
+  color: var(--accent);
+}
+
+.relay-why-points.against {
+  color: var(--error);
+}
+
+.relay-details-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.relay-details {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.relay-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.relay-details-body {
+  margin-top: var(--space-3);
 }
 
 .relay-check-warning {
@@ -6165,6 +6293,9 @@ button.relay-map-node {
   min-width: 1.5rem;
   height: 1.5rem;
   background: var(--marker-ring);
+}
+
+.relay-map-gateway.receiver.movable {
   cursor: grab;
 }
 

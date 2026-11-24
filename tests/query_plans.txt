@@ -2290,15 +2290,6 @@ packets.packet_channel_radio
   SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
-relays.node_radios
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
-relays.relay_evidence
-  SEARCH node_activity_hour USING INDEX node_activity_node
-positions.radio_links
-  SEARCH link_hour USING PRIMARY KEY
-positions.traceroute_hops
-  SEARCH link_hour USING INDEX link_hour_pair
 links.limited_nodes
   SCAN node_current
   SCAN node_doubtful
@@ -2327,6 +2318,15 @@ positions.reach_by_partner
   SCAN node_doubtful
   SCAN node_shared
   SEARCH node_current USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
 relays.relay_evidence
@@ -2365,15 +2365,6 @@ packets.packet_channel_radio
   SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
-relays.node_radios
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
-relays.relay_evidence
-  SEARCH node_activity_hour USING INDEX node_activity_node
-positions.radio_links
-  SEARCH link_hour USING PRIMARY KEY
-positions.traceroute_hops
-  SEARCH link_hour USING INDEX link_hour_pair
 links.limited_nodes
   SCAN node_current
   SCAN node_doubtful
@@ -2402,6 +2393,15 @@ positions.reach_by_partner
   SCAN node_doubtful
   SCAN node_shared
   SEARCH node_current USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
 relays.relay_evidence
@@ -2440,15 +2440,6 @@ packets.packet_channel_radio
   SEARCH traceroute_hop USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
-relays.node_radios
-  SEARCH node_current USING PRIMARY KEY
-  SEARCH map_report USING PRIMARY KEY
-relays.relay_evidence
-  SEARCH node_activity_hour USING INDEX node_activity_node
-positions.radio_links
-  SEARCH link_hour USING PRIMARY KEY
-positions.traceroute_hops
-  SEARCH link_hour USING INDEX link_hour_pair
 links.limited_nodes
   SCAN node_current
   SCAN node_doubtful
@@ -2477,6 +2468,15 @@ positions.reach_by_partner
   SCAN node_doubtful
   SCAN node_shared
   SEARCH node_current USING PRIMARY KEY
+relays.node_radios
+  SEARCH node_current USING PRIMARY KEY
+  SEARCH map_report USING PRIMARY KEY
+relays.relay_evidence
+  SEARCH node_activity_hour USING INDEX node_activity_node
+positions.radio_links
+  SEARCH link_hour USING PRIMARY KEY
+positions.traceroute_hops
+  SEARCH link_hour USING INDEX link_hour_pair
 relays.relay_evidence
   SEARCH node_activity_hour USING PRIMARY KEY
 relays.relay_evidence

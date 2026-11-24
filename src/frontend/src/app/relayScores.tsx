@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 
 import type { RelayCandidate, RelayCheckDetail, RelayCheckReport } from "./api";
 import { formatKm } from "./nodeDisplay";
 import {
   CheckNode,
+  byProbability,
   byteText,
   candidateName,
   nodeText,
@@ -89,12 +90,351 @@ function firmwareText(version: number | null): string {
   return `${Math.floor(version / 10000)}.${Math.floor(version / 100) % 100}.${version % 100}`;
 }
 
-/** Candidates by probability, those that cannot have sent the copy last. */
-function byProbability(candidates: RelayCandidate[]): RelayCandidate[] {
-  return [...candidates].sort(
-    (a, b) =>
-      (b.probability ?? -1) - (a.probability ?? -1) ||
-      (a.receiver_km ?? Infinity) - (b.receiver_km ?? Infinity),
+const GATEWAY_HISTORY_TERMS = new Set<Term>(["rheard", "r_rssi"]);
+const NEARBY_TERMS = new Set<Term>([
+  "nlink",
+  "nlink_log",
+  "nlink_km",
+  "nlink_any",
+]);
+const COHEARER_TERMS = new Set<Term>([
+  "glink",
+  "glink_log",
+  "snr_llr",
+  "rep_plus1",
+  "rep_same",
+  "rep_other",
+]);
+const SENDER_TERMS = new Set<Term>(["slink", "slink_log", "sender_far"]);
+const DISTANCE_TERMS = new Set<Term>([
+  "log_km",
+  "near5",
+  "unplaced",
+  "estimated",
+  "in_reach",
+  "beyond_reach",
+  "receiver_far",
+]);
+const PROFILE_TERMS = new Set<Term>([
+  "role_router",
+  "role_router_late",
+  "role_client",
+  "role_mute",
+  "role_none",
+  "channel_same",
+  "channel_other",
+  "inactive",
+]);
+
+function groupNetScore(candidate: RelayCandidate, terms: Set<Term>): number {
+  let sum = 0;
+  for (const term of candidate.terms) {
+    if (terms.has(term.term)) sum += term.score;
+  }
+  return sum;
+}
+
+function hasTerm(candidate: RelayCandidate, term: Term): boolean {
+  return candidate.terms.some((item) => item.term === term);
+}
+
+function groupScoreClass(score: number): string {
+  if (score > 0.005) return "for";
+  if (score < -0.005) return "against";
+  return "muted";
+}
+
+function formatGroupScore(score: number): string {
+  return Math.abs(score) < 0.005 ? "0" : signed(score);
+}
+
+/** Unknown probability from which the why table shows the Unknown column:
+ * below it, an unknown node barely moves the verdict. */
+export const SHOW_UNKNOWN_FROM = 0.05;
+
+export function WhyComparison({
+  detail,
+  top,
+  compare,
+  topLabel,
+  compareLabel,
+  routeKey,
+  showGatewayHistory,
+  showUnknown,
+  senderNodeId = null,
+  gatewayNodeId = null,
+}: {
+  detail: Scored;
+  top: RelayCandidate | undefined;
+  compare: RelayCandidate | undefined;
+  topLabel: string;
+  compareLabel?: string;
+  routeKey: number | null;
+  showGatewayHistory: boolean;
+  showUnknown: boolean;
+  senderNodeId?: number | null;
+  gatewayNodeId?: number | null;
+}) {
+  if (top === undefined) return null;
+  const shown =
+    compare !== undefined && compare.key !== top.key
+      ? [
+          { candidate: top, label: topLabel },
+          { candidate: compare, label: compareLabel ?? "Compared" },
+        ]
+      : [{ candidate: top, label: topLabel }];
+
+  const receiverReport = detail.reports.find((r) => r.kind === "receiver");
+  const cohearerReports = detail.reports.filter((r) => r.kind === "cohearer");
+  const cohearerIds = new Set(
+    cohearerReports
+      .map((r) => r.gateway.node_id)
+      .filter((id): id is number => id !== null),
+  );
+  const soundingReports = detail.reports.filter(
+    (r) => r.signal && r.snr_db !== null && r.gateway.node_id !== null,
+  );
+
+  function gatewayHistoryFact(candidate: RelayCandidate): ReactNode {
+    const parts: string[] = [];
+    if (candidate.heard_directly > 0) {
+      parts.push(`Heard directly ${candidate.heard_directly}×`);
+    }
+    const signal =
+      gatewayNodeId === null
+        ? undefined
+        : detail.signals.find(
+            (s) =>
+              s.key === candidate.key && s.gateway_node_id === gatewayNodeId,
+          );
+    if (
+      signal !== undefined &&
+      signal.rssi_mean_dbm !== null &&
+      receiverReport?.rssi_dbm !== null &&
+      receiverReport?.rssi_dbm !== undefined
+    ) {
+      parts.push(
+        `RSSI ${receiverReport.rssi_dbm} vs ${Math.round(signal.rssi_mean_dbm)} dBm`,
+      );
+    }
+    return parts.length > 0 ? parts.join(", ") : "Not heard directly";
+  }
+
+  function nearbyFact(candidate: RelayCandidate): ReactNode {
+    if (candidate.near_partner !== null) {
+      return (
+        <>
+          Linked to <NodeRef node={candidate.near_partner} /> (
+          {formatKm(candidate.near_km)} km, {candidate.near_observations} obs)
+        </>
+      );
+    }
+    return hasTerm(candidate, "nlink_any")
+      ? "None (others have nearby links)"
+      : "None";
+  }
+
+  function cohearerFact(candidate: RelayCandidate): ReactNode {
+    const parts: string[] = [];
+    const linked = detail.links.filter(
+      (link) =>
+        link.key === candidate.key &&
+        cohearerIds.has(link.node_id) &&
+        link.radio > 0,
+    );
+    if (linked.length > 0) {
+      parts.push(
+        `${linked.length} co-hearer${linked.length === 1 ? "" : "s"} linked`,
+      );
+    }
+    const snrTerm = candidate.terms.find((term) => term.term === "snr_llr");
+    if (snrTerm !== undefined) {
+      const matched = soundingReports.filter((report) =>
+        detail.signals.some(
+          (signal) =>
+            signal.key === candidate.key &&
+            signal.gateway_node_id === report.gateway.node_id &&
+            signal.snr_mean_db !== null,
+        ),
+      );
+      if (matched.length > 0) {
+        const names = matched
+          .slice(0, 2)
+          .map((report) => nodeText(report.gateway))
+          .join(", ");
+        parts.push(
+          snrTerm.score >= 0
+            ? `SNR matches ${names}`
+            : `SNR differs at ${names}`,
+        );
+      } else {
+        parts.push(snrTerm.score >= 0 ? "SNR matches" : "SNR differs");
+      }
+    }
+    if (hasTerm(candidate, "rep_plus1")) parts.push("reported 1 hop earlier");
+    else if (hasTerm(candidate, "rep_same")) parts.push("reported same hops");
+    else if (hasTerm(candidate, "rep_other")) parts.push("reported other hops");
+    return parts.length > 0 ? parts.join("; ") : "None";
+  }
+
+  function senderFact(candidate: RelayCandidate): ReactNode {
+    const parts: string[] = [];
+    const link =
+      senderNodeId === null
+        ? undefined
+        : detail.links.find(
+            (item) =>
+              item.key === candidate.key && item.node_id === senderNodeId,
+          );
+    if (link !== undefined && (link.radio > 0 || link.traceroute > 0)) {
+      const counts = [
+        link.radio > 0 ? `${link.radio} radio` : null,
+        link.traceroute > 0 ? `${link.traceroute} route` : null,
+      ]
+        .filter((item): item is string => item !== null)
+        .join(", ");
+      parts.push(`Linked (${counts})`);
+    }
+    if (hasTerm(candidate, "sender_far") && candidate.sender_km !== null) {
+      parts.push(`${formatKm(candidate.sender_km)} km away (far)`);
+    }
+    if (parts.length > 0) return parts.join("; ");
+    return candidate.sender_km !== null
+      ? `No link (${formatKm(candidate.sender_km)} km)`
+      : "No link";
+  }
+
+  function distanceFact(candidate: RelayCandidate): ReactNode {
+    if (candidate.latitude === null) return "Unplaced";
+    if (candidate.receiver_km === null) return "Placed (receiver unplaced)";
+    return `${formatKm(candidate.receiver_km)} km away${candidate.estimated ? " (estimated)" : ""}`;
+  }
+
+  function profileFact(candidate: RelayCandidate): ReactNode {
+    const channel = hasTerm(candidate, "channel_same")
+      ? "same channel"
+      : hasTerm(candidate, "channel_other")
+        ? "other channel"
+        : null;
+    const activity = hasTerm(candidate, "inactive") ? "inactive" : "active";
+    return [candidate.role ?? "no role", channel, activity]
+      .filter((item): item is string => item !== null)
+      .join(", ");
+  }
+
+  const rows: {
+    key: string;
+    label: string;
+    terms: Set<Term>;
+    fact: (candidate: RelayCandidate) => ReactNode;
+  }[] = [
+    ...(showGatewayHistory
+      ? [
+          {
+            key: "gateway",
+            label: "Gateway history",
+            terms: GATEWAY_HISTORY_TERMS,
+            fact: gatewayHistoryFact,
+          },
+        ]
+      : []),
+    {
+      key: "nearby",
+      label: `Nearby nodes (≤ ${detail.rules.near_km} km)`,
+      terms: NEARBY_TERMS,
+      fact: nearbyFact,
+    },
+    {
+      key: "cohearers",
+      label: "Co-hearing gateways",
+      terms: COHEARER_TERMS,
+      fact: cohearerFact,
+    },
+    ...(detail.one_hop
+      ? [
+          {
+            key: "sender",
+            label: "Sender link",
+            terms: SENDER_TERMS,
+            fact: senderFact,
+          },
+        ]
+      : []),
+    {
+      key: "distance",
+      label: "Distance & position",
+      terms: DISTANCE_TERMS,
+      fact: distanceFact,
+    },
+    {
+      key: "profile",
+      label: "Node profile",
+      terms: PROFILE_TERMS,
+      fact: profileFact,
+    },
+  ];
+
+  return (
+    <WideTable>
+      <table className="relay-why-table">
+        <thead>
+          <tr>
+            <th>Evidence</th>
+            {shown.map(({ candidate, label }) => (
+              <th key={candidate.key}>
+                <span className="relay-why-head">
+                  {candidate.node_id === null ? (
+                    <span className="muted">an opted-out node</span>
+                  ) : (
+                    <NodeLink
+                      nodeId={candidate.node_id}
+                      name={candidateName(candidate)}
+                    />
+                  )}
+                  {candidate.key === routeKey ? <RouteBadge /> : null}
+                </span>
+                <span className="column-note">
+                  {label} · {percent(candidate.probability)} (score{" "}
+                  {signed(candidate.score ?? 0)})
+                </span>
+              </th>
+            ))}
+            {showUnknown ? (
+              <th>
+                Unknown node
+                <span className="column-note">
+                  {percent(detail.unknown_probability)} (score{" "}
+                  {signed(detail.rules.unknown_score)})
+                </span>
+              </th>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.key}>
+              <th scope="row">{row.label}</th>
+              {shown.map(({ candidate }) => {
+                const net = groupNetScore(candidate, row.terms);
+                return (
+                  <td key={candidate.key}>
+                    <span className="relay-why-fact">
+                      {row.fact(candidate)}
+                    </span>
+                    <span
+                      className={`relay-why-points ${groupScoreClass(net)}`}
+                    >
+                      {formatGroupScore(net)}
+                    </span>
+                  </td>
+                );
+              })}
+              {showUnknown ? <td className="muted">—</td> : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </WideTable>
   );
 }
 
@@ -419,12 +759,15 @@ export function ScoreTable({
 export function SignalTable({
   detail,
   routeKey,
+  includeReceiver = true,
 }: {
   detail: Scored;
   routeKey: number | null;
+  includeReceiver?: boolean;
 }) {
   const copies = detail.reports.filter(
-    (report) => report.signal || report.kind === "receiver",
+    (report) =>
+      report.signal || (includeReceiver && report.kind === "receiver"),
   );
   if (copies.length === 0 || detail.signals.length === 0) return null;
   const profile = new Map(
@@ -621,14 +964,17 @@ export function ReportTable({
                 <td>
                   {KIND_LABELS[report.kind]}
                   {report.signal ? (
-                    <span className="muted"> · signal term</span>
+                    <span className="muted"> · used for signal match</span>
                   ) : null}
                   {report.route_conflict ? (
                     <span className="muted"> · different route</span>
                   ) : null}
                   {copyGateway !== null &&
                   report.gateway.node_id === copyGateway ? (
-                    <span className="muted"> · this copy&apos;s gateway</span>
+                    <span className="muted">
+                      {" "}
+                      · excluded (standing in as phone)
+                    </span>
                   ) : null}
                   {report.direct ? (
                     <span className="muted"> · heard the sender</span>

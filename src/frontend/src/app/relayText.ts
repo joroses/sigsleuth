@@ -56,6 +56,15 @@ export function candidateName(candidate: RelayCandidate | undefined): string {
   );
 }
 
+/** Candidates by probability, those that cannot have sent the copy last. */
+export function byProbability(candidates: RelayCandidate[]): RelayCandidate[] {
+  return [...candidates].sort(
+    (a, b) =>
+      (b.probability ?? -1) - (a.probability ?? -1) ||
+      (a.receiver_km ?? Infinity) - (b.receiver_km ?? Infinity),
+  );
+}
+
 /** "SF7, 62.5 kHz", or the spreading factor alone when the bandwidth is unknown. */
 export function radioSettings(
   spreadingFactor: number,

@@ -39,7 +39,7 @@ from sigsleuth import packets, positions, relays
 from sigsleuth.db import to_epoch_ms
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.opt_out import SHOWN_PACKET
-from sigsleuth.relay_checks import route_relay
+from sigsleuth.relay_checks import route_relay, survey_stand_in
 
 PI = 0.01
 L2 = 1.0
@@ -127,23 +127,11 @@ def collect(connection: sqlite3.Connection, every: int) -> list[Copy]:
                     shortcut(naming, [node for node in heard if node != truth], signals),
                 )
             )
-            survey_evidence = replace(
+            survey_evidence, copy = survey_stand_in(
                 evidence,
-                reach={
-                    node: max(km for partner, km in reach.items() if partner != gateway)
-                    for node, reach in partners.items()
-                    if any(partner != gateway for partner in reach)
-                },
-                sender_hops=hops_before,
-                near={
-                    node: {p: near for p, near in partners.items() if p != gateway}
-                    for node, partners in evidence.near.items()
-                },
-            )
-            copy = replace(
                 naming.copy,
-                receiver=0,
-                reports=[report for report in naming.copy.reports if report[0] != gateway],
+                partners=partners,
+                sender_hops=hops_before,
             )
             copies.append(
                 Copy(at, "survey", truth, relays.relay_terms(survey_evidence, copy, signals))

@@ -3,9 +3,10 @@ from datetime import UTC, datetime
 import pytest
 from fastapi.testclient import TestClient
 
+from sigsleuth.derive import HOUR_MS
 from sigsleuth.packets import PacketReception
-from sigsleuth.relay_checks import route_hint, route_relay
-from sigsleuth.relays import NEAR_KM
+from sigsleuth.relay_checks import route_hint, route_relay, survey_stand_in
+from sigsleuth.relays import NEAR_KM, DirectSignal, NearPartner, Relayed, RelayEvidence, relay_terms
 from sigsleuth.traceroute import ReportPaths, RoutePath
 
 REQUESTER, RELAY_A, RELAY_B, GATEWAY, TARGET = (
@@ -118,7 +119,7 @@ def test_relay_checks_agree_with_packet_pages(sample_client: TestClient) -> None
     assert "right" in outcomes
 
 
-def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClient) -> None:
+def test_a_survey_receiver_hides_the_reporting_gateway(sample_client: TestClient) -> None:
     checks = sample_client.get("/api/v1/diagnostics/relay-checks?count=500").json()["checks"]
     check = next(item for item in checks if item["page"]["how"] == "heard_directly")
     url = f"/api/v1/diagnostics/relay-checks/{check['reception_id']}"
@@ -139,7 +140,13 @@ def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClie
         assert survey["check"]["page"] == check["page"]
         assert all(candidate["heard_directly"] == 0 for candidate in survey["candidates"])
         report = next(r for r in survey["reports"] if r["gateway"]["node_id"] == gateway)
-        assert report["kind"] == "cohearer" and report["signal"]
+        assert report["kind"] == "receiver" and not report["signal"]
+        assert all(s["gateway_node_id"] != gateway for s in survey["signals"])
+        assert all(link["node_id"] != gateway for link in survey["links"])
+        assert all(
+            c["near_partner"] is None or c["near_partner"]["node_id"] != gateway
+            for c in survey["candidates"]
+        )
     assert moved["candidates"] == default["candidates"]
     assert sample_client.get(url, params={"latitude": 52.0}).status_code == 400
     assert (
@@ -148,6 +155,63 @@ def test_a_survey_receiver_keeps_the_gateway_as_evidence(sample_client: TestClie
         ).status_code
         == 400
     )
+
+
+def test_survey_stand_in_drops_the_gateways_reach_reports_and_near_partners() -> None:
+    at = 100 * HOUR_MS + 1_000
+    hour = at - at % HOUR_MS
+    partner = 0x11111111
+    other_gw = 0x22222222
+    near = NearPartner(52.0, 21.0, (hour - HOUR_MS,), (0, 5))
+    evidence = RelayEvidence(
+        by_byte={0xAA: [RELAY_A]},
+        radio_links={GATEWAY: {RELAY_A: 10}, other_gw: {RELAY_A: 3}},
+        sender_hops={REQUESTER: {RELAY_A: 4}},
+        placed={},
+        reach={RELAY_A: 65.0},
+        radios={},
+        active_hours={RELAY_A: [hour]},
+        history_from=0,
+        near={RELAY_A: {GATEWAY: near, partner: near}},
+    )
+    copy = Relayed(
+        sender=REQUESTER,
+        receiver=GATEWAY,
+        at=at,
+        position=(52.0, 21.0),
+        radio=None,
+        hop_start=3,
+        hop_limit=2,
+        relay_byte=0xAA,
+        reports=[(GATEWAY, 2, 0xAA, 5.0), (other_gw, 2, 0xAA, 4.0)],
+        rssi=-80.0,
+    )
+    survey_evidence, survey_copy = survey_stand_in(
+        evidence,
+        copy,
+        partners={RELAY_A: {GATEWAY: 65.0, partner: 25.0}},
+        sender_hops={REQUESTER: {RELAY_A: 1}},
+        position=(52.01, 21.01),
+    )
+    assert survey_copy.receiver == 0
+    assert survey_copy.position == (52.01, 21.01)
+    assert survey_copy.reports == [(other_gw, 2, 0xAA, 4.0)]
+    assert survey_evidence.reach == {RELAY_A: 25.0}
+    assert survey_evidence.sender_hops == {REQUESTER: {RELAY_A: 1}}
+    assert set(survey_evidence.near[RELAY_A]) == {partner}
+
+    only_gateway_reach, _ = survey_stand_in(
+        evidence,
+        copy,
+        partners={RELAY_A: {GATEWAY: 65.0}},
+        sender_hops={},
+    )
+    assert only_gateway_reach.reach == {}
+    terms = relay_terms(
+        only_gateway_reach, survey_copy, {(RELAY_A, GATEWAY): DirectSignal(3, 5.0, 3, -82.0)}
+    )
+    assert "rheard" not in terms[RELAY_A]
+    assert "r_rssi" not in terms[RELAY_A]
 
 
 def test_a_moved_survey_receiver_reads_near_partners_around_its_place(

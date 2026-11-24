@@ -46,8 +46,8 @@ from sigsleuth.relays import (
     NAME_KM,
     NAME_PROBABILITY,
     NEAR_KM,
+    TERM_WEIGHTS,
     UNKNOWN_SCORE,
-    WEIGHTS,
     DirectSignal,
     Relayed,
     RelayEvidence,
@@ -419,7 +419,7 @@ def _outcome(named: tuple[int, str] | None, relay: int | None) -> Outcome | None
 
 @dataclass(frozen=True)
 class RelayTermScore:
-    """One of a candidate's terms (relays.WEIGHTS): its value and what it
+    """One of a candidate's terms (relays.TERM_WEIGHTS): its value and what it
     adds to the candidate's score, its weight times value."""
 
     term: RelayTerm
@@ -897,10 +897,12 @@ def explain_candidates(
     heard: Mapping[int, int],
     hidden: set[int],
 ) -> tuple[tuple[RelayCandidate, ...], dict[int, int]]:
-    """Each candidate sending a copy's relay byte as its score reads it, and
-    the key naming each (RelayCandidate.key). heard counts the receiver's
-    direct receptions of each."""
+    """Each candidate sending a copy's relay byte as its score reads it,
+    with those only a survey heard (relays.relay_terms), and the key naming
+    each (RelayCandidate.key). heard counts the receiver's direct receptions
+    of each."""
     nodes = evidence.candidates(copy)
+    nodes += sorted(node for node in scores.terms if node not in nodes)
     keys: dict[int, int] = {}
     for node in nodes:
         keys[node] = -(len(keys) + 1) if node in hidden else node
@@ -943,7 +945,7 @@ def explain_candidates(
         terms = scores.terms.get(node)
         weighted = sorted(
             (
-                RelayTermScore(term, round(value, 2), round(WEIGHTS[term] * value, 2))
+                RelayTermScore(term, round(value, 2), round(TERM_WEIGHTS[term] * value, 2))
                 for term, value in (terms or {}).items()
             ),
             key=lambda item: (-abs(item.score), item.term),

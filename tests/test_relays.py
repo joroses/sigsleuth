@@ -5,13 +5,17 @@ from sigsleuth.db import NodeSummary
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.radio import PRESET_RADIOS, Radio, modem_preset_radio
 from sigsleuth.relays import (
+    ACTIVE_MS,
     NAME_PROBABILITY,
     NEAR_KM,
     NEAR_MS,
+    SURVEY_HEARD_SCORE,
+    TERM_WEIGHTS,
     NearPartner,
     NodeRadio,
     Relayed,
     RelayEvidence,
+    RelayTerm,
     cannot_relay,
     score_relays,
 )
@@ -272,3 +276,116 @@ def test_the_receiver_is_not_its_own_near_partner() -> None:
         near={router: {RECEIVER: near(0, [2])}},
     )
     assert "nlink" not in score_relays(found, copy(), {}).terms[router]
+
+
+def nearby_score(terms: Mapping[RelayTerm, float]) -> float:
+    """What near links and a survey's direct receptions add together."""
+    nearby: tuple[RelayTerm, ...] = ("nlink", "nlink_log", "nlink_km", "sheard")
+    return sum(TERM_WEIGHTS[term] * terms.get(term, 0.0) for term in nearby)
+
+
+def test_a_survey_heard_candidate_is_named_by_the_survey() -> None:
+    heard, other = 0x0101_003D, 0x0202_003D
+    found = evidence({heard: node(heard, None), other: node(other, None)})
+    assert score_relays(found, copy(), {}).named() is None
+    scores = score_relays(found, copy(), {}, survey_heard={heard})
+    assert scores.named() == (heard, "survey_link")
+
+
+def test_strong_mqtt_evidence_beats_a_survey_heard_rival() -> None:
+    router, client = 0x0101_003D, 0x0202_003D
+    found = replace(
+        evidence({router: node(router, 3, role="ROUTER"), client: node(client, 25)}),
+        radios={
+            router: NodeRadio(LONG_FAST, None, None, AT),
+            client: NodeRadio(LONG_FAST, None, None, AT),
+        },
+        near={router: {0x4000_0004: near(2, [2, 30, 60])}},
+    )
+    scores = score_relays(found, copy(), {}, survey_heard={client})
+    assert "sheard" in scores.terms[client]
+    assert scores.named() == (router, "near_link")
+
+
+def test_a_survey_tops_near_links_up_but_never_adds_to_them() -> None:
+    strong, weak, alone = 0x0101_003D, 0x0202_003D, 0x0303_003D
+    found = replace(
+        evidence(
+            {strong: node(strong, None), weak: node(weak, None), alone: node(alone, None)},
+            channel=LONG_FAST,
+        ),
+        near={
+            strong: {0x4000_0004: near(1, [2, 30, 60])},
+            weak: {0x4000_0005: near(NEAR_KM - 1, [2], observations=1)},
+        },
+    )
+    without = score_relays(found, copy(), {})
+    scores = score_relays(found, copy(), {}, survey_heard={strong, weak, alone})
+    assert scores.terms[strong] == without.terms[strong]
+    assert nearby_score(without.terms[strong]) > SURVEY_HEARD_SCORE
+    assert 0 < scores.terms[weak]["sheard"] < 1
+    assert round(nearby_score(scores.terms[weak]), 6) == SURVEY_HEARD_SCORE
+    assert scores.terms[alone]["sheard"] == 1
+
+
+def test_mqtt_evidence_picks_between_two_survey_heard_nodes() -> None:
+    gateway, tracker = 0x0101_003D, 0x0202_003D
+    partner = 0x4000_0004
+    found = replace(
+        evidence(
+            {gateway: node(gateway, 3), tracker: node(tracker, 3, estimated=True)},
+            channel=LONG_FAST,
+        ),
+        near={
+            gateway: {partner: near(3, list(range(2, 160)), observations=12)},
+            tracker: {partner: near(3, [2, 30, 60], observations=20)},
+        },
+    )
+    # The gateway uploaded the packet one hop earlier.
+    received = replace(copy(), reports=[(gateway, 4, 0x2D, 6.0)])
+    scores = score_relays(found, received, {}, survey_heard={gateway, tracker})
+    assert scores.named() == (gateway, "near_link")
+
+
+def test_a_survey_reception_stands_for_an_unknown_channel() -> None:
+    heard, other = 0x0101_003D, 0x0202_003D
+    found = evidence({heard: node(heard, 3), other: node(other, 3)})
+    scores = score_relays(found, copy(), {}, survey_heard={heard})
+    assert scores.terms[heard]["channel_same"] == 1
+    assert "channel_same" not in scores.terms[other]
+    on_another = evidence({heard: node(heard, 3)}, channel=PRESET_RADIOS["MediumFast"])
+    terms = score_relays(on_another, copy(), {}, survey_heard={heard}).terms[heard]
+    assert "channel_other" in terms
+    assert "channel_same" not in terms
+
+
+def test_a_survey_reception_within_a_day_shows_the_node_active() -> None:
+    heard = 0x0101_003D
+    found = replace(
+        evidence({heard: node(heard, 3)}),
+        radios={heard: NodeRadio(None, None, None, None)},
+        history_from=AT - 10 * ACTIVE_MS,
+    )
+    assert "inactive" in score_relays(found, copy(), {}, survey_heard={heard}).terms[heard]
+    active = score_relays(found, copy(), {}, survey_heard={heard}, survey_active={heard})
+    assert "inactive" not in active.terms[heard]
+
+
+def test_a_node_only_a_survey_heard_is_a_candidate() -> None:
+    unknown, other, router = 0x0101_003D, 0x0202_003D, 0x0303_003D
+    alone = score_relays(evidence({}), copy(), {}, survey_heard={unknown})
+    assert alone.terms[unknown] == {"survey_only": 1.0, "sheard": 1.0}
+    assert round(alone.probabilities[unknown], 3) == 0.953
+    assert alone.named() == (unknown, "survey_link")
+
+    tied = score_relays(evidence({}), copy(), {}, survey_heard={unknown, other})
+    assert tied.probabilities[unknown] == tied.probabilities[other]
+    assert tied.named() is None
+
+    found = replace(
+        evidence({router: node(router, 3, role="ROUTER")}, channel=LONG_FAST),
+        near={router: {0x4000_0004: near(2, [2, 30, 60])}},
+    )
+    rival = score_relays(found, copy(), {}, survey_heard={unknown})
+    assert "nlink_any" not in rival.terms[unknown]
+    assert rival.named() == (router, "near_link")

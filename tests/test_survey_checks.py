@@ -77,7 +77,7 @@ def node_id(item: dict[str, Any] | None) -> int | None:
 
 
 @pytest.mark.usefixtures("known_nodes")
-def test_each_measurement_shows_upload_survey_link_and_todays_rules(
+def test_each_measurement_shows_saved_and_todays_names(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     # Three candidates about as near: upload names none.
@@ -93,14 +93,16 @@ def test_each_measurement_shows_upload_survey_link_and_todays_rules(
     assert node_id(check["today"]["node"]) == LINKED_TO_GATEWAY
     assert (check["today"]["how"], check["today"]["why"]) == ("gateway_link", "named")
     assert check["changed"]
-    assert (check["link"], check["link_nodes"]) == (None, 0)
     assert (check["shown_node"], check["shown_how"]) == (None, "unknown")
 
-    # RELAY heard directly 5 km away is the survey link, which the map shows.
+    # RELAY, unknown to MQTT, heard directly 5 km away is a rival: the
+    # measurement is decided again, and now neither is sure enough.
     upload(client, direct(2, RELAY, latitude=PHONE[0] + 0.045))
     [check] = checks(client)
-    assert node_id(check["link"]) == RELAY and check["link_nodes"] == 1
-    assert (node_id(check["shown_node"]), check["shown_how"]) == (RELAY, "survey_link")
+    assert (check["upload_node"], check["upload_how"]) == (None, "unknown")
+    assert node_id(check["today"]["likeliest"]) == LINKED_TO_GATEWAY
+    assert check["today"]["why"] == "below"
+    assert not check["changed"]
     # The direct reception is listed only when asked for.
     assert [item["upload_how"] for item in checks(client, direct=True)] == ["direct", "unknown"]
 
@@ -115,8 +117,10 @@ def test_each_measurement_shows_upload_survey_link_and_todays_rules(
     assert [(r["gateway"]["node_id"], r["kind"], r["signal"]) for r in detail["reports"]] == [
         (GATEWAY, "cohearer", True)
     ]
+    surveyed = next(c for c in detail["candidates"] if c["node_id"] == RELAY)
+    assert {term["term"] for term in surveyed["terms"]} == {"survey_only", "sheard"}
     [linked] = detail["survey_link"]
-    assert (linked["node_id"], linked["tier_hours"], linked["candidate"]) == (RELAY, 1.0, True)
+    assert (linked["node_id"], linked["candidate"]) == (RELAY, True)
     assert linked["km"] == pytest.approx(5.0, abs=0.1)
     assert client.get(f"{CHECKS}/999").status_code == 404
 
@@ -136,7 +140,6 @@ def test_why_names_no_relay_byte_and_candidates_ruled_out_by_signal(
     )
     ruled_out, no_byte = checks(client)
     assert ruled_out["today"]["why"] == "ruled_out" and ruled_out["today"]["ruled_out"] == 1
-    assert ruled_out["link"] is None and ruled_out["link_nodes"] == 0
     assert no_byte["today"]["why"] == "no_relay_byte"
     assert not ruled_out["changed"] and not no_byte["changed"]
 
@@ -149,11 +152,11 @@ def test_why_names_no_relay_byte_and_candidates_ruled_out_by_signal(
         True,
         -100,
     )
-    assert linked["tier_hours"] == 1.0 and not linked["candidate"]
+    assert not linked["candidate"]
     assert client.get(f"{CHECKS}/{no_byte['measurement_id']}").json()["candidates"] == []
 
 
-def test_a_muted_node_heard_nearby_is_listed_but_never_the_link(
+def test_a_muted_node_heard_nearby_is_listed_but_never_scored_as_survey_heard(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     at = now_ms() - DAY_MS
@@ -161,9 +164,11 @@ def test_a_muted_node_heard_nearby_is_listed_but_never_the_link(
     connection.execute("UPDATE node_current SET role = 'CLIENT_MUTE' WHERE node_id = ?", (RELAY,))
     upload(client, direct(1, RELAY, heard_at_ms=at), relayed(2, heard_at_ms=at))
     [check] = checks(client)
-    assert (check["link"], check["link_nodes"]) == (None, 0)
-    [linked] = client.get(f"{CHECKS}/{check['measurement_id']}").json()["survey_link"]
+    detail = client.get(f"{CHECKS}/{check['measurement_id']}").json()
+    [linked] = detail["survey_link"]
     assert (linked["node_id"], linked["excluded"], linked["candidate"]) == (RELAY, "muted", False)
+    [candidate] = detail["candidates"]
+    assert "sheard" not in {term["term"] for term in candidate["terms"]}
 
 
 def test_survey_checks_say_when_the_map_no_longer_counts_a_measurement(

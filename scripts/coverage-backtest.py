@@ -1,13 +1,12 @@
 """Measure docs/coverage.md's rules on a copy of a live database, read-only:
 how much of the coverage the map hides, how the map names heard nodes, and
-how survey links would fare at other bounds.
+how survey receptions would fare at other bounds.
 
 Usage: uv run --locked python scripts/coverage-backtest.py [--retention-days 14] DATABASE
 
-Surveys have no truth for relays yet, so survey links are compared with
-upload's own name for the same measurement, itself a guess from MQTT
-evidence: agreement, not accuracy. Candidates and positions are today's
-node_current, not those at upload.
+Surveys have no truth for relays yet, so the node survey receptions alone
+would name (the one survey heard) is compared with upload's name from MQTT
+evidence for the same measurement, itself a guess: agreement, not accuracy.
 """
 
 import argparse
@@ -15,7 +14,7 @@ import sqlite3
 from contextlib import closing
 
 from sigsleuth import coverage
-from sigsleuth.coverage import DAY_MS, HOUR_MS
+from sigsleuth.coverage import DAY_MS
 
 SURVEY_LINK_KM = (5, 10, 30, 50, 100)
 SURVEY_LINK_DAYS = (1, 7, 30, 60, 90)
@@ -29,7 +28,7 @@ def main() -> None:
     with closing(sqlite3.connect(f"file:{arguments.database}?mode=ro", uri=True)) as connection:
         connection.row_factory = sqlite3.Row
         hidden(connection, arguments.retention_days)
-        survey_links(connection)
+        survey_heard(connection)
 
 
 def hidden(connection: sqlite3.Connection, retention_days: int) -> None:
@@ -71,9 +70,10 @@ def hidden(connection: sqlite3.Connection, retention_days: int) -> None:
         print(f"  {name}: {count:,} ({share(count, total)})")
 
 
-def survey_links(connection: sqlite3.Connection) -> None:
-    """Survey links at other bounds: how many relayed measurements they name,
-    and how often they name the node upload named from MQTT, where it did."""
+def survey_heard(connection: sqlite3.Connection) -> None:
+    """Survey receptions at other bounds: how many relayed measurements have
+    one node survey heard (coverage.survey_heard), and how often it is the
+    node upload named from MQTT, where it did."""
     rows = connection.execute(
         f"""
         SELECT {coverage.SURVEY_LINK_COLUMNS}, m.heard_node_id
@@ -82,25 +82,25 @@ def survey_links(connection: sqlite3.Connection) -> None:
         """
     ).fetchall()
     heard = coverage.heard_directly(rows)
-    muted = coverage.muted_nodes(connection, heard)
+    heard.muted = coverage.muted_nodes(connection, heard)
     relayed = [row for row in rows if row["heard_how"] != "direct"]
     print(
-        f"\nSurvey links over {len(relayed):,} relayed measurements: how many they name, and "
-        "how often they name upload's node where upload named one; the current bounds are "
-        f"{coverage.SURVEY_LINK_KM} km and {coverage.SURVEY_LINK_TIERS_MS[-1] // DAY_MS} days:"
+        f"\nSurvey receptions over {len(relayed):,} relayed measurements: how many have one "
+        "node survey heard, and how often it is upload's node where MQTT evidence named one; "
+        f"the current bounds are {coverage.SURVEY_LINK_KM} km and "
+        f"{coverage.SURVEY_LINK_MS // DAY_MS} days:"
     )
     for days in SURVEY_LINK_DAYS:
         for km in SURVEY_LINK_KM:
-            tiers = (HOUR_MS, days * DAY_MS)
             linked = both = same = 0
             for row in relayed:
-                found = coverage.survey_candidates(heard, row, muted=muted, km=km, tiers_ms=tiers)
+                found, _ = coverage.survey_heard(heard, row, km=km, within_ms=days * DAY_MS)
                 if len(found) != 1:
                     continue
                 linked += 1
-                if row["heard_how"] not in ("unknown", "nearest"):
+                if row["heard_how"] not in ("unknown", "nearest", "survey_link"):
                     both += 1
-                    same += found[0] == row["heard_node_id"]
+                    same += next(iter(found)) == row["heard_node_id"]
             print(
                 f"  {days:>2} days, {km:>3} km: named {linked:,} ({share(linked, len(relayed))}); "
                 f"same as upload's {same:,} of {both:,} ({share(same, both)})"

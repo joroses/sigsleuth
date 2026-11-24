@@ -899,7 +899,7 @@ export interface paths {
      * Survey Checks Page
      * @description The `count` newest heard survey measurements before measurement
      *     `before_id`, relayed ones only unless `direct`, each with the node
-     *     upload, its survey link and today's rules name.
+     *     saved for it and the node today's rules name.
      */
     get: operations["survey_checks_page_api_v1_diagnostics_survey_checks_get"];
     put?: never;
@@ -2641,7 +2641,7 @@ export interface components {
     };
     /**
      * RelayTermScore
-     * @description One of a candidate's terms (relays.WEIGHTS): its value and what it
+     * @description One of a candidate's terms (relays.TERM_WEIGHTS): its value and what it
      *     adds to the candidate's score, its weight times value.
      */
     RelayTermScore: {
@@ -2676,7 +2676,9 @@ export interface components {
         | "nlink"
         | "nlink_log"
         | "nlink_km"
-        | "nlink_any";
+        | "nlink_any"
+        | "sheard"
+        | "survey_only";
       value: number;
       score: number;
     };
@@ -2799,11 +2801,10 @@ export interface components {
     /**
      * SurveyCheck
      * @description One measurement and its decisions. upload_node/upload_how are as
-     *     saved; link is its survey link, link_nodes how many nodes survey
-     *     evidence leaves it now (one makes a link). shown_node/shown_how are
-     *     what the map shows (coverage.SHOWN_COLUMNS). counted is whether the map
-     *     still counts the measurement at all. changed: today names another node
-     *     than upload, a saved nearest guess reading as none.
+     *     saved; shown_node/shown_how are what the map shows of them
+     *     (coverage.SHOWN_COLUMNS). counted is whether the map still counts the
+     *     measurement at all. changed: today names another node than saved, a
+     *     saved nearest guess reading as none.
      */
     SurveyCheck: {
       measurement_id: number;
@@ -2824,11 +2825,10 @@ export interface components {
         | "gateway_link"
         | "near_link"
         | "sender_link"
+        | "survey_link"
         | "nearest"
         | "only_candidate"
         | "unknown";
-      link: components["schemas"]["RelayCheckNode"] | null;
-      link_nodes: number;
       today: components["schemas"]["SurveyToday"];
       shown_node: components["schemas"]["RelayCheckNode"] | null;
       /** @enum {string} */
@@ -2890,15 +2890,14 @@ export interface components {
     /**
      * SurveyLinkNode
      * @description A node sending the measurement's relay byte that some survey node on
-     *     the same radio settings heard directly within the longest tier: how
+     *     the same radio settings heard directly within link_rules' days: how
      *     often, its reception nearest the phone (km) and, of those within
      *     link_km, the one nearest in time (hours from the measurement, negative
-     *     before). tier_hours is the first tier that finds it, None when none
-     *     does. strongest_here_db is the survey node's own strongest direct
+     *     before). strongest_here_db is the survey node's own strongest direct
      *     signal of it within too_strong_km, which too_strong compares.
      *     excluded: the measurement's sender or survey node, or a muted node
      *     (CLIENT_MUTE), never its relay.
-     *     candidate: survey evidence leaves it.
+     *     candidate: today's score counts it as survey heard.
      */
     SurveyLinkNode: {
       key: number;
@@ -2907,7 +2906,6 @@ export interface components {
       receptions: number;
       km: number | null;
       hours: number | null;
-      tier_hours: number | null;
       too_strong: boolean;
       strongest_here_db: number | null;
       excluded: ("sender" | "surveyor" | "muted") | null;
@@ -2916,7 +2914,7 @@ export interface components {
     /** SurveyLinkRules */
     SurveyLinkRules: {
       km: number;
-      tiers_hours: number[];
+      days: number;
       too_strong_db: number;
       too_strong_km: number;
     };
@@ -2935,6 +2933,7 @@ export interface components {
         | "gateway_link"
         | "near_link"
         | "sender_link"
+        | "survey_link"
         | "nearest"
         | "only_candidate"
         | "unknown";
@@ -3182,8 +3181,8 @@ export interface components {
      *     from an earlier upload. skipped counts unusable ones by reason. last_seq
      *     is the highest seq in the batch, saved or not, so the phone continues
      *     after it; None for an empty batch. heard has each usable measurement's
-     *     heard node and possible relays when unknown, read after the survey links
-     *     are refreshed, and nodes the names of those named.
+     *     heard node and possible relays when unknown, read after rescore_recent,
+     *     and nodes the names of those named.
      */
     UploadResult: {
       saved: number;

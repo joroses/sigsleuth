@@ -981,7 +981,7 @@ def create_app(
     ) -> SurveyCheckList:
         """The `count` newest heard survey measurements before measurement
         `before_id`, relayed ones only unless `direct`, each with the node
-        upload, its survey link and today's rules name."""
+        saved for it and the node today's rules name."""
         return survey_checks(
             connection,
             before_id=before_id,

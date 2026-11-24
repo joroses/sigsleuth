@@ -145,6 +145,61 @@ def test_facts_version_5_keeps_its_measurements_and_takes_near_links(tmp_path: P
     connection.close()
 
 
+def test_facts_version_6_saves_survey_links_where_upload_named_none(tmp_path: Path) -> None:
+    path = tmp_path / "history.db"
+    schema = Path(db.__file__).with_name("schema.sql").read_text(encoding="utf-8")
+    version_6 = schema.replace("'survey_link', ", "")
+    assert version_6 != schema
+    derived = Path(db.__file__).with_name("derived.sql").read_text(encoding="utf-8")
+    connection = sqlite3.connect(path)
+    connection.executescript(
+        version_6
+        + derived
+        + f"""
+        CREATE TABLE coverage_relay (
+            measurement_id INTEGER PRIMARY KEY
+                REFERENCES coverage_measurement(id) ON DELETE CASCADE,
+            node_id INTEGER NOT NULL
+        ) STRICT;
+        INSERT INTO derived_state VALUES ({DERIVED_VERSION}, 1, '');
+        PRAGMA user_version = 6;
+        INSERT INTO coverage_session (uuid, receiver_node_id, first_uploaded_at, last_uploaded_at)
+        VALUES ('session', 1, 0, 0);
+        INSERT INTO coverage_measurement (session_row_id, seq, heard_at, latitude, longitude,
+            sender_node_id, cell_x, cell_y, heard_node_id, heard_how, candidates)
+        VALUES (1, 1, 0, 41.9, 1.6, 7, 0, 0, NULL, 'unknown', 2),
+               (1, 2, 0, 41.9, 1.6, 7, 0, 0, 8, 'nearest', 2),
+               (1, 3, 0, 41.9, 1.6, 7, 0, 0, 9, 'near_link', 2),
+               (1, 4, 0, 41.9, 1.6, 7, 0, 0, NULL, 'unknown', 0);
+        INSERT INTO coverage_relay VALUES (1, 5), (2, 5), (3, 5);
+        """
+    )
+    connection.close()
+    new_path = tmp_path / "new.db"
+    migrate_database(new_path)
+
+    assert migrate_database(path) == FACTS_VERSION
+    connection = sqlite3.connect(path)
+    rows = connection.execute(
+        "SELECT seq, heard_node_id, heard_how FROM coverage_measurement ORDER BY seq"
+    )
+    assert [tuple(row) for row in rows] == [
+        (1, 5, "survey_link"),
+        (2, 5, "survey_link"),
+        (3, 9, "near_link"),
+        (4, None, "unknown"),
+    ]
+    assert not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE name = 'coverage_relay'"
+    ).fetchone()
+    new = sqlite3.connect(new_path)
+    for pragma in ("table_info", "index_list"):
+        query = f"PRAGMA {pragma}(coverage_measurement)"
+        assert connection.execute(query).fetchall() == new.execute(query).fetchall()
+    new.close()
+    connection.close()
+
+
 def test_connection_can_follow_a_request_between_worker_threads(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     migrate_database(path)

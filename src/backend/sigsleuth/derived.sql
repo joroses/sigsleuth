@@ -73,16 +73,6 @@ CREATE TABLE node_channel (
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX node_channel_packet ON node_channel (packet_row_id);
 
--- The node a relayed survey measurement most likely heard, from survey nodes'
--- direct receptions (coverage.refresh_survey_links); it wins over upload's
--- name. Refreshed around each upload's measurements and wholly by rederive.
-CREATE TABLE coverage_relay (
-    measurement_id INTEGER PRIMARY KEY REFERENCES coverage_measurement(id) ON DELETE CASCADE,
-    node_id INTEGER NOT NULL CHECK (node_id BETWEEN 1 AND 4294967295)
-) STRICT;
-
-CREATE INDEX coverage_relay_node ON coverage_relay (node_id);
-
 -- Nodes that turned OK to MQTT off, which no page names (opt_out.py).
 -- Refreshed for a sender when one of its packets or survey measurements
 -- tells its bit, after survey retention, and wholly by rederive; a node

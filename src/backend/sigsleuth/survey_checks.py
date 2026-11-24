@@ -1,13 +1,13 @@
 """Survey checks, beside relay checks in Diagnostics: uploaded survey
-measurements and the node each one heard, decided three ways.
+measurements and the node each one heard, decided two ways.
 
-1. upload: heard_node at upload, saved once from what MQTT knew then;
-2. survey link: coverage_relay, from other surveys' direct receptions;
-3. today: heard_node's rules re-run now, with links around the
+1. saved: heard_node at upload, from what MQTT knew then, or again when a
+   later upload's direct receptions changed it (coverage.rescore_recent);
+2. today: heard_node's rules re-run now, with links around the
    measurement's hour.
 
-The map shows the survey link, else upload's. Surveys carry no route, so
-nothing here is right or wrong: the page compares the decisions.
+The map shows the saved one. Surveys carry no route, so nothing here is
+right or wrong: the page compares the decisions.
 
 Opted-out nodes read as "an opted-out node", as on relay checks.
 """
@@ -22,23 +22,20 @@ from typing import Any, Literal
 from sigsleuth.coverage import (
     SHOWN_COLUMNS,
     SURVEY_LINK_KM,
-    SURVEY_LINK_TIERS_MS,
+    SURVEY_LINK_MS,
     TOO_STRONG_DB,
     TOO_STRONG_KM,
     HeardHow,
     MeasurementScore,
     SavedHow,
     alive_since,
-    heard_tier,
     is_direct,
     link_evidence,
     mqtt_reports,
-    muted_nodes,
     relay_evidence,
     score_measurement,
     shown_packet,
     signal_db,
-    survey_candidates,
     survey_receptions,
     too_strong,
 )
@@ -112,11 +109,10 @@ class SurveyToday:
 @dataclass(frozen=True)
 class SurveyCheck:
     """One measurement and its decisions. upload_node/upload_how are as
-    saved; link is its survey link, link_nodes how many nodes survey
-    evidence leaves it now (one makes a link). shown_node/shown_how are
-    what the map shows (coverage.SHOWN_COLUMNS). counted is whether the map
-    still counts the measurement at all. changed: today names another node
-    than upload, a saved nearest guess reading as none."""
+    saved; shown_node/shown_how are what the map shows of them
+    (coverage.SHOWN_COLUMNS). counted is whether the map still counts the
+    measurement at all. changed: today names another node than saved, a
+    saved nearest guess reading as none."""
 
     measurement_id: int
     heard_at: datetime
@@ -129,8 +125,6 @@ class SurveyCheck:
     rx_rssi: int | None
     upload_node: RelayCheckNode | None
     upload_how: SavedHow
-    link: RelayCheckNode | None
-    link_nodes: int
     today: SurveyToday
     shown_node: RelayCheckNode | None
     shown_how: HeardHow
@@ -155,10 +149,9 @@ _ROWS = f"""
            m.rx_snr, m.rx_rssi, m.hop_start, m.hop_limit, m.relay_byte,
            m.heard_node_id, m.heard_how,
            s.receiver_node_id, s.receiver_name, s.spreading_factor, s.bandwidth_khz,
-           s.frequency_mhz, l.node_id AS linked, {SHOWN_COLUMNS}
+           s.frequency_mhz, {SHOWN_COLUMNS}
     FROM coverage_measurement AS m {{index}}
     JOIN coverage_session AS s ON s.id = m.session_row_id
-    LEFT JOIN coverage_relay AS l ON l.measurement_id = m.id
 """
 
 
@@ -222,7 +215,6 @@ def _checks(
     per hour heard, with links around it, so a row scores as on its own."""
     hidden = opted_out(connection)
     receptions = survey_receptions(connection, rows)
-    muted = muted_nodes(connection, receptions)
     relayed = [row for row in rows if row["relay_byte"] and not is_direct(row)]
     candidates = {
         node
@@ -250,7 +242,6 @@ def _checks(
                 row["sender_node_id"],
                 row["receiver_node_id"],
                 row["heard_node_id"],
-                row["linked"],
                 todays[int(row["id"])][0],
                 todays[int(row["id"])][3],
             )
@@ -272,7 +263,6 @@ def _checks(
         found = scored.get(int(row["id"]))
         today = todays[int(row["id"])]
         saved = None if row["heard_how"] == "nearest" else row["heard_node_id"]
-        linked = row["linked"]
         sender = node(int(row["sender_node_id"]))
         surveyor = node(int(row["receiver_node_id"]), row["receiver_name"])
         assert sender is not None and surveyor is not None
@@ -290,10 +280,6 @@ def _checks(
                     rx_rssi=row["rx_rssi"],
                     upload_node=node(row["heard_node_id"]),
                     upload_how=row["heard_how"],
-                    link=node(linked),
-                    link_nodes=0
-                    if not row["relay_byte"] or row["heard_how"] == "direct"
-                    else len(survey_candidates(receptions, row, muted=muted)),
                     today=SurveyToday(
                         node=node(today[0]),
                         how=today[1],
@@ -349,15 +335,14 @@ def _today(
 @dataclass(frozen=True)
 class SurveyLinkNode:
     """A node sending the measurement's relay byte that some survey node on
-    the same radio settings heard directly within the longest tier: how
+    the same radio settings heard directly within link_rules' days: how
     often, its reception nearest the phone (km) and, of those within
     link_km, the one nearest in time (hours from the measurement, negative
-    before). tier_hours is the first tier that finds it, None when none
-    does. strongest_here_db is the survey node's own strongest direct
+    before). strongest_here_db is the survey node's own strongest direct
     signal of it within too_strong_km, which too_strong compares.
     excluded: the measurement's sender or survey node, or a muted node
     (CLIENT_MUTE), never its relay.
-    candidate: survey evidence leaves it."""
+    candidate: today's score counts it as survey heard."""
 
     key: int
     node_id: int | None
@@ -365,7 +350,6 @@ class SurveyLinkNode:
     receptions: int
     km: float | None
     hours: float | None
-    tier_hours: float | None
     too_strong: bool
     strongest_here_db: float | None
     excluded: Literal["sender", "surveyor", "muted"] | None
@@ -375,7 +359,7 @@ class SurveyLinkNode:
 @dataclass(frozen=True)
 class SurveyLinkRules:
     km: float
-    tiers_hours: tuple[float, ...]
+    days: float
     too_strong_db: float
     too_strong_km: float
 
@@ -482,7 +466,9 @@ def survey_check(
         signals=explained["signals"],
         links=explained["links"],
         signal_db=signal_db(row["rx_rssi"], row["rx_snr"]),
-        survey_link=_survey_link(connection, row, hidden),
+        survey_link=_survey_link(
+            connection, row, hidden, frozenset() if found is None else found.score.survey_heard
+        ),
         activity_from=None
         if found is None or found.evidence.history_from is None
         else from_epoch_ms(found.evidence.history_from),
@@ -497,7 +483,7 @@ def survey_check(
         ),
         link_rules=SurveyLinkRules(
             km=SURVEY_LINK_KM,
-            tiers_hours=tuple(tier / HOUR_MS for tier in SURVEY_LINK_TIERS_MS),
+            days=SURVEY_LINK_MS / DAY_MS,
             too_strong_db=TOO_STRONG_DB,
             too_strong_km=TOO_STRONG_KM,
         ),
@@ -567,17 +553,16 @@ def _reports(
 
 
 def _survey_link(
-    connection: sqlite3.Connection, row: Row, hidden: set[int]
+    connection: sqlite3.Connection, row: Row, hidden: set[int], scored: frozenset[int]
 ) -> tuple[SurveyLinkNode, ...]:
-    """Each node survey links read for the row, nearest first."""
+    """Each node survey_heard reads for the row, nearest first; scored holds
+    those the score counts."""
     if not row["relay_byte"] or is_direct(row):
         return ()
     heard = survey_receptions(connection, [row])
     nodes = heard.nodes(row)
-    muted = muted_nodes(connection, heard)
-    found = set(survey_candidates(heard, row, muted=muted))
     names = nodes_by_id(connection, set(nodes))
-    at, reach = int(row["heard_at"]), SURVEY_LINK_TIERS_MS[-1]
+    at, reach = int(row["heard_at"]), SURVEY_LINK_MS
     position = (row["latitude"], row["longitude"])
     surveyor = int(row["receiver_node_id"])
     listed = []
@@ -590,7 +575,6 @@ def _survey_link(
         here = [
             r[4] for km, r in kms if r[3] == surveyor and r[4] is not None and km <= TOO_STRONG_KM
         ]
-        tier = heard_tier(receptions, row)
         summary = names.get(node)
         shown = node not in hidden
         listed.append(
@@ -603,7 +587,6 @@ def _survey_link(
                 receptions=len(near),
                 km=round(min(km for km, _ in kms), 1),
                 hours=None if evidence is None else round(evidence.offset_ms / HOUR_MS, 2),
-                tier_hours=None if tier is None else SURVEY_LINK_TIERS_MS[tier] / HOUR_MS,
                 too_strong=too_strong(receptions, row),
                 strongest_here_db=max(here, default=None),
                 excluded="sender"
@@ -611,9 +594,9 @@ def _survey_link(
                 else "surveyor"
                 if node == surveyor
                 else "muted"
-                if node in muted
+                if node in heard.muted
                 else None,
-                candidate=node in found,
+                candidate=node in scored,
             )
         )
     return tuple(sorted(listed, key=lambda item: (item.km is None, item.km, item.key)))

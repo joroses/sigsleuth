@@ -41,7 +41,6 @@ from sigsleuth.relays import (
     Relayed,
     RelayEvidence,
     RelayScores,
-    ScoredHow,
     channel_radio,
     direct_receptions,
     direct_signals,
@@ -623,7 +622,10 @@ class ReceptionNaming:
     often its gateway heard each candidate directly within
     COHEARER_WINDOW_MS of the packet (those never heard left out), and the
     candidates' scores. The sole heard candidate is named unless its RSSI
-    skips the shortcut; then the score decides."""
+    skips the shortcut; then the score decides. Surveys' direct receptions
+    are only a score term (relays.SURVEY_HEARD_SCORE): a gateway listening
+    at one spot all week is 99.8% right on route truth, phones pooled over
+    30 km and 60 days are not (docs/relay-evidence.md)."""
 
     copy: Relayed
     heard: Mapping[int, int]
@@ -637,8 +639,13 @@ class ReceptionNaming:
         return self.scored_relay
 
     @property
-    def scored_relay(self) -> tuple[int, ScoredHow] | None:
-        return self.scores.named()
+    def scored_relay(self) -> tuple[int, RelayNodeHow] | None:
+        named = self.scores.named()
+        if named is None:
+            return None
+        node, how = named
+        # Packet pages read no survey receptions.
+        return None if how == "survey_link" else (node, how)
 
 
 @dataclass(frozen=True)

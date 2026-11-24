@@ -307,12 +307,11 @@ export type CoverageLineCollection = FeatureCollection<
 >;
 
 /**
- * Whether a heard node was named from a direct reception: the survey node's
- * own, or one a survey heard nearby that no other node with the relay byte
- * matches (survey_link). Every other name is a guess.
+ * Whether the survey node heard a heard node directly. Every other name is a
+ * guess.
  */
 export function isCertain(how: CoverageHeardNode["how"]): boolean {
-  return how === "direct" || how === "survey_link";
+  return how === "direct";
 }
 
 /**
@@ -440,7 +439,7 @@ export function heardHowText(node: CoverageHeardNode): string {
     case "direct":
       return "Heard directly";
     case "survey_link":
-      return `Heard directly nearby: the only node ending in ${byte} a survey heard`;
+      return `Guess: a node ending in ${byte} a survey heard nearby`;
     case "unknown":
       return `Unknown relay ending in ${byte}`;
     default:

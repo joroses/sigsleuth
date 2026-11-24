@@ -10,8 +10,7 @@ They are computed only from saved rows, never from an MQTT delivery:
   functions). Capture keeps saving facts meanwhile without deriving them
   (ingest.py), and rederive goes on until it has caught up. Each node's
   reported state (reported.py) is copied in first, and opted-out nodes
-  (node_opt_out) refilled. Survey measurements keep what upload decided;
-  their survey links (coverage_relay) are refilled from them first.
+  (node_opt_out) refilled. Survey measurements keep what upload decided.
 
 Totals are written twice, by capture's upserts and rebuild's GROUP BYs;
 test_sample_cross_checks holds them equal. Nodes are placed where they
@@ -211,10 +210,6 @@ def _rederive(
         # Before the rest, so pages never name an opted-out node while it runs.
         # Gateways leave node_opt_out again as their reports are derived.
         refresh_opt_outs(connection, None)
-    # coverage.py reads this module's helpers.
-    from sigsleuth.coverage import refresh_survey_links
-
-    refresh_survey_links(connection)
     # Shared-radio attribution must be available before counting links.
     if not _save_all_devices(connection, stopping, batch_size):
         return False

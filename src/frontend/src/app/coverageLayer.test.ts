@@ -6,7 +6,6 @@ import {
   cellBounds,
   cellsInView,
   coverageNodesUrl,
-  heardHowText,
   nextCoverageArea,
   viewSpreadingFactor,
 } from "./coverageLayer";
@@ -138,7 +137,7 @@ describe("coverage cells", () => {
     );
     const lines = buildCoverageLines(
       [1.5, 41.9],
-      [heard(1, "survey_link"), heard(2, "reported"), heard(9, "direct")],
+      [heard(1, "direct"), heard(2, "survey_link"), heard(9, "direct")],
       drawn,
     );
     expect(
@@ -155,9 +154,6 @@ describe("coverage cells", () => {
 
 describe("relay byte tooltips", () => {
   it("give a node ending in 00 the ff byte it sends", () => {
-    expect(heardHowText(heard(0x0b0b0b00, "survey_link"))).toBe(
-      "Heard directly nearby: the only node ending in ff a survey heard",
-    );
     expect(
       relayNodeTitle({
         node_id: 0x0b0b0b00,

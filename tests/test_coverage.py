@@ -15,7 +15,7 @@ from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.coverage import fine_cell, network_sessions
 from sigsleuth.db import migrate_database, now_ms, open_current_database, recreate_derived
-from sigsleuth.derive import rederive
+from sigsleuth.derive import HOUR_MS, rederive
 from sigsleuth.relays import NEAR_MS, near_links
 from sigsleuth.retention import apply_retention
 
@@ -882,6 +882,26 @@ def test_after_one_hop_traceroute_hops_with_the_sender_name_the_relay(
     ]
 
 
+def test_an_upload_sent_days_late_reads_the_links_of_its_own_day(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    for relay, latitude in ((NEAR, 0.098), (LINKED_TO_SENDER, 0.1), (LINKED_TO_GATEWAY, 0.102)):
+        node(connection, relay, PHONE[0] + latitude)
+    on_channel(connection, NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY)
+    then = now_ms() - 3 * DAY_MS
+    # LINKED_TO_SENDER heard the sender three days ago, and not since.
+    link_hour(connection, LINKED_TO_SENDER, SENDER, then, observations=10)
+    one_hop = {"sender_node_id": SENDER, "latitude": PHONE[0], "hop_start": 2, "hop_limit": 1}
+
+    reply = upload(
+        client,
+        measurement(1, packet_id=77, heard_at_ms=then, **one_hop),
+        measurement(2, packet_id=78, heard_at_ms=now_ms() - 60_000, **one_hop),
+    )
+
+    assert heard_in(reply) == [(1, LINKED_TO_SENDER, "sender_link"), (2, None, "unknown")]
+
+
 @pytest.mark.usefixtures("known_nodes")
 def test_a_packet_page_never_names_a_relay_that_opted_out(
     client: TestClient, connection: sqlite3.Connection
@@ -1560,6 +1580,31 @@ def test_a_cells_unknown_relay_lists_the_nodes_that_could_have_relayed_it(
     ]
 
 
+def test_a_cells_unknown_relay_lists_nodes_surveys_heard_there_first(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    for relay, latitude in ((NEAR, 0.098), (LINKED_TO_SENDER, 0.1), (LINKED_TO_GATEWAY, 0.102)):
+        node(connection, relay, PHONE[0] + latitude)
+    on_channel(connection, NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY)
+    # Another survey node heard two of them beside the phone, which leaves
+    # the relayed measurement undecided between them.
+    other_node = {**SESSION, "id": "other-node", "receiver_node_id": 0x0E0E0E6F}
+    at = now_ms() - DAY_MS
+    upload(
+        client,
+        direct(1, LINKED_TO_SENDER, heard_at_ms=at, latitude=PHONE[0]),
+        direct(2, LINKED_TO_GATEWAY, heard_at_ms=at, latitude=PHONE[0]),
+        session=other_node,
+    )
+    assert heard(client, connection)[:2] == (None, "unknown")
+
+    relays = fine_cell_detail(client, *PHONE)["unknown_relays"]
+
+    [candidates] = [[c["node_id"] for c in relay["candidates"]] for relay in relays]
+    assert set(candidates[:2]) == {LINKED_TO_SENDER, LINKED_TO_GATEWAY}
+    assert candidates[2] == NEAR
+
+
 def test_relay_hints_fill_three_without_evidence_and_skip_hidden_or_impossible_nodes(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
@@ -1704,11 +1749,11 @@ def heard_in(reply: dict[str, Any]) -> list[tuple[int, int | None, str]]:
 
 
 def links(connection: sqlite3.Connection) -> list[tuple[int, int]]:
-    """(seq, node) of each survey link."""
+    """(seq, node) of each measurement named by survey receptions."""
     rows = connection.execute(
         """
-        SELECT m.seq, l.node_id FROM coverage_relay AS l
-        JOIN coverage_measurement AS m ON m.id = l.measurement_id ORDER BY m.seq
+        SELECT seq, heard_node_id FROM coverage_measurement
+        WHERE heard_how = 'survey_link' ORDER BY seq
         """
     ).fetchall()
     return [(int(row[0]), int(row[1])) for row in rows]
@@ -1722,23 +1767,21 @@ def test_a_relay_the_survey_node_heard_directly_names_its_relayed_packets(
     relayed = measurement(1, relay_byte=0x1A, heard_at_ms=at)
     assert heard_in(upload(client, relayed)) == [(1, None, "unknown")]
     assert links(connection) == []
-    # RELAY heard directly 5 km away ten minutes later names it.
+    # RELAY, unknown to MQTT, heard directly 5 km away ten minutes later names it.
     upload(client, direct(2, RELAY, heard_at_ms=at + 600_000, latitude=41.965))
     assert links(connection) == [(1, RELAY)]
     detail = fine_cell_detail(client, 41.91974, 1.569995)
     assert [(n["node_id"], n["how"]) for n in detail["heard_nodes"]] == [(RELAY, "survey_link")]
-    # The first batch sent again reads the link, with the name SigSleuth knows.
+    # The first batch sent again reads it, with the name SigSleuth knows.
     node(connection, RELAY, PHONE[0])
     connection.execute("UPDATE node_current SET short_name = 'RL' WHERE node_id = ?", (RELAY,))
     reply = upload(client, relayed)
     assert heard_in(reply) == [(1, RELAY, "survey_link")]
     assert reply["nodes"] == [{"node_id": RELAY, "long_name": None, "short_name": "RL"}]
-    # Another node sending 1A, heard only three hours away, is a later tier.
-    upload(client, direct(3, OTHER_RELAY, heard_at_ms=at - 3 * 3_600_000))
+    # Another node sending 1A, unknown to MQTT, heard 50 days earlier beside
+    # the phone: RELAY, now known there, still outscores it.
+    upload(client, direct(3, OTHER_RELAY, heard_at_ms=at - 50 * DAY_MS))
     assert links(connection) == [(1, RELAY)]
-    # A third heard within the hour leaves it ambiguous.
-    upload(client, direct(4, THIRD_RELAY, heard_at_ms=at - 1_200_000))
-    assert links(connection) == []
 
 
 def test_the_reply_says_where_and_when_a_survey_links_relay_was_heard(client: TestClient) -> None:
@@ -1779,7 +1822,11 @@ def test_the_reply_says_where_and_when_a_survey_links_relay_was_heard(client: Te
     }
     # Diagnostics' survey checks read the same receptions.
     checks = "/api/v1/diagnostics/survey-checks"
-    linked = [c["measurement_id"] for c in client.get(checks).json()["checks"] if c["link"]]
+    linked = [
+        c["measurement_id"]
+        for c in client.get(checks).json()["checks"]
+        if c["upload_how"] == "survey_link"
+    ]
     hours = [
         (node["node_id"], node["hours"])
         for id_ in linked
@@ -1789,22 +1836,21 @@ def test_the_reply_says_where_and_when_a_survey_links_relay_was_heard(client: Te
 
 
 @pytest.mark.usefixtures("known_nodes")
-def test_a_survey_link_wins_over_upload_names_until_it_is_ambiguous(
+def test_mqtt_evidence_outweighs_a_node_only_a_survey_heard(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
-    def heard_here() -> list[tuple[int, str]]:
-        detail = fine_cell_detail(client, PHONE[0], measurement(1)["longitude"])
-        return [(n["node_id"], n["how"]) for n in detail["heard_nodes"]]
-
-    # RELAY was heard directly 5 km away before the relayed packet came in,
-    # which upload names from MQTT evidence.
+    # RELAY, unknown to MQTT, was heard directly 5 km away before the
+    # relayed packet came in: a fair rival for a node linked with the sender.
     upload(client, direct(100, RELAY, latitude=PHONE[0] + 0.045))
-    heard(client, connection, hop_start=2, hop_limit=1)
-    assert heard_here() == [(RELAY, "survey_link")]
-    # A second node sending 1A heard directly within the hour leaves the
-    # link ambiguous, and upload's name back.
-    upload(client, direct(101, OTHER_RELAY, latitude=PHONE[0] + 0.045))
-    assert heard_here() == [(LINKED_TO_SENDER, "sender_link")]
+    assert heard(client, connection, hop_start=2, hop_limit=1)[:2] == (None, "unknown")
+    # A router linked with the sender wins.
+    connection.execute(
+        "UPDATE node_current SET role = 'ROUTER' WHERE node_id = ?", (LINKED_TO_SENDER,)
+    )
+    assert heard(client, connection, hop_start=2, hop_limit=1)[:2] == (
+        LINKED_TO_SENDER,
+        "sender_link",
+    )
 
 
 def test_survey_links_need_the_same_settings_and_area_from_any_survey_node(
@@ -1850,15 +1896,10 @@ def test_survey_links_need_the_same_settings_and_area_from_any_survey_node(
         relayed(10, by_other_slot),
     )
     upload(client, relayed(3, other_receiver, latitude=41.6), session=other_node)
-    expected = [(3, by_other_node), (6, far), (9, by_unrounded)]
-    assert links(connection) == expected
-    # Rederive reads every session at once, with the same result.
-    recreate_derived(connection)
-    rederive(connection, lambda: False)
-    assert links(connection) == expected
+    assert links(connection) == [(3, by_other_node), (6, far), (9, by_unrounded)]
 
 
-def test_survey_links_do_not_depend_on_upload_order_across_networks(
+def test_later_direct_receptions_rescore_across_networks(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     # A session without a frequency is on the network of both slots, which
@@ -1871,43 +1912,98 @@ def test_survey_links_do_not_depend_on_upload_order_across_networks(
     upload(client, measurement(1, heard_at_ms=at), session=any_slot)
     upload(client, direct(1, OTHER_RELAY, heard_at_ms=at), session=other_slot)
     assert links(connection) == [(1, OTHER_RELAY)]
-    # RELAY heard on SESSION's slot leaves it ambiguous, as rederive finds.
+    # RELAY heard on SESSION's slot leaves it to chance.
     upload(client, direct(1, RELAY, heard_at_ms=at))
     assert links(connection) == []
-    recreate_derived(connection)
-    rederive(connection, lambda: False)
-    assert links(connection) == []
 
 
-def test_a_resent_batch_refreshes_the_links_a_failed_upload_missed(
+def test_only_recent_or_unnamed_measurements_are_rescored(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    now = now_ms()
+    upload(
+        client,
+        measurement(1, relay_byte=0x1A, heard_at_ms=now - 2 * DAY_MS),
+        measurement(2, relay_byte=0x1A, heard_at_ms=now - 10 * DAY_MS),
+        measurement(3, relay_byte=0x1A, heard_at_ms=now - 10 * DAY_MS),
+        measurement(4, relay_byte=0x1A, heard_at_ms=now - 13.5 * DAY_MS),
+    )
+    connection.execute(
+        "UPDATE coverage_measurement SET heard_node_id = ?, heard_how = 'near_link' WHERE seq = 3",
+        (THIRD_RELAY,),
+    )
+    # MQTT history reaches back 14 days.
+    start = now - 14 * DAY_MS
+    connection.execute(
+        "INSERT INTO node_activity_hour VALUES (?, ?, 1, 1, 1, ?)",
+        (start - start % HOUR_MS, THIRD_RELAY, start),
+    )
+    upload(client, direct(5, RELAY, heard_at_ms=now - 5 * DAY_MS))
+    # Older than a week, a name upload gave stays: the links that named it
+    # may be gone.
+    assert links(connection) == [(1, RELAY), (2, RELAY)]
+    (how,) = connection.execute("SELECT heard_how FROM coverage_measurement WHERE seq = 3")
+    assert tuple(how) == ("near_link",)
+
+
+@pytest.mark.parametrize(("retention_days", "named"), [(0, [1, 2, 3]), (10, [3])])
+def test_rescoring_reads_only_what_retention_keeps(
+    path: Path, connection: sqlite3.Connection, retention_days: int, named: list[int]
+) -> None:
+    now = now_ms()
+    app = create_app(Settings(path, upload_password="survey", retention_days=retention_days))
+    with TestClient(app, headers={"Authorization": "Basic cGhvbmU6c3VydmV5"}) as client:
+        upload(
+            client,
+            measurement(1, relay_byte=0x1A, heard_at_ms=now - 20 * DAY_MS),
+            measurement(2, relay_byte=0x1A, heard_at_ms=now - 5 * DAY_MS),
+            measurement(3, relay_byte=0x1A, heard_at_ms=now - 2 * DAY_MS),
+        )
+        connection.execute(
+            "UPDATE coverage_measurement SET heard_node_id = ?, heard_how = 'near_link'"
+            " WHERE seq = 2",
+            (THIRD_RELAY,),
+        )
+        start = now - 30 * DAY_MS
+        connection.execute(
+            "INSERT INTO node_activity_hour VALUES (?, ?, 1, 1, 1, ?)",
+            (start - start % HOUR_MS, THIRD_RELAY, start),
+        )
+        upload(client, direct(4, RELAY, heard_at_ms=now - 10 * DAY_MS))
+    # Kept for ever, every row's links are; kept 10 days, only the last 3
+    # days' rows have their week of links, and older unnamed ones are past
+    # the 9 days MQTT history keeps whole.
+    assert links(connection) == [(seq, RELAY) for seq in named]
+
+
+def test_a_resent_batch_rescores_what_a_failed_upload_missed(
     client: TestClient, connection: sqlite3.Connection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     at = now_ms() - DAY_MS
-    batch = (measurement(1, relay_byte=0x1A, heard_at_ms=at), direct(2, RELAY, heard_at_ms=at))
+    upload(client, measurement(1, relay_byte=0x1A, heard_at_ms=at))
+    batch = direct(2, RELAY, heard_at_ms=at)
 
     def busy(*_: Any, **__: Any) -> None:
         raise sqlite3.OperationalError("database is locked")
 
     with monkeypatch.context() as patch:
-        patch.setattr(coverage, "refresh_survey_links", busy)
+        patch.setattr(coverage, "rescore_recent", busy)
         failed = client.post(
-            "/api/v1/coverage/uploads", json={"session": SESSION, "measurements": list(batch)}
+            "/api/v1/coverage/uploads", json={"session": SESSION, "measurements": [batch]}
         )
     assert failed.status_code == 503
     assert links(connection) == []
 
-    assert upload(client, *batch)["already_saved"] == 2
+    assert upload(client, batch)["already_saved"] == 1
     assert links(connection) == [(1, RELAY)]
 
 
-def test_rederive_refills_survey_links(client: TestClient, connection: sqlite3.Connection) -> None:
+def test_rederive_keeps_survey_links(client: TestClient, connection: sqlite3.Connection) -> None:
     at = now_ms() - DAY_MS
     upload(
         client, measurement(1, relay_byte=0x1A, heard_at_ms=at), direct(2, RELAY, heard_at_ms=at)
     )
     recreate_derived(connection)
-    assert links(connection) == []
-
     assert rederive(connection, lambda: False)
 
     assert links(connection) == [(1, RELAY)]
@@ -1945,19 +2041,6 @@ def test_a_muted_node_is_never_the_survey_link(
     # Another node ending in 1A, heard 5 km away, is the only one left.
     upload(client, direct(3, OTHER_RELAY, heard_at_ms=at, latitude=41.965))
     assert links(connection) == [(2, OTHER_RELAY)]
-
-
-def test_when_the_hours_candidates_are_too_strong_the_older_tier_decides(
-    client: TestClient, connection: sqlite3.Connection
-) -> None:
-    at = now_ms() - DAY_MS
-    upload(
-        client,
-        direct(1, RELAY, heard_at_ms=at, **WEAK),
-        direct(2, OTHER_RELAY, heard_at_ms=at - 3 * 3_600_000, latitude=41.965),
-        measurement(3, relay_byte=0x1A, heard_at_ms=at, **STRONG),
-    )
-    assert links(connection) == [(3, OTHER_RELAY)]
 
 
 @pytest.mark.parametrize(("rssi", "linked"), [(-70, True), (-69, False)])
@@ -2033,7 +2116,7 @@ def test_upload_names_no_relay_heard_far_weaker_here(
         (1, RELAY, "direct"),
         (2, None, "unknown"),
         (3, None, "unknown"),
-        (4, RELAY, "only_candidate"),
+        (4, RELAY, "survey_link"),
     ]
 
 

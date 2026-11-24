@@ -102,6 +102,11 @@ db.rederive_pending
 coverage._as_saved
   SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+coverage._direct_rows
+  SEARCH coverage_measurement USING INDEX coverage_measurement_time
+  SEARCH coverage_session USING PRIMARY KEY
+coverage.muted_nodes
+  SEARCH node_current USING PRIMARY KEY
 relays.nodes_by_byte
   SCAN node_current
 db.nodes_by_id
@@ -156,9 +161,6 @@ relays.near_links
   SEARCH node_current USING PRIMARY KEY
 relays.relay_evidence
   SEARCH link_hour USING PRIMARY KEY
-coverage._survey_direct
-  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
-  SEARCH coverage_session USING PRIMARY KEY
 coverage.mqtt_reports
   SEARCH packet USING INDEX packet_identity_time
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
@@ -169,28 +171,24 @@ opt_out.refresh_opt_outs
 opt_out.refresh_opt_outs
   SEARCH node_reported USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
+coverage.rescore_recent
+  SEARCH node_activity_hour USING PRIMARY KEY
 coverage._session_radios
   SCAN coverage_session
-coverage.refresh_survey_links
+coverage.rescore_recent
+  SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
-  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
-  SEARCH coverage_relay USING PRIMARY KEY
-coverage.muted_nodes
-  SEARCH node_current USING PRIMARY KEY
 coverage.new_flags
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.new_flags
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.saved_heard
   SEARCH coverage_session USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
-  SEARCH coverage_relay USING PRIMARY KEY
 opt_out.opted_out
   SCAN node_opt_out
 coverage._link_receptions
@@ -1068,7 +1066,6 @@ coverage.other_sessions
 coverage.coverage_nodes
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
   SCAN node_current
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 db.nodes_by_id
@@ -1079,7 +1076,6 @@ db.nodes_by_id
 
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
@@ -1088,18 +1084,15 @@ coverage.coverage_cells
 
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH node_current USING PRIMARY KEY
@@ -2497,12 +2490,11 @@ reported.positions_when_heard
 survey_checks.survey_checks
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 opt_out.opted_out
   SCAN node_opt_out
-coverage.survey_receptions
+coverage._direct_rows
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
 coverage.muted_nodes
@@ -2569,7 +2561,6 @@ coverage.mqtt_reports
 
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
@@ -2580,10 +2571,7 @@ coverage.other_sessions
   SCAN coverage_session
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
   SCAN node_current
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
@@ -2592,9 +2580,6 @@ coverage.coverage_cells
 
 coverage.coverage_extent
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 
@@ -2604,10 +2589,7 @@ coverage.other_sessions
   SCAN coverage_session
 coverage.coverage_extent
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
   SCAN node_current
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 
@@ -2615,7 +2597,6 @@ coverage.coverage_extent
 
 coverage.coverage_nodes
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 db.nodes_by_id
@@ -2664,7 +2645,6 @@ positions.reach_by_partner
   SEARCH node_current USING PRIMARY KEY
 coverage.coverage_cells
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
@@ -2673,18 +2653,15 @@ coverage.coverage_cells
 
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_cell
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH node_current USING PRIMARY KEY
@@ -2698,24 +2675,15 @@ coverage.shown_packet
 
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
 coverage.coverage_cell
   SEARCH coverage_measurement USING INDEX coverage_measurement_heard
-  SEARCH coverage_relay USING INDEX coverage_relay_node
-  SEARCH coverage_measurement USING PRIMARY KEY
-  SEARCH coverage_relay USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH node_current USING PRIMARY KEY
@@ -2877,7 +2845,6 @@ retention._delete_oldest_packets
   SEARCH reception USING INDEX sqlite_autoindex_reception_1
 retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
-  SEARCH coverage_relay USING PRIMARY KEY
 retention._delete_old_measurements
   SEARCH node_reported USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender

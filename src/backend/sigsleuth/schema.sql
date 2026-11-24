@@ -95,8 +95,10 @@ CREATE TABLE coverage_session (
 -- One packet the survey node heard, with where the phone was. Not a reception.
 -- A 0 SNR or RSSI is a real reading here (the phone sends NULL when missing).
 -- cell_x/cell_y, heard_node_id, heard_how, candidates and margin_db are
--- decided once, at upload: the MQTT reports, links and positions they read
--- age out, so a changed rule applies only to new or re-sent uploads.
+-- decided at upload: the MQTT reports, links and positions they read age
+-- out, so a changed rule applies only to new or re-sent uploads. A later
+-- upload's direct receptions may decide a recent relayed one's heard node
+-- again (coverage.rescore_recent).
 -- Uploads arrive late, so IDs do not follow time: retention uses the heard_at
 -- index.
 CREATE TABLE coverage_measurement (
@@ -125,7 +127,7 @@ CREATE TABLE coverage_measurement (
     cell_y INTEGER NOT NULL,
     heard_node_id INTEGER,
     heard_how TEXT NOT NULL CHECK (heard_how IN ('direct', 'reported', 'gateway_link',
-        'near_link', 'sender_link', 'nearest', 'only_candidate', 'unknown')),
+        'near_link', 'sender_link', 'survey_link', 'nearest', 'only_candidate', 'unknown')),
     candidates INTEGER NOT NULL CHECK (candidates >= 0),
     margin_db REAL,
     UNIQUE (session_row_id, seq)

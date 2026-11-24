@@ -1811,10 +1811,8 @@ describe("Diagnostics", () => {
       hop_limit: 1,
       rx_snr: 5,
       rx_rssi: -100,
-      upload_node: null,
-      upload_how: "unknown",
-      link: { node_id: 0x0500001a, name: "Hill" },
-      link_nodes: 1,
+      upload_node: { node_id: 0x0500001a, name: "Hill" },
+      upload_how: "survey_link",
       today: {
         node: null,
         how: "unknown",
@@ -1868,7 +1866,9 @@ describe("Diagnostics", () => {
 
     window.location.hash = "#diagnostics/relays/surveys";
     expect(
-      await screen.findByRole("button", { name: "Survey link 1" }),
+      await screen.findByRole("button", {
+        name: "Named: heard by a survey nearby 1",
+      }),
     ).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "No longer on the map 1" }),

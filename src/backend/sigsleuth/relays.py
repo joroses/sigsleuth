@@ -4,7 +4,7 @@ pages (packets.py).
 
 A relay byte is only the last byte of the relay's number, so many known nodes
 send it: the candidates. Each that may have sent the copy gets a score from
-its evidence terms (relay_terms, WEIGHTS), and so does a node SigSleuth does
+its evidence terms (relay_terms, TERM_WEIGHTS), and so does a node SigSleuth does
 not know; a softmax turns scores into probabilities, and the likeliest is
 named when sure enough and tied to the copy (RelayScores.named). A node
 that turned OK to MQTT off keeps its probability, so its copies are not
@@ -99,6 +99,8 @@ RelayTerm = Literal[
     "nlink_log",
     "nlink_km",
     "nlink_any",
+    "sheard",
+    "survey_only",
 ]
 # A conditional logit over each copy's candidates and a node SigSleuth does
 # not know (UNKNOWN_SCORE), assuming 1% of relays are unknown. Refitted
@@ -139,6 +141,23 @@ WEIGHTS: dict[RelayTerm, float] = {
     "nlink_any": -3.81,
 }
 UNKNOWN_SCORE = -2.11
+# A candidate a survey node on the copy's network heard directly within
+# coverage.SURVEY_LINK_KM and SURVEY_LINK_MS of the phone: hand-set, as
+# gateways standing in for phones cannot fit it (their nearby hearing is near
+# links'). It tops near links up to this much (sheard), so the two never add
+# up. Set 2026-11-23 on a survey capture's 2,551 measurements that survey
+# links named: from 3.0 the score names the linked node in 2,477 and never
+# another, without overruling strong MQTT evidence as survey links did.
+# Revisit once phones upload the routes of traceroutes they hear.
+SURVEY_HEARD_SCORE = 3.00
+# WEIGHTS and the hand-set survey terms, which relay-fit.py leaves alone. A
+# node only a survey heard, unknown to MQTT, scores as an unknown node plus
+# sheard.
+TERM_WEIGHTS: dict[RelayTerm, float] = {
+    **WEIGHTS,
+    "sheard": SURVEY_HEARD_SCORE,
+    "survey_only": UNKNOWN_SCORE,
+}
 NAME_PROBABILITY = 0.8
 ROLE_TERMS: dict[str | None, RelayTerm] = {
     "ROUTER": "role_router",
@@ -151,8 +170,10 @@ ROLE_TERMS: dict[str | None, RelayTerm] = {
 # channel let an unplaced ROUTER nothing linked to the copy beat an unknown
 # node.
 EVIDENCE_TERMS: frozenset[RelayTerm] = frozenset(
-    {"in_reach", "near5", "glink", "slink", "rep_plus1", "rheard", "nlink"}
+    {"in_reach", "near5", "glink", "slink", "rep_plus1", "rheard", "nlink", "sheard"}
 )
+# Hearing near the receiver, which sheard tops up rather than adds to.
+NEAR_TERMS: tuple[RelayTerm, ...] = ("nlink", "nlink_log", "nlink_km")
 # The evidence families a name is worded by, largest contribution first.
 WORDING: dict[RelayTerm, "ScoredHow"] = {
     "glink": "gateway_link",
@@ -168,13 +189,21 @@ WORDING: dict[RelayTerm, "ScoredHow"] = {
     "nlink": "near_link",
     "nlink_log": "near_link",
     "nlink_km": "near_link",
+    "sheard": "survey_link",
 }
 # How a score names a relay, by the evidence that adds most (wording):
 # receiver_heard, the receiver heard it directly (packet pages only),
-# near_link, linked with nodes near the receiver, and only_candidate,
+# near_link, linked with nodes near the receiver, survey_link, a survey heard
+# it directly nearby (survey measurements only), and only_candidate,
 # distance: the likeliest nearby, not the only one.
 ScoredHow = Literal[
-    "gateway_link", "sender_link", "reported", "only_candidate", "receiver_heard", "near_link"
+    "gateway_link",
+    "sender_link",
+    "reported",
+    "only_candidate",
+    "receiver_heard",
+    "near_link",
+    "survey_link",
 ]
 # A gateway's report: gateway, hops left, relay byte and SNR.
 Report = tuple[int, int | None, int | None, float | None]
@@ -664,11 +693,16 @@ def relay_terms(
     signals: Mapping[tuple[int, int], DirectSignal],
     heard: Collection[int] = (),
     among: Collection[int] | None = None,
+    *,
+    survey_heard: Collection[int] = (),
+    survey_active: Collection[int] = (),
 ) -> dict[int, dict[RelayTerm, float]]:
-    """Each possible candidate's non-zero terms (WEIGHTS), or only those
+    """Each possible candidate's non-zero terms (TERM_WEIGHTS), or only those
     among some when a caller rules others out. heard holds the candidates
     the receiver heard directly around the copy; none for a survey
-    receiver."""
+    receiver. survey_heard holds the nodes a survey heard directly near a
+    survey receiver (SURVEY_HEARD_SCORE), survey_active those of them heard
+    within ACTIVE_MS of the copy; one MQTT does not know is a candidate too."""
     # Co-hearers whose own byte differs: one sending it may upload its own rebroadcast.
     sounding = [
         (gateway, snr)
@@ -755,7 +789,11 @@ def relay_terms(
         channel = None if radio is None else radio.channel
         if channel is not None and relayed.radio is not None:
             terms["channel_same" if channel.matches(relayed.radio) else "channel_other"] = 1
-        if not _active(evidence, node, relayed.at):
+        surveyed = node in survey_heard
+        if surveyed and channel is None and relayed.radio is not None:
+            # The survey heard it on the copy's radio settings.
+            terms["channel_same"] = 1
+        if not _active(evidence, node, relayed.at) and node not in survey_active:
             terms["inactive"] = 1
         if node in heard:
             terms["rheard"] = 1
@@ -763,10 +801,19 @@ def relay_terms(
             terms["nlink"] = 1
             terms["nlink_log"] = math.log1p(sum(count for _, _, count in near))
             terms["nlink_km"] = math.log1p(min(km for _, km, _ in near))
+        if surveyed:
+            nearby = sum(WEIGHTS[term] * terms.get(term, 0.0) for term in NEAR_TERMS)
+            if nearby < SURVEY_HEARD_SCORE:
+                terms["sheard"] = (SURVEY_HEARD_SCORE - nearby) / SURVEY_HEARD_SCORE
         found[node] = {term: value for term, value in terms.items() if value}
     if any("nlink" in terms for terms in found.values()):
         for terms in found.values():
             terms["nlink_any"] = 1
+    # After nlink_any: MQTT knows none of their links, so lacking one tells nothing.
+    known = set(evidence.by_byte.get(relayed.relay_byte, ()))
+    for node in survey_heard:
+        if node not in known and node not in (relayed.sender, relayed.receiver):
+            found[node] = {"survey_only": 1.0, "sheard": 1.0}
     return found
 
 
@@ -816,9 +863,19 @@ def score_relays(
     relayed: Relayed,
     signals: Mapping[tuple[int, int], DirectSignal],
     heard: Collection[int] = (),
+    *,
+    survey_heard: Collection[int] = (),
+    survey_active: Collection[int] = (),
 ) -> RelayScores:
     """relay_terms and relay_probabilities of one copy."""
-    terms = relay_terms(evidence, relayed, signals, heard)
+    terms = relay_terms(
+        evidence,
+        relayed,
+        signals,
+        heard,
+        survey_heard=survey_heard,
+        survey_active=survey_active,
+    )
     return RelayScores(terms, relay_probabilities(terms))
 
 
@@ -828,7 +885,7 @@ def relay_probabilities(
     """A softmax of each candidate's weighted terms and UNKNOWN_SCORE."""
     scores: dict[int | None, float] = {None: UNKNOWN_SCORE}
     for node, its in terms.items():
-        scores[node] = sum(WEIGHTS[term] * value for term, value in its.items())
+        scores[node] = sum(TERM_WEIGHTS[term] * value for term, value in its.items())
     top = max(scores.values())
     total = sum(math.exp(score - top) for score in scores.values())
     return {node: math.exp(score - top) / total for node, score in scores.items()}
@@ -839,6 +896,6 @@ def wording(terms: Mapping[RelayTerm, float]) -> ScoredHow:
     score. Role and channel never word one."""
     totals: dict[ScoredHow, float] = defaultdict(float)
     for term, how in WORDING.items():
-        totals[how] += WEIGHTS[term] * terms.get(term, 0.0)
+        totals[how] += TERM_WEIGHTS[term] * terms.get(term, 0.0)
     how, total = max(totals.items(), key=lambda item: item[1])
     return how if total > 0 else "only_candidate"

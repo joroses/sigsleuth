@@ -16,9 +16,9 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
   OK to MQTT bits (reported.save_bit) and to refresh their opt-outs
   (opt_out.refresh_opt_outs), a few seeks each.
 - Each measurement is saved with its cell, its SNR margin and the node it
-  heard (heard_node), decided once, at upload (schema.sql says why). A survey
-  link (refresh_survey_links), from survey evidence and roles alone, can name
-  a relay later, and wins over upload's name.
+  heard (heard_node), decided at upload (schema.sql says why). Direct
+  receptions uploaded later may decide recent relayed ones again
+  (rescore_recent).
 - The reply names each usable measurement's heard node as the map reads it,
   for the phone's relay list; a resent batch reads what was saved. It also
   says what the measurement adds to the map (new_flags).
@@ -60,9 +60,12 @@ from sigsleuth.radio import (
     same_settings,
 )
 from sigsleuth.relays import (
+    ACTIVE_MS,
     DAY_MS,
     FAR_KM,
+    NAME_KM,
     NEAR_KM,
+    NEAR_MS,
     DirectSignal,
     NodeRadio,
     Relayed,
@@ -74,6 +77,7 @@ from sigsleuth.relays import (
     near_partners,
     node_km,
     node_radios,
+    nodes_by_byte,
     possible,
     relay_probabilities,
     relay_terms,
@@ -88,16 +92,16 @@ MAX_FUTURE_MS = 60 * 60 * 1_000
 # An MQTT report of the same sender and packet ID within this long of the
 # phone hearing it is the same transmission.
 MQTT_MATCH_MS = HOUR_MS
-# Survey links (refresh_survey_links): a node some survey node heard directly
-# within SURVEY_LINK_KM of the phone, in the first of these time tiers that
-# has any, like the phone's own relay guess (DirectNeighbours in the Android
-# fork), which reads only its own receptions and looks back 30 days. Pooled
-# survey nodes rarely cover the same weeks, so 60 days lets one name the
-# relays of another (2026-10-17). Not measured against the truth yet:
+# A relay candidate is survey heard (survey_heard, relays.SURVEY_HEARD_SCORE)
+# when some survey node heard it directly within SURVEY_LINK_KM and
+# SURVEY_LINK_MS of the phone. Pooled survey nodes rarely cover the same
+# weeks, so 60 days lets one name the relays of another (2026-10-17); one
+# window, as a node heard within the hour beat a better candidate heard
+# earlier (2026-11-23). Not measured against the truth yet:
 # scripts/coverage-backtest.py compares other bounds. The distance is the
-# score's near links' (relays.NEAR_KM): both name a node heard near the phone.
+# score's near links' (relays.NEAR_KM): both are hearing near the phone.
 SURVEY_LINK_KM = NEAR_KM
-SURVEY_LINK_TIERS_MS = (HOUR_MS, 60 * DAY_MS)
+SURVEY_LINK_MS = 60 * DAY_MS
 # A relayed copy cannot arrive much stronger than its relay's own packets
 # heard from the same place (too_strong). Measured with gateways standing in
 # for phones on live loranet.pl, 2026-10 (docs/relay-evidence.md): 30 dB rules
@@ -122,11 +126,12 @@ SavedHow = Literal[
     "gateway_link",
     "near_link",
     "sender_link",
+    "survey_link",
     "nearest",
     "only_candidate",
     "unknown",
 ]
-# How the map names the heard node: as saved, or survey_link (coverage_relay).
+# How the map names the heard node: as saved, a nearest guess as unknown.
 HeardHow = Literal[
     "direct",
     "reported",
@@ -137,12 +142,13 @@ HeardHow = Literal[
     "only_candidate",
     "unknown",
 ]
-# The guesses, drawn dashed: direct and survey_link come from a direct reception.
+# The guesses, drawn dashed: every name but direct.
 GUESSED: tuple[HeardHow, ...] = (
     "reported",
     "gateway_link",
     "near_link",
     "sender_link",
+    "survey_link",
     "only_candidate",
 )
 
@@ -156,9 +162,11 @@ NodeReceptions = dict[int, list[Reception]]
 @dataclass
 class DirectReceptions:
     """Survey nodes' direct receptions (heard_directly), by session radio
-    (session_radio), relay byte and node."""
+    (session_radio), relay byte and node, and the muted nodes among them
+    (muted_nodes)."""
 
     by_radio: dict[Radio | None, dict[int, NodeReceptions]]
+    muted: frozenset[int] = frozenset()
     # by_radio merged per network, for each radio nodes() was asked about.
     _networks: dict[Radio | None, dict[int, NodeReceptions]] = field(
         default_factory=dict, init=False, repr=False
@@ -285,8 +293,8 @@ class UploadResult:
     from an earlier upload. skipped counts unusable ones by reason. last_seq
     is the highest seq in the batch, saved or not, so the phone continues
     after it; None for an empty batch. heard has each usable measurement's
-    heard node and possible relays when unknown, read after the survey links
-    are refreshed, and nodes the names of those named."""
+    heard node and possible relays when unknown, read after rescore_recent,
+    and nodes the names of those named."""
 
     saved: int
     already_saved: int
@@ -369,7 +377,8 @@ def save_upload(
                 "frequency_mhz": session.frequency_mhz,
             }
         )
-    points = coverage_points(connection, _as_saved(connection, session.id, rows))
+    measured = _as_saved(connection, session.id, rows)
+    points = coverage_points(connection, measured)
     saved = 0
     with transaction(connection):
         connection.execute(
@@ -403,7 +412,7 @@ def save_upload(
         session_row_id = connection.execute(
             "SELECT id FROM coverage_session WHERE uuid = ?", (session.id,)
         ).fetchone()[0]
-        for row, point in zip(rows, points, strict=True):
+        for row, point in zip(measured, points, strict=True):
             saved += connection.execute(
                 """
                 INSERT OR IGNORE INTO coverage_measurement (
@@ -433,14 +442,15 @@ def save_upload(
         for sender, bit, heard_at in bits:
             save_bit(connection, sender, bit, heard_at)
         refresh_opt_outs(connection, {sender for sender, _, _ in bits})
-    # Already saved rows too: when a refresh fails after the insert commits,
+    # Already saved rows too: when rescoring fails after the insert commits,
     # the phone gets a 503 and resends the batch, which saves nothing.
-    if points:
-        times = [point.heard_at for point in points]
-        reach = SURVEY_LINK_TIERS_MS[-1]
-        refresh_survey_links(
-            connection, session_row_id, start=min(times) - reach, end=max(times) + reach
-        )
+    rescore_recent(
+        connection,
+        session_row_id,
+        [row for row in measured if is_direct(row)],
+        {int(row["seq"]) for row in measured},
+        alive_days=alive_days,
+    )
     seqs = [m.seq for m in upload.measurements]
     maybe = {m.seq: point.heard.maybe for m, point in zip(usable, points, strict=True)}
     news = new_flags(connection, session_row_id, list(maybe), alive_days=alive_days)
@@ -467,7 +477,7 @@ def save_upload(
     )
     return UploadResult(
         saved=saved,
-        already_saved=len(rows) - saved,
+        already_saved=len(measured) - saved,
         skipped=dict(skipped),
         last_seq=max(seqs) if seqs else None,
         heard=heard,
@@ -578,13 +588,13 @@ def _link_receptions(
     connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
 ) -> DirectReceptions:
     """Every survey node's direct receptions of the nodes the rows' survey
-    links name (node_id), within SURVEY_LINK_TIERS_MS[-1] of them: what
-    link_evidence reads. Narrower than survey_receptions, which reads every
-    node sending the rows' relay bytes."""
+    links name (node_id), within SURVEY_LINK_MS of them: what link_evidence
+    reads. Narrower than survey_receptions, which reads every node sending
+    the rows' relay bytes."""
     if not rows:
         return heard_directly([])
     times = [int(row["heard_at"]) for row in rows]
-    reach = SURVEY_LINK_TIERS_MS[-1]
+    reach = SURVEY_LINK_MS
     return heard_directly(
         connection.execute(
             f"""
@@ -699,38 +709,45 @@ def coverage_points(
     frequency_mhz)."""
     if not rows:
         return []
-    evidence = relay_evidence(connection, rows)
-    direct = _survey_direct(connection, rows, evidence)
-    return [_point(row, heard_node(connection, evidence, direct, row)) for row in rows]
+    direct = survey_receptions(
+        connection, rows, own=[{**row, "heard_how": "direct"} for row in rows if is_direct(row)]
+    )
+    # Older than an hour: not uploaded live, so its own hour's links decide.
+    recent = now_ms() - HOUR_MS
+    heard = decide_heard(
+        connection, rows, direct, by_hour=[int(row["heard_at"]) < recent for row in rows]
+    )
+    return [_point(row, found) for row, found in zip(rows, heard, strict=True)]
 
 
-def _survey_direct(
-    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]], evidence: RelayEvidence
-) -> DirectReceptions:
-    """The rows' survey nodes' direct receptions of the nodes sending their
-    relay bytes, saved or among the rows, within SURVEY_LINK_TIERS_MS[-1] of
-    them, for too_strong."""
-    heard = [int(row["heard_at"]) for row in rows]
-    reach = SURVEY_LINK_TIERS_MS[-1]
-    saved = connection.execute(
-        f"""
-        SELECT {SURVEY_LINK_COLUMNS}
-        FROM coverage_measurement AS m INDEXED BY coverage_measurement_sender
-        JOIN coverage_session AS s ON s.id = m.session_row_id
-        WHERE m.sender_node_id IN (SELECT value FROM json_each(:nodes))
-          AND m.heard_at BETWEEN :start AND :end
-          AND m.heard_how = 'direct' AND m.rx_rssi != 0
-          AND s.receiver_node_id IN (SELECT value FROM json_each(:receivers))
-        """,
-        {
-            "nodes": json.dumps(sorted({n for nodes in evidence.by_byte.values() for n in nodes})),
-            "start": min(heard) - reach,
-            "end": max(heard) + reach,
-            "receivers": json.dumps(sorted({int(row["receiver_node_id"]) for row in rows})),
-        },
-    ).fetchall()
-    own = [{**row, "heard_how": "direct"} for row in rows if is_direct(row)]
-    return heard_directly([*saved, *own])
+def decide_heard(
+    connection: sqlite3.Connection,
+    rows: Sequence[Mapping[str, Any]],
+    direct: DirectReceptions,
+    *,
+    by_hour: Sequence[bool],
+) -> list[HeardNode]:
+    """heard_node of each row, with links of the last day, or of a day
+    either side of its hour where by_hour says so: an upload made offline
+    scores against its own day's links."""
+    groups: dict[int | None, list[int]] = defaultdict(list)
+    for index, row in enumerate(rows):
+        heard_at = int(row["heard_at"])
+        groups[heard_at - heard_at % HOUR_MS if by_hour[index] else None].append(index)
+    reach = None
+    if len(groups) > 1:
+        relay_bytes = {int(row["relay_byte"]) for row in rows if row["relay_byte"]}
+        candidates = nodes_by_byte(connection, relay_bytes)
+        reach = own_reach(
+            connection, {node for nodes in candidates.values() for node in nodes}, from_km=NAME_KM
+        )
+    found: list[HeardNode | None] = [None] * len(rows)
+    for hour, indices in groups.items():
+        its = [rows[index] for index in indices]
+        evidence = relay_evidence(connection, its, links_around=hour, reach=reach)
+        for index, row in zip(indices, its, strict=True):
+            found[index] = heard_node(connection, evidence, direct, row)
+    return [heard for heard in found if heard is not None]
 
 
 def relay_evidence(
@@ -805,12 +822,10 @@ def heard_node(
        direct receptions (is_direct_reception).
     2. A relay, by relays.RelayScores.named among the possible candidates
        that are not too_strong by the survey node's direct receptions, with
-       the MQTT gateways' reports of the same packet (mqtt_reports).
+       the MQTT gateways' reports of the same packet (mqtt_reports) and
+       surveys' direct receptions nearby (survey_heard).
     3. unknown: no relay byte (older firmware), or nothing names one; maybe
        lists the likeliest candidates with some evidence.
-
-    A survey link (refresh_survey_links) wins over all but direct when the
-    map reads it.
     """
     sender = int(row["sender_node_id"])
     if is_direct(row):
@@ -837,12 +852,13 @@ def heard_node(
 class MeasurementScore:
     """How heard_node scores a relayed measurement: its copy, the possible
     candidates too_strong rules out, and the scores of the rest, with the
-    co-hearers' signal profiles they read."""
+    co-hearers' signal profiles they read and the nodes survey_heard gives."""
 
     copy: Relayed
     ruled_out: tuple[int, ...]
     signals: Mapping[tuple[int, int], DirectSignal]
     scores: RelayScores
+    survey_heard: frozenset[int] = frozenset()
 
 
 def score_measurement(
@@ -885,9 +901,16 @@ def score_measurement(
         if left
         else {}
     )
-    terms = relay_terms(evidence, copy, signals, among=left)
+    heard_on = set() if copy.radio is None else {copy.radio}
+    heard, active = survey_heard(direct, row)
+    heard = frozenset(
+        node for node in heard if not cannot_relay(evidence.radios.get(node), heard_on)
+    )
+    terms = relay_terms(
+        evidence, copy, signals, among=left, survey_heard=heard, survey_active=active & heard
+    )
     return MeasurementScore(
-        copy, tuple(ruled_out), signals, RelayScores(terms, relay_probabilities(terms))
+        copy, tuple(ruled_out), signals, RelayScores(terms, relay_probabilities(terms)), heard
     )
 
 
@@ -960,80 +983,116 @@ def mqtt_reports(connection: sqlite3.Connection, row: Mapping[str, Any]) -> list
     ).fetchall()
 
 
-def refresh_survey_links(
+def rescore_recent(
     connection: sqlite3.Connection,
-    session_row_id: int | None = None,
+    session_row_id: int,
+    direct: Sequence[Mapping[str, Any]],
+    seqs: Collection[int],
     *,
-    start: int = 0,
-    end: int = 2**62,
+    alive_days: int,
 ) -> None:
-    """Refill the survey links (coverage_relay) of the relayed measurements
-    heard from start to end (epoch ms): their one survey_candidates node.
-    With session_row_id, only the sessions on its network
-    (network_sessions); else every session (rederive).
-
-    Links read saved measurements and the roles nodes have now
-    (muted_nodes), so each call re-checks the measurements in its window
-    against all their evidence: the order uploads arrive in makes no
-    difference."""
-    reach = SURVEY_LINK_TIERS_MS[-1]
-    targets = sessions = None
-    if session_row_id is not None:
-        radios = _session_radios(connection)
-        mine = radios.get(session_row_id)
-        targets = {session for session, radio in radios.items() if same_network(radio, mine)}
-        # Each re-checked session reads every session on its own network,
-        # which may reach past this one's: a session without a frequency
-        # matches two that do not match each other.
-        networks = {radios[session] for session in targets}
-        sessions = [
-            session
-            for session, radio in radios.items()
-            if any(same_network(radio, network) for network in networks)
-        ]
-    in_sessions = "AND m.session_row_id IN (SELECT value FROM json_each(:sessions))"
-    rows = connection.execute(
-        f"""
-        SELECT {SURVEY_LINK_COLUMNS}, m.session_row_id, l.node_id AS linked
-        FROM coverage_measurement AS m JOIN coverage_session AS s ON s.id = m.session_row_id
-        LEFT JOIN coverage_relay AS l ON l.measurement_id = m.id
-        WHERE m.heard_at BETWEEN :start AND :end
-          AND (m.heard_how = 'direct' OR m.relay_byte IS NOT NULL)
-          {"" if sessions is None else in_sessions}
-        """,
-        {"start": start - reach, "end": end + reach, "sessions": json.dumps(sessions)},
-    ).fetchall()
-    heard = heard_directly(rows)
-    muted = muted_nodes(connection, heard)
-    relayed = [
+    """Decide again the relayed measurements an upload's direct receptions
+    may name differently: those whose links are all still kept (at most the
+    last NEAR_MS), and older unnamed ones while MQTT history lasts, since an
+    older name's links may be gone. Only changed names are written: a phone
+    that records all day re-checks thousands of measurements per upload,
+    and capture waits on the write."""
+    if not direct:
+        return
+    now = now_ms()
+    kept = alive_days * DAY_MS  # 0 keeps for ever
+    full_from = now - (min(NEAR_MS, max(0, kept - NEAR_MS)) if kept else NEAR_MS)
+    tail_from = full_from
+    (history_from,) = connection.execute(
+        "SELECT min(hour_start) FROM node_activity_hour"
+    ).fetchone()
+    if history_from is not None:
+        oldest = max(now - kept + DAY_MS, int(history_from)) if kept else int(history_from)
+        tail_from = min(full_from, oldest)
+    radios = _session_radios(connection)
+    mine = radios.get(session_row_id)
+    by_byte: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+    for row in direct:
+        by_byte[int(row["relay_byte"])].append(row)
+    rows = [
+        dict(row)
+        for row in connection.execute(
+            f"""
+            SELECT {SURVEY_LINK_COLUMNS}, m.session_row_id, m.seq, m.packet_id, m.hop_start,
+                   m.hop_limit, m.heard_node_id, m.candidates
+            FROM coverage_measurement AS m INDEXED BY coverage_measurement_time
+            JOIN coverage_session AS s ON s.id = m.session_row_id
+            WHERE m.heard_at >= :tail_from AND m.heard_how != 'direct'
+              AND m.relay_byte IN (SELECT value FROM json_each(:bytes))
+              AND +m.session_row_id IN (SELECT value FROM json_each(:sessions))
+              AND (m.heard_at >= :full_from OR m.heard_how IN ('unknown', 'nearest'))
+            """,
+            {
+                "tail_from": tail_from,
+                "full_from": full_from,
+                "bytes": json.dumps(sorted(by_byte)),
+                "sessions": json.dumps(
+                    [session for session, radio in radios.items() if same_network(radio, mine)]
+                ),
+            },
+        )
+    ]
+    rows = [
         row
         for row in rows
-        if row["heard_how"] != "direct"
-        and start <= row["heard_at"] <= end
-        and (targets is None or row["session_row_id"] in targets)
+        if not (row["session_row_id"] == session_row_id and row["seq"] in seqs)
+        and any(
+            abs(int(other["heard_at"]) - int(row["heard_at"])) <= SURVEY_LINK_MS
+            and great_circle_km(
+                row["latitude"], row["longitude"], other["latitude"], other["longitude"]
+            )
+            <= SURVEY_LINK_KM
+            for other in by_byte[int(row["relay_byte"])]
+        )
     ]
-    # Only changed links are written: a phone that records all day re-checks
-    # thousands of measurements per upload, and capture waits on the write.
-    changed = []
-    for row in relayed:
-        found = survey_candidates(heard, row, muted=muted)
-        link = found[0] if len(found) == 1 else None
-        if link != row["linked"]:
-            changed.append((int(row["id"]), link))
+    if not rows:
+        return
+    saved = _direct_rows(connection, rows)
+    after = _with_muted(connection, heard_directly(saved))
+    new = {(session_row_id, int(row["seq"])) for row in direct}
+    before = heard_directly(
+        reception
+        for reception in saved
+        if (int(reception["session_row_id"]), int(reception["seq"])) not in new
+    )
+    before.muted = after.muted
+    changed = [row for row in rows if _survey_evidence(before, row) != _survey_evidence(after, row)]
     if not changed:
         return
-    with transaction(connection):
-        connection.executemany(
-            "DELETE FROM coverage_relay WHERE measurement_id = ?",
-            [(id_,) for id_, link in changed if link is None],
-        )
-        connection.executemany(
-            "INSERT OR REPLACE INTO coverage_relay (measurement_id, node_id) VALUES (?, ?)",
-            [(id_, link) for id_, link in changed if link is not None],
-        )
+    heard = decide_heard(connection, changed, after, by_hour=[True] * len(changed))
+    updates = [
+        (found.node_id, found.how, found.candidates, int(row["id"]))
+        for row, found in zip(changed, heard, strict=True)
+        if (found.node_id, found.how, found.candidates)
+        != (row["heard_node_id"], row["heard_how"], row["candidates"])
+    ]
+    if updates:
+        with transaction(connection):
+            connection.executemany(
+                """
+                UPDATE coverage_measurement SET heard_node_id = ?, heard_how = ?, candidates = ?
+                WHERE id = ?
+                """,
+                updates,
+            )
 
 
-# The measurement and session columns survey links read (m and s).
+def _survey_evidence(
+    receptions: DirectReceptions, row: Mapping[str, Any]
+) -> tuple[frozenset[int], frozenset[int], frozenset[int]]:
+    """What a measurement row's score reads from survey receptions:
+    survey_heard's nodes and active ones, and the too_strong ones."""
+    heard, active = survey_heard(receptions, row)
+    strong = frozenset(node for node, its in receptions.nodes(row).items() if too_strong(its, row))
+    return heard, active, strong
+
+
+# The measurement and session columns survey receptions read (m and s).
 SURVEY_LINK_COLUMNS = """
     m.id, m.heard_at, m.latitude, m.longitude, m.sender_node_id, m.relay_byte, m.heard_how,
     m.rx_rssi, m.rx_snr, s.receiver_node_id, s.spreading_factor, s.bandwidth_khz, s.frequency_mhz
@@ -1066,53 +1125,52 @@ def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
 
 
 def survey_receptions(
-    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+    connection: sqlite3.Connection,
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    own: Iterable[Mapping[str, Any]] = (),
 ) -> DirectReceptions:
     """Every survey node's direct receptions of nodes sending the rows' relay
-    bytes, within SURVEY_LINK_TIERS_MS[-1] of them: what survey_candidates
-    and too_strong read for those rows."""
+    bytes within SURVEY_LINK_MS of them, saved or among own (rows not saved
+    yet): what survey_heard and too_strong read for those rows."""
+    return _with_muted(connection, heard_directly([*_direct_rows(connection, rows), *own]))
+
+
+def _direct_rows(
+    connection: sqlite3.Connection, rows: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """survey_receptions' saved direct receptions (SURVEY_LINK_COLUMNS, with
+    their session_row_id and seq)."""
     relayed = [row for row in rows if row["relay_byte"]]
     if not relayed:
-        return heard_directly([])
+        return []
     times = [int(row["heard_at"]) for row in relayed]
-    reach = SURVEY_LINK_TIERS_MS[-1]
-    return heard_directly(
-        connection.execute(
-            f"""
-            SELECT {SURVEY_LINK_COLUMNS}
-            FROM coverage_measurement AS m INDEXED BY coverage_measurement_time
-            JOIN coverage_session AS s ON s.id = m.session_row_id
-            WHERE m.heard_at BETWEEN :start AND :end AND m.heard_how = 'direct'
-              AND m.relay_byte IN (SELECT value FROM json_each(:bytes))
-            """,
-            {
-                "start": min(times) - reach,
-                "end": max(times) + reach,
-                "bytes": json.dumps(sorted({int(row["relay_byte"]) for row in relayed})),
-            },
-        )
+    found = connection.execute(
+        f"""
+        SELECT {SURVEY_LINK_COLUMNS}, m.session_row_id, m.seq
+        FROM coverage_measurement AS m INDEXED BY coverage_measurement_time
+        JOIN coverage_session AS s ON s.id = m.session_row_id
+        WHERE m.heard_at BETWEEN :start AND :end AND m.heard_how = 'direct'
+          AND m.relay_byte IN (SELECT value FROM json_each(:bytes))
+        """,
+        {
+            "start": min(times) - SURVEY_LINK_MS,
+            "end": max(times) + SURVEY_LINK_MS,
+            "bytes": json.dumps(sorted({int(row["relay_byte"]) for row in relayed})),
+        },
     )
+    return [dict(row) for row in found]
 
 
-def heard_tier(
-    receptions: list[Reception],
-    row: Mapping[str, Any],
-    *,
-    km: float = SURVEY_LINK_KM,
-    tiers_ms: Sequence[int] = SURVEY_LINK_TIERS_MS,
-) -> int | None:
-    """The first of survey_candidates' tiers in which a node's direct
-    receptions came within km of a measurement row; None when none did."""
-    return next(
-        (index for index, tier in enumerate(tiers_ms) if _heard_near(receptions, row, tier, km)),
-        None,
-    )
+def _with_muted(connection: sqlite3.Connection, heard: DirectReceptions) -> DirectReceptions:
+    heard.muted = muted_nodes(connection, heard)
+    return heard
 
 
 def muted_nodes(connection: sqlite3.Connection, heard: DirectReceptions) -> frozenset[int]:
     """The nodes in heard whose role is CLIENT_MUTE now, which never
     rebroadcast. Only the current role is kept, so a node muted after a
-    survey loses the links of packets it relayed before: on route truth,
+    survey stops counting for packets it relayed before: on route truth,
     0.5% of true relays carry the role (docs/relay-evidence.md)."""
     nodes = {node for by_byte in heard.by_radio.values() for n in by_byte.values() for node in n}
     if not nodes:
@@ -1127,34 +1185,31 @@ def muted_nodes(connection: sqlite3.Connection, heard: DirectReceptions) -> froz
     return frozenset(int(row[0]) for row in rows)
 
 
-def survey_candidates(
+def survey_heard(
     heard: DirectReceptions,
     row: Mapping[str, Any],
     *,
-    muted: Collection[int],
     km: float = SURVEY_LINK_KM,
-    tiers_ms: Sequence[int] = SURVEY_LINK_TIERS_MS,
-) -> list[int]:
-    """The nodes that may have relayed a measurement row's packet, by survey
-    evidence: those any survey node on its network heard directly,
-    sending the same relay byte within km of the phone, in the
-    first tier (ms either side) that has any. A survey link when exactly one.
+    within_ms: int = SURVEY_LINK_MS,
+) -> tuple[frozenset[int], frozenset[int]]:
+    """The nodes survey evidence says may have relayed a measurement row's
+    packet (relays.SURVEY_HEARD_SCORE): those any survey node on its network
+    heard directly, sending the same relay byte within km and within_ms of
+    the phone; and those of them heard within relays.ACTIVE_MS, anywhere.
     A node never relays its own packet, a survey node never records its own
     rebroadcast, and a muted (muted_nodes) or too_strong node is left out."""
     nodes = heard.nodes(row)
     excluded = (row["sender_node_id"], row["receiver_node_id"])
-    for tier in tiers_ms:
-        found = [
-            node
-            for node, receptions in nodes.items()
-            if node not in excluded
-            and node not in muted
-            and _heard_near(receptions, row, tier, km)
-            and not too_strong(receptions, row)
-        ]
-        if found:
-            return found
-    return []
+    found = frozenset(
+        node
+        for node, receptions in nodes.items()
+        if node not in excluded
+        and node not in heard.muted
+        and _heard_near(receptions, row, within_ms, km)
+        and not too_strong(receptions, row)
+    )
+    active = frozenset(node for node in found if _heard_near(nodes[node], row, ACTIVE_MS, math.inf))
+    return found, active
 
 
 @dataclass(frozen=True)
@@ -1171,9 +1226,9 @@ class LinkEvidence:
 
 def link_evidence(receptions: list[Reception], row: Mapping[str, Any]) -> LinkEvidence | None:
     """Of a node's direct receptions (time-sorted) within SURVEY_LINK_KM and
-    SURVEY_LINK_TIERS_MS[-1] of a measurement row, the one closest in time,
+    SURVEY_LINK_MS of a measurement row, the one closest in time,
     the earlier on a tie; None when there is none."""
-    at, reach = int(row["heard_at"]), SURVEY_LINK_TIERS_MS[-1]
+    at, reach = int(row["heard_at"]), SURVEY_LINK_MS
     # Outward from the row's time, so the first reception close enough is the
     # answer: a node heard all day by a survey has thousands in reach.
     later = bisect_left(receptions, at, key=lambda reception: reception[0])
@@ -1207,14 +1262,14 @@ def too_strong(receptions: list[Reception], row: Mapping[str, Any]) -> bool:
     """Whether a measurement row cannot have come from a node by its direct
     receptions (time-sorted): the row's signal is over TOO_STRONG_DB above
     every signal at which the row's own survey node heard the node directly
-    within TOO_STRONG_KM, SURVEY_LINK_TIERS_MS[-1] either side. Weaker is
+    within TOO_STRONG_KM, SURVEY_LINK_MS either side. Weaker is
     normal (a pocket, indoors), and other survey nodes' radios read RSSI
     differently. False without such a reading, so it only ever rules out."""
     signal = signal_db(row["rx_rssi"], row["rx_snr"])
     if signal is None:
         return False
     at, receiver = int(row["heard_at"]), int(row["receiver_node_id"])
-    reach = SURVEY_LINK_TIERS_MS[-1]
+    reach = SURVEY_LINK_MS
     first = bisect_left(receptions, at - reach, key=lambda reception: reception[0])
     checked = False
     for index in range(first, len(receptions)):
@@ -1263,24 +1318,18 @@ CELL_CANDIDATE_RELAYS = 10
 EARTH_CIRCUMFERENCE_M = 40_075_016.686
 
 # Measurements as the map reads them, aliased m: the heard node (_HEARD) and
-# how it was named (_HOW) are a survey link's where there is one, else
-# upload's. Saved nearest guesses read as unknown (heard_node says why).
-_MEASUREMENTS = "coverage_measurement AS m LEFT JOIN coverage_relay AS l ON l.measurement_id = m.id"
-_HEARD = (
-    "CASE WHEN l.node_id IS NOT NULL THEN l.node_id"
-    " WHEN m.heard_how != 'nearest' THEN m.heard_node_id END"
-)
-_HOW = (
-    "CASE WHEN l.node_id IS NOT NULL THEN 'survey_link'"
-    " WHEN m.heard_how = 'nearest' THEN 'unknown' ELSE m.heard_how END"
-)
+# how it was named (_HOW). Saved nearest guesses read as unknown (heard_node
+# says why).
+_MEASUREMENTS = "coverage_measurement AS m"
+_HEARD = "CASE WHEN m.heard_how != 'nearest' THEN m.heard_node_id END"
+_HOW = "CASE WHEN m.heard_how = 'nearest' THEN 'unknown' ELSE m.heard_how END"
 _GUESSED_SQL = f"({_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
 # The most certain way a node was identified in a cell comes first.
 _HOW_ORDER: tuple[HeardHow, ...] = (
     "direct",
-    "survey_link",
     "gateway_link",
     "near_link",
+    "survey_link",
     "reported",
     "sender_link",
     "only_candidate",
@@ -1313,10 +1362,7 @@ _ALIVE_SQL = f""" AND coalesce(
 _CHANNEL_SQL = """ AND +m.sender_node_id NOT IN (
     SELECT node_id FROM node_current WHERE channel IS NOT NULL AND channel != :channel)
   AND +m.session_row_id NOT IN (SELECT value FROM json_each(:other_sessions))"""
-# A node's measurements, by either index, for the node filter.
-_NODE_SQL = f""" AND (m.heard_node_id = :node
-    OR m.id IN (SELECT measurement_id FROM coverage_relay WHERE node_id = :node))
-  AND {_HEARD} = :node"""
+_NODE_SQL = " AND m.heard_node_id = :node AND m.heard_how != 'nearest'"
 
 
 # A node that turned OK to MQTT off (opt_out.py) is never named, past
@@ -1855,8 +1901,9 @@ def relay_candidates(
     radios: set[Radio],
 ) -> list[tuple[CoverageCandidate, ...]]:
     """Up to CELL_CANDIDATES placed relays for each (byte, heard_at) at place,
-    evidence first and then likeliest within each group. Nodes that turned
-    OK to MQTT off are never suggested."""
+    evidence first and then likeliest within each group, with any survey's
+    direct receptions there (survey_heard). Nodes that turned OK to MQTT
+    off are never suggested."""
     if not copies:
         return []
     evidence = relays.relay_evidence(
@@ -1868,9 +1915,35 @@ def relay_candidates(
         places=[place],
     )
     hidden = opted_out(connection)
+    # Sender and receiver 0: no known node is either.
+    networks: list[Radio | None] = [*radios] or [None]
+    here: list[dict[str, Any]] = [
+        {
+            "heard_at": at,
+            "latitude": place[0],
+            "longitude": place[1],
+            "sender_node_id": 0,
+            "receiver_node_id": 0,
+            "relay_byte": relay_byte,
+            "rx_rssi": None,
+            "rx_snr": None,
+            "spreading_factor": None if radio is None else radio.spreading_factor,
+            "bandwidth_khz": None if radio is None else radio.bandwidth_khz,
+            "frequency_mhz": None if radio is None else radio.frequency_mhz,
+        }
+        for relay_byte, at in copies
+        for radio in networks
+    ]
+    direct = survey_receptions(connection, here)
+    heard: dict[tuple[int, int], tuple[set[int], set[int]]] = defaultdict(lambda: (set(), set()))
+    for row in here:
+        nodes, active = heard[int(row["relay_byte"]), int(row["heard_at"])]
+        found_heard, found_active = survey_heard(direct, row)
+        nodes |= found_heard
+        active |= found_active
     found = []
     for relay_byte, at in copies:
-        # Sender and receiver 0: no known node is either.
+        nodes, active = heard[relay_byte, at]
         scores = score_relays(
             evidence,
             Relayed(
@@ -1885,6 +1958,8 @@ def relay_candidates(
                 [],
             ),
             {},
+            survey_heard=nodes,
+            survey_active=active,
         )
         near = []
         for node in scores.hints():

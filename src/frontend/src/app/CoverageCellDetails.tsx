@@ -156,11 +156,11 @@ export function CoverageCellDetails({
           >
             <li>
               <LegendLine dashes={undefined} />
-              Heard directly by a survey
+              Heard directly
             </li>
             <li>
               <LegendLine dashes="4 4" />
-              Guessed from MQTT
+              Likely relay
             </li>
           </ul>
         </>

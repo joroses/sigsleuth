@@ -65,6 +65,8 @@ const TERM_LABELS: Record<Term, string> = {
   nlink_log: "links nearby",
   nlink_km: "distance to the nearest linked node",
   nlink_any: "some candidate linked nearby",
+  sheard: "heard by a survey nearby",
+  survey_only: "known only to surveys",
 };
 
 export function RouteBadge() {
@@ -96,6 +98,7 @@ const NEARBY_TERMS = new Set<Term>([
   "nlink_log",
   "nlink_km",
   "nlink_any",
+  "sheard",
 ]);
 const COHEARER_TERMS = new Set<Term>([
   "glink",
@@ -124,6 +127,7 @@ const PROFILE_TERMS = new Set<Term>([
   "channel_same",
   "channel_other",
   "inactive",
+  "survey_only",
 ]);
 
 function groupNetScore(candidate: RelayCandidate, terms: Set<Term>): number {
@@ -221,14 +225,17 @@ export function WhyComparison({
   }
 
   function nearbyFact(candidate: RelayCandidate): ReactNode {
+    const surveyed = hasTerm(candidate, "sheard");
     if (candidate.near_partner !== null) {
       return (
         <>
           Linked to <NodeRef node={candidate.near_partner} /> (
           {formatKm(candidate.near_km)} km, {candidate.near_observations} obs)
+          {surveyed ? "; heard by a survey nearby" : null}
         </>
       );
     }
+    if (surveyed) return "Heard by a survey nearby";
     return hasTerm(candidate, "nlink_any")
       ? "None (others have nearby links)"
       : "None";

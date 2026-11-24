@@ -34,22 +34,21 @@ import { useSetting, useViewState } from "./remember";
 import { useApi, usePagedApi } from "./useApi";
 import { Badge, ShortTime, StatusPanel, WideTable } from "./ui";
 
-type Show = "all" | "changed" | "unnamed" | "differ";
+type Show = "all" | "changed" | "unnamed";
 type UploadHow = SurveyCheck["upload_how"];
 type ShownHow = SurveyCheck["shown_how"];
 
 const SHOWS: { value: Show; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "changed", label: "Changed since upload" },
+  { value: "changed", label: "Changed since saved" },
   { value: "unnamed", label: "Unnamed on the map" },
-  { value: "differ", label: "Upload and survey link differ" },
 ];
 const COUNTS = [25, 50, 100, 200];
 
 const SURVEY_HOW_LABELS: Record<UploadHow | ShownHow, string> = {
   ...HOW_LABELS,
   direct: "Heard directly",
-  survey_link: "Survey link",
+  survey_link: "Heard by a survey nearby",
   nearest: "Nearest, read as unknown",
   unknown: "Unknown",
 };
@@ -64,8 +63,8 @@ const TODAY_WHY_LABELS: Record<SurveyCheck["today"]["why"], string> = {
 
 /**
  * Relay checks of survey uploads (#diagnostics/relays/surveys): each relayed
- * measurement with the node upload named, its survey link and today's
- * rules, and one measurement's decisions explained
+ * measurement with the node saved for it and today's rules, and one
+ * measurement's decisions explained
  * (#diagnostics/relays/surveys/<measurement>).
  */
 export function SurveyChecks({
@@ -99,10 +98,6 @@ export function SurveyChecks({
   );
 }
 
-function same(a: CheckNode | null, b: CheckNode | null): boolean {
-  return a !== null && b !== null && a.node_id === b.node_id;
-}
-
 const NOT_COUNTED =
   "Heard before its node moved, or old and its node not seen since";
 
@@ -110,15 +105,11 @@ const NOT_COUNTED =
 function whyOf(check: SurveyCheck): string {
   if (!check.counted) return "No longer on the map";
   if (check.upload_how === "direct") return "Heard directly";
-  if (check.shown_how === "survey_link") return "Survey link";
   if (check.shown_node !== null) {
-    return `Named at upload by ${SURVEY_HOW_LABELS[check.shown_how].toLowerCase()}`;
+    return `Named: ${SURVEY_HOW_LABELS[check.shown_how].toLowerCase()}`;
   }
   if (!check.relay_byte) return "No relay byte";
-  if (check.link_nodes > 1) {
-    return `Survey link ambiguous between ${check.link_nodes} nodes`;
-  }
-  if (check.today.node !== null) return "Named today, not at upload";
+  if (check.today.node !== null) return "Named today, not saved";
   return TODAY_WHY_LABELS[check.today.why];
 }
 
@@ -130,13 +121,6 @@ function shows(check: SurveyCheck, show: Show): boolean {
       return check.changed;
     case "unnamed":
       return check.shown_node === null;
-    case "differ":
-      return (
-        check.link !== null &&
-        check.upload_node !== null &&
-        check.upload_how !== "nearest" &&
-        !same(check.link, check.upload_node)
-      );
   }
 }
 
@@ -176,10 +160,6 @@ function SurveyList({
   const data = state.data;
   const checks = useMemo(() => data?.checks ?? [], [data]);
   const relayed = checks.filter((check) => check.upload_how !== "direct");
-  const linked = relayed.filter((check) => check.link !== null);
-  const both = linked.filter(
-    (check) => check.upload_node !== null && check.upload_how !== "nearest",
-  );
   const rates = [
     {
       label: "Named on the map",
@@ -190,14 +170,8 @@ function SurveyList({
       total: relayed.length,
     },
     {
-      label: "Upload agrees with survey link",
-      title: "Both named, the same node",
-      agree: both.filter((check) => same(check.link, check.upload_node)).length,
-      total: both.length,
-    },
-    {
-      label: "Today agrees with upload",
-      title: "Today's rules name the node upload named",
+      label: "Today agrees with saved",
+      title: "Today's rules name the node saved",
       agree: relayed.filter((check) => !check.changed).length,
       total: relayed.length,
     },
@@ -222,11 +196,11 @@ function SurveyList({
       <div className="section-intro compact relay-check-intro">
         <h3>Survey uploads</h3>
         <p>
-          Relayed survey measurements and the node each heard, decided three
-          ways: at upload, from what MQTT knew then; by a survey link, from
-          surveys&apos; direct receptions; and by today&apos;s rules. The map
-          shows the survey link, else upload&apos;s. Surveys carry no route, so
-          the rates below are agreement, not accuracy.
+          Relayed survey measurements and the node each heard, decided two ways:
+          saved, from what MQTT and surveys knew at upload or when a later
+          upload&apos;s direct receptions changed it; and by today&apos;s rules.
+          The map shows the saved one. Surveys carry no route, so the rates
+          below are agreement, not accuracy.
         </p>
       </div>
       <div className="nodes-toolbar">
@@ -326,8 +300,7 @@ function SurveyList({
                     <th>Sender</th>
                     <th>Byte · hops</th>
                     <th>Signal</th>
-                    <th>At upload</th>
-                    <th>Survey link</th>
+                    <th>Saved</th>
                     <th>Today&apos;s rules</th>
                   </tr>
                 </thead>
@@ -394,7 +367,6 @@ function Decision({
 }
 
 function SurveyRow({ check }: { check: SurveyCheck }) {
-  const linkShown = check.counted && check.shown_how === "survey_link";
   const today = check.today;
   return (
     <tr>
@@ -422,17 +394,8 @@ function SurveyRow({ check }: { check: SurveyCheck }) {
         <Decision
           node={check.upload_node}
           how={check.upload_how}
-          shown={check.counted && !linkShown}
+          shown={check.counted}
         />
-      </td>
-      <td>
-        {check.link !== null ? (
-          <Decision node={check.link} how={null} shown={linkShown} />
-        ) : check.link_nodes > 1 ? (
-          <span className="muted">{check.link_nodes} nodes</span>
-        ) : (
-          <span className="muted">—</span>
-        )}
       </td>
       <td>
         <Decision node={today.node} how={today.how} shown={false} />
@@ -444,7 +407,7 @@ function SurveyRow({ check }: { check: SurveyCheck }) {
         {check.changed ? (
           <>
             {" "}
-            <Badge tone="amber" title="Not the node upload named">
+            <Badge tone="amber" title="Not the node saved">
               changed
             </Badge>
           </>
@@ -536,8 +499,8 @@ function todayResult(detail: SurveyCheckDetail): string {
 function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
   const [selected, setSelected] = useState<number | null>(null);
   const check = detail.check;
-  const named = [check.upload_node, check.link, check.today.node].flatMap(
-    (node) => (node?.node_id == null ? [] : [node.node_id]),
+  const named = [check.upload_node, check.today.node].flatMap((node) =>
+    node?.node_id == null ? [] : [node.node_id],
   );
   const cohearers = detail.reports.filter(
     (report) => report.kind === "cohearer",
@@ -549,18 +512,12 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
   const possible = detail.candidates.filter((candidate) => candidate.possible);
   const possibleSorted = byProbability(possible);
   const compareKey =
-    check.link?.node_id ??
     (check.upload_how !== "nearest" ? check.upload_node?.node_id : null) ??
     null;
   const compareCandidate =
     compareKey === null
       ? undefined
       : possible.find((candidate) => candidate.key === compareKey);
-  const compareLabel =
-    compareCandidate !== undefined &&
-    check.link?.node_id === compareCandidate.key
-      ? "Survey link"
-      : "At upload";
   const signalGatewaysCount = new Set(
     detail.signals.map((signal) => signal.gateway_node_id),
   ).size;
@@ -606,31 +563,13 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
             </div>
           )}
           <div>
-            <dt>At upload</dt>
+            <dt>Saved</dt>
             <dd>
               <Decision
                 node={check.upload_node}
                 how={check.upload_how}
-                shown={check.counted && check.shown_how !== "survey_link"}
+                shown={check.counted}
               />
-            </dd>
-          </div>
-          <div>
-            <dt>Survey link</dt>
-            <dd>
-              {check.link !== null ? (
-                <Decision
-                  node={check.link}
-                  how={null}
-                  shown={check.counted && check.shown_how === "survey_link"}
-                />
-              ) : (
-                <span className="muted">
-                  {check.link_nodes > 1
-                    ? `none: ${check.link_nodes} nodes fit`
-                    : "none"}
-                </span>
-              )}
             </dd>
           </div>
           <div>
@@ -660,7 +599,7 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
             top={possibleSorted[0]}
             compare={compareCandidate}
             topLabel={check.today.node !== null ? "Named" : "Top"}
-            compareLabel={compareLabel}
+            compareLabel="Saved"
             routeKey={null}
             showGatewayHistory={false}
             showUnknown={
@@ -703,19 +642,16 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
 
       <section aria-labelledby="survey-link-heading">
         <div className="section-intro compact">
-          <h3 id="survey-link-heading">Survey link</h3>
+          <h3 id="survey-link-heading">Heard by surveys</h3>
           <p>
             Nodes sending byte{" "}
             {check.relay_byte ? byteText(check.relay_byte) : "—"} that any
             survey node on the same radio settings heard directly within{" "}
-            {formatHours(detail.link_rules.tiers_hours.at(-1) ?? 0)}. The first
-            window (
-            {detail.link_rules.tiers_hours.map(formatHours).join(", then ")})
-            with any within {detail.link_rules.km} km decides: exactly one is
-            the survey link. A copy over {detail.link_rules.too_strong_db} dB
-            stronger than this survey node heard a node within{" "}
-            {detail.link_rules.too_strong_km} km rules that node out, and a
-            muted node (CLIENT_MUTE) never rebroadcasts.
+            {detail.link_rules.days} days. Those within {detail.link_rules.km}{" "}
+            km score as heard nearby, unless a copy over{" "}
+            {detail.link_rules.too_strong_db} dB stronger than this survey node
+            heard them within {detail.link_rules.too_strong_km} km rules them
+            out, or they are muted (CLIENT_MUTE), which never rebroadcast.
           </p>
         </div>
         <SurveyLinkTable detail={detail} />
@@ -798,12 +734,6 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
   );
 }
 
-function formatHours(hours: number): string {
-  if (hours < 24) return `${hours} h`;
-  const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"}`;
-}
-
 function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
   const nodes = detail.survey_link;
   if (nodes.length === 0) {
@@ -813,7 +743,7 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
       </StatusPanel>
     );
   }
-  const link = detail.check.link;
+  const saved = detail.check.upload_node;
   return (
     <WideTable>
       <table className="relay-step-table">
@@ -828,7 +758,6 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
                 within {detail.link_rules.km} km
               </span>
             </th>
-            <th>Found in</th>
             <th>
               Strongest here
               <span className="column-note">
@@ -843,7 +772,7 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
             <tr
               key={node.key}
               className={
-                link !== null && node.node_id === link.node_id
+                saved !== null && node.node_id === saved.node_id
                   ? "route-relay-row"
                   : undefined
               }
@@ -854,13 +783,6 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
               <td className="number">{formatKm(node.km)}</td>
               <td className="number">{node.receptions}</td>
               <td>{hoursText(node.hours)}</td>
-              <td>
-                {node.tier_hours === null ? (
-                  <span className="muted">none</span>
-                ) : (
-                  formatHours(node.tier_hours)
-                )}
-              </td>
               <td className={node.too_strong ? "rule-hit" : undefined}>
                 {node.strongest_here_db === null
                   ? "—"
@@ -897,10 +819,9 @@ function linkResult(node: SurveyLinkNode, detail: SurveyCheckDetail): string {
     return `ruled out: over ${detail.link_rules.too_strong_db} dB too strong`;
   }
   if (!node.candidate) {
-    return node.tier_hours === null
-      ? `not within ${detail.link_rules.km} km`
-      : "a closer window decides";
+    return node.km !== null && node.km <= detail.link_rules.km
+      ? "cannot relay on these settings"
+      : `not within ${detail.link_rules.km} km`;
   }
-  const fit = detail.survey_link.filter((other) => other.candidate).length;
-  return fit === 1 ? "the survey link" : `one of ${fit}`;
+  return "heard nearby in the score";
 }

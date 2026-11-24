@@ -28,7 +28,7 @@ DATABASE_BUSY_TIMEOUT_MS = 5_000
 # Between the batches of a long write (rederive, retention), so capture gets
 # the write lock: a waiting connection retries only every 100 ms or so.
 WRITE_PAUSE_SECONDS = 0.15
-FACTS_VERSION = 6
+FACTS_VERSION = 7
 # Each takes facts from its version to the next. Survey measurements are kept
 # across them: a phone cannot resend what it has deleted.
 _FACTS_UPGRADES = {
@@ -205,8 +205,65 @@ _FACTS_UPGRADES = {
     CREATE INDEX coverage_measurement_heard ON coverage_measurement (heard_node_id, heard_at);
     CREATE INDEX coverage_measurement_sender ON coverage_measurement (sender_node_id, heard_at);
     """,
+    # heard_how may be 'survey_link', rebuilt as in 1, and the derived survey
+    # links (coverage_relay) become saved names where upload named none.
+    6: """
+    CREATE TABLE IF NOT EXISTS coverage_relay (
+        measurement_id INTEGER PRIMARY KEY, node_id INTEGER NOT NULL
+    ) STRICT;
+    CREATE TABLE coverage_measurement_new (
+        id INTEGER PRIMARY KEY,
+        session_row_id INTEGER NOT NULL REFERENCES coverage_session(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        heard_at INTEGER NOT NULL,
+        latitude REAL NOT NULL CHECK (latitude BETWEEN -90 AND 90),
+        longitude REAL NOT NULL CHECK (longitude BETWEEN -180 AND 180),
+        accuracy_m REAL,
+        fix_age_ms INTEGER,
+        sender_node_id INTEGER NOT NULL CHECK (sender_node_id BETWEEN 1 AND 4294967295),
+        recipient_node_id INTEGER CHECK (recipient_node_id IS NULL
+            OR recipient_node_id BETWEEN 0 AND 4294967295),
+        packet_id INTEGER CHECK (packet_id IS NULL OR packet_id BETWEEN 1 AND 4294967295),
+        rx_snr REAL,
+        rx_rssi INTEGER,
+        hop_start INTEGER,
+        hop_limit INTEGER,
+        relay_byte INTEGER CHECK (relay_byte IS NULL OR relay_byte BETWEEN 0 AND 255),
+        ok_to_mqtt INTEGER CHECK (ok_to_mqtt IN (0, 1)),
+        default_key INTEGER CHECK (default_key IN (0, 1)),
+        cell_x INTEGER NOT NULL,
+        cell_y INTEGER NOT NULL,
+        heard_node_id INTEGER,
+        heard_how TEXT NOT NULL CHECK (heard_how IN ('direct', 'reported', 'gateway_link',
+            'near_link', 'sender_link', 'survey_link', 'nearest', 'only_candidate', 'unknown')),
+        candidates INTEGER NOT NULL CHECK (candidates >= 0),
+        margin_db REAL,
+        UNIQUE (session_row_id, seq)
+    ) STRICT;
+    INSERT INTO coverage_measurement_new (
+        id, session_row_id, seq, heard_at, latitude, longitude, accuracy_m, fix_age_ms,
+        sender_node_id, recipient_node_id, packet_id, rx_snr, rx_rssi, hop_start, hop_limit,
+        relay_byte, ok_to_mqtt, default_key, cell_x, cell_y, heard_node_id, heard_how,
+        candidates, margin_db
+    ) SELECT
+        m.id, m.session_row_id, m.seq, m.heard_at, m.latitude, m.longitude, m.accuracy_m,
+        m.fix_age_ms, m.sender_node_id, m.recipient_node_id, m.packet_id, m.rx_snr, m.rx_rssi,
+        m.hop_start, m.hop_limit, m.relay_byte, m.ok_to_mqtt, m.default_key, m.cell_x, m.cell_y,
+        iif(l.node_id IS NULL, m.heard_node_id, l.node_id),
+        iif(l.node_id IS NULL, m.heard_how, 'survey_link'), m.candidates, m.margin_db
+    FROM coverage_measurement AS m
+    LEFT JOIN coverage_relay AS l
+        ON l.measurement_id = m.id AND m.heard_how IN ('unknown', 'nearest');
+    DROP TABLE coverage_relay;
+    DROP TABLE coverage_measurement;
+    ALTER TABLE coverage_measurement_new RENAME TO coverage_measurement;
+    CREATE INDEX coverage_measurement_time ON coverage_measurement (heard_at);
+    CREATE INDEX coverage_measurement_cell ON coverage_measurement (cell_x, cell_y, heard_at);
+    CREATE INDEX coverage_measurement_heard ON coverage_measurement (heard_node_id, heard_at);
+    CREATE INDEX coverage_measurement_sender ON coverage_measurement (sender_node_id, heard_at);
+    """,
 }
-DERIVED_VERSION = 63
+DERIVED_VERSION = 64
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

@@ -89,8 +89,8 @@ Terms the code and pages use, in plain words. Rules and thresholds live in the c
 |---|---|
 | Signal survey | A phone app ([Mesh Survey](https://github.com/joroses/mesh-survey), an Android fork) recording every packet its node hears, with the phone's position, and uploading them. |
 | Measurement | One packet the survey node heard. Not a reception. |
-| Heard node | The node the survey node actually received: the sender if direct, else the last relay, often guessed from the relay byte ([relay evidence](relay-evidence.md)). The map's line to it is solid when it was heard directly or by a survey link, dashed when guessed. |
-| Survey link | A heard node named from a direct reception: the one node sending that relay byte that a survey node heard directly nearby around then (`coverage.survey_candidates`). It wins over upload's guess. |
+| Heard node | The node the survey node actually received: the sender if direct, else the last relay, often guessed from the relay byte ([relay evidence](relay-evidence.md)). The map's line to it is solid when it was heard directly, dashed when guessed. |
+| Heard by a survey nearby | A heard node guessed from a survey node's direct reception of it within 30 km and 60 days of the phone. |
 | Near link | A relay guessed because nodes within 30 km of the receiver have links with it (direct, neighbour or traceroute), either way, in the week before (`relays.near_partners`). |
 | Own reach | A node's longest trusted link it transmitted on (`positions.own_reach`). A receiver within it or 20 km is evidence for a relay candidate, though the score barely weighs it. |
 | Only candidate | A heard node guessed mainly by distance: the likeliest node sending its relay byte near the survey node or gateway (`coverage.heard_node`). Named so before 2026-10-27, when it was the only one left. |

@@ -1,6 +1,6 @@
 # Relay evidence: which sources name a relay
 
-Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages named relays by the 2026-10-18 decision below, by one score since 2026-10-27 ([Decision: one score](#decision-one-score-2026-10-27)), and with near links since 2026-11-22 ([Near links](#near-links-2026-11-22)). Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
+Measured 2026-10-17 on a copy of live loranet.pl `msh/#`: 14.6 days to 2026-10-12, 800 k packets, 9.8 M receptions, 4,153 nodes. `scripts/relay-evidence.py DATABASE` prints every figure here (about 13 minutes). Coverage uploads and packet pages named relays by the 2026-10-18 decision below, by one score since 2026-10-27 ([Decision: one score](#decision-one-score-2026-10-27)), with near links since 2026-11-22 ([Near links](#near-links-2026-11-22)), and with survey receptions as a term since 2026-11-23 ([Survey receptions](#survey-receptions-2026-11-23)). Revisit once surveys hear relays that MQTT names (see the last section), or when firmware changes what gateways upload.
 
 ## The problem
 
@@ -41,7 +41,7 @@ Can speak: the share of all relayed receptions (every 50th packet, 172 k) where 
 | 9b | Co-hearers' signal: the only candidate that co-hearers hear directly within 6 dB of this rebroadcast's SNR, with every other one checked 10 dB or more off (`reception.rx_snr`, `link_hour` SNR, 3 readings or more) | 49% | 98.8% | 2.7% | The last hop's SNR comes from the relay and the path, not from whose packet it carries. Needs no survey data |
 | 3 | `node_current`: role, radio channel, last seen, moves | rule-outs | | | See below |
 | 4 | `node_estimate`, `node_doubtful` | places 16% of nodes | | | 9.7% of true relays are placed only by an estimate (ratio 0.62 against other candidates); 7 doubtful nodes |
-| 5 | The receiver heard the candidate directly, 7 days (`link_hour` direct) | 87% (sole) | 99.8% | 6.4% | Gateways only: for a survey, this is survey links (any survey node, 30 km, 60 days; untested). The most candidates heard: 93% speak, 97.3% right |
+| 5 | The receiver heard the candidate directly, 7 days (`link_hour` direct) | 87% (sole) | 99.8% | 6.4% | Gateways only: for a survey, this is survey receptions (any survey node, 30 km, 60 days; [Survey receptions](#survey-receptions-2026-11-23)). The most candidates heard: 93% speak, 97.3% right |
 | 6 | Traceroute hops from the candidate to the receiver, 7 days (`traceroute_hop`) | 78% | 99.4% | 4.7% | Repeated runs make it lean on the route truth itself; no index by node (below) |
 | 7 | `map_report`: preset, firmware | 5% of nodes | | | Rule-outs only; positions already reach `node_current` |
 | 8 | Survey measurements | 64 measurements, 1 session, none direct | | | Nothing to measure on live |
@@ -122,7 +122,7 @@ Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; thei
 
 ## Decision: one score (2026-10-27)
 
-Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of naming rules, gave way to one score (`relays.py`). Solid lines are unchanged: heard directly, a survey link, and on packet pages the only candidate the gateway heard directly. "Too strong" still removes a survey candidate first.
+Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of naming rules, gave way to one score (`relays.py`). Solid lines are unchanged: heard directly, a survey link (until 2026-11-23, below), and on packet pages the only candidate the gateway heard directly. "Too strong" still removes a survey candidate first.
 
 - **Candidates**: every node sending the byte except those that cannot have sent the copy: firmware without the relay byte, or a map report preset on another spreading factor or bandwidth. Unplaced, CLIENT_MUTE, silent, far and other-channel nodes stay in, with terms against them. So does a node SigSleuth does not know, the unknown option, scoring `UNKNOWN_SCORE`.
 - **Score**: each candidate's terms times their weights (`WEIGHTS`), summed. A softmax over the candidates and the unknown option gives each a probability.
@@ -186,13 +186,28 @@ The refit moved the other weights too:
 
 With no near links and no rival, a candidate with no role is named by distance within about 15 km on the copy's channel, and within about 2 km when its channel is unknown. Revisit when the fit moves again, or with route truth from surveys.
 
-Survey links stay their own rule, which wins. A phone hears a node directly a few times, too few for a term that counts links, and folding them in left more relays unnamed where no gateway hears anything. Revisit once surveys upload the traceroutes they hear.
+Survey links stayed their own rule, which won, until 2026-11-23 (below).
 
 Two covering indexes on `link_hour` read the partners, by node and hour (`link_hour_from`, `link_hour_to`). On the timing copy the busiest packet page went from 219 ms to 276 ms (380 ms more by `link_hour_pair` alone), the node page's contacts got 20% faster, and a rebuild of the derived tables slower (about 250 s against 200 s).
 
+## Survey receptions (2026-11-23)
+
+A survey link named the one node a survey heard directly nearby and won over every other piece of evidence. On a survey capture it overruled confident MQTT evidence: 17 relayed measurements of one session went to a tracker heard once, at −116 dBm, within the hour, over a gateway that had reported 10 of the 17 packets one hop earlier. Survey receptions are now a term of the score (`relays.relay_terms`):
+
+- **`sheard`**: a candidate that any survey node on the copy's radio settings heard directly within 30 km and 60 days of the phone scores `SURVEY_HEARD_SCORE` (3.00), less what its near links add. Hearing near the phone counts once: `max(near links, 3.00)`. Too strong and CLIENT_MUTE nodes are left out, as before.
+- Heard by a survey within a day of the copy, the candidate counts as active. When MQTT knows no channel for it, the survey's reception stands for the copy's channel.
+- **A node only surveys heard**, unknown to MQTT, is a candidate scoring the unknown option plus 3.00 (+0.89): 95% alone against the unknown option, a tie with a second such node, and a fair rival for a client linked only with the sender. A ROUTER, or a candidate with strong links, still wins.
+- **Weight**: hand-set. Gateways standing in for phones cannot fit it: their survey stand-in (a partner within 30 km heard the candidate) never appears without near links for a true relay (0.00% of copies, 0.58% for other candidates), so a joint fit made it negative. On the survey capture's 2,551 measurements a survey link named, 3.0 names the linked node in 2,477 and another node in none, and the tracker's 17 go back to the gateway. From 3.55 nothing more changes. One 60-day window replaced the 1-hour tier, which let a node heard within the hour beat a better candidate heard earlier.
+- **Saved names**: a later upload's direct receptions decide again the relayed measurements whose survey receptions they change: the last 7 days wholly, as retention keeps every link and signal those scores read, and older unnamed ones while MQTT history lasts.
+- **Lines**: every relayed name is a dashed guess, this one included.
+
+Packet pages keep their shortcut: the only candidate the receiving gateway heard directly within 7 days of the packet is named outright (99.8% right on route truth). A fixed gateway that listens at one spot all week is a different witness from moving phones pooled over 30 km and 60 days.
+
+Revisit once phones upload the routes of the traceroutes they hear, which would let the weight be fitted.
+
 ## Decision (2026-10-18)
 
-Superseded for naming by the score above, 2026-10-27; solid lines are as decided here.
+Superseded for naming by the score above, 2026-10-27; solid lines as decided here until 2026-11-23, when survey links became a score term.
 
 Solid lines need direct evidence; dashed guesses can also use the co-hearers' signal score (below). Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
@@ -270,7 +285,7 @@ Every relayed name stays a guess unless it is solid. Since 2026-10-27 a guess is
 |---|---|---|
 | Heard directly | solid | Heard directly |
 | Gateway heard it directly (packet page) | no "≈" | Heard directly: the only node ending in 1a this gateway heard directly within a week of the packet |
-| Survey link | solid | Heard directly nearby: the only node ending in 1a a survey heard |
+| Heard by a survey nearby, `survey_link` | dashed | Guess: a node ending in 1a a survey heard nearby |
 | Gateway heard it and others directly (packet page, `receiver_heard`) | dashed | Guess: likeliest node ending in 1a this gateway hears |
 | Links with a co-hearer or its signal, `gateway_link` | dashed | Guess: linked to a gateway that heard the same copy |
 | Links with nodes near the receiver, `near_link` | dashed | Guess: linked to a node nearby |

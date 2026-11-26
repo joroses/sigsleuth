@@ -1295,7 +1295,7 @@ def test_cells_group_measurements_at_the_zoom_level(
     assert coarse["level"] == 12
     assert sorted(cell["measurements"] for cell in coarse["cells"]) == [1, 2]
     busiest = coarse["cells"][0]
-    assert (busiest["nodes"], busiest["guessed"], busiest["average_margin"]) == (1, 2, 20.2)
+    assert (busiest["nodes"], busiest["average_margin"]) == (1, 20.2)
     # A view whose edge cuts through a cell still counts the whole cell.
     edge = {**AREA, "north": PHONE[0] + 0.0015, "zoom": 6}
     cut = client.get("/api/v1/coverage/cells", params=edge).json()["cells"]

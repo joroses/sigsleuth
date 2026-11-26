@@ -142,16 +142,6 @@ HeardHow = Literal[
     "only_candidate",
     "unknown",
 ]
-# The guesses, drawn dashed: every name but direct.
-GUESSED: tuple[HeardHow, ...] = (
-    "reported",
-    "gateway_link",
-    "near_link",
-    "sender_link",
-    "survey_link",
-    "only_candidate",
-)
-
 # A survey direct reception: when, where, by which survey node, its signal
 # (signal_db) and its RSSI.
 Reception = tuple[int, float, float, int, float | None, int | None]
@@ -1323,7 +1313,6 @@ EARTH_CIRCUMFERENCE_M = 40_075_016.686
 _MEASUREMENTS = "coverage_measurement AS m"
 _HEARD = "CASE WHEN m.heard_how != 'nearest' THEN m.heard_node_id END"
 _HOW = "CASE WHEN m.heard_how = 'nearest' THEN 'unknown' ELSE m.heard_how END"
-_GUESSED_SQL = f"({_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
 # The most certain way a node was identified in a cell comes first.
 _HOW_ORDER: tuple[HeardHow, ...] = (
     "direct",
@@ -1371,7 +1360,6 @@ _NODE_SQL = " AND m.heard_node_id = :node AND m.heard_how != 'nearest'"
 _HEARD_OPTED_OUT = opted_out_sql(_HEARD)
 _SHOWN = f"CASE WHEN {_HEARD_OPTED_OUT} THEN NULL ELSE {_HEARD} END"
 _SHOWN_HOW = f"CASE WHEN {_HEARD_OPTED_OUT} THEN 'unknown' ELSE {_HOW} END"
-_SHOWN_GUESSED = f"({_SHOWN_HOW}) IN ({', '.join(repr(how) for how in GUESSED)})"
 # What the map shows for a measurement on _MEASUREMENTS, for pages that list
 # measurements beside it: its node and how, and whether it counts at all
 # (_ALIVE_SQL, with :alive_since from alive_since).
@@ -1438,8 +1426,7 @@ class CoverageCell:
     average_margin and best_margin are the SNR margins above the survey
     node's floor, in dB; None when no measurement had one. spreading_factor
     is the one all its measurements' surveys ran on, None when they mix or
-    one is unknown. nodes counts the distinct heard nodes; guessed counts
-    measurements whose heard node is a guess (GUESSED)."""
+    one is unknown. nodes counts the distinct heard nodes."""
 
     x: int
     y: int
@@ -1449,7 +1436,6 @@ class CoverageCell:
     average_snr: float | None
     spreading_factor: int | None
     nodes: int
-    guessed: int
 
 
 @dataclass(frozen=True)
@@ -1498,7 +1484,7 @@ def coverage_cells(
                CASE WHEN count(s.spreading_factor) = count(*)
                     AND min(s.spreading_factor) = max(s.spreading_factor)
                     THEN min(s.spreading_factor) END AS spreading_factor,
-               count(DISTINCT {_SHOWN}) AS nodes, sum({_SHOWN_GUESSED}) AS guessed
+               count(DISTINCT {_SHOWN}) AS nodes
         FROM {_MEASUREMENTS}
         JOIN coverage_session AS s ON s.id = m.session_row_id
         WHERE m.cell_x BETWEEN :x0 AND :x1 AND m.cell_y BETWEEN :y0 AND :y1{filters}
@@ -1526,7 +1512,6 @@ def coverage_cells(
             average_snr=_round(row["average_snr"]),
             spreading_factor=row["spreading_factor"],
             nodes=int(row["nodes"]),
-            guessed=int(row["guessed"]),
         )
         for row in rows[:MAX_CELLS]
     )
@@ -1667,10 +1652,9 @@ def coverage_nodes(
 @dataclass(frozen=True)
 class CoverageHeardNode:
     """A node heard in a cell. how is the most certain way it was identified
-    there, and guessed counts its measurements identified by a guess. The map
-    draws lines to it from its own nodes' positions, which include estimates.
-    average_snr is the survey nodes' SNR as radios show it; a node transmits
-    on one network, so it mixes no radio settings. average_margin is the SNR
+    there. The map draws lines to it from its own nodes' positions, which
+    include estimates. average_snr is the survey nodes' SNR as radios show
+    it; a node transmits on one network, so it mixes no radio settings. average_margin is the SNR
     above the survey node's floor, as cells average it. average_rssi is in
     dBm, from the measurements that recorded one. channel is the node's
     latest channel, None when unknown."""
@@ -1680,7 +1664,6 @@ class CoverageHeardNode:
     short_name: str | None
     how: HeardHow
     measurements: int
-    guessed: int
     average_snr: float | None
     average_margin: float | None
     average_rssi: int | None
@@ -1804,7 +1787,6 @@ def coverage_cell(
     heard_rows = connection.execute(
         f"""
         SELECT {_HEARD} AS heard_node_id, count(*) AS measurements,
-               sum({_GUESSED_SQL}) AS guessed,
                avg(m.rx_snr) AS average_snr, avg(m.margin_db) AS average_margin,
                avg(nullif(m.rx_rssi, 0)) AS average_rssi, max(m.heard_at) AS last_heard_at,
                min(CASE {_HOW} {how_rank} END) AS how_rank,
@@ -2083,7 +2065,6 @@ def _heard_node(row: sqlite3.Row, summary: NodeSummary | None) -> CoverageHeardN
         short_name=None if summary is None else summary.short_name,
         how=_HOW_ORDER[int(row["how_rank"])],
         measurements=int(row["measurements"]),
-        guessed=int(row["guessed"]),
         average_snr=_round(row["average_snr"]),
         average_margin=_round(row["average_margin"]),
         average_rssi=None if row["average_rssi"] is None else round(row["average_rssi"]),

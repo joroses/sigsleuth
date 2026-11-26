@@ -2966,21 +2966,11 @@ function SelectedCoverage({
   cells: CoverageCellList | null;
   onFit: () => void;
 }) {
-  let measurements = 0;
-  let guessed = 0;
-  for (const cell of cells?.cells ?? []) {
-    measurements += cell.measurements;
-    guessed += cell.guessed;
-  }
+  const empty =
+    cells !== null && cells.cells.every((cell) => cell.measurements === 0);
   return (
     <div className="selected-coverage">
-      {cells === null ? null : (
-        <p className="sidebar-note">
-          {measurements === 0
-            ? "No measurements in view."
-            : `${guessed.toLocaleString()} of ${measurements.toLocaleString()} measurements in view identified using MQTT evidence.`}
-        </p>
-      )}
+      {empty ? <p className="sidebar-note">No measurements in view.</p> : null}
       <button type="button" className="text-button" onClick={onFit}>
         <Icon name="locate" /> Fit map to coverage
       </button>

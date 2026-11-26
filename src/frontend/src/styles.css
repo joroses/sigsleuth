@@ -650,6 +650,11 @@ thead th {
   font-size: var(--text-sm);
 }
 
+/* A cell's totals, then its signal on the next line (cellText). */
+.coverage-popup .maplibregl-popup-content {
+  white-space: pre-line;
+}
+
 .coverage-popup .maplibregl-popup-tip,
 .history-popup .maplibregl-popup-tip {
   display: none;

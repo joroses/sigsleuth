@@ -191,6 +191,7 @@ export function NodePositionMinimap({
       places.length > 0 ||
       (contacts?.marks.length ?? 0) > 0 ||
       showCoverage);
+  const note = coverageNote(coverage, coverageArea, extent);
 
   const { container, map, failure } = useBasemapMap(
     {
@@ -454,10 +455,8 @@ export function NodePositionMinimap({
               linkWindow={linkWindow}
             />
           ) : null}
-          {showCoverage && hasMap ? (
-            <span className="data-line">
-              {coverageNote(coverage, coverageArea, extent)}
-            </span>
+          {showCoverage && hasMap && note !== null ? (
+            <span className="data-line">{note}</span>
           ) : null}
         </figcaption>
       </figure>
@@ -553,22 +552,15 @@ function coverageNote(
   state: { data: CoverageCellList | null; error: string | null },
   area: CoverageArea | null,
   extent: { data: CoverageExtent | null; loading: boolean },
-): string {
+): string | null {
   if (state.error !== null) return `Coverage could not load: ${state.error}`;
   if (!extent.loading && extent.data === null)
     return "No survey data associated with this node.";
   if (state.data === null || area === null) return "Loading coverage…";
-  let measurements = 0;
-  let guessed = 0;
-  for (const cell of cellsInView(state.data, area.view).cells) {
-    measurements += cell.measurements;
-    guessed += cell.guessed;
-  }
-  if (measurements === 0) return "No survey measurement in view; zoom out.";
-  const counts = `${measurements.toLocaleString()} survey ${measurements === 1 ? "measurement" : "measurements"} in view · ${guessed.toLocaleString()} identified using MQTT evidence`;
-  return state.data.truncated
-    ? `${counts} · busiest cells only, zoom in`
-    : counts;
+  const cells = cellsInView(state.data, area.view).cells;
+  if (cells.every((cell) => cell.measurements === 0))
+    return "No survey measurement in view; zoom out.";
+  return state.data.truncated ? "Busiest cells only; zoom in." : null;
 }
 
 // The links to the contacts, under the position history, and a marker on

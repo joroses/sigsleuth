@@ -411,7 +411,7 @@ export function addCoverageLayers(
 }
 
 /**
- * A hovered cell's totals, in SNR when the view has one spreading factor
+ * A hovered cell's totals on one line and its signal on the next, in SNR when the view has one spreading factor
  * (viewSpreadingFactor). Its properties come back from MapLibre, which drops
  * nulls.
  */
@@ -429,7 +429,7 @@ export function cellText(
       : typeof margin === "number"
         ? `${margin.toFixed(1)} dB above the limit`
         : "no SNR";
-  return `${measurements.toLocaleString()} ${measurements === 1 ? "measurement" : "measurements"} · ${signal} · ${nodes.toLocaleString()} heard ${nodes === 1 ? "node" : "nodes"}`;
+  return `${measurements.toLocaleString()} ${measurements === 1 ? "measurement" : "measurements"} · ${nodes.toLocaleString()} ${nodes === 1 ? "node" : "nodes"}\n${signal}`;
 }
 
 /** The plain words for how a heard node was identified. */

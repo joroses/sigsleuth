@@ -1096,8 +1096,7 @@ export interface components {
      *     average_margin and best_margin are the SNR margins above the survey
      *     node's floor, in dB; None when no measurement had one. spreading_factor
      *     is the one all its measurements' surveys ran on, None when they mix or
-     *     one is unknown. nodes counts the distinct heard nodes; guessed counts
-     *     measurements whose heard node is a guess (GUESSED).
+     *     one is unknown. nodes counts the distinct heard nodes.
      */
     CoverageCell: {
       x: number;
@@ -1108,7 +1107,6 @@ export interface components {
       average_snr: number | null;
       spreading_factor: number | null;
       nodes: number;
-      guessed: number;
     };
     /**
      * CoverageCellDetail
@@ -1173,10 +1171,9 @@ export interface components {
     /**
      * CoverageHeardNode
      * @description A node heard in a cell. how is the most certain way it was identified
-     *     there, and guessed counts its measurements identified by a guess. The map
-     *     draws lines to it from its own nodes' positions, which include estimates.
-     *     average_snr is the survey nodes' SNR as radios show it; a node transmits
-     *     on one network, so it mixes no radio settings. average_margin is the SNR
+     *     there. The map draws lines to it from its own nodes' positions, which
+     *     include estimates. average_snr is the survey nodes' SNR as radios show
+     *     it; a node transmits on one network, so it mixes no radio settings. average_margin is the SNR
      *     above the survey node's floor, as cells average it. average_rssi is in
      *     dBm, from the measurements that recorded one. channel is the node's
      *     latest channel, None when unknown.
@@ -1196,7 +1193,6 @@ export interface components {
         | "only_candidate"
         | "unknown";
       measurements: number;
-      guessed: number;
       average_snr: number | null;
       average_margin: number | null;
       average_rssi: number | null;

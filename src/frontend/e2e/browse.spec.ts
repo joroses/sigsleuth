@@ -85,7 +85,6 @@ test("unknown relays fit and filter coverage, and toggle back to all cells", asy
     average_snr: 2.5,
     spreading_factor: 7,
     nodes: 0,
-    guessed: 0,
   };
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.route("**/api/v1/coverage/nodes?*", (route) =>
@@ -835,7 +834,6 @@ for (const width of [1280, 390]) {
                     ...cell,
                     measurements: 3,
                     nodes: 0,
-                    guessed: 0,
                     average_margin: null,
                     best_margin: null,
                     average_snr: null,

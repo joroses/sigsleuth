@@ -20,7 +20,6 @@ const heard = (
   short_name: null,
   how,
   measurements: 1,
-  guessed: 0,
   average_snr: 10,
   average_margin: null,
   average_rssi: null,
@@ -92,7 +91,6 @@ describe("coverage cells", () => {
       average_snr: null,
       spreading_factor: 7,
       nodes: 1,
-      guessed: 0,
     });
     // Cell 66107 holds 1.569995 E; 66200 is about 25 km east of it.
     const list = {
@@ -120,7 +118,6 @@ describe("coverage cells", () => {
       average_snr: 2.5,
       spreading_factor,
       nodes: 1,
-      guessed: 0,
     });
     expect(viewSpreadingFactor([cell(1, 7), cell(2, 7)])).toBe(7);
     expect(viewSpreadingFactor([cell(1, 7), cell(2, 11)])).toBeNull();

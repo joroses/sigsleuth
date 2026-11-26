@@ -16,7 +16,6 @@ MQTT shows only what gateways hear. To see where your mesh can be heard on the g
 | | |
 |---|---|
 | <img src="docs/images/survey-recording.jpg" alt="Recording a survey" width="220"> | <img src="docs/images/survey-relays.jpg" alt="Relays heard" width="220"> |
-| Recording a survey | Which relays it heard through |
 
 **If you run SigSleuth** and want surveys from others:
 

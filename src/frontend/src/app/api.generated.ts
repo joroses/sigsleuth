@@ -2853,8 +2853,7 @@ export interface components {
      * @description One measurement's decisions, explained. The receiver is the phone
      *     where it heard the packet; reports are MQTT gateways' reports of the same
      *     packet (packet_row_id, the one pages show). candidates and their terms
-     *     are today's rules', ruled_out the keys of those too_strong left out;
-     *     signal_db the measurement's own signal as too_strong reads it.
+     *     are today's rules'.
      */
     SurveyCheckDetail: {
       check: components["schemas"]["SurveyCheck"];
@@ -2869,11 +2868,9 @@ export interface components {
       route_places: components["schemas"]["RelayPlace"][];
       candidates: components["schemas"]["RelayCandidate"][];
       unknown_probability: number;
-      ruled_out: number[];
       reports: components["schemas"]["RelayCheckReport"][];
       signals: components["schemas"]["RelaySignal"][];
       links: components["schemas"]["RelayLinks"][];
-      signal_db: number | null;
       survey_link: components["schemas"]["SurveyLinkNode"][];
       activity_from: string | null;
       rules: components["schemas"]["RelayRules"];
@@ -2897,10 +2894,8 @@ export interface components {
      *     the same radio settings heard directly within link_rules' days: how
      *     often, its reception nearest the phone (km) and, of those within
      *     link_km, the one nearest in time (hours from the measurement, negative
-     *     before). strongest_here_db is the survey node's own strongest direct
-     *     signal of it within too_strong_km, which too_strong compares.
-     *     excluded: the measurement's sender or survey node, or a muted node
-     *     (CLIENT_MUTE), never its relay.
+     *     before). excluded: the measurement's sender or survey node, or a muted
+     *     node (CLIENT_MUTE), never its relay.
      *     candidate: today's score counts it as survey heard.
      */
     SurveyLinkNode: {
@@ -2910,8 +2905,6 @@ export interface components {
       receptions: number;
       km: number | null;
       hours: number | null;
-      too_strong: boolean;
-      strongest_here_db: number | null;
       excluded: ("sender" | "surveyor" | "muted") | null;
       candidate: boolean;
     };
@@ -2919,14 +2912,11 @@ export interface components {
     SurveyLinkRules: {
       km: number;
       days: number;
-      too_strong_db: number;
-      too_strong_km: number;
     };
     /**
      * SurveyToday
      * @description What heard_node's rules name now, and the likeliest candidate when
-     *     they name none. possible counts the candidates scored, ruled_out those
-     *     too_strong left out.
+     *     they name none. possible counts the candidates scored.
      */
     SurveyToday: {
       node: components["schemas"]["RelayCheckNode"] | null;
@@ -2946,7 +2936,6 @@ export interface components {
         | "direct"
         | "named"
         | "no_relay_byte"
-        | "ruled_out"
         | "no_candidates"
         | "unknown"
         | "below"
@@ -2954,7 +2943,6 @@ export interface components {
       likeliest: components["schemas"]["RelayCheckNode"] | null;
       probability: number | null;
       possible: number;
-      ruled_out: number;
     };
     /**
      * TextReach

@@ -23,8 +23,6 @@ from sigsleuth.coverage import (
     SHOWN_COLUMNS,
     SURVEY_LINK_KM,
     SURVEY_LINK_MS,
-    TOO_STRONG_DB,
-    TOO_STRONG_KM,
     HeardHow,
     MeasurementScore,
     SavedHow,
@@ -35,9 +33,7 @@ from sigsleuth.coverage import (
     relay_evidence,
     score_measurement,
     shown_packet,
-    signal_db,
     survey_receptions,
-    too_strong,
 )
 from sigsleuth.db import from_epoch_ms, nodes_by_id
 from sigsleuth.derive import HOUR_MS, SavedHeader, is_direct_reception
@@ -77,13 +73,12 @@ SURVEY_CHECKS = 25
 MAX_SURVEY_CHECKS = 500
 
 # Why today's rules came out as they did: direct, or named; else no relay
-# byte, every possible candidate too_strong, none possible, an unknown node
-# likeliest, the likeliest below NAME_PROBABILITY, or with no evidence.
+# byte, none possible, an unknown node likeliest, the likeliest below
+# NAME_PROBABILITY, or with no evidence.
 TodayWhy = Literal[
     "direct",
     "named",
     "no_relay_byte",
-    "ruled_out",
     "no_candidates",
     "unknown",
     "below",
@@ -94,8 +89,7 @@ TodayWhy = Literal[
 @dataclass(frozen=True)
 class SurveyToday:
     """What heard_node's rules name now, and the likeliest candidate when
-    they name none. possible counts the candidates scored, ruled_out those
-    too_strong left out."""
+    they name none. possible counts the candidates scored."""
 
     node: RelayCheckNode | None
     how: SavedHow
@@ -103,7 +97,6 @@ class SurveyToday:
     likeliest: RelayCheckNode | None
     probability: float | None
     possible: int
-    ruled_out: int
 
 
 @dataclass(frozen=True)
@@ -287,7 +280,6 @@ def _checks(
                         likeliest=node(today[3]),
                         probability=today[4],
                         possible=0 if found is None else len(found.score.scores.terms),
-                        ruled_out=0 if found is None else len(found.score.ruled_out),
                     ),
                     shown_node=node(row["shown_node"]),
                     shown_how=row["shown_how"],
@@ -322,7 +314,7 @@ def _today(
         return named[0], named[1], "named", best, probability
     why: TodayWhy
     if best is None:
-        why = "ruled_out" if found.score.ruled_out else "no_candidates"
+        why = "no_candidates"
     elif scores.probabilities[None] >= scores.probabilities[best]:
         why = "unknown"
     elif scores.probabilities[best] < NAME_PROBABILITY:
@@ -338,10 +330,8 @@ class SurveyLinkNode:
     the same radio settings heard directly within link_rules' days: how
     often, its reception nearest the phone (km) and, of those within
     link_km, the one nearest in time (hours from the measurement, negative
-    before). strongest_here_db is the survey node's own strongest direct
-    signal of it within too_strong_km, which too_strong compares.
-    excluded: the measurement's sender or survey node, or a muted node
-    (CLIENT_MUTE), never its relay.
+    before). excluded: the measurement's sender or survey node, or a muted
+    node (CLIENT_MUTE), never its relay.
     candidate: today's score counts it as survey heard."""
 
     key: int
@@ -350,8 +340,6 @@ class SurveyLinkNode:
     receptions: int
     km: float | None
     hours: float | None
-    too_strong: bool
-    strongest_here_db: float | None
     excluded: Literal["sender", "surveyor", "muted"] | None
     candidate: bool
 
@@ -360,8 +348,6 @@ class SurveyLinkNode:
 class SurveyLinkRules:
     km: float
     days: float
-    too_strong_db: float
-    too_strong_km: float
 
 
 @dataclass(frozen=True)
@@ -369,8 +355,7 @@ class SurveyCheckDetail:
     """One measurement's decisions, explained. The receiver is the phone
     where it heard the packet; reports are MQTT gateways' reports of the same
     packet (packet_row_id, the one pages show). candidates and their terms
-    are today's rules', ruled_out the keys of those too_strong left out;
-    signal_db the measurement's own signal as too_strong reads it."""
+    are today's rules'."""
 
     check: SurveyCheck
     packet_row_id: int | None
@@ -384,11 +369,9 @@ class SurveyCheckDetail:
     route_places: tuple[RelayPlace, ...]
     candidates: tuple[RelayCandidate, ...]
     unknown_probability: float
-    ruled_out: tuple[int, ...]
     reports: tuple[RelayCheckReport, ...]
     signals: tuple[RelaySignal, ...]
     links: tuple[RelayLinks, ...]
-    signal_db: float | None
     survey_link: tuple[SurveyLinkNode, ...]
     activity_from: datetime | None
     rules: RelayRules
@@ -461,11 +444,9 @@ def survey_check(
         route_places=(),
         candidates=candidates,
         unknown_probability=unknown,
-        ruled_out=tuple(keys[node] for node in (found.score.ruled_out if found else ())),
         reports=tuple(reports),
         signals=explained["signals"],
         links=explained["links"],
-        signal_db=signal_db(row["rx_rssi"], row["rx_snr"]),
         survey_link=_survey_link(
             connection, row, hidden, frozenset() if found is None else found.score.survey_heard
         ),
@@ -484,8 +465,6 @@ def survey_check(
         link_rules=SurveyLinkRules(
             km=SURVEY_LINK_KM,
             days=SURVEY_LINK_MS / DAY_MS,
-            too_strong_db=TOO_STRONG_DB,
-            too_strong_km=TOO_STRONG_KM,
         ),
     )
 
@@ -570,11 +549,7 @@ def _survey_link(
         near = [reception for reception in receptions if abs(reception[0] - at) <= reach]
         if not near:
             continue
-        kms = [(great_circle_km(*position, r[1], r[2]), r) for r in near]
         evidence = link_evidence(receptions, row)
-        here = [
-            r[4] for km, r in kms if r[3] == surveyor and r[4] is not None and km <= TOO_STRONG_KM
-        ]
         summary = names.get(node)
         shown = node not in hidden
         listed.append(
@@ -585,10 +560,8 @@ def _survey_link(
                 if summary is None or not shown
                 else summary.long_name or summary.short_name,
                 receptions=len(near),
-                km=round(min(km for km, _ in kms), 1),
+                km=round(min(great_circle_km(*position, r[1], r[2]) for r in near), 1),
                 hours=None if evidence is None else round(evidence.offset_ms / HOUR_MS, 2),
-                too_strong=too_strong(receptions, row),
-                strongest_here_db=max(here, default=None),
                 excluded="sender"
                 if node == int(row["sender_node_id"])
                 else "surveyor"

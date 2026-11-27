@@ -125,34 +125,10 @@ def test_each_measurement_shows_saved_and_todays_names(
     assert client.get(f"{CHECKS}/999").status_code == 404
 
 
-def test_why_names_no_relay_byte_and_candidates_ruled_out_by_signal(
-    client: TestClient, connection: sqlite3.Connection
-) -> None:
-    at = now_ms() - DAY_MS
-    # RELAY, the only node sending 1A, heard here at -100 dB: a copy at
-    # -69 dB is too strong to be its.
-    node(connection, RELAY, PHONE[0] + 0.01)
-    upload(
-        client,
-        direct(1, RELAY, heard_at_ms=at - 60_000, rx_rssi=-92, rx_snr=-8.0),
-        relayed(2, heard_at_ms=at, rx_rssi=-69, rx_snr=10.0),
-        relayed(3, heard_at_ms=at - 1_000, relay_byte=None),
-    )
-    ruled_out, no_byte = checks(client)
-    assert ruled_out["today"]["why"] == "ruled_out" and ruled_out["today"]["ruled_out"] == 1
-    assert no_byte["today"]["why"] == "no_relay_byte"
-    assert not ruled_out["changed"] and not no_byte["changed"]
-
-    detail = client.get(f"{CHECKS}/{ruled_out['measurement_id']}").json()
-    assert detail["ruled_out"] == [RELAY]
-    assert detail["signal_db"] == -69
-    [linked] = detail["survey_link"]
-    assert (linked["node_id"], linked["too_strong"], linked["strongest_here_db"]) == (
-        RELAY,
-        True,
-        -100,
-    )
-    assert not linked["candidate"]
+def test_why_names_no_relay_byte(client: TestClient, connection: sqlite3.Connection) -> None:
+    upload(client, relayed(1, relay_byte=None))
+    [no_byte] = checks(client)
+    assert no_byte["today"]["why"] == "no_relay_byte" and not no_byte["changed"]
     assert client.get(f"{CHECKS}/{no_byte['measurement_id']}").json()["candidates"] == []
 
 

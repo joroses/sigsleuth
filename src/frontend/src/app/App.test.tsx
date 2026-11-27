@@ -1832,7 +1832,6 @@ describe("Diagnostics", () => {
         likeliest: { node_id: 0x0500001a, name: "Hill" },
         probability: 0.6,
         possible: 3,
-        ruled_out: 0,
       },
       shown_node: { node_id: 0x0500001a, name: "Hill" },
       shown_how: "survey_link",

@@ -58,7 +58,6 @@ const TODAY_WHY_LABELS: Record<SurveyCheck["today"]["why"], string> = {
   direct: "Heard directly",
   named: "Named",
   no_relay_byte: "No relay byte",
-  ruled_out: "Every candidate ruled out by the 30 dB rule",
 };
 
 /**
@@ -483,8 +482,6 @@ function todayResult(detail: SurveyCheckDetail): string {
       return "The packet carried no relay byte: nothing to score.";
     case "named":
       return `${nodeText(today.node)} at ${at}: named, worded by ${SURVEY_HOW_LABELS[today.how].toLowerCase()}.`;
-    case "ruled_out":
-      return `The copy is over ${detail.link_rules.too_strong_db} dB stronger than this survey node heard every candidate nearby: no name.`;
     case "no_candidates":
       return "No candidate may have sent it: no name.";
     case "below":
@@ -648,10 +645,8 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
             {check.relay_byte ? byteText(check.relay_byte) : "—"} that any
             survey node on the same radio settings heard directly within{" "}
             {detail.link_rules.days} days. Those within {detail.link_rules.km}{" "}
-            km score as heard nearby, unless a copy over{" "}
-            {detail.link_rules.too_strong_db} dB stronger than this survey node
-            heard them within {detail.link_rules.too_strong_km} km rules them
-            out, or they are muted (CLIENT_MUTE), which never rebroadcast.
+            km score as heard nearby, unless they are muted (CLIENT_MUTE), which
+            never rebroadcast.
           </p>
         </div>
         <SurveyLinkTable detail={detail} />
@@ -673,10 +668,6 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
                 routeKey={null}
                 selected={selected}
                 onSelect={setSelected}
-                ruledOut={{
-                  keys: detail.ruled_out,
-                  db: detail.link_rules.too_strong_db,
-                }}
                 heardColumn={false}
               />
             </div>
@@ -758,12 +749,6 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
                 within {detail.link_rules.km} km
               </span>
             </th>
-            <th>
-              Strongest here
-              <span className="column-note">
-                copy {detail.signal_db ?? "—"} dB
-              </span>
-            </th>
             <th>Result</th>
           </tr>
         </thead>
@@ -783,11 +768,6 @@ function SurveyLinkTable({ detail }: { detail: SurveyCheckDetail }) {
               <td className="number">{formatKm(node.km)}</td>
               <td className="number">{node.receptions}</td>
               <td>{hoursText(node.hours)}</td>
-              <td className={node.too_strong ? "rule-hit" : undefined}>
-                {node.strongest_here_db === null
-                  ? "—"
-                  : `${node.strongest_here_db} dB`}
-              </td>
               <td>{linkResult(node, detail)}</td>
             </tr>
           ))}
@@ -815,9 +795,6 @@ function linkResult(node: SurveyLinkNode, detail: SurveyCheckDetail): string {
   if (node.excluded === "sender") return "the sender";
   if (node.excluded === "surveyor") return "the survey node";
   if (node.excluded === "muted") return "muted: never rebroadcasts";
-  if (node.too_strong) {
-    return `ruled out: over ${detail.link_rules.too_strong_db} dB too strong`;
-  }
   if (!node.candidate) {
     return node.km !== null && node.km <= detail.link_rules.km
       ? "cannot relay on these settings"

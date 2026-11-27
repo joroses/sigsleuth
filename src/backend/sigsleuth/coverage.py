@@ -102,13 +102,6 @@ MQTT_MATCH_MS = HOUR_MS
 # score's near links' (relays.NEAR_KM): both are hearing near the phone.
 SURVEY_LINK_KM = NEAR_KM
 SURVEY_LINK_MS = 60 * DAY_MS
-# A relayed copy cannot arrive much stronger than its relay's own packets
-# heard from the same place (too_strong). Measured with gateways standing in
-# for phones on live loranet.pl, 2026-10 (docs/relay-evidence.md): 30 dB rules
-# out 0.035% of true relays and 15% of the wrong candidates heard directly.
-# Untested at ground level.
-TOO_STRONG_DB = 30
-TOO_STRONG_KM = 1
 # The survey app's relay node list (relay_nodes). Its reach reads took 1 s
 # for 3,000 placed nodes on a laptop's two weeks of loranet.pl (2026-10-26);
 # the app asks about once a day.
@@ -142,9 +135,8 @@ HeardHow = Literal[
     "only_candidate",
     "unknown",
 ]
-# A survey direct reception: when, where, by which survey node, its signal
-# (signal_db) and its RSSI.
-Reception = tuple[int, float, float, int, float | None, int | None]
+# A survey direct reception: when, where, by which survey node and its RSSI.
+Reception = tuple[int, float, float, int, int | None]
 # Each node's direct receptions sending a relay byte, in time order.
 NodeReceptions = dict[int, list[Reception]]
 
@@ -810,9 +802,8 @@ def heard_node(
 
     1. direct: the survey node heard the sender itself, by the map's rule for
        direct receptions (is_direct_reception).
-    2. A relay, by relays.RelayScores.named among the possible candidates
-       that are not too_strong by the survey node's direct receptions, with
-       the MQTT gateways' reports of the same packet (mqtt_reports) and
+    2. A relay, by relays.RelayScores.named among the possible candidates,
+       with the MQTT gateways' reports of the same packet (mqtt_reports) and
        surveys' direct receptions nearby (survey_heard).
     3. unknown: no relay byte (older firmware), or nothing names one; maybe
        lists the likeliest candidates with some evidence.
@@ -840,12 +831,11 @@ def heard_node(
 
 @dataclass(frozen=True)
 class MeasurementScore:
-    """How heard_node scores a relayed measurement: its copy, the possible
-    candidates too_strong rules out, and the scores of the rest, with the
-    co-hearers' signal profiles they read and the nodes survey_heard gives."""
+    """How heard_node scores a relayed measurement: its copy and its possible
+    candidates' scores, with the co-hearers' signal profiles they read and
+    the nodes survey_heard gives."""
 
     copy: Relayed
-    ruled_out: tuple[int, ...]
     signals: Mapping[tuple[int, int], DirectSignal]
     scores: RelayScores
     survey_heard: frozenset[int] = frozenset()
@@ -879,16 +869,14 @@ def score_measurement(
             for report in mqtt_reports(connection, row)
         ],
     )
-    receptions = direct.nodes(row)
-    left: list[int] = []
-    ruled_out: list[int] = []
-    for node in possible(evidence, copy):
-        (ruled_out if too_strong(receptions.get(node, []), row) else left).append(node)
+    candidates = possible(evidence, copy)
     signals = (
         direct_signals(
-            connection, ((node, gateway) for node in left for gateway in copy.cohearers()), copy.at
+            connection,
+            ((node, gateway) for node in candidates for gateway in copy.cohearers()),
+            copy.at,
         )
-        if left
+        if candidates
         else {}
     )
     heard_on = set() if copy.radio is None else {copy.radio}
@@ -896,12 +884,8 @@ def score_measurement(
     heard = frozenset(
         node for node in heard if not cannot_relay(evidence.radios.get(node), heard_on)
     )
-    terms = relay_terms(
-        evidence, copy, signals, among=left, survey_heard=heard, survey_active=active & heard
-    )
-    return MeasurementScore(
-        copy, tuple(ruled_out), signals, RelayScores(terms, relay_probabilities(terms)), heard
-    )
+    terms = relay_terms(evidence, copy, signals, survey_heard=heard, survey_active=active & heard)
+    return MeasurementScore(copy, signals, RelayScores(terms, relay_probabilities(terms)), heard)
 
 
 def session_radio(row: Mapping[str, Any]) -> Radio | None:
@@ -1051,7 +1035,7 @@ def rescore_recent(
         if (int(reception["session_row_id"]), int(reception["seq"])) not in new
     )
     before.muted = after.muted
-    changed = [row for row in rows if _survey_evidence(before, row) != _survey_evidence(after, row)]
+    changed = [row for row in rows if survey_heard(before, row) != survey_heard(after, row)]
     if not changed:
         return
     heard = decide_heard(connection, changed, after, by_hour=[True] * len(changed))
@@ -1070,16 +1054,6 @@ def rescore_recent(
                 """,
                 updates,
             )
-
-
-def _survey_evidence(
-    receptions: DirectReceptions, row: Mapping[str, Any]
-) -> tuple[frozenset[int], frozenset[int], frozenset[int]]:
-    """What a measurement row's score reads from survey receptions:
-    survey_heard's nodes and active ones, and the too_strong ones."""
-    heard, active = survey_heard(receptions, row)
-    strong = frozenset(node for node, its in receptions.nodes(row).items() if too_strong(its, row))
-    return heard, active, strong
 
 
 # The measurement and session columns survey receptions read (m and s).
@@ -1103,7 +1077,6 @@ def heard_directly(rows: Iterable[Mapping[str, Any]]) -> DirectReceptions:
                     row["latitude"],
                     row["longitude"],
                     int(row["receiver_node_id"]),
-                    signal_db(row["rx_rssi"], row["rx_snr"]),
                     row["rx_rssi"] or None,  # 0 is an RSSI not recorded.
                 )
             )
@@ -1122,7 +1095,7 @@ def survey_receptions(
 ) -> DirectReceptions:
     """Every survey node's direct receptions of nodes sending the rows' relay
     bytes within SURVEY_LINK_MS of them, saved or among own (rows not saved
-    yet): what survey_heard and too_strong read for those rows."""
+    yet): what survey_heard reads for those rows."""
     return _with_muted(connection, heard_directly([*_direct_rows(connection, rows), *own]))
 
 
@@ -1187,7 +1160,7 @@ def survey_heard(
     heard directly, sending the same relay byte within km and within_ms of
     the phone; and those of them heard within relays.ACTIVE_MS, anywhere.
     A node never relays its own packet, a survey node never records its own
-    rebroadcast, and a muted (muted_nodes) or too_strong node is left out."""
+    rebroadcast, and a muted (muted_nodes) node is left out."""
     nodes = heard.nodes(row)
     excluded = (row["sender_node_id"], row["receiver_node_id"])
     found = frozenset(
@@ -1196,7 +1169,6 @@ def survey_heard(
         if node not in excluded
         and node not in heard.muted
         and _heard_near(receptions, row, within_ms, km)
-        and not too_strong(receptions, row)
     )
     active = frozenset(node for node in found if _heard_near(nodes[node], row, ACTIVE_MS, math.inf))
     return found, active
@@ -1232,48 +1204,12 @@ def link_evidence(receptions: list[Reception], row: Mapping[str, Any]) -> LinkEv
             reception, later = receptions[later], later + 1
         else:
             return None
-        heard_at, latitude, longitude, heard_by, _, rssi = reception
+        heard_at, latitude, longitude, heard_by, rssi = reception
         if abs(heard_at - at) > reach:
             return None
         km = great_circle_km(row["latitude"], row["longitude"], latitude, longitude)
         if km <= SURVEY_LINK_KM:
             return LinkEvidence(km, heard_at - at, heard_by, rssi)
-
-
-def signal_db(rssi: float | None, snr: float | None) -> float | None:
-    """A reception's signal in dB: its RSSI, plus its SNR when below 0, as
-    RSSI then reads the noise. None without an RSSI (0 means missing)."""
-    if not rssi:
-        return None
-    return rssi + min(snr, 0) if snr is not None else rssi
-
-
-def too_strong(receptions: list[Reception], row: Mapping[str, Any]) -> bool:
-    """Whether a measurement row cannot have come from a node by its direct
-    receptions (time-sorted): the row's signal is over TOO_STRONG_DB above
-    every signal at which the row's own survey node heard the node directly
-    within TOO_STRONG_KM, SURVEY_LINK_MS either side. Weaker is
-    normal (a pocket, indoors), and other survey nodes' radios read RSSI
-    differently. False without such a reading, so it only ever rules out."""
-    signal = signal_db(row["rx_rssi"], row["rx_snr"])
-    if signal is None:
-        return False
-    at, receiver = int(row["heard_at"]), int(row["receiver_node_id"])
-    reach = SURVEY_LINK_MS
-    first = bisect_left(receptions, at - reach, key=lambda reception: reception[0])
-    checked = False
-    for index in range(first, len(receptions)):
-        heard_at, latitude, longitude, heard_by, heard_signal, _ = receptions[index]
-        if heard_at > at + reach:
-            break
-        if heard_by != receiver or heard_signal is None:
-            continue
-        if great_circle_km(row["latitude"], row["longitude"], latitude, longitude) > TOO_STRONG_KM:
-            continue
-        if signal <= heard_signal + TOO_STRONG_DB:
-            return False
-        checked = True
-    return checked
 
 
 def _heard_near(
@@ -1285,7 +1221,7 @@ def _heard_near(
     first = bisect_left(receptions, at - within_ms, key=lambda reception: reception[0])
     # By index: a slice would copy every later reception for each measurement.
     for index in range(first, len(receptions)):
-        heard_at, latitude, longitude, _, _, _ = receptions[index]
+        heard_at, latitude, longitude, _, _ = receptions[index]
         if heard_at > at + within_ms:
             return False
         if great_circle_km(row["latitude"], row["longitude"], latitude, longitude) <= km:

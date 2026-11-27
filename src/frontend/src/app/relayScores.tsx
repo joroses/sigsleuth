@@ -450,15 +450,12 @@ export function CandidateTable({
   routeKey,
   selected,
   onSelect,
-  ruledOut = null,
   heardColumn = true,
 }: {
   detail: Scored;
   routeKey: number | null;
   selected: number | null;
   onSelect: (key: number) => void;
-  /** Candidates a survey's signal rule left out, and its dB. */
-  ruledOut?: { keys: number[]; db: number } | null;
   /** Shows how often the receiver heard each directly. */
   heardColumn?: boolean;
 }) {
@@ -466,9 +463,7 @@ export function CandidateTable({
   const rules = detail.rules;
   const sorted = byProbability(detail.candidates);
   const hidden = (candidate: RelayCandidate) =>
-    candidate.key !== routeKey &&
-    !candidate.possible &&
-    !ruledOut?.keys.includes(candidate.key);
+    candidate.key !== routeKey && !candidate.possible;
   const hiddenCount = sorted.filter(hidden).length;
   const rows = allShown ? sorted : sorted.filter((c) => !hidden(c));
   return (
@@ -547,10 +542,6 @@ export function CandidateTable({
                 <td className="number">
                   {candidate.possible ? (
                     percent(candidate.probability)
-                  ) : ruledOut?.keys.includes(candidate.key) ? (
-                    <Badge tone="amber" title="Too strong to be its copy">
-                      {ruledOut.db} dB
-                    </Badge>
                   ) : (
                     <Badge tone="neutral">cannot</Badge>
                   )}

@@ -122,7 +122,7 @@ Per reception at live scale, median / p95 ms: candidates by byte 0.4 / 0.4; thei
 
 ## Decision: one score (2026-10-27)
 
-Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of naming rules, gave way to one score (`relays.py`). Solid lines are unchanged: heard directly, a survey link (until 2026-11-23, below), and on packet pages the only candidate the gateway heard directly. "Too strong" still removes a survey candidate first.
+Steps 2 to 4 of the 2026-10-18 decision below, the rule-outs and the ladder of naming rules, gave way to one score (`relays.py`). Solid lines are unchanged: heard directly, a survey link (until 2026-11-23, below), and on packet pages the only candidate the gateway heard directly. "Too strong" removed survey candidates first until 2026-11-27 (below).
 
 - **Candidates**: every node sending the byte except those that cannot have sent the copy: firmware without the relay byte, or a map report preset on another spreading factor or bandwidth. Unplaced, CLIENT_MUTE, silent, far and other-channel nodes stay in, with terms against them. So does a node SigSleuth does not know, the unknown option, scoring `UNKNOWN_SCORE`.
 - **Score**: each candidate's terms times their weights (`WEIGHTS`), summed. A softmax over the candidates and the unknown option gives each a probability.
@@ -194,7 +194,7 @@ Two covering indexes on `link_hour` read the partners, by node and hour (`link_h
 
 A survey link named the one node a survey heard directly nearby and won over every other piece of evidence. On a survey capture it overruled confident MQTT evidence: 17 relayed measurements of one session went to a tracker heard once, at −116 dBm, within the hour, over a gateway that had reported 10 of the 17 packets one hop earlier. Survey receptions are now a term of the score (`relays.relay_terms`):
 
-- **`sheard`**: a candidate that any survey node on the copy's radio settings heard directly within 30 km and 60 days of the phone scores `SURVEY_HEARD_SCORE` (3.00), less what its near links add. Hearing near the phone counts once: `max(near links, 3.00)`. Too strong and CLIENT_MUTE nodes are left out, as before.
+- **`sheard`**: a candidate that any survey node on the copy's radio settings heard directly within 30 km and 60 days of the phone scores `SURVEY_HEARD_SCORE` (3.00), less what its near links add. Hearing near the phone counts once: `max(near links, 3.00)`. CLIENT_MUTE nodes are left out, as before.
 - Heard by a survey within a day of the copy, the candidate counts as active. When MQTT knows no channel for it, the survey's reception stands for the copy's channel.
 - **A node only surveys heard**, unknown to MQTT, is a candidate scoring the unknown option plus 3.00 (+0.89): 95% alone against the unknown option, a tie with a second such node, and a fair rival for a client linked only with the sender. A ROUTER, or a candidate with strong links, still wins.
 - **Weight**: hand-set. Gateways standing in for phones cannot fit it: their survey stand-in (a partner within 30 km heard the candidate) never appears without near links for a true relay (0.00% of copies, 0.58% for other candidates), so a joint fit made it negative. On the survey capture's 2,551 measurements a survey link named, 3.0 names the linked node in 2,477 and another node in none, and the tracker's 17 go back to the gateway. From 3.55 nothing more changes. One 60-day window replaced the 1-hour tier, which let a node heard within the hour beat a better candidate heard earlier.
@@ -212,7 +212,7 @@ Superseded for naming by the score above, 2026-10-27; solid lines as decided her
 Solid lines need direct evidence; dashed guesses can also use the co-hearers' signal score (below). Upload (`coverage.heard_node`) and survey links (`coverage.refresh_survey_links`):
 
 1. **Solid**: a survey heard the node directly. The measurement had no relay, or the relay byte matches exactly one node a survey heard directly nearby (a survey link: any survey node, same radio settings, 30 km, closest of 1 hour or 60 days, never a `CLIENT_MUTE` node). Checked before the other rule-outs, so none can overrule a direct reception, and it wins over upload's name.
-2. **Rule-outs**: every row of the rule-out table except the two signal rows. Unplaced nodes are excluded from guesses. Survey links (before naming) and upload also leave out candidates that arrived too strong (below).
+2. **Rule-outs**: every row of the rule-out table except the two signal rows. Unplaced nodes are excluded from guesses.
 3. **Dashed**: of the candidates left, the first rule that names one: the co-hearer signal score; then `gateway_link`, `sender_link` and `reported`, each only within the candidate's own reach (20 km floor); then the only candidate left, also only within its reach (since 2026-10-23, below).
 4. **No line** otherwise. The cell lists up to three candidates that pass the rule-outs needing no packet (role, radio settings, firmware, reach), nearest first.
 5. A measurement with a line, solid or dashed, paints while that node is alive; one without paints for 14 days.
@@ -258,24 +258,13 @@ Measured 2026-10-23 on two live loranet.pl snapshots, 2026-09-27 to 10-12 and 10
 
 The gain comes mostly from choosing between candidates before the weaker radio-link fallback does. On the newer snapshot, 365 wrong names become right, but 20 right names become wrong. Wrong names with the true relay hidden barely change. This is still a dashed guess, classified as `gateway_link`; a signal match never overrules direct evidence. The later dates support the gain, but moving phones and another mesh remain untested. Revisit the spread and margin there.
 
-## Too strong (2026-10-22)
+## Too strong (2026-10-22, removed 2026-11-27)
 
-A relayed copy is sent at the relay's own power over its own path, so it cannot arrive much stronger than that node's own packets heard from the same place. Weaker is normal (a pocket, indoors, fading). The signal is `rx_rssi + min(rx_snr, 0)`: RSSI reads the noise below 0 dB SNR, and SNR alone saturates near +12 dB. An RSSI of 0 is missing.
+Survey links and upload left out a candidate whose copy was over 30 dB above the strongest signal (`rx_rssi + min(rx_snr, 0)`) at which the same survey node had heard it directly within 1 km, 60 days either side. A relayed copy is sent at the relay's own power over its own path, so it should not arrive much stronger than that node's own packets heard from the same place.
 
-Measured on a copy of live loranet.pl `msh/#`, 2026-09-27 to 2026-10-12, by `scripts/relay-signal.py DATABASE` (about 20 seconds), with the gateway in the phone's place: 278,899 route-truth receptions with an RSSI, each candidate checked against the gateway's own direct receptions of it in the 30 days before. A candidate is ruled out when the copy is over the margin above the strongest of them:
+The margin was measured on live loranet.pl, 2026-09-27 to 2026-10-12, with the gateway in the phone's place (278,899 route-truth receptions with an RSSI): 30 dB ruled out 0.035% of true relays and 15% of the wrong candidates heard directly. Gateways don't move, so that compared readings from one place only.
 
-| Margin | True relays ruled out | Wrong candidates heard directly, ruled out |
-|---|---|---|
-| 10 dB | 0.17% | 48% |
-| 20 dB | 0.09% | 30% |
-| 30 dB | 0.035% | 15% |
-| 40 dB | 0% | 6% |
-
-- By reading, at 20 dB with 3 or more readings: the signal 0.086% / 28.0%, RSSI alone 0.025% / 12.6%, SNR alone 0.005% / 0.6%.
-- Where exactly one candidate was heard directly (the survey-link stand-in), 20 dB cuts wrong names from 519 to 394 and names 2.6% more right ones, since it also settles pairs; 30 dB, 519 to 468 and 1.3% more.
-- A "too weak" check against the weakest reading is as safe on gateways (20 dB: 0.021% / 7.3%), but a phone loses signal in pockets and indoors: not used.
-
-Decided: survey links and upload leave out a candidate whose copy is over 30 dB above the strongest signal at which the same survey node heard it directly within 1 km, 60 days either side. The same survey node, because radios read RSSI differently (an LNA); 30 dB, not 20, because a moving phone varies more within 1 km than a fixed gateway. A candidate without such a reading is not checked: a node heard weakly far away may be strong here, and reported positions cannot set a ceiling (about 1 in 10 placed node pairs 10 km or more apart arrive stronger than free-space loss allows). Packet pages could use it with the gateway in the phone's place, but `link_hour` keeps no RSSI.
+At ground level it did not hold up. Near a ground-level node, readings a few hundred metres apart differ by more than 30 dB, so a node heard directly once from a poor spot was ruled out when the phone came close and heard its relayed copy strongly. Direct readings near the phone are rare, so it seldom fired, and no wrong relay is known to have been caught by it; it was removed from SigSleuth and Mesh Survey.
 
 ### Wording
 
@@ -327,4 +316,3 @@ Revisit the weights and the 0.8 on another network, or when firmware changes how
 - **Survey links** (30 km, 60 days, any survey node): the stand-in reads one fixed gateway's 7 days. Settled by surveys that hear traceroutes: the phone uploading a traceroute's route would give survey measurements route truth.
 - **Relays MQTT never sees**: hidden figures assume the worst case for each reception; on gateways such relays are 2.4% of relays and 0.1% of receptions, likely more where no gateway listens. Settled by counting survey relay bytes that match no node in `node_current`, and survey direct receptions from nodes MQTT does not place. Live has no direct survey measurement.
 - **Phones at ground level**: shorter, more varied paths; a moving phone's SNR from one relay spreads more than a gateway's. The signal score needs survey direct receptions repeated in one place.
-- **Signal at ground level**: the "too strong" rule's 30 dB is measured on gateways (above); how much a phone's signal from one relay varies within 1 km is untested. `link_hour` keeps SNR only, so packet pages can't use it yet.

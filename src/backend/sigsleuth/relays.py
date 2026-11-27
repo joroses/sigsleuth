@@ -692,15 +692,13 @@ def relay_terms(
     relayed: Relayed,
     signals: Mapping[tuple[int, int], DirectSignal],
     heard: Collection[int] = (),
-    among: Collection[int] | None = None,
     *,
     survey_heard: Collection[int] = (),
     survey_active: Collection[int] = (),
 ) -> dict[int, dict[RelayTerm, float]]:
-    """Each possible candidate's non-zero terms (TERM_WEIGHTS), or only those
-    among some when a caller rules others out. heard holds the candidates
-    the receiver heard directly around the copy; none for a survey
-    receiver. survey_heard holds the nodes a survey heard directly near a
+    """Each possible candidate's non-zero terms (TERM_WEIGHTS). heard holds
+    the candidates the receiver heard directly around the copy; none for a
+    survey receiver. survey_heard holds the nodes a survey heard directly near a
     survey receiver (SURVEY_HEARD_SCORE), survey_active those of them heard
     within ACTIVE_MS of the copy; one MQTT does not know is a candidate too."""
     # Co-hearers whose own byte differs: one sending it may upload its own rebroadcast.
@@ -724,8 +722,6 @@ def relay_terms(
     cohearers = relayed.cohearers()
     found = {}
     for node in possible(evidence, relayed):
-        if among is not None and node not in among:
-            continue
         terms: dict[RelayTerm, float] = {}
         place = evidence.placed.get(node)
         reach = evidence.reach.get(node, 0.0)

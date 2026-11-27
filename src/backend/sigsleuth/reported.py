@@ -8,8 +8,10 @@ packet's expiry never changes what a node is called, where it was or whether
 it is hidden; pages only lose their link to that packet. The price: a change
 in how NodeInfo or positions are read reaches only new reports.
 
-positions_when_heard uses reports available when heard for saved km and
-decisions. Pages may also use the first report afterwards for drawing.
+positions_when_heard uses only reports available when heard for what is
+saved (km, terrain checks), so capture and a rebuild agree. Pages also use
+the first report afterwards to draw nodes and to place the gateway when
+naming relays.
 """
 
 import json
@@ -192,7 +194,7 @@ def positions_when_heard(
     """For each (node, time in epoch ms), the node's newest position in
     node_position at or before that time. With for_page, use the first report
     afterwards when none precedes it. Missing nodes are left out for the
-    caller's fallback; only page drawing may use for_page."""
+    caller's fallback; nothing saved may use for_page."""
     if not pairs:
         return {}
     first_after = (

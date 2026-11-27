@@ -2,6 +2,7 @@ import type {
   ContactLine,
   ContactLink,
   LinkKind,
+  LinkRow,
   NodeContact,
   ZeroCostHop,
 } from "./api";
@@ -225,6 +226,18 @@ function contactHopTone(contact: NodeContact): string {
   return contact.heard_packets > 0 ? "hop-tone-unknown" : "hop-tone-relay";
 }
 
+// The badge link pages put on each of a distance's doubts (DoubtfulBadge,
+// SharedBadge, UnconfirmedBadge), in the order they show.
+const BADGES = ["doubtful", "shared", "unconfirmed"] as const;
+const BADGE_WORDS: Record<LinkRow["doubts"][number], (typeof BADGES)[number]> =
+  {
+    signal: "doubtful",
+    shared: "shared",
+    doubtful: "doubtful",
+    terrain: "doubtful",
+    unconfirmed: "unconfirmed",
+  };
+
 const LINK_NAMES: Record<ContactLink["kind"], string> = {
   direct: "Heard directly",
   neighbor: "Neighbour report",
@@ -234,9 +247,13 @@ const LINK_NAMES: Record<ContactLink["kind"], string> = {
 /**
  * What ties a contact to the node, a line each: every link kind with its
  * observations and its distances when heard (a wide range means an end's
- * position changed), and how many of the node's packets it heard.
+ * position changed) with the badges of its rows in the node's links table,
+ * and how many of the node's packets it heard.
  */
-export function contactFacts(contact: NodeContact): string[] {
+export function contactFacts(
+  contact: NodeContact,
+  rows: readonly LinkRow[],
+): string[] {
   const facts = contact.links.map((link) => {
     const count = `${link.observations.toLocaleString()}×`;
     const km =
@@ -245,7 +262,17 @@ export function contactFacts(contact: NodeContact): string[] {
         : link.max_km - link.min_km < 1
           ? `${formatKm(link.min_km)} km when heard`
           : `${formatKm(link.min_km)}–${formatKm(link.max_km)} km when heard`;
-    return `${LINK_NAMES[link.kind]} ${count}, ${km}`;
+    const badges = new Set(
+      rows
+        .filter(
+          (row) =>
+            row.link_kind === link.kind &&
+            (row.node_a === contact.node_id || row.node_b === contact.node_id),
+        )
+        .flatMap((row) => row.doubts.map((doubt) => BADGE_WORDS[doubt])),
+    );
+    const words = BADGES.filter((word) => badges.has(word));
+    return `${LINK_NAMES[link.kind]} ${count}, ${km}${words.length === 0 ? "" : ` (${words.join(", ")})`}`;
   });
   if (contact.heard_packets > 0) {
     const hops =

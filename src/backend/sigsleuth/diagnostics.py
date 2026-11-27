@@ -420,12 +420,11 @@ class LongLinkEnd:
 class LongLinkEvidence:
     """One link kind's observations of a long link over saved history, every
     channel together. a_to_b counts node_a heard by node_b, b_to_a the reverse;
-    hours counts the hours it was heard. zero_snr is true when every hour with
-    an SNR added up to exactly 0 dB, which traceroutes report for a hop over
-    MQTT. longest_km is its longest distance when heard. map_hidden_because is
-    why the map, showing all history, leaves this kind of link out (the first
-    channel's reason when there are several); None when it draws it. doubts are
-    the badges the Links page gives its rows of this kind (links.link_doubts).
+    hours counts the hours it was heard. longest_km is its longest distance
+    when heard. map_hidden_because is why the map, showing all history, leaves
+    this kind of link out (the first channel's reason when there are several);
+    None when it draws it. doubts are the badges the Links page gives its rows
+    of this kind (links.link_doubts).
     """
 
     link_kind: LinkKind
@@ -433,7 +432,6 @@ class LongLinkEvidence:
     b_to_a: int
     hours: int
     average_snr: float | None
-    zero_snr: bool
     first_hour_at: datetime
     last_seen_at: datetime
     longest_km: float | None
@@ -462,7 +460,6 @@ CheckKind = Literal[
     "distance_range",
     "heard_once",
     "traceroute_only",
-    "mqtt_hop",
     "far_partners",
     "map_report",
     "stale_position",
@@ -861,7 +858,10 @@ class DoubtfulNode:
 
 @dataclass(frozen=True)
 class DoubtfulNodeList:
+    """long_link_km is the distance long_links count from."""
+
     items: tuple[DoubtfulNode, ...]
+    long_link_km: float = LONG_LINK_KM
 
 
 def doubtful_node_list(connection: sqlite3.Connection) -> DoubtfulNodeList:
@@ -1066,7 +1066,6 @@ def _evidence(
         b_to_a=sum(row["observations"] for row in rows if row["from_node_id"] == b.node.node_id),
         hours=len({row["hour_start"] for row in rows}),
         average_snr=round(snr_sum / snr_count, 2) if snr_count else None,
-        zero_snr=snr_count > 0 and all(row["snr_sum"] == 0 for row in rows if row["snr_count"]),
         first_hour_at=from_epoch_ms(min(row["hour_start"] for row in rows)),
         last_seen_at=from_epoch_ms(max(row["last_seen_at"] for row in rows)),
         longest_km=max(measured) if measured else None,
@@ -1149,8 +1148,6 @@ def _checks(link: LongLink) -> tuple[ReviewCheck, ...]:
         checks.append(ReviewCheck("heard_once"))
     if "direct" not in kinds and "neighbor" not in kinds:
         checks.append(ReviewCheck("traceroute_only"))
-    if "traceroute" in kinds and kinds["traceroute"].zero_snr:
-        checks.append(ReviewCheck("mqtt_hop"))
     for end in (link.node_a, link.node_b):
         node_id = end.node.node_id
         if (

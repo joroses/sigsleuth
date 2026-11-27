@@ -37,7 +37,7 @@ import sigsleuth
 from derived_rows import link_hour
 from meshtastic_fixtures import application_envelope
 from page_requests import Subjects, page_requests
-from sigsleuth import api, diagnostics
+from sigsleuth import api, db, diagnostics
 from sigsleuth.api import create_app
 from sigsleuth.config import Settings
 from sigsleuth.db import migrate_database, open_current_database, open_database, to_epoch_ms
@@ -126,8 +126,14 @@ def statements(monkeypatch: pytest.MonkeyPatch) -> Statements:
     return recorded
 
 
-def test_query_plans_match_the_saved_ones(path: Path, statements: Statements) -> None:
-    now = datetime.now(UTC)
+def test_query_plans_match_the_saved_ones(
+    path: Path, statements: Statements, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Late in an hour, so the history half an hour back shares the survey's
+    # hour: near links read only earlier hours, and the survey link that
+    # names its relay (coverage._link_receptions) needs none.
+    now = datetime(2026, 11, 26, 12, 45, tzinfo=UTC)
+    monkeypatch.setattr(db, "fixed_now_ms", to_epoch_ms(now))
     statements.section = "capture"
     with closing(statements.watch(open_current_database(path))) as connection:
         position = mesh_pb2.Position(latitude_i=521000000, longitude_i=49000000)

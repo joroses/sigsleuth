@@ -171,16 +171,19 @@ def test_detail_shows_the_route_each_gateway_reported(tmp_path: Path) -> None:
         "nodes": [requester, target],
         "snr_db": [6.0],
         "reached": True,
+        "mqtt": [False],
     }
     assert paths[at_target]["return_path"] == {
         "nodes": [target, requester],
         "snr_db": [],
         "reached": False,
+        "mqtt": [],
     }
     assert paths[at_relay]["return_path"] == {
         "nodes": [target, relay, requester],
         "snr_db": [None],
         "reached": False,
+        "mqtt": [False],
     }
     assert paths[at_requester]["return_path"]["reached"] is True
     assert paths[elsewhere]["return_path"]["reached"] is False
@@ -233,6 +236,7 @@ def test_a_request_shows_the_route_its_reply_says_reached_the_target(tmp_path: P
         "nodes": [requester, relay, target],
         "snr_db": [10.0, 6.0],
         "reached": True,
+        "mqtt": [False, False],
     }
     assert answered["reply_route"]["hops"] == [
         {"from_node_id": requester, "to_node_id": relay, "snr_db": 10.0, "is_return": False},

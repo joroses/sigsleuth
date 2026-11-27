@@ -524,8 +524,9 @@ def create_app(
         since starts the window at its whole hour, so it can include up to an hour
         more. truncated is true when more links matched. Hours that no longer
         match where the map draws their nodes are left out (links.TRUSTED_HOUR):
-        heard before a node moved, or at a doubtful position. So are links
-        that do not fit where the map draws their nodes, by reported or else
+        heard before a node moved, at a doubtful position or a shared node
+        number, or directly with a signal too strong for the distance. So are
+        links that do not fit where the map draws their nodes, by reported or else
         estimated position (links.map_misfit): last heard 250 km apart or more
         on a pair the terrain check finds unlikely, drawn 250 km apart or more
         with no distance when last heard, over 150 km to an estimated node, or

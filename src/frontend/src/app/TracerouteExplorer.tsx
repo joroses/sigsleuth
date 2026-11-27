@@ -36,6 +36,7 @@ import {
   DoubtfulBadge,
   ErrorPanel,
   Icon,
+  MqttBadge,
   UnconfirmedBadge,
   ShortTime,
   ShareButton,
@@ -654,6 +655,7 @@ function RunTable({
                     {run.doubts.includes("unconfirmed") ? (
                       <UnconfirmedBadge />
                     ) : null}
+                    {run.doubts.includes("mqtt") ? <MqttBadge /> : null}
                   </span>
                 </td>
                 <td>

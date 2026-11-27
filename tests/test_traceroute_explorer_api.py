@@ -278,6 +278,71 @@ def test_runs_over_a_hop_the_terrain_check_finds_unlikely_rank_last(path: Path) 
     assert [run["route"]["unlikely"] for run in longest] == [False, True]
 
 
+def test_a_run_reached_over_mqtt_between_nodes_never_heard_over_radio_ranks_apart(
+    path: Path,
+) -> None:
+    place(path, A, 40.0, 2.0)
+    place(path, B, 41.0, 2.0)
+    place(path, OTHER, 40.4, 2.0)
+    # Each reply: R1 got the request from MQTT downlink (0 dB), so A -> R1 was never on air.
+    for target, packet_id in ((B, 9), (OTHER, 11)):
+        traceroute(
+            path,
+            "!aaaaaaaa",
+            NOW,
+            sender=target,
+            recipient=A,
+            packet_id=packet_id,
+            request_id=packet_id - 1,
+            route=[R1],
+            snr=[0, 8],
+        )
+    for node_id, latitude in ((A, 40.0), (B, 41.0)):  # confirms the 111 km
+        place(path, node_id, latitude, 2.0, NOW + timedelta(hours=1))
+
+    def farthest() -> list[tuple[float, list[str]]]:
+        runs = get(path, "/api/v1/traceroutes", sort="distance")["items"]
+        return [(run["distance_km"], run["doubts"]) for run in runs]
+
+    # OTHER's 44 km is likely in radio range anyway.
+    assert farthest() == [(44.5, []), (111.2, ["mqtt"])]
+    newest = get(path, "/api/v1/traceroutes")["items"]
+    assert {run["distance_km"]: run["doubts"] for run in newest}[111.2] == ["mqtt"]
+    with closing(open_current_database(path)) as connection, connection:
+        insert_row(connection, "node_opt_out", node_id=R1)
+    assert farthest() == [(111.2, []), (44.5, [])]  # a hidden node is a gap, so no step
+    with closing(open_current_database(path)) as connection, connection:
+        connection.execute("DELETE FROM node_opt_out")
+        # A heard R1 over radio once: the other way, and of another kind.
+        link_hour(connection, R1, A, to_epoch_ms(NOW), link_kind="neighbor")
+    assert farthest() == [(111.2, []), (44.5, [])]
+
+
+def test_a_hop_on_an_unlikely_pair_counts_only_when_heard_far_apart(path: Path) -> None:
+    earlier = NOW - timedelta(days=1)
+    place(path, A, 40.0, 2.0, earlier)
+    place(path, R1, 42.5, 2.0, earlier)  # 278 km north
+    place(path, OTHER, 40.1, 2.0, earlier)
+    traceroute(path, "!aaaaaaaa", earlier, sender=A, recipient=B, packet_id=5, route=[R1], snr=[20])
+    judge_unlikely(path, A, R1)
+    place(path, R1, 40.5, 2.0)  # R1 moves to 56 km from A
+    traceroute(path, "!aaaaaaaa", NOW, sender=A, recipient=B, packet_id=7, route=[R1], snr=[20])
+    traceroute(path, "!aaaaaaaa", NOW, sender=OTHER, recipient=A, packet_id=10, route=[], snr=[20])
+
+    for sort in ("newest", "route"):
+        runs = get(path, "/api/v1/traceroutes", sort=sort)["items"]
+        badged = {run["request_packet_row_id"]: run["route"]["unlikely"] for run in runs}
+        assert sorted(badged.values()) == [False, False, True]
+    longest = get(path, "/api/v1/traceroutes", sort="route")["items"]
+
+    # Only the hop heard 278 km apart sinks; the same pair 56 km apart leads.
+    assert [(run["route"]["km"], run["route"]["unlikely"]) for run in longest] == [
+        (55.6, False),
+        (None, False),
+        (278.0, True),
+    ]
+
+
 def judge_unlikely(path: Path, from_node: int, to_node: int) -> None:
     """Record the terrain check's verdict on the heard hop from_node -> to_node: unlikely."""
     with closing(open_current_database(path)) as connection, connection:
@@ -654,12 +719,13 @@ def test_page_positions_use_the_first_later_report_without_changing_saved_distan
         assert {p.node_id: p.latitude for p in positions_at(connection, {A, B}, NOW).items}[
             B
         ] == 41.0
-        assert nodes_when_heard(connection, to_epoch_ms(NOW), {B})[B].latitude == 48.0
+        # Decisions use the drawn place too; saved distances stay unmeasured.
+        assert nodes_when_heard(connection, to_epoch_ms(NOW), {B})[B].latitude == 41.0
         decision = relayed_packet(connection, packet_id, with_relays=False)
         assert decision is not None
         assert next(
             r for r in decision.receptions if r.gateway_node_id == 0xAAAAAAAA
-        ).km == pytest.approx(889.6, abs=0.2)
+        ).km == pytest.approx(111.2, abs=0.1)
         assert (
             connection.execute(
                 "SELECT km FROM link_hour WHERE from_node_id = ? AND to_node_id = ?",
@@ -1168,7 +1234,7 @@ def test_a_broadcast_runs_return_route_starts_at_its_replier(path: Path) -> None
     assert spent(run["route"]["hop_costs"])[B, R1] == (1, None)
 
 
-def test_relay_scoring_keeps_the_old_gateway_placement(path: Path) -> None:
+def test_relay_scoring_places_the_gateway_where_the_page_draws_it(path: Path) -> None:
     place(path, A, 40.0, 2.0)
     traceroute(
         path,
@@ -1190,7 +1256,8 @@ def test_relay_scoring_keeps_the_old_gateway_placement(path: Path) -> None:
         decision = relayed_packet(connection, packet_id)
         assert decision is not None and decision.relays is not None
         [naming] = decision.relays.namings.values()
-        assert naming.copy.position == (48.0, 2.0)
+        # Its first report after the packet, not its latest.
+        assert naming.copy.position == (41.0, 2.0)
         page = packet_detail(connection, packet_id)
         assert page is not None
         assert page.receptions[0].gateway_latitude == 41.0

@@ -530,6 +530,19 @@ export function UnconfirmedBadge() {
   );
 }
 
+/**
+ * Beside a traceroute run's distance when its route that worked crossed a
+ * step over MQTT between nodes never heard over radio (TracerouteRun's
+ * "mqtt" doubt).
+ */
+export function MqttBadge() {
+  return (
+    <Badge tone="neutral" title="Likely reached over MQTT">
+      over MQTT
+    </Badge>
+  );
+}
+
 /** A line's sample in a legend: solid, or dashed with `dashes`. */
 export function LegendLine({ dashes }: { dashes: string | undefined }) {
   return (
@@ -834,19 +847,21 @@ export function DirectionSnr({
 
 /**
  * One hop's SNR after a tier dot, omitted when spreadingFactor is not supplied.
- * A 0 dB hop may have come through MQTT, so the backend leaves it out of km
- * and links (MQTT_HOP_SNR_DB). digits fixes the
+ * mqtt marks a route step the API says likely crossed MQTT (RoutePath.mqtt),
+ * which the backend leaves out of km and links. digits fixes the
  * decimals; without it the SNR shows as reported.
  */
 export function HopSnr({
   className,
   snr,
+  mqtt = false,
   spreadingFactor,
   digits,
   after = null,
 }: {
   className?: string;
   snr: number | null;
+  mqtt?: boolean;
   spreadingFactor?: number | null;
   digits?: number;
   after?: string | null;
@@ -857,7 +872,7 @@ export function HopSnr({
     <span
       className={className}
       title={
-        snr === 0
+        mqtt
           ? "0 dB: may be an MQTT hop"
           : margin === null
             ? undefined

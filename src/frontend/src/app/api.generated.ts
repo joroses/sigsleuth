@@ -345,8 +345,9 @@ export interface paths {
      *     since starts the window at its whole hour, so it can include up to an hour
      *     more. truncated is true when more links matched. Hours that no longer
      *     match where the map draws their nodes are left out (links.TRUSTED_HOUR):
-     *     heard before a node moved, or at a doubtful position. So are links
-     *     that do not fit where the map draws their nodes, by reported or else
+     *     heard before a node moved, at a doubtful position or a shared node
+     *     number, or directly with a signal too strong for the distance. So are
+     *     links that do not fit where the map draws their nodes, by reported or else
      *     estimated position (links.map_misfit): last heard 250 km apart or more
      *     on a pair the terrain check finds unlikely, drawn 250 km apart or more
      *     with no distance when last heard, over 150 km to an estimated node, or
@@ -1361,9 +1362,14 @@ export interface components {
       long_links: number;
       unlikely_links: number;
     };
-    /** DoubtfulNodeList */
+    /**
+     * DoubtfulNodeList
+     * @description long_link_km is the distance long_links count from.
+     */
     DoubtfulNodeList: {
       items: components["schemas"]["DoubtfulNode"][];
+      /** @default 250 */
+      long_link_km: number;
     };
     /**
      * EstimatedPosition
@@ -1737,12 +1743,11 @@ export interface components {
      * LongLinkEvidence
      * @description One link kind's observations of a long link over saved history, every
      *     channel together. a_to_b counts node_a heard by node_b, b_to_a the reverse;
-     *     hours counts the hours it was heard. zero_snr is true when every hour with
-     *     an SNR added up to exactly 0 dB, which traceroutes report for a hop over
-     *     MQTT. longest_km is its longest distance when heard. map_hidden_because is
-     *     why the map, showing all history, leaves this kind of link out (the first
-     *     channel's reason when there are several); None when it draws it. doubts are
-     *     the badges the Links page gives its rows of this kind (links.link_doubts).
+     *     hours counts the hours it was heard. longest_km is its longest distance
+     *     when heard. map_hidden_because is why the map, showing all history, leaves
+     *     this kind of link out (the first channel's reason when there are several);
+     *     None when it draws it. doubts are the badges the Links page gives its rows
+     *     of this kind (links.link_doubts).
      */
     LongLinkEvidence: {
       /** @enum {string} */
@@ -1751,7 +1756,6 @@ export interface components {
       b_to_a: number;
       hours: number;
       average_snr: number | null;
-      zero_snr: boolean;
       /** Format: date-time */
       first_hour_at: string;
       /** Format: date-time */
@@ -2711,7 +2715,6 @@ export interface components {
         | "distance_range"
         | "heard_once"
         | "traceroute_only"
-        | "mqtt_hop"
         | "far_partners"
         | "map_report"
         | "stale_position"
@@ -2744,13 +2747,17 @@ export interface components {
      *     nodes includes the origin and destination; None marks a gap. snr_db[i] is
      *     the SNR at nodes[i + 1] when it heard nodes[i], None when unknown. snr_db is
      *     shorter than the path when steps were not reported. reached is known
-     *     arrival, independently of those measurements.
+     *     arrival, independently of those measurements. mqtt[i] says step i was at
+     *     exactly MQTT_HOP_SNR_DB, so likely crossed MQTT. Worked out from snr_db
+     *     and sent, so pages don't repeat the rule.
      */
     RoutePath: {
       nodes: (number | null)[];
       snr_db: (number | null)[];
       /** @default false */
       reached: boolean;
+      /** @default [] */
+      mqtt: boolean[];
     };
     /**
      * SenderRadio
@@ -3023,18 +3030,20 @@ export interface components {
      * @description A run's route that worked, or without one its longest route (the rules
      *     are in traceroute.py); with a node search, its best route through the
      *     searched nodes (see traceroute_runs). reached says it is known to have
-     *     reached its end. packet_row_id is the packet that carried it and
-     *     is_return marks a reply's return route. km
+     *     reached its end. packet_row_id is the packet that carried it, first heard
+     *     at heard_at, and is_return marks a reply's return route. km
      *     is approximate: it adds up only the hops whose two nodes had positions.
      *     path_hops are the path's measured hops. hop is the route's hop
      *     between the two searched nodes, in the way it went, when two were searched.
-     *     unlikely says a measured hop is between a pair the terrain check finds
-     *     unlikely (links.unlikely_links), whatever its km then, which is approximate.
+     *     unlikely says a measured hop was heard LONG_LINK_KM or more apart on a
+     *     pair the terrain check finds unlikely (links.unlikely_far_sql).
      *     hop_costs are what path_hops spent (links.RouteHopCost), learned over the
      *     page's window.
      */
     TracerouteRoute: {
       packet_row_id: number;
+      /** Format: date-time */
+      heard_at: string;
       is_return: boolean;
       hops: number;
       km: number | null;
@@ -3058,9 +3067,13 @@ export interface components {
      *     is the straight line between the requester's and the target's reported
      *     positions when the run was heard (ends_km), None when either had none
      *     then; this saved distance also drives the distance sort (links.py).
-     *     doubts are why that distance is doubted
-     *     (links.link_doubts), the pair of its ends judged by terrain as a link
-     *     would be. positions are where the
+     *     doubts are why that distance is doubted: links.link_doubts, the pair of
+     *     its ends judged by terrain as a link would be, and "mqtt" when the ends
+     *     are UNCONFIRMED_KM or more apart and its route that worked crossed a step
+     *     over MQTT (traceroute_run.mqtt_steps) between two shown nodes with no
+     *     link_hour row either way, so the ends need not be in radio range. A pair
+     *     heard over radio is spared, since some 0 dB steps are real readings
+     *     (MQTT_HOP_SNR_DB). positions are where the
      *     route's nodes and ends were when the shown route's packet was heard
      *     (reported.positions_when_heard with for_page): newest before, else first
      *     afterwards. With no report, the page uses the node's estimate. A shared
@@ -3079,7 +3092,9 @@ export interface components {
       reply_packet_row_id: number | null;
       reply_receptions: number | null;
       distance_km: number | null;
-      doubts: ("shared" | "doubtful" | "terrain" | "unconfirmed" | "signal")[];
+      doubts: (
+        ("shared" | "doubtful" | "terrain" | "unconfirmed" | "signal") | "mqtt"
+      )[];
       route: components["schemas"]["TracerouteRoute"];
       positions: components["schemas"]["HeardPosition"][];
     };

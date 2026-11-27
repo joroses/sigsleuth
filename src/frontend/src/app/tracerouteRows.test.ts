@@ -36,6 +36,7 @@ function report(
         reached: gateway === T,
         nodes: [A, ...relays, T],
         snr_db: relays.map(() => 5),
+        mqtt: relays.map(() => false),
       },
       return_path: null,
     },
@@ -135,7 +136,12 @@ describe("tracerouteGroups", () => {
     const reply = {
       packet_row_id: 2,
       reception_id: 50,
-      path: { reached: true, nodes: [A, B, T], snr_db: [5, 6] },
+      path: {
+        reached: true,
+        nodes: [A, B, T],
+        snr_db: [5, 6],
+        mqtt: [false, false],
+      },
       hops: [],
     };
     expect(
@@ -169,11 +175,13 @@ describe("sharedForwardRoute", () => {
         reached: true,
         nodes: [A, ...relays, T],
         snr_db: [...relays, T].map(() => 5),
+        mqtt: [...relays, T].map(() => false),
       },
       return_path: {
         reached: false,
         nodes: [T, ...back, A],
         snr_db: back.map(() => 3),
+        mqtt: back.map(() => false),
       },
     };
     return reception;

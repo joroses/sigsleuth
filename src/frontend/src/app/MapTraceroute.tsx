@@ -143,6 +143,7 @@ export function MapTraceroute({
                   <HopSnr
                     className="number"
                     snr={row.snr}
+                    mqtt={row.mqtt}
                     spreadingFactor={detail.spreading_factor}
                     digits={1}
                   />

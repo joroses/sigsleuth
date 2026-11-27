@@ -10,6 +10,7 @@ import type {
 import {
   routeMinimap,
   minimapMarkers,
+  mqttSteps,
   routeNumbers,
   reportsThrough,
   reportsWithHop,
@@ -239,6 +240,7 @@ describe("minimapMarkers", () => {
           reached: false,
           nodes: [requester, relay, target],
           snr_db: [1],
+          mqtt: [false],
         },
         return_path: null,
       };
@@ -274,8 +276,14 @@ describe("minimapMarkers", () => {
             reached: false,
             nodes: [requester, relay, target],
             snr_db: [1, 2],
+            mqtt: [false, false],
           },
-          return_path: { reached: false, nodes: returned, snr_db: [] },
+          return_path: {
+            reached: false,
+            nodes: returned,
+            snr_db: [],
+            mqtt: [],
+          },
         },
         hops,
       });
@@ -313,11 +321,17 @@ describe("minimapMarkers", () => {
         ...reception,
         reception_id: 1,
         paths: {
-          forward: { reached: false, nodes: [requester, target], snr_db: [1] },
+          forward: {
+            reached: false,
+            nodes: [requester, target],
+            snr_db: [1],
+            mqtt: [false],
+          },
           return_path: {
             reached: false,
             nodes: [target, relay, requester],
             snr_db: [2, 3],
+            mqtt: [false, false],
           },
         },
         hops: [
@@ -330,7 +344,12 @@ describe("minimapMarkers", () => {
         ...reception,
         reception_id: 2,
         paths: {
-          forward: { reached: false, nodes: [requester, relay], snr_db: [4] },
+          forward: {
+            reached: false,
+            nodes: [requester, relay],
+            snr_db: [4],
+            mqtt: [false],
+          },
           return_path: null,
         },
         hops: [hop(requester, relay)],
@@ -344,6 +363,7 @@ describe("minimapMarkers", () => {
             reached: false,
             nodes: [requester, relay, target],
             snr_db: [4, 5],
+            mqtt: [false, false],
           },
           hops: [hop(requester, relay, 4), hop(relay, target, 5)],
         },
@@ -365,11 +385,13 @@ describe("minimapMarkers", () => {
             reached: false,
             nodes: [requester, relay, null, target],
             snr_db: [1, null, 2],
+            mqtt: [false, false, false],
           },
           return_path: {
             reached: false,
             nodes: [target, otherRelay, relay, requester],
             snr_db: [],
+            mqtt: [],
           },
         },
         requester,
@@ -414,6 +436,7 @@ describe("minimapMarkers", () => {
           ],
           route: {
             packet_row_id: 7,
+            heard_at: "2026-09-19T09:00:00Z",
             is_return: true,
             hops: 3,
             km: 12.5,
@@ -423,6 +446,7 @@ describe("minimapMarkers", () => {
               reached: false,
               nodes: [target, otherRelay, relay, requester],
               snr_db: [4, null, 6],
+              mqtt: [false, false, false],
             },
             path_hops: [
               hop(target, otherRelay, 4),
@@ -492,6 +516,7 @@ describe("minimapMarkers", () => {
           forward: {
             nodes,
             snr_db: nodes.slice(1).map(() => 2),
+            mqtt: nodes.slice(1).map(() => false),
             reached: false,
           },
           return_path: null,
@@ -535,9 +560,15 @@ describe("minimapMarkers", () => {
         forward: {
           nodes: [requester, relay, target],
           snr_db: [2],
+          mqtt: [false],
           reached: true,
         },
-        return_path: { nodes: [target, requester], snr_db: [], reached: false },
+        return_path: {
+          nodes: [target, requester],
+          snr_db: [],
+          mqtt: [],
+          reached: false,
+        },
       };
       const rows = routeRows(paths, requester, target);
       expect(
@@ -578,11 +609,13 @@ describe("minimapMarkers", () => {
             forward: {
               nodes: [requester, relay, otherRelay, target],
               snr_db: [2, 3],
+              mqtt: [false, false],
               reached: true,
             },
             return_path: {
               nodes: [target, requester],
               snr_db: [],
+              mqtt: [],
               reached: false,
             },
           },
@@ -592,10 +625,16 @@ describe("minimapMarkers", () => {
           ...reception,
           reception_id: 2,
           paths: {
-            forward: { nodes: [requester, target], snr_db: [], reached: true },
+            forward: {
+              nodes: [requester, target],
+              snr_db: [],
+              mqtt: [],
+              reached: true,
+            },
             return_path: {
               nodes: [target, relay, otherRelay, requester],
               snr_db: [2, 3],
+              mqtt: [false, false],
               reached: false,
             },
           },
@@ -631,6 +670,7 @@ describe("minimapMarkers", () => {
             reached: false,
             nodes: [requester, null, relay, target],
             snr_db: [3, 4],
+            mqtt: [false, false],
           },
           return_path: null,
         }),
@@ -638,7 +678,12 @@ describe("minimapMarkers", () => {
       // A route ending short of R, and one not starting at S.
       expect(
         rows({
-          forward: { reached: false, nodes: [relay, otherRelay], snr_db: [5] },
+          forward: {
+            reached: false,
+            nodes: [relay, otherRelay],
+            snr_db: [5],
+            mqtt: [false],
+          },
           return_path: null,
         }),
       ).toEqual([
@@ -656,11 +701,13 @@ describe("minimapMarkers", () => {
             reached: false,
             nodes: [requester, relay, target],
             snr_db: [1, 2],
+            mqtt: [false, false],
           },
           return_path: {
             reached: false,
             nodes: [target, otherRelay, requester],
             snr_db: [6, 7],
+            mqtt: [false, false],
           },
         }),
       ).toEqual(["S", "1 1", "R 2", "Back", "3 6", "S 7"]);
@@ -668,7 +715,12 @@ describe("minimapMarkers", () => {
       expect(
         routeRows(
           {
-            forward: { reached: false, nodes: [requester, relay], snr_db: [1] },
+            forward: {
+              reached: false,
+              nodes: [requester, relay],
+              snr_db: [1],
+              mqtt: [false],
+            },
             return_path: null,
           },
           requester,
@@ -676,5 +728,43 @@ describe("minimapMarkers", () => {
         )[1],
       ).toMatchObject({ hop: { fromNodeId: requester, toNodeId: relay } });
     });
+  });
+});
+
+describe("mqttSteps", () => {
+  it("draws the steps the API marks as MQTT between two known nodes", () => {
+    const [S, R1, R2, T] = [1, 2, 3, 4];
+    expect(
+      mqttSteps({
+        forward: {
+          reached: true,
+          nodes: [S, R1, null, R2, T],
+          snr_db: [0, 0, 0, 5],
+          mqtt: [true, true, true, false],
+        },
+        return_path: {
+          reached: false,
+          nodes: [T, T, S],
+          snr_db: [0, 0],
+          mqtt: [true, true],
+        },
+      }),
+    ).toEqual([
+      // Not next to the gap, nor from a node to itself.
+      {
+        from_node_id: S,
+        to_node_id: R1,
+        snr_db: 0,
+        is_return: false,
+        mqtt: true,
+      },
+      {
+        from_node_id: T,
+        to_node_id: S,
+        snr_db: 0,
+        is_return: true,
+        mqtt: true,
+      },
+    ]);
   });
 });

@@ -57,6 +57,7 @@ from sigsleuth.traceroute import (
     Route,
     TracerouteReport,
     level_cost,
+    mqtt_steps,
     path_hops,
     pinned_costs,
     read_traceroute_report,
@@ -1357,13 +1358,20 @@ def _save_traceroute(
     successful = successful_route(routes)
     if successful is not None and (stored is None or stored["success_route_reception_id"] is None):
         changed = True
+        steps = mqtt_steps(successful.path)
         connection.execute(
             """
             UPDATE traceroute_packet SET success_route_reception_id = ?,
-                success_route_hops = ?, success_route_km = ?
+                success_route_hops = ?, success_route_km = ?, success_mqtt_steps = ?
             WHERE packet_row_id = ?
             """,
-            (reception_id, successful.hops, successful.km, packet_row_id),
+            (
+                reception_id,
+                successful.hops,
+                successful.km,
+                json.dumps(steps) if steps else None,
+                packet_row_id,
+            ),
         )
     return changed
 
@@ -1396,7 +1404,7 @@ def _save_run(connection: sqlite3.Connection, packet_row_id: int) -> None:
         INSERT OR REPLACE INTO traceroute_run (
             requester_node_id, request_packet_id, target_node_id, first_packet_row_id, channel,
             radio_channel, reached, route_packet_row_id, route_reception_id, route_is_return,
-            route_hops, route_km, ends_packet_row_id, ends_km
+            route_hops, route_km, ends_packet_row_id, ends_km, mqtt_steps
         )
         WITH run AS (
             SELECT * FROM traceroute_packet
@@ -1425,7 +1433,7 @@ def _save_run(connection: sqlite3.Connection, packet_row_id: int) -> None:
                s.success_route_hops IS NULL AND s.route_is_return,
                coalesce(s.success_route_hops, s.route_hops),
                CASE WHEN s.success_route_hops IS NULL THEN s.route_km ELSE s.success_route_km END,
-               e.packet_row_id, e.ends_km
+               e.packet_row_id, e.ends_km, s.success_mqtt_steps
         FROM first AS f JOIN packet AS t ON t.id = f.packet_row_id
         CROSS JOIN shown AS s LEFT JOIN ends AS e
         """,

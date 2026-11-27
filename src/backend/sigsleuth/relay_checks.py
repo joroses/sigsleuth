@@ -59,7 +59,6 @@ from sigsleuth.relays import (
     nodes_by_byte,
 )
 from sigsleuth.reported import positions_when_heard
-from sigsleuth.traceroute import MQTT_HOP_SNR_DB
 
 TRACEROUTES = 25
 MAX_TRACEROUTES = 500
@@ -229,8 +228,9 @@ def route_relay(reception: PacketReception) -> tuple[int, float | None] | None:
         or relay_byte_of(relay) != reception.relay_byte
     ):
         return None
-    snr = path.snr_db[index - 1] if index - 1 < len(path.snr_db) else None
-    return None if snr == MQTT_HOP_SNR_DB else (relay, snr)
+    if index - 1 >= len(path.snr_db):
+        return relay, None
+    return None if path.mqtt[index - 1] else (relay, path.snr_db[index - 1])
 
 
 def route_hint(reception: PacketReception) -> int | None:

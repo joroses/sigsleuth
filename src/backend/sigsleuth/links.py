@@ -24,7 +24,7 @@ Two views of where a link's nodes are, each decided here once:
   moved since (confirmed_sql). Pages badge those and rank them apart from
   measured links; links with no distance come last.
 
-Both views share the terrain test (_unlikely_far). Diagnostics explains the
+Both views share the terrain test (_unlikely_far, unlikely_far_sql in SQL). Diagnostics explains the
 map with the same functions. Coverage keeps its own liveness, ignoring
 doubt (docs/coverage.md).
 
@@ -289,6 +289,14 @@ def _unlikely_far(heard_km: float | None, unlikely: bool) -> bool:
     """The terrain test both views share: heard LONG_LINK_KM or more apart
     on a pair the terrain check finds unlikely."""
     return unlikely and heard_km is not None and heard_km >= LONG_LINK_KM
+
+
+def unlikely_far_sql(a: str, b: str, heard_km: str) -> str:
+    """SQL: _unlikely_far for the nodes in a and b heard heard_km apart.
+    heard_km is evaluated only for an unlikely pair."""
+    return f"""(EXISTS (SELECT 1 FROM long_link
+        WHERE unlikely AND node_a = min({a}, {b}) AND node_b = max({a}, {b}))
+        AND {heard_km} >= {LONG_LINK_KM})"""
 
 
 def map_misfit(

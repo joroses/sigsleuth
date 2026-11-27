@@ -195,12 +195,17 @@ function RouteHop({
       </span>
     );
   }
-  const snr = path.snr_db[index];
+  const mqtt = path.mqtt[index];
   return (
     <span className="route-hop">
-      <HopSnr snr={snr} spreadingFactor={spreadingFactor} after=" →" />
-      {/* A 0 dB step is no measured hop. */}
-      {zeroCost && snr !== 0 ? (
+      <HopSnr
+        snr={path.snr_db[index]}
+        mqtt={mqtt}
+        spreadingFactor={spreadingFactor}
+        after=" →"
+      />
+      {/* A step over MQTT is no measured hop. */}
+      {zeroCost && !mqtt ? (
         <span className="route-zero-cost" title="0-hop: no hop spent">
           0
         </span>
@@ -214,7 +219,12 @@ function RouteHop({
  * measured radio hops.
  */
 export function RouteHopList({
-  route: { path, path_hops: measuredHops, hop_costs: hopCosts },
+  route: {
+    path,
+    path_hops: measuredHops,
+    hop_costs: hopCosts,
+    heard_at: heardAt,
+  },
   nodeNames,
   ends,
   placed,
@@ -227,6 +237,7 @@ export function RouteHopList({
 }: {
   route: TracerouteRoute;
   nodeNames: ReadonlyMap<number, string | null>;
+  /** Where its nodes were when the route was heard. */
   at: ReadonlyMap<number, LatLon>;
   /** The names of the hop's doubtful nodes, empty when none is. */
   doubted: (nodeIds: number[]) => string[];
@@ -257,6 +268,7 @@ export function RouteHopList({
       from,
       to,
       snr,
+      mqtt: path.mqtt[index],
       km,
       measured,
       cost: costs.get(`${from}-${to}`),
@@ -303,7 +315,7 @@ export function RouteHopList({
         </tr>
       </thead>
       <tbody>
-        {hops.map(({ index, from, to, snr, km, measured, cost }) => {
+        {hops.map(({ index, from, to, snr, mqtt, km, measured, cost }) => {
           const hopHighlighted =
             highlightedHop !== null &&
             from === highlightedHop.fromNodeId &&
@@ -316,7 +328,11 @@ export function RouteHopList({
                 {node(to, index + 1, hopHighlighted)}
               </td>
               <td>
-                <HopSnr snr={snr} spreadingFactor={spreadingFactor} />
+                <HopSnr
+                  snr={snr}
+                  mqtt={mqtt}
+                  spreadingFactor={spreadingFactor}
+                />
               </td>
               <td className="number">
                 <span
@@ -355,7 +371,15 @@ export function RouteHopList({
                           "All traceroutes with this hop",
                           "route",
                         ],
-                        [lineOfSightHref(from, to), "Line of sight", "profile"],
+                        ...(at.has(from) && at.has(to)
+                          ? ([
+                              [
+                                lineOfSightHref(from, to, heardAt),
+                                "Line of sight",
+                                "profile",
+                              ],
+                            ] as const)
+                          : []),
                       ] as const
                     ).map(([href, label, icon]) => (
                       <a

@@ -776,5 +776,5 @@ def test_page_placement_keeps_an_estimate_when_the_node_never_reported(
 
     node(connection, NODE, None)
     connection.execute("INSERT INTO node_estimate VALUES (?, 50.0, 2.0, 2, 1.0, 0)", (NODE,))
-    [placed] = nodes_when_heard(connection, now_ms(), {NODE}, for_page=True).values()
+    [placed] = nodes_when_heard(connection, now_ms(), {NODE}).values()
     assert (placed.latitude, placed.longitude, placed.estimated) == (50.0, 2.0, True)

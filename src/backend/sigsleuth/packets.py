@@ -294,7 +294,7 @@ def packet_detail(
         (packet_row_id,),
     ).fetchall()
     radio = packet_channel_radio(connection, row, [hop["radio_channel"] for hop in saved_hops])
-    receptions, places = _receptions(connection, row, hidden, for_page=True)
+    receptions, places = _receptions(connection, row, hidden)
     receptions = _with_relays(
         connection,
         receptions,
@@ -355,7 +355,7 @@ def packet_detail(
         ),
         relay_nodes=tuple(
             nodes_when_heard(
-                connection, int(row["first_received_at"]), _relay_ids(receptions), for_page=True
+                connection, int(row["first_received_at"]), _relay_ids(receptions)
             ).values()
         ),
         spreading_factor=None if radio is None else radio.spreading_factor,
@@ -454,7 +454,7 @@ def _shown_packet(
 
 
 def _receptions(
-    connection: sqlite3.Connection, row: sqlite3.Row, hidden: set[int], *, for_page: bool = False
+    connection: sqlite3.Connection, row: sqlite3.Row, hidden: set[int]
 ) -> tuple[list[PacketReception], dict[int, NodeSummary]]:
     """The packet's receptions in _hop_order, and the sender and gateways
     where they were when it was heard."""
@@ -477,7 +477,6 @@ def _receptions(
         connection,
         int(row["first_received_at"]),
         {sender} | {int(item["gateway_node_id"]) for item in reception_rows},
-        for_page=for_page,
     )
     receptions = sorted(
         (
@@ -565,15 +564,17 @@ def _reply_route(
 
 
 def nodes_when_heard(
-    connection: sqlite3.Connection, heard_at: int, node_ids: set[int], *, for_page: bool = False
+    connection: sqlite3.Connection, heard_at: int, node_ids: set[int]
 ) -> dict[int, NodeSummary]:
     """The nodes as nodes_by_id finds them, each placed where it was at
-    heard_at when its reported positions tell; for_page also uses the first
-    report afterwards. A shared node number is never
-    placed: its radios are in several places."""
+    heard_at by its newest report before, else its first afterwards
+    (reported.positions_when_heard with for_page): naming relays places the
+    gateway where the packet page draws it; candidates are scored where they
+    are now. A shared node number is never placed: its radios are in several
+    places."""
     shared = shared_nodes(connection) & node_ids
     heard = positions_when_heard(
-        connection, {(node_id, heard_at) for node_id in node_ids - shared}, for_page=for_page
+        connection, {(node_id, heard_at) for node_id in node_ids - shared}, for_page=True
     )
     return {
         node_id: replace(node, latitude=None, longitude=None, estimated=False)
@@ -604,7 +605,7 @@ def _route_nodes(
         for path in (reception.paths.forward, reception.paths.return_path):
             if path is not None:
                 node_ids.update(node for node in path.nodes if node is not None)
-    return tuple(nodes_when_heard(connection, heard_at, node_ids, for_page=True).values())
+    return tuple(nodes_when_heard(connection, heard_at, node_ids).values())
 
 
 def _relay_ids(receptions: list[PacketReception]) -> set[int]:

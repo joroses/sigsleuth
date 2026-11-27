@@ -71,12 +71,18 @@ class RoutePath:
     nodes includes the origin and destination; None marks a gap. snr_db[i] is
     the SNR at nodes[i + 1] when it heard nodes[i], None when unknown. snr_db is
     shorter than the path when steps were not reported. reached is known
-    arrival, independently of those measurements.
+    arrival, independently of those measurements. mqtt[i] says step i was at
+    exactly MQTT_HOP_SNR_DB, so likely crossed MQTT. Worked out from snr_db
+    and sent, so pages don't repeat the rule.
     """
 
     nodes: tuple[int | None, ...]
     snr_db: tuple[float | None, ...]
     reached: bool = False
+    mqtt: tuple[bool, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mqtt", tuple(snr == MQTT_HOP_SNR_DB for snr in self.snr_db))
 
 
 @dataclass(frozen=True)
@@ -213,10 +219,23 @@ def path_hops(path: RoutePath) -> list[Hop]:
             from_node is not None
             and to_node is not None
             and from_node != to_node
-            and snr_db != MQTT_HOP_SNR_DB
+            and not path.mqtt[index]
         ):
             hops.append(Hop(from_node, to_node, snr_db))
     return hops
+
+
+def mqtt_steps(path: RoutePath) -> list[tuple[int, int]]:
+    """The path's steps over MQTT (RoutePath.mqtt) between two known,
+    different nodes, as (from, to): the steps path_hops leaves out for that."""
+    return [
+        (from_node, to_node)
+        for index, mqtt in enumerate(path.mqtt)
+        if mqtt
+        and (from_node := path.nodes[index]) is not None
+        and (to_node := path.nodes[index + 1]) is not None
+        and from_node != to_node
+    ]
 
 
 def pinned_costs(
@@ -288,7 +307,7 @@ def transmitter_level(
             return None
     elif relay_byte != relay_byte_of(transmitter):
         return None
-    if MQTT_HOP_SNR_DB in path.snr_db[: len(chain) - 1]:
+    if any(path.mqtt[: len(chain) - 1]):
         return None
     for hop in path_hops(path):
         if (hop.from_node_id, hop.to_node_id) == (previous, transmitter):

@@ -87,7 +87,6 @@ const CHECKS: Record<CheckKind, { factor: Factor; label: string }> = {
   distance_range: { factor: "shown", label: "Distance changed while heard" },
   heard_once: { factor: "heard", label: "Heard only once" },
   traceroute_only: { factor: "heard", label: "Only traceroutes report it" },
-  mqtt_hop: { factor: "heard", label: "Route steps at exactly 0 dB" },
   far_partners: { factor: "ends", label: "Far direct partners" },
   map_report: { factor: "ends", label: "Position from a map report" },
   stale_position: {
@@ -128,8 +127,6 @@ function checkText(
       return "Heard only once, so nothing else backs it up.";
     case "traceroute_only":
       return "Only traceroutes report it, with no direct reception or neighbour report, and a traceroute hop can cross an MQTT bridge.";
-    case "mqtt_hop":
-      return "Every traceroute step on it reports exactly 0 dB, the mark of a hop over MQTT rather than radio.";
     case "far_partners":
       return `${name}'s nearest of ${end?.direct_partners} direct partners is ${formatKm(end?.nearest_partner_km ?? null)} km away, over ${rules.local_partner_km} km: its position may be wrong.`;
     case "map_report":
@@ -433,10 +430,9 @@ function HeardFactor({ link, rules, checks }: FactorProps) {
           The table counts every report in saved history, each way. More hours,
           both directions and more than one kind make a real link likely; one
           packet, or traceroutes alone, can be an MQTT bridge or a wrong
-          position. Route steps of exactly 0 dB are hops over MQTT.{" "}
-          <strong>Signal mismatch</strong>: its newest hour was heard directly{" "}
-          {rules.signal_min_km} km or more apart with a signal so strong that,
-          over that distance in free space, it would need over{" "}
+          position. <strong>Signal mismatch</strong>: its newest hour was heard
+          directly {rules.signal_min_km} km or more apart with a signal so
+          strong that, over that distance in free space, it would need over{" "}
           {rules.signal_power_dbm} dBm ({watts(rules.signal_power_dbm)}) of
           transmit power: the ends are probably nearer than their positions say.
         </>
@@ -505,9 +501,6 @@ function HeardFactor({ link, rules, checks }: FactorProps) {
                   {kind.average_snr === null
                     ? "—"
                     : `${kind.average_snr.toFixed(1)} dB`}
-                  {kind.zero_snr ? (
-                    <span className="muted"> (all 0 dB)</span>
-                  ) : null}
                 </td>
                 <td>
                   <ShortTime value={kind.first_hour_at} />
@@ -1102,15 +1095,8 @@ function ReachTable({
 function KindBadge({ evidence }: { evidence: Evidence }) {
   const kind = KINDS[evidence.link_kind];
   return (
-    <Badge
-      title={
-        evidence.zero_snr
-          ? `${kind.title}. Every step at exactly 0 dB: a hop over MQTT`
-          : kind.title
-      }
-    >
+    <Badge title={kind.title}>
       {kind.tag} {evidence.a_to_b + evidence.b_to_a}
-      {evidence.zero_snr ? " · 0 dB" : ""}
     </Badge>
   );
 }

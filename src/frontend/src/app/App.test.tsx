@@ -126,6 +126,7 @@ describe("Packet detail", () => {
           reached: false,
           nodes: [requester, via, target],
           snr_db: [1, 2],
+          mqtt: [false, false],
         },
         return_path: null,
       },
@@ -320,6 +321,7 @@ describe("Packet detail", () => {
                   reached: false,
                   nodes: [0x11111111, 0x33333333],
                   snr_db: [4],
+                  mqtt: [false],
                 },
                 return_path: null,
               },
@@ -335,6 +337,7 @@ describe("Packet detail", () => {
                   reached: false,
                   nodes: [0x11111111, 0x33333333, 0x44444444],
                   snr_db: [4, 2],
+                  mqtt: [false, false],
                 },
                 return_path: null,
               },
@@ -1686,11 +1689,20 @@ describe("Diagnostics", () => {
       lowest_km: null,
       oldest_hour_at: null,
       next_offset: null,
+      rules: {
+        long_link_km: 250,
+        unconfirmed_km: 100,
+        moved_km: 25,
+        partner_days: 7,
+        doubtful_partner_km: 150,
+        local_partner_km: 60,
+        stale_position_hours: 6,
+      },
     };
     const pages: Record<string, object> = {
       "/api/v1/packets": packets,
       "/api/v1/packets/ports": { ports: [] },
-      "/api/v1/diagnostics/doubtful-nodes": { items: [] },
+      "/api/v1/diagnostics/doubtful-nodes": { items: [], long_link_km: 250 },
       "/api/v1/diagnostics/longest-links?offset=0&count=30": empty,
       "/api/v1/diagnostics/longest-links?offset=0&count=30&order=latest": empty,
     };
@@ -2826,7 +2838,12 @@ describe("Map text reach", () => {
           own_upload: false,
           relay_own: null,
           paths: {
-            forward: { reached: false, nodes: [2, 3, 4], snr_db: [3, 4] },
+            forward: {
+              reached: false,
+              nodes: [2, 3, 4],
+              snr_db: [3, 4],
+              mqtt: [false, false],
+            },
             return_path: null,
           },
           hops: [
@@ -3958,7 +3975,12 @@ const FARM_TO_MILL = {
     hops: 3,
     km: null,
     reached: false,
-    path: { reached: false, nodes: [5, 2, 1, 6], snr_db: [3, 4, 5] },
+    path: {
+      reached: false,
+      nodes: [5, 2, 1, 6],
+      snr_db: [3, 4, 5],
+      mqtt: [false, false, false],
+    },
     path_hops: [
       { from_node_id: 5, to_node_id: 2, snr_db: 3 },
       { from_node_id: 2, to_node_id: 1, snr_db: 4 },
@@ -4309,6 +4331,48 @@ describe("Traceroute explorer", () => {
     const badges = await screen.findAllByText("doubtful");
     expect(badges.map((badge) => badge.closest("td")!.textContent)).toEqual([
       expect.stringMatching(/^3 · 340/),
+    ]);
+  });
+
+  it("badges a run's distance when it got there over MQTT", async () => {
+    const run = (packet_row_id: number, km: number, doubts: string[]) => ({
+      ...FARM_TO_MILL,
+      request_packet_row_id: packet_row_id,
+      distance_km: km,
+      doubts,
+      route: { ...FARM_TO_MILL.route, packet_row_id, hop: null },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          jsonResponse(
+            url.startsWith("/api/v1/traceroutes/busiest")
+              ? {
+                  requesters: [],
+                  targets: [],
+                  relays: [],
+                  channels: [],
+                  nodes: [],
+                }
+              : {
+                  items: [run(9, 80, []), run(10, 210, ["mqtt"])],
+                  nodes: [],
+                  doubtful_node_ids: [],
+                  shared_node_ids: [],
+                  has_more: false,
+                },
+          ),
+        ),
+      ),
+    );
+
+    window.location.hash = "#links/traceroutes";
+    render(<App />);
+
+    const badges = await screen.findAllByText("over MQTT");
+    expect(badges.map((badge) => badge.closest("td")!.textContent)).toEqual([
+      expect.stringMatching(/^210/),
     ]);
   });
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { ContactLine, ContactLink, NodeContact } from "./api";
+import type { ContactLine, ContactLink, LinkRow, NodeContact } from "./api";
 import {
+  contactFacts,
   contactLayers,
   zeroCostLabel,
   zeroCostTitle,
@@ -161,6 +162,32 @@ describe("contactLayers", () => {
     expect(all.unplaced).toBe(0);
     expect(layers({ traceroutes: true, gateways: false }).hidden).toBe(1);
     expect(layers({ traceroutes: false, gateways: true }).hidden).toBe(1);
+  });
+});
+
+describe("contactFacts", () => {
+  it("marks a kind's distances with its links table rows' badges", () => {
+    const linkRow = (
+      other: number,
+      kind: LinkRow["link_kind"],
+      doubts: LinkRow["doubts"],
+    ): LinkRow => ({
+      ...row(other, kind),
+      distance_km: 680,
+      doubts,
+      radio_names: [],
+    });
+
+    const facts = contactFacts(contact(1, ["direct", "traceroute"], null), [
+      linkRow(1, "direct", ["terrain", "unconfirmed"]),
+      linkRow(1, "traceroute", []),
+      linkRow(2, "traceroute", ["shared"]),
+    ]);
+
+    expect(facts).toEqual([
+      "Heard directly 1×, 3.0–680 km when heard (doubtful, unconfirmed)",
+      "Traceroute hop 1×, 3.0–680 km when heard",
+    ]);
   });
 });
 

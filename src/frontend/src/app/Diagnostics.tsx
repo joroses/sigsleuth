@@ -597,14 +597,14 @@ function lookedThrough(
   const latest = order === "latest";
   if (data.looked_through === 0) {
     const what = latest
-      ? "link heard 250 km or more apart"
+      ? `link heard ${data.rules.long_link_km} km or more apart`
       : "link with a distance";
     return nodeName === null
       ? `No ${what} yet.`
       : `${nodeName} has no ${what}.`;
   }
   const whose = nodeName === null ? "" : ` of ${nodeName}`;
-  const links = `${data.looked_through.toLocaleString()} ${latest ? "latest links heard 250 km+ apart" : "longest links"}${whose}`;
+  const links = `${data.looked_through.toLocaleString()} ${latest ? `latest links heard ${data.rules.long_link_km} km+ apart` : "longest links"}${whose}`;
   const depth =
     data.next_offset === null ? (
       "all of them"
@@ -760,7 +760,7 @@ function DoubtfulNodesSection() {
         <WideTable>
           <table>
             <EndHeadings>
-              <th scope="col">Links 250 km+</th>
+              <th scope="col">Links {state.data.long_link_km} km+</th>
             </EndHeadings>
             <tbody>
               {state.data.items.map((item) => (

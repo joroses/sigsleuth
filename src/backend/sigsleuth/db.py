@@ -263,7 +263,7 @@ _FACTS_UPGRADES = {
     CREATE INDEX coverage_measurement_sender ON coverage_measurement (sender_node_id, heard_at);
     """,
 }
-DERIVED_VERSION = 64
+DERIVED_VERSION = 65
 _SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 _DERIVED_FILE = Path(__file__).with_name("derived.sql")
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

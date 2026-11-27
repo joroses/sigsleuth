@@ -28,7 +28,6 @@ from sigsleuth.db import (
 )
 from sigsleuth.derive import HOUR_MS
 from sigsleuth.links import (
-    LONG_LINK_KM,
     UNCONFIRMED_KM,
     Doubt,
     HopCost,
@@ -40,11 +39,12 @@ from sigsleuth.links import (
     link_doubts,
     pinned_hops,
     route_hop_costs,
+    unlikely_far_sql,
     unlikely_links,
 )
 from sigsleuth.opt_out import opted_out, opted_out_sql, shown_sql
 from sigsleuth.relays import channel_spreading_factor
-from sigsleuth.reported import HeardPosition, positions_when_heard
+from sigsleuth.reported import HeardPosition, km_when_heard_sql, positions_when_heard
 from sigsleuth.shared_numbers import shared_nodes
 from sigsleuth.traceroute import (
     Hop,
@@ -59,6 +59,8 @@ from sigsleuth.traceroute import (
 BUSIEST_NODES = 10
 
 TracerouteSort = Literal["newest", "route", "distance"]
+# A run's distance doubts: a link's (links.link_doubts), or "mqtt" (TracerouteRun).
+RunDoubt = Doubt | Literal["mqtt"]
 
 MAX_HOP_OBSERVATIONS = 10
 
@@ -170,17 +172,18 @@ class TracerouteRoute:
     """A run's route that worked, or without one its longest route (the rules
     are in traceroute.py); with a node search, its best route through the
     searched nodes (see traceroute_runs). reached says it is known to have
-    reached its end. packet_row_id is the packet that carried it and
-    is_return marks a reply's return route. km
+    reached its end. packet_row_id is the packet that carried it, first heard
+    at heard_at, and is_return marks a reply's return route. km
     is approximate: it adds up only the hops whose two nodes had positions.
     path_hops are the path's measured hops. hop is the route's hop
     between the two searched nodes, in the way it went, when two were searched.
-    unlikely says a measured hop is between a pair the terrain check finds
-    unlikely (links.unlikely_links), whatever its km then, which is approximate.
+    unlikely says a measured hop was heard LONG_LINK_KM or more apart on a
+    pair the terrain check finds unlikely (links.unlikely_far_sql).
     hop_costs are what path_hops spent (links.RouteHopCost), learned over the
     page's window."""
 
     packet_row_id: int
+    heard_at: datetime
     is_return: bool
     hops: int
     km: float | None
@@ -203,9 +206,13 @@ class TracerouteRun:
     is the straight line between the requester's and the target's reported
     positions when the run was heard (ends_km), None when either had none
     then; this saved distance also drives the distance sort (links.py).
-    doubts are why that distance is doubted
-    (links.link_doubts), the pair of its ends judged by terrain as a link
-    would be. positions are where the
+    doubts are why that distance is doubted: links.link_doubts, the pair of
+    its ends judged by terrain as a link would be, and "mqtt" when the ends
+    are UNCONFIRMED_KM or more apart and its route that worked crossed a step
+    over MQTT (traceroute_run.mqtt_steps) between two shown nodes with no
+    link_hour row either way, so the ends need not be in radio range. A pair
+    heard over radio is spared, since some 0 dB steps are real readings
+    (MQTT_HOP_SNR_DB). positions are where the
     route's nodes and ends were when the shown route's packet was heard
     (reported.positions_when_heard with for_page): newest before, else first
     afterwards. With no report, the page uses the node's estimate. A shared
@@ -222,7 +229,7 @@ class TracerouteRun:
     reply_packet_row_id: int | None
     reply_receptions: int | None
     distance_km: float | None
-    doubts: tuple[Doubt, ...]
+    doubts: tuple[RunDoubt, ...]
     route: TracerouteRoute
     positions: tuple[HeardPosition, ...]
 
@@ -267,11 +274,11 @@ def traceroute_runs(
     first, then the longest, from the hops capture saved (traceroute_hop).
     min_hops and the route sort use the route shown. successful keeps the
     runs with a successful route (see reached_end) and shows only those
-    routes; the distance sort always does, since an unconfirmed run's ends
-    need not have heard each other. Each sort puts apart the runs with a
-    badge on the km it sorts by. A shown route has one with a hop at a
-    doubtful position or a shared node number, while the route has a km, or
-    between a pair the terrain check finds unlikely (links.unlikely_links).
+    routes; the distance sort always does, since the ends of a run not known
+    to reach its end need not have heard each other. Each sort puts apart the
+    runs with a badge on the km it sorts by. A shown route has one with a hop
+    at a doubtful position or a shared node number, while the route has a
+    km, or with an unlikely hop (TracerouteRoute).
     The distance sort puts those runs, and the runs whose distance is
     doubted (TracerouteRun), just before the runs without a distance. The
     route sort puts last those runs, and the runs whose route is a single
@@ -296,7 +303,6 @@ def traceroute_runs(
             "successful": successful,
             "channel": channel,
             "min_hops": min_hops,
-            "long_km": LONG_LINK_KM,
             "unconfirmed_km": UNCONFIRMED_KM,
             "limit": limit,
             "offset": offset,
@@ -339,12 +345,8 @@ def traceroute_runs(
         route = _saved_route(connection, packets, row, hidden)
         if first is not None and second is not None:
             route = replace(route, hop=hop_between(route.path, first, second))
-        over = any(
-            (min(hop.from_node_id, hop.to_node_id), max(hop.from_node_id, hop.to_node_id))
-            in unlikely
-            for hop in route.path_hops
-        )
-        routes.append((packets, replace(route, unlikely=over)))
+        routes.append((packets, route))
+    routes = _with_unlikely(connection, routes)
     routes = _with_hop_costs(connection, routes, since)
     node_ids = {node_id for packets, route in routes for node_id in _run_nodes(packets, route)}
     nodes = {
@@ -373,7 +375,7 @@ def traceroute_runs(
             _run(
                 packets,
                 route,
-                _doubts(packets, doubtful, shared, unlikely),
+                _doubts(packets, doubtful, shared, unlikely, bool(row["mqtt_doubted"])),
                 str(row["radio_channel"]),
                 tuple(
                     heard[node_id, heard_at[route.packet_row_id]]
@@ -391,6 +393,46 @@ def traceroute_runs(
     )
 
 
+def _with_unlikely(
+    connection: sqlite3.Connection,
+    routes: list[tuple[list[sqlite3.Row], TracerouteRoute]],
+) -> list[tuple[list[sqlite3.Row], TracerouteRoute]]:
+    """The routes with unlikely set, judging their hops as the sort's
+    _UNLIKELY_HOP does."""
+    heard_at = {
+        int(packet["packet_row_id"]): int(packet["first_received_at"])
+        for packets, _ in routes
+        for packet in packets
+    }
+    hops = [
+        (hop.from_node_id, hop.to_node_id, heard_at[route.packet_row_id])
+        for _, route in routes
+        for hop in route.path_hops
+    ]
+    a, b, at = "h.value ->> 0", "h.value ->> 1", "h.value ->> 2"
+    far = {
+        (int(row[0]), int(row[1]), int(row[2]))
+        for row in connection.execute(
+            f"""SELECT {a}, {b}, {at} FROM json_each(?) AS h
+            WHERE {unlikely_far_sql(a, b, km_when_heard_sql(a, b, at))}""",
+            (json.dumps(hops),),
+        )
+    }
+    return [
+        (
+            packets,
+            replace(
+                route,
+                unlikely=any(
+                    (hop.from_node_id, hop.to_node_id, heard_at[route.packet_row_id]) in far
+                    for hop in route.path_hops
+                ),
+            ),
+        )
+        for packets, route in routes
+    ]
+
+
 _IN_FIRST = "IN (SELECT value FROM json_each(:first))"
 _IN_SECOND = "IN (SELECT value FROM json_each(:second))"
 _IN_DOUBTFUL = "IN (SELECT node_id FROM node_doubtful UNION ALL SELECT node_id FROM node_shared)"
@@ -400,8 +442,28 @@ _SUSPECTS = """(SELECT node_id FROM node_doubtful
     UNION ALL SELECT node_id FROM node_shared
     UNION ALL SELECT node_a FROM long_link WHERE unlikely
     UNION ALL SELECT node_b FROM long_link WHERE unlikely)"""
-_UNLIKELY_PAIR = """EXISTS (SELECT 1 FROM long_link
-    WHERE unlikely AND node_a = min({a}, {b}) AND node_b = max({a}, {b}))"""
+# A traceroute_hop h that makes its route unlikely (TracerouteRoute,
+# _with_unlikely). Its packet's time is looked up only for an unlikely pair.
+_UNLIKELY_HOP = unlikely_far_sql(
+    "h.from_node_id",
+    "h.to_node_id",
+    km_when_heard_sql(
+        "h.from_node_id",
+        "h.to_node_id",
+        "(SELECT first_received_at FROM packet WHERE id = h.packet_row_id)",
+    ),
+)
+
+# The run k reached its end over MQTT, as TracerouteRun's "mqtt" doubt. Ends
+# nearer than UNCONFIRMED_KM are likely in radio range anyway, and sinking
+# them barely moves the distance sort.
+_MQTT_RUN = f"""(k.ends_km >= :unconfirmed_km AND EXISTS (
+    SELECT 1 FROM json_each(k.mqtt_steps) AS s
+    WHERE {shown_sql("s.value ->> 0")} AND {shown_sql("s.value ->> 1")}
+      AND NOT EXISTS (SELECT 1 FROM link_hour
+          WHERE from_node_id = s.value ->> 0 AND to_node_id = s.value ->> 1)
+      AND NOT EXISTS (SELECT 1 FROM link_hour
+          WHERE from_node_id = s.value ->> 1 AND to_node_id = s.value ->> 0)))"""
 
 # The runs (traceroute_run AS r) the explorer may list and count. The
 # replies to a broadcast request each name their own target, so a run is
@@ -417,7 +479,7 @@ _SHOWN_RUN = f"""{shown_sql("r.requester_node_id")}
 _ORDER = {
     "newest": "first_packet_row_id DESC",
     "distance": """CASE WHEN ends_km IS NULL THEN -2.0
-        WHEN ends_doubted OR route_doubted THEN -1.0
+        WHEN ends_doubted OR mqtt_doubted OR route_doubted THEN -1.0
         ELSE ends_km END DESC, first_packet_row_id DESC""",
     "route": """(route_doubted OR (reached AND route_hops = 1 AND ends_doubted AND joins_ends)),
         coalesce(route_km, 0.0) DESC, route_hops DESC, first_packet_row_id DESC""",
@@ -476,6 +538,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
         shown AS (
             SELECT r.requester_node_id, r.request_packet_id, r.target_node_id,
                    r.first_packet_row_id, r.radio_channel, r.ends_packet_row_id, r.ends_km,
+                   r.mqtt_steps,
                    CASE WHEN {ends} THEN r.route_packet_row_id ELSE s.packet_row_id END
                        AS route_packet_row_id,
                    CASE WHEN {ends} THEN r.route_reception_id ELSE s.route_reception_id END
@@ -507,7 +570,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
                     AND ((h.from_node_id {_IN_DOUBTFUL} AND {shown_sql("h.from_node_id")})
                          OR (h.to_node_id {_IN_DOUBTFUL} AND {shown_sql("h.to_node_id")})))
                    OR ({shown_sql("h.from_node_id")} AND {shown_sql("h.to_node_id")}
-                       AND {_UNLIKELY_PAIR.format(a="h.from_node_id", b="h.to_node_id")})))"""
+                       AND {_UNLIKELY_HOP})))"""
     )
     # links.link_doubts of the run's distance, as _doubts judges it: confirmed
     # at the ends of the packet it was measured on, which in a broadcast run
@@ -517,8 +580,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
         if sort == "newest"
         else f"""CASE WHEN k.ends_km IS NOT NULL THEN
             k.requester_node_id {_IN_DOUBTFUL} OR k.target_node_id {_IN_DOUBTFUL}
-            OR (k.ends_km >= :long_km
-                AND {_UNLIKELY_PAIR.format(a="k.requester_node_id", b="k.target_node_id")})
+            OR {unlikely_far_sql("k.requester_node_id", "k.target_node_id", "k.ends_km")}
             OR (k.ends_km >= :unconfirmed_km AND NOT (
                 SELECT {confirmed_sql("e.requester_node_id", "t.first_received_at")}
                    AND {confirmed_sql("e.target_node_id", "t.first_received_at")}
@@ -542,7 +604,7 @@ def _page_sql(sort: TracerouteSort, searches: int, single_run: bool = False) -> 
     return f"""{runs}
     SELECT * FROM (
         SELECT k.*, {route_doubted} AS route_doubted, {ends_doubted} AS ends_doubted,
-               {joins_ends} AS joins_ends
+               {_MQTT_RUN} AS mqtt_doubted, {joins_ends} AS joins_ends
         FROM shown AS k WHERE k.route_hops >= :min_hops
     )
     ORDER BY {_ORDER[sort]} LIMIT :limit + 1 OFFSET :offset
@@ -620,18 +682,22 @@ def _doubts(
     doubtful: set[int],
     shared: set[int],
     unlikely: set[tuple[int, int]],
-) -> tuple[Doubt, ...]:
+    mqtt: bool,
+) -> tuple[RunDoubt, ...]:
     """Why the run's distance is doubted (TracerouteRun)."""
     heard = _ends_heard(packets)
     if heard is None:
         return ()
     a, b = sorted(_ends(packets))
-    return link_doubts(
-        a in doubtful or b in doubtful,
-        heard["ends_km"],
-        (a, b) in unlikely,
-        bool(heard["ends_confirmed"]),
-        shared=a in shared or b in shared,
+    return (
+        *link_doubts(
+            a in doubtful or b in doubtful,
+            heard["ends_km"],
+            (a, b) in unlikely,
+            bool(heard["ends_confirmed"]),
+            shared=a in shared or b in shared,
+        ),
+        *(("mqtt",) if mqtt else ()),
     )
 
 
@@ -761,7 +827,7 @@ def _matching_nodes(connection: sqlite3.Connection, query: str) -> set[int]:
 def _run(
     packets: list[sqlite3.Row],
     route: TracerouteRoute,
-    doubts: tuple[Doubt, ...],
+    doubts: tuple[RunDoubt, ...],
     radio_channel: str,
     positions: tuple[HeardPosition, ...],
 ) -> TracerouteRun:
@@ -811,6 +877,7 @@ def _saved_route(
     km = shown["route_km"]
     return TracerouteRoute(
         packet_row_id=int(packet["packet_row_id"]),
+        heard_at=from_epoch_ms(int(packet["first_received_at"])),
         is_return=is_return,
         hops=int(shown["route_hops"]),
         km=None if km is None else round(km, 1),

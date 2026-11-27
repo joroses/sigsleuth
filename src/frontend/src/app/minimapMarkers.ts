@@ -104,7 +104,7 @@ export interface MinimapContents {
   unplacedGateways: number;
   /**
    * Every hop the packet reported, and on a request its reply's route, plus
-   * the listed routes' 0 dB steps (zeroDbSteps).
+   * the listed routes' steps over MQTT (mqttSteps).
    */
   allHops: HopLines;
   /**
@@ -163,7 +163,7 @@ export function minimapMarkers(
     ]),
   );
   const free = zeroCostHops(detail.hop_costs);
-  const hopLines = (hops: TracerouteHop[]) =>
+  const hopLines = (hops: DrawnHop[]) =>
     drawHops(detail.spreading_factor, hops, positions, free);
   const receptionHops = new Map<number, HopLines>();
   const receptionNumbers = new Map<number, Map<number, string>>();
@@ -171,7 +171,7 @@ export function minimapMarkers(
     if (reception.paths === null) continue;
     receptionHops.set(
       reception.reception_id,
-      hopLines(withZeroDbSteps(reception.hops, reception.paths)),
+      hopLines(withMqttSteps(reception.hops, reception.paths)),
     );
     if (detail.traceroute !== null) {
       const { requester_node_id, target_node_id } = detail.traceroute;
@@ -191,7 +191,7 @@ export function minimapMarkers(
     receptionHops.set(
       reply.reception_id,
       hopLines(
-        withZeroDbSteps(reply.hops, { forward: reply.path, return_path: null }),
+        withMqttSteps(reply.hops, { forward: reply.path, return_path: null }),
       ),
     );
     receptionNumbers.set(
@@ -226,7 +226,7 @@ export function minimapMarkers(
     allHops: hopLines([
       ...detail.hops,
       ...(reply?.hops ?? []),
-      ...listedReports(detail).flatMap((report) => report.zeroDbSteps),
+      ...listedReports(detail).flatMap((report) => report.mqttSteps),
     ]),
     receptionHops,
     receptionNumbers,
@@ -320,7 +320,7 @@ export function routeMinimap(
     unplacedGateways: 0,
     allHops: drawHops(
       run.spreading_factor,
-      withZeroDbSteps(
+      withMqttSteps(
         run.route.path_hops.map((hop) => ({
           ...hop,
           is_return: run.route.is_return,
@@ -363,7 +363,7 @@ export function sameHop(
 /** Reports found by reportsThrough or reportsWithHop, before they are drawn. */
 interface FoundReports {
   receptionIds: Set<number>;
-  hops: TracerouteHop[];
+  hops: DrawnHop[];
   nodeIds: Set<number>;
 }
 
@@ -401,8 +401,8 @@ interface ListedReport {
   nodes: (number | null)[];
   /** Its measured hops, as the API sends them. */
   hops: TracerouteHop[];
-  /** Its steps at exactly 0 dB (zeroDbSteps), drawn with its hops. */
-  zeroDbSteps: TracerouteHop[];
+  /** Its steps over MQTT (mqttSteps), drawn with its hops. */
+  mqttSteps: DrawnHop[];
 }
 
 // Each listed reception's forward and return routes, and a request's reply route.
@@ -416,7 +416,7 @@ function listedReports(detail: PacketDetail): ListedReport[] {
       paths,
       nodes: [...paths.forward.nodes, ...(paths.return_path?.nodes ?? [])],
       hops: reception.hops,
-      zeroDbSteps: zeroDbSteps(paths),
+      mqttSteps: mqttSteps(paths),
     });
   }
   const reply = detail.reply_route;
@@ -427,7 +427,7 @@ function listedReports(detail: PacketDetail): ListedReport[] {
       paths,
       nodes: reply.path.nodes,
       hops: reply.hops,
-      zeroDbSteps: zeroDbSteps(paths),
+      mqttSteps: mqttSteps(paths),
     });
   }
   return reports;
@@ -438,7 +438,7 @@ function foundReports(
   keep: (report: ListedReport) => boolean,
 ): FoundReports {
   const receptionIds = new Set<number>();
-  const hops = new Map<string, TracerouteHop>();
+  const hops = new Map<string, DrawnHop>();
   const nodeIds = new Set<number>();
   for (const report of listedReports(detail)) {
     if (!keep(report)) continue;
@@ -448,7 +448,7 @@ function foundReports(
       hops.set(`${hop.from_node_id}-${hop.to_node_id}`, hop);
     }
     // A measured hop between the same nodes is drawn instead.
-    for (const step of report.zeroDbSteps) {
+    for (const step of report.mqttSteps) {
       const key = `${step.from_node_id}-${step.to_node_id}`;
       if (!hops.has(key)) hops.set(key, step);
     }
@@ -456,26 +456,29 @@ function foundReports(
   return { receptionIds, hops: [...hops.values()], nodeIds };
 }
 
+/** A hop to draw: measured, or a step over MQTT (mqttSteps). */
+type DrawnHop = TracerouteHop & { mqtt?: true };
+
 /**
- * The routes' steps at exactly 0 dB between two known, different nodes. The
- * API's hops leave them out, as they may be MQTT hops (MQTT_HOP_SNR_DB in
- * traceroute.py), so they never count toward km or links; the minimaps still
- * draw them, as the route text lists them.
+ * The routes' steps over MQTT (RoutePath.mqtt) between two known, different
+ * nodes. The API's hops leave them out, so they never count toward km or
+ * links; the minimaps still draw them, as the route text lists them.
  */
-export function zeroDbSteps(paths: ReportPaths): TracerouteHop[] {
+export function mqttSteps(paths: ReportPaths): DrawnHop[] {
   return [paths.forward, paths.return_path].flatMap((path, direction) =>
     path === null
       ? []
       : path.snr_db.flatMap((snr, index) => {
           const from = path.nodes[index];
           const to = path.nodes[index + 1];
-          return snr === 0 && from !== null && to !== null && from !== to
+          return path.mqtt[index] && from !== null && to !== null && from !== to
             ? [
                 {
                   from_node_id: from,
                   to_node_id: to,
                   snr_db: snr,
                   is_return: direction === 1,
+                  mqtt: true,
                 },
               ]
             : [];
@@ -483,11 +486,11 @@ export function zeroDbSteps(paths: ReportPaths): TracerouteHop[] {
   );
 }
 
-function withZeroDbSteps(
+function withMqttSteps(
   hops: TracerouteHop[],
   paths: ReportPaths | null,
-): TracerouteHop[] {
-  return paths === null ? hops : [...hops, ...zeroDbSteps(paths)];
+): DrawnHop[] {
+  return paths === null ? hops : [...hops, ...mqttSteps(paths)];
 }
 
 function withEstimate(title: string, estimated: boolean): string {
@@ -602,15 +605,15 @@ export function routeNumbers(
 }
 
 // One line per hop from the node that sent to the node that heard, each hop
-// once, plus a point at its middle for the arrow and the SNR label. A 0 dB
-// step is no measured hop, so it never counts as 0-cost.
+// once, plus a point at its middle for the arrow and the SNR label. A step
+// over MQTT is no measured hop, so it never counts as 0-cost.
 function drawHops(
   spreadingFactor: number | null,
-  hops: TracerouteHop[],
+  hops: DrawnHop[],
   positions: ReadonlyMap<number, [number, number]>,
   zeroCost: ReadonlySet<string>,
 ): HopLines {
-  const drawn = new Map<string, TracerouteHop>();
+  const drawn = new Map<string, DrawnHop>();
   let undrawnHops = 0;
   for (const hop of hops) {
     if (
@@ -640,7 +643,7 @@ function drawHops(
       color: linkTierColor(tier),
       twoWay: drawn.has(`${hop.to_node_id}-${hop.from_node_id}`),
       zeroCost:
-        hop.snr_db !== 0 &&
+        !hop.mqtt &&
         zeroCost.has(
           routeHopKey(hop.from_node_id, hop.to_node_id, hop.is_return),
         ),
@@ -795,6 +798,8 @@ export type RouteRow =
       hop: DirectedHop | null;
       /** undefined for the first node; null when no SNR was recorded. */
       snr?: number | null;
+      /** Whether that step likely crossed MQTT (RoutePath.mqtt). */
+      mqtt?: boolean;
       /** Where the route was going but was not heard to get. */
       unreached?: boolean;
     }
@@ -816,7 +821,7 @@ export function routeRows(
   const label = (nodeId: number | null, place: number) =>
     nodeId === requester ? "S" : nodeId === target ? "R" : String(place);
   const add = (
-    { nodes, snr_db: snrs, reached }: RoutePath,
+    { nodes, snr_db: snrs, mqtt, reached }: RoutePath,
     first: number,
     start: number,
     end: number,
@@ -849,7 +854,7 @@ export function routeRows(
           ? {}
           : unreported
             ? { unreached: !reached }
-            : { snr: snrs[index - 1] }),
+            : { snr: snrs[index - 1], mqtt: mqtt[index - 1] }),
       });
     });
     if (nodes.at(-1) !== end) {

@@ -385,6 +385,7 @@ receptions: 4 items
         nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 2224775088, 1317786337]
         snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5]
         reached: false
+        mqtt: [false, false, false, false, false, false]
       return_path: null
     hops: 6 items
       - from_node_id: 3556855606
@@ -428,6 +429,7 @@ receptions: 4 items
         nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 1770149960, 1317786337]
         snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, -1.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       return_path: null
     hops: 8 items
       - from_node_id: 3556855606
@@ -471,6 +473,7 @@ receptions: 4 items
         nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 2224775088, 1770269756, 861938604, 1317786337]
         snr_db: [11, -7.25, -6.25, 3, -2.5, -5.5, 5.75, 3.75]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       return_path: null
     hops: 8 items
       - from_node_id: 3556855606
@@ -3558,6 +3561,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 31074
+      heard_at: "2026-10-11T16:21:06.845000Z"
       is_return: false
       hops: 1
       km: 13.1
@@ -3566,6 +3570,7 @@ items: 50 items
         nodes: [2666580684, 2933499666]
         snr_db: [3]
         reached: true
+        mqtt: [false]
       path_hops: 1 items
         - from_node_id: 2666580684
           to_node_id: 2933499666
@@ -3601,6 +3606,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 30918
+      heard_at: "2026-10-11T15:56:32.706000Z"
       is_return: false
       hops: 8
       km: 233.4
@@ -3609,6 +3615,7 @@ items: 50 items
         nodes: [4269814177, 181026324, 1266979693, 2882539815, 3472072206, 1128130340, 2933499666, 702832197, 1770269756, 3079613937]
         snr_db: [12.5, -10.5, -3.5, -1.5, 8.25, -3, 4.5, 6.25]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 4269814177
           to_node_id: 181026324
@@ -3676,6 +3683,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 30914
+      heard_at: "2026-10-11T15:55:55.822000Z"
       is_return: false
       hops: 6
       km: 253.3
@@ -3684,6 +3692,7 @@ items: 50 items
         nodes: [4269814177, 2483997066, 3472072206, 1128130340, 2933499666, 3655149723, 1770149960, 3665045164]
         snr_db: [-8.75, -8.75, 9.5, 0.5, -6.5, -0.25]
         reached: false
+        mqtt: [false, false, false, false, false, false]
       path_hops: 6 items
         - from_node_id: 4269814177
           to_node_id: 2483997066
@@ -3769,6 +3778,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 29629
+      heard_at: "2026-10-11T13:21:47.100000Z"
       is_return: false
       hops: 8
       km: 495.2
@@ -3777,6 +3787,7 @@ items: 50 items
         nodes: [4269814177, 603288811, 848645925, 2718938342, 96879053, 1128130340, 2933499666, 3655149723, 1770149960, 2224739564]
         snr_db: [-9, -2.75, 0.75, -8.75, -6, 3.5, -1.25, -3.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 4269814177
           to_node_id: 603288811
@@ -3844,6 +3855,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 30572
+      heard_at: "2026-10-11T15:16:29.244000Z"
       is_return: false
       hops: 8
       km: 368.2
@@ -3852,6 +3864,7 @@ items: 50 items
         nodes: [3238048054, 603288811, 3596185440, 4110175258, 1128130340, 2933499666, 702832197, 1770269756, 3655149723, 3677317560]
         snr_db: [-5.25, -1, -6.25, 6.25, -1.5, 5.5, 0.5, 8.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 3238048054
           to_node_id: 603288811
@@ -3919,6 +3932,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 29711
+      heard_at: "2026-10-11T13:34:03.991000Z"
       is_return: false
       hops: 8
       km: 356.4
@@ -3927,6 +3941,7 @@ items: 50 items
         nodes: [4269814177, 3679571780, 1516587721, 2483997066, 3596185440, 4110175258, 2933499666, 702832197, 3655149723, 3909797273]
         snr_db: [-9, -5.25, -5.75, 9.25, -4.25, -8.25, 7, -3.25]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 4269814177
           to_node_id: 3679571780
@@ -4024,6 +4039,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 23091
+      heard_at: "2026-10-10T21:01:24.996000Z"
       is_return: false
       hops: 5
       km: 263.8
@@ -4032,6 +4048,7 @@ items: 50 items
         nodes: [3417804839, 829910553, 2749076957, 96879053, 2933499666, 702832197]
         snr_db: [6.75, 0.25, -1.75, -6.25, 0.5]
         reached: true
+        mqtt: [false, false, false, false, false]
       path_hops: 5 items
         - from_node_id: 3417804839
           to_node_id: 829910553
@@ -4099,6 +4116,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 27147
+      heard_at: "2026-10-11T07:17:14.361000Z"
       is_return: false
       hops: 5
       km: 120.4
@@ -4107,6 +4125,7 @@ items: 50 items
         nodes: [3417804839, 829910553, 2997305080, 2285796188, 1127903344, 96879053]
         snr_db: [11.25, 1.5, 7.75, -4.25, -0.75]
         reached: true
+        mqtt: [false, false, false, false, false]
       path_hops: 5 items
         - from_node_id: 3417804839
           to_node_id: 829910553
@@ -4174,6 +4193,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 23074
+      heard_at: "2026-10-10T20:59:41.463000Z"
       is_return: false
       hops: 3
       km: 169.6
@@ -4182,6 +4202,7 @@ items: 50 items
         nodes: [3417804839, 2483997066, 3472072206, 2749076957]
         snr_db: [11.25, 2, -7.5]
         reached: true
+        mqtt: [false, false, false]
       path_hops: 3 items
         - from_node_id: 3417804839
           to_node_id: 2483997066
@@ -4279,6 +4300,7 @@ items: 1 items
     doubts: []
     route:
       packet_row_id: 26709
+      heard_at: "2026-10-11T06:09:12.404000Z"
       is_return: false
       hops: 8
       km: 175.3
@@ -4287,6 +4309,7 @@ items: 1 items
         nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 1770149960, 1317786337]
         snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, -1.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 3556855606
           to_node_id: 522999951
@@ -4384,6 +4407,7 @@ items: 1 items
     doubts: []
     route:
       packet_row_id: 26709
+      heard_at: "2026-10-11T06:09:12.404000Z"
       is_return: false
       hops: 8
       km: 174.5
@@ -4392,6 +4416,7 @@ items: 1 items
         nodes: [3556855606, 522999951, 2749076957, 1128130340, 2933499666, 702832197, 1851440850, 3655149723, 2658555076, 1317786337]
         snr_db: [11, -7.25, -6.25, 3, -2.5, -5.25, -4, 12.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 3556855606
           to_node_id: 522999951
@@ -4501,6 +4526,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 29629
+      heard_at: "2026-10-11T13:21:47.100000Z"
       is_return: false
       hops: 8
       km: 495.2
@@ -4509,6 +4535,7 @@ items: 50 items
         nodes: [4269814177, 603288811, 848645925, 2718938342, 96879053, 1128130340, 2933499666, 3655149723, 1770149960, 2224739564]
         snr_db: [-9, -2.75, 0.75, -8.75, -6, 3.5, -1.25, -3.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 4269814177
           to_node_id: 603288811
@@ -4576,6 +4603,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 29761
+      heard_at: "2026-10-11T13:40:45.471000Z"
       is_return: true
       hops: 8
       km: 404.4
@@ -4584,6 +4612,7 @@ items: 50 items
         nodes: [2715019224, 3019100365, 848645925, 2483997066, 2749076957, 4110175258, 2933499666, 3655149723, 2658555076, 4269814177]
         snr_db: [2, 2.25, -0.75, -6, -6, -4.5, -1, 11.5]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 2715019224
           to_node_id: 3019100365
@@ -4651,6 +4680,7 @@ items: 50 items
     doubts: []
     route:
       packet_row_id: 9796
+      heard_at: "2026-10-09T14:26:24.768000Z"
       is_return: false
       hops: 8
       km: 402.8
@@ -4659,6 +4689,7 @@ items: 50 items
         nodes: [4269814177, 2151687975, 554127139, 2718938342, 3596185440, 4110175258, 2933499666, 3655149723, 1770149960, 1129708344]
         snr_db: [-10, -10.5, -2.75, -0.5, -6.5, -2.75, -2, 0.75]
         reached: false
+        mqtt: [false, false, false, false, false, false, false, false]
       path_hops: 8 items
         - from_node_id: 4269814177
           to_node_id: 2151687975
@@ -5258,6 +5289,7 @@ skipped: []
 ## GET /api/v1/diagnostics/doubtful-nodes
 
 items: []
+long_link_km: 250
 
 ## GET /api/v1/diagnostics/device-conflicts?after_node=0&count=30
 
@@ -5395,7 +5427,6 @@ items: 30 items
         b_to_a: 1
         hours: 1
         average_snr: -4.75
-        zero_snr: false
         first_hour_at: "2026-10-11T16:00:00Z"
         last_seen_at: "2026-10-11T16:22:08.338000Z"
         longest_km: 204.1
@@ -5489,7 +5520,6 @@ items: 30 items
         b_to_a: 0
         hours: 1
         average_snr: 7.75
-        zero_snr: false
         first_hour_at: "2026-10-10T16:00:00Z"
         last_seen_at: "2026-10-10T16:21:57.277000Z"
         longest_km: 202.6
@@ -5583,7 +5613,6 @@ items: 30 items
         b_to_a: 1
         hours: 1
         average_snr: -6.25
-        zero_snr: false
         first_hour_at: "2026-10-11T03:00:00Z"
         last_seen_at: "2026-10-11T03:10:44.666000Z"
         longest_km: 171.3
@@ -5594,7 +5623,6 @@ items: 30 items
         b_to_a: 11
         hours: 3
         average_snr: -6.64
-        zero_snr: false
         first_hour_at: "2026-10-11T05:00:00Z"
         last_seen_at: "2026-10-11T07:00:58.905000Z"
         longest_km: 171.3
@@ -5794,7 +5822,6 @@ items: 5 items
         b_to_a: 1
         hours: 1
         average_snr: -4.75
-        zero_snr: false
         first_hour_at: "2026-10-11T16:00:00Z"
         last_seen_at: "2026-10-11T16:22:08.338000Z"
         longest_km: 204.1
@@ -5888,7 +5915,6 @@ items: 5 items
         b_to_a: 0
         hours: 1
         average_snr: 11.38
-        zero_snr: false
         first_hour_at: "2026-10-11T15:00:00Z"
         last_seen_at: "2026-10-11T15:21:49.297000Z"
         longest_km: 125
@@ -5960,7 +5986,6 @@ items: 5 items
         b_to_a: 0
         hours: 5
         average_snr: -7
-        zero_snr: false
         first_hour_at: "2026-10-09T19:00:00Z"
         last_seen_at: "2026-10-11T15:21:55.991000Z"
         longest_km: 120.9
@@ -6059,7 +6084,6 @@ items: 25 items
         b_to_a: 0
         hours: 3
         average_snr: -3.25
-        zero_snr: false
         first_hour_at: "2026-10-08T19:00:00Z"
         last_seen_at: "2026-10-11T13:56:10.833000Z"
         longest_km: 135.5
@@ -6131,7 +6155,6 @@ items: 25 items
         b_to_a: 4
         hours: 4
         average_snr: -6.06
-        zero_snr: false
         first_hour_at: "2026-10-08T21:00:00Z"
         last_seen_at: "2026-10-11T15:10:45.192000Z"
         longest_km: 64.4
@@ -6142,7 +6165,6 @@ items: 25 items
         b_to_a: 3
         hours: 60
         average_snr: -3.03
-        zero_snr: false
         first_hour_at: "2026-10-08T16:00:00Z"
         last_seen_at: "2026-10-11T16:21:06.845000Z"
         longest_km: 64.4
@@ -6212,7 +6234,6 @@ items: 25 items
         b_to_a: 0
         hours: 11
         average_snr: 0.4
-        zero_snr: false
         first_hour_at: "2026-10-09T03:00:00Z"
         last_seen_at: "2026-10-11T07:46:48.599000Z"
         longest_km: 44.6

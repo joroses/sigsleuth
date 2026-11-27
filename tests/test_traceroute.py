@@ -78,6 +78,7 @@ def test_step_at_exactly_0_db_crossed_mqtt_and_is_no_hop() -> None:
     paths = report_paths(route((R1, R2), (0, 8)), A, B, None)
 
     assert paths.forward.nodes == (A, R1, R2, B)
+    assert paths.forward.mqtt == (True, False)
     assert report_hops(paths) == [Hop(R1, R2, 2.0)]
 
 

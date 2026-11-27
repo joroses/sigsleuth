@@ -4,6 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import {
   type CoverageCellList,
   type CoverageExtent,
+  type LinkRow,
   type LinkTable,
   type NodeContactList,
   type NodeDetail,
@@ -299,8 +300,8 @@ export function NodePositionMinimap({
 
   useEffect(() => {
     if (map === null || contacts === null) return;
-    return drawContacts(map, contacts);
-  }, [map, contacts]);
+    return drawContacts(map, contacts, links?.items ?? []);
+  }, [map, contacts, links]);
 
   // One fit for everything shown: the history and pin, and the contacts and
   // coverage cells when on, so the widest sets the view whichever loads
@@ -568,6 +569,7 @@ function coverageNote(
 function drawContacts(
   map: maplibregl.Map,
   contacts: ContactLayers,
+  rows: readonly LinkRow[],
 ): () => void {
   // Shown at every zoom: the minimap starts wide.
   for (const kind of LINK_KINDS) {
@@ -595,7 +597,7 @@ function drawContacts(
       event.stopPropagation();
       popup
         .setLngLat([mark.longitude, mark.latitude])
-        .setDOMContent(contactContent(mark))
+        .setDOMContent(contactContent(mark, rows))
         .addTo(map);
     });
     return marker;
@@ -614,7 +616,10 @@ function drawContacts(
 
 // A clicked contact: its name linked to its page, how far it is now, and
 // what ties it to the node.
-function contactContent(mark: ContactMark): HTMLElement {
+function contactContent(
+  mark: ContactMark,
+  rows: readonly LinkRow[],
+): HTMLElement {
   const { contact } = mark;
   const content = document.createElement("div");
   const link = document.createElement("a");
@@ -634,7 +639,7 @@ function contactContent(mark: ContactMark): HTMLElement {
       : contact.km === null
         ? "Distance now unknown"
         : `${formatKm(contact.km)} km away now`,
-    ...contactFacts(contact),
+    ...contactFacts(contact, rows),
   ];
   for (const fact of facts) {
     const item = document.createElement("li");

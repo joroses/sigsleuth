@@ -4,12 +4,13 @@ How the map's coverage layer turns signal surveys into coloured squares (`covera
 
 ## What a square shows
 
-A survey records each packet its node hears, with the phone's position: a measurement. Uploads drop measurements whose GPS fix is worse than 100 m or older than 10 s.
+A survey records each packet its node hears, with the phone's position: a measurement. Uploads drop measurements whose GPS fix is worse than 100 m or older than 10 s, and those received at −60 dBm or stronger, heard beside the node that sent them over the air: their sender, or the relay of a relayed copy. A session keeps 3 measurements per finest square (about 230 m across) and relay byte, so a phone left in one place does not mark it out; a direct reception in a full one replaces a relayed one, as it may name the relays near it. Each is saved at its finest square's centre.
 
 A square's colour is the average margin of its measurements: how far the SNR sits above the weakest signal the survey node can decode at its spreading factor (−17.5 dB on LongFast). Margins compare across presets where raw SNR does not. The scale runs from red at 0 dB (barely decoded) through amber to dark green at 25 dB or more. Grey means no SNR, or a survey that did not send its radio settings. When every square in view comes from surveys on one spreading factor, the legend and a square's hover read in SNR instead (the same colours, as margin is then SNR plus a constant).
 
 - The SNR is that of the transmission that reached the phone, so it measures the node heard (below), not the sender of a relayed packet.
 - The average covers every node heard there, so a busy node nearby weighs most. With a node selected, the map shows only where it was heard and how strongly. Choosing a node on the map, in the search or in "Coverage" moves the map out to it and where it was heard, if they are not all in view; "Fit map to coverage", under the selected node in the sidebar, zooms to them. The node page's minimap shows the same. The sidebar's "Coverage" lists the nodes heard in the squares in view, in most squares first, whatever is selected.
+- A square's details give its totals, the nodes heard there and the days it was measured, not single measurements, RSSI or times of day. Diagnostics' survey checks list the measurements.
 - The map's time window does not apply: measurements are kept `SIGSLEUTH_COVERAGE_RETENTION_DAYS` (90). Its channel filter does: it drops measurements whose sender's latest channel is another one, and surveys that cannot be on the channel: another spreading factor or bandwidth, or another radio channel's frequency.
 
 ## Which node was heard
@@ -38,10 +39,10 @@ For a name worded by survey receptions, the reply also gives the relay's direct 
 
 ## Nodes that do not allow MQTT
 
-A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bit 0). No page names a node that turned it off (an [opted-out node](glossary.md#nodes-and-positions)), wherever its packets came from. A survey node hears its packets over the air, so each measurement keeps the bit, unknown when the survey node could not decode the packet. A missing bit counts as off, as in the firmware. Capture keeps the bit of each packet too, and the newer packet decides, captured or surveyed.
+A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bit 0). No page names a node that turned it off (an [opted-out node](glossary.md#nodes-and-positions)), wherever its packets came from. A survey node hears its packets over the air, so each measurement keeps the bit, unknown when the survey node could not decode the packet. Packets skipped as measurements (heard too close, without a usable position, or over the cap of a square) still tell it, unless they are older than the measurements kept or dated ahead. A missing bit counts as off, as in the firmware. Capture keeps the bit of each packet too, and the newer packet decides, captured or surveyed.
 
 - A node whose newest decoded packet has it off is never named, but its measurements still colour the squares, past ones included. A square's details list them as an unknown relay with its relay byte, like any other, and say nothing of the setting. Selecting the node (on the map or in its minimap) shows none. Turning the bit back on names them again.
-- The bit is the sender's, and a square measures the node heard. So a packet from a node that opted out, relayed by one that did not, is named by the relay, without a link to the packet, whose page names the sender.
+- The bit is the sender's, and a square measures the node heard. So a packet from a node that opted out, relayed by one that did not, is named by the relay. Survey checks give no link to the packet, whose page names the sender.
 - A node no packet has told the bit of is named, and so is a node reporting to MQTT as a gateway, which uploads its own packets whatever the bit.
 - A node that opted out is not suggested as a possible relay for its byte. The score still counts it, so the packets it relayed are not credited to another node.
 - Packet pages, and the gateway reports in chat, never name it as a gateway's relay either: a copy it relayed reads as undecided, with the other possible relays.
@@ -53,4 +54,4 @@ A node's OK to MQTT setting travels in every packet it sends (`Data.bitfield` bi
 - The survey reception bounds (30 km, 60 days) and their weight are not checked against known relays, and the 30 dB rule only on gateways, which sit higher and move less than a phone. `scripts/coverage-backtest.py DATABASE` shows how much the rules hide and how other bounds compare.
 - A node that turns OK to MQTT off stays named until a survey or a gateway reports one of its packets with the bit, and one that turns it back on stays unnamed until then. Gateways on firmware 2.7.20 and newer upload no packet with the bit off, so a node behind them is named until a survey hears it.
 - A node that opted out shows its relay byte, the last byte of its number, which about 1 in 256 nodes share.
-- Anyone who can reach the page sees the squares and when they were measured. A survey is a track of where the surveyor was.
+- Anyone who can reach the page sees the squares and the days they were measured. A survey is a track of where the surveyor was, to the finest square.

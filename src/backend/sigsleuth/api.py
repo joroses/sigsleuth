@@ -880,8 +880,8 @@ def create_app(
         channel: str | None = None,
         unknown: bool = False,
     ) -> CoverageCellDetail:
-        """One coverage cell's totals, the nodes heard there with how each
-        was identified, unknown relay bytes and the newest 20 measurements,
+        """One coverage cell's totals and the days it was measured, the nodes
+        heard there with how each was identified, and unknown relay bytes,
         filtered by node, channel and unknown as in the cell list."""
         if x >= 1 << level or y >= 1 << level:
             raise _invalid_parameters()

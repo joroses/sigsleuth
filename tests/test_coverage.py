@@ -263,6 +263,30 @@ def test_unusable_measurements_are_skipped_and_counted(client: TestClient) -> No
     }
 
 
+def test_a_reception_heard_beside_the_node_heard_is_skipped(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    result = upload(
+        client,
+        *(measurement(seq, rx_rssi=rssi) for seq, rssi in enumerate((-59, -60, -61, 0, None))),
+    )
+    assert (result["saved"], result["skipped"]) == (3, {"too_close": 2})
+    saved = connection.execute("SELECT seq, rx_rssi FROM coverage_measurement ORDER BY seq")
+    assert [tuple(row) for row in saved] == [(2, -61), (3, None), (4, None)]
+
+
+def test_measurements_are_saved_at_their_cells_centre(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    upload(client, measurement(1))
+    latitude, longitude, cell_x, cell_y = connection.execute(
+        "SELECT latitude, longitude, cell_x, cell_y FROM coverage_measurement"
+    ).fetchone()
+    assert (cell_x, cell_y) == fine_cell(41.91974, 1.569995)
+    assert (latitude, longitude) == coverage.tile_centre(coverage.FINE_LEVEL, cell_x, cell_y)
+    assert fine_cell(latitude, longitude) == (cell_x, cell_y)
+
+
 def test_a_late_upload_is_kept_as_long_as_coverage_is(client: TestClient) -> None:
     # Packets are kept 14 days and coverage 90: a phone offline for a month
     # still uploads its survey.
@@ -442,7 +466,8 @@ def heard(client: TestClient, connection: sqlite3.Connection, **fields: Any) -> 
     values.setdefault("hop_limit", 1)
     values.setdefault("relay_byte", 0x1A)
     seq = connection.execute("SELECT count(*) + 1 FROM coverage_measurement").fetchone()[0]
-    upload(client, measurement(seq, **values))
+    # One session each, as a session keeps few measurements in one place.
+    upload(client, measurement(seq, **values), session={**SESSION, "id": f"probe {seq}"})
     row = connection.execute(
         "SELECT heard_node_id, heard_how, candidates, margin_db FROM coverage_measurement"
         " ORDER BY id DESC LIMIT 1"
@@ -458,7 +483,7 @@ def suggested(client: TestClient, connection: sqlite3.Connection, **fields: Any)
     values.setdefault("hop_limit", 1)
     values.setdefault("relay_byte", 0x1A)
     seq = connection.execute("SELECT count(*) + 1 FROM coverage_measurement").fetchone()[0]
-    reply = upload(client, measurement(seq, **values))
+    reply = upload(client, measurement(seq, **values), session={**SESSION, "id": f"probe {seq}"})
     assert reply["heard"][0]["node_id"] is None
     return [candidate["node_id"] for candidate in reply["heard"][0]["candidates"]]
 
@@ -1357,7 +1382,7 @@ def test_a_nodes_extent_holds_every_cell_where_it_was_heard(
 
 
 @pytest.mark.usefixtures("known_nodes")
-def test_a_cell_lists_its_heard_nodes_and_newest_measurements(
+def test_a_cell_lists_its_heard_nodes_and_dates(
     client: TestClient, connection: sqlite3.Connection
 ) -> None:
     mqtt_report(connection, GATEWAY, hop_limit=0, relay_byte=0x55)
@@ -1384,10 +1409,11 @@ def test_a_cell_lists_its_heard_nodes_and_newest_measurements(
         (SENDER, "direct", 1, 20.2, "NarrowFast"),
     ]
     assert detail["unknown_relays"] == [{"relay_byte": None, "measurements": 1, "candidates": []}]
-    packet_row_id = connection.execute("SELECT id FROM packet").fetchone()[0]
-    assert [(row["packet_row_id"], row["margin"]) for row in detail["newest"]] == [
-        (packet_row_id, 20.2)
-    ] * 3
+    # Dates only, in UTC.
+    times = connection.execute("SELECT min(heard_at), max(heard_at) FROM coverage_measurement")
+    assert (detail["first_heard_on"], detail["last_heard_on"]) == tuple(
+        datetime.fromtimestamp(ms / 1000, UTC).date().isoformat() for ms in times.fetchone()
+    )
     assert client.get("/api/v1/coverage/cells/16/70000/1").status_code == 400
 
     # The node filter keeps the same measurements as the cell list.
@@ -1420,29 +1446,6 @@ def test_a_cell_totals_snr_per_network(client: TestClient) -> None:
     ] == [(7, 62.5, 2, 11.0, 18.5), (11, 250.0, 1, -12.0, 5.5)]
 
 
-def test_a_cell_averages_each_heard_nodes_rssi_without_unrecorded_ones(
-    client: TestClient,
-) -> None:
-    # An RSSI of 0 means the radio recorded none.
-    direct = {
-        "sender_node_id": SENDER,
-        "hop_start": 3,
-        "hop_limit": 3,
-        "relay_byte": SENDER & 0xFF,
-    }
-    upload(
-        client,
-        measurement(1, rx_rssi=-80, **direct),
-        measurement(2, rx_rssi=-91, **direct),
-        measurement(3, rx_rssi=0, **direct),
-    )
-    cell = client.get("/api/v1/coverage/cells", params={**AREA, "zoom": 11}).json()["cells"][0]
-
-    detail = client.get(f"/api/v1/coverage/cells/17/{cell['x']}/{cell['y']}").json()
-
-    assert [(n["measurements"], n["average_rssi"]) for n in detail["heard_nodes"]] == [(3, -86)]
-
-
 def test_a_cell_has_a_spreading_factor_only_when_its_surveys_share_one(
     client: TestClient,
 ) -> None:
@@ -1466,6 +1469,11 @@ def test_a_cell_has_a_spreading_factor_only_when_its_surveys_share_one(
 
 
 DAY_MS = 24 * 60 * 60 * 1_000
+
+
+# The same survey node and radio on another trip: a session keeps few
+# measurements of a relay byte in one place.
+LATER = {**SESSION, "id": "later trip"}
 
 
 def direct(seq: int, sender: int, **fields: Any) -> dict[str, Any]:
@@ -1554,9 +1562,6 @@ def test_saved_nearest_guesses_read_as_unknown(
 
     assert detail["heard_nodes"] == []
     assert [(r["relay_byte"], r["measurements"]) for r in detail["unknown_relays"]] == [(0x1A, 1)]
-    assert [(row["heard_node_id"], row["heard_how"]) for row in detail["newest"]] == [
-        (None, "unknown")
-    ]
     assert cell_measurements(client, node=NEAR) == 0
 
 
@@ -1701,7 +1706,7 @@ def test_upload_replies_suggest_relays_at_each_saved_position(
     candidates = reply["heard"][0]["candidates"]
     assert [c["node_id"] for c in candidates] == [NEAR, LINKED_TO_SENDER, LINKED_TO_GATEWAY]
     assert candidates[0]["short_name"] == "Near"
-    assert [c["km"] for c in candidates] == [10.9, 11.1, 11.3]
+    assert [c["km"] for c in candidates] == [10.9, 11.2, 11.4]
     # 5° north, nearest first.
     assert [c["node_id"] for c in reply["heard"][1]["candidates"]] == [
         LINKED_TO_GATEWAY,
@@ -1926,8 +1931,8 @@ def test_only_recent_or_unnamed_measurements_are_rescored(
         measurement(1, relay_byte=0x1A, heard_at_ms=now - 2 * DAY_MS),
         measurement(2, relay_byte=0x1A, heard_at_ms=now - 10 * DAY_MS),
         measurement(3, relay_byte=0x1A, heard_at_ms=now - 10 * DAY_MS),
-        measurement(4, relay_byte=0x1A, heard_at_ms=now - 13.5 * DAY_MS),
     )
+    upload(client, measurement(4, relay_byte=0x1A, heard_at_ms=now - 13.5 * DAY_MS), session=LATER)
     connection.execute(
         "UPDATE coverage_measurement SET heard_node_id = ?, heard_how = 'near_link' WHERE seq = 3",
         (THIRD_RELAY,),
@@ -1938,7 +1943,7 @@ def test_only_recent_or_unnamed_measurements_are_rescored(
         "INSERT INTO node_activity_hour VALUES (?, ?, 1, 1, 1, ?)",
         (start - start % HOUR_MS, THIRD_RELAY, start),
     )
-    upload(client, direct(5, RELAY, heard_at_ms=now - 5 * DAY_MS))
+    upload(client, direct(5, RELAY, heard_at_ms=now - 5 * DAY_MS), session=LATER)
     # Older than a week, a name upload gave stays: the links that named it
     # may be gone.
     assert links(connection) == [(1, RELAY), (2, RELAY)]
@@ -1969,7 +1974,7 @@ def test_rescoring_reads_only_what_retention_keeps(
             "INSERT INTO node_activity_hour VALUES (?, ?, 1, 1, 1, ?)",
             (start - start % HOUR_MS, THIRD_RELAY, start),
         )
-        upload(client, direct(4, RELAY, heard_at_ms=now - 10 * DAY_MS))
+        upload(client, direct(4, RELAY, heard_at_ms=now - 10 * DAY_MS), session=LATER)
     # Kept for ever, every row's links are; kept 10 days, only the last 3
     # days' rows have their week of links, and older unnamed ones are past
     # the 9 days MQTT history keeps whole.
@@ -1996,6 +2001,71 @@ def test_a_resent_batch_rescores_what_a_failed_upload_missed(
 
     assert upload(client, batch)["already_saved"] == 1
     assert links(connection) == [(1, RELAY)]
+
+
+def saved_seqs(connection: sqlite3.Connection) -> list[int]:
+    return [int(row[0]) for row in connection.execute("SELECT seq FROM coverage_measurement")]
+
+
+def test_a_session_keeps_three_measurements_per_cell_and_relay_byte(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    batch = [measurement(seq) for seq in range(1, 5)]
+    assert upload(client, *batch)["skipped"] == {"cell_cap": 1}
+    # Each other relay byte, cell and session has its own three.
+    others = [measurement(5, relay_byte=27), measurement(6, latitude=41.93)]
+    assert upload(client, *others)["saved"] == 2
+    assert upload(client, measurement(1), session=LATER)["saved"] == 1
+    # A retry gets the same answer.
+    retried = upload(client, *batch)
+    assert (retried["saved"], retried["already_saved"], retried["skipped"]) == (
+        0,
+        3,
+        {"cell_cap": 1},
+    )
+    assert sorted(saved_seqs(connection)) == [1, 1, 2, 3, 5, 6]
+
+
+def test_a_seq_repeated_in_a_batch_takes_no_place_in_its_cell(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    at = now_ms() - DAY_MS
+    batch = [measurement(seq, heard_at_ms=at) for seq in (1, 1, 2, 3, 4, 4)]
+    reply = upload(client, *batch)
+
+    assert (reply["saved"], reply["already_saved"], reply["skipped"]) == (3, 1, {"cell_cap": 2})
+    assert sorted(saved_seqs(connection)) == [1, 2, 3]
+    # A repeated relayed copy goes with its first when a direct one replaces it.
+    copies = [measurement(seq, heard_at_ms=at) for seq in (1, 2, 3, 3)]
+    reply = upload(client, *copies, direct(5, RELAY, heard_at_ms=at), session=LATER)
+    assert (reply["saved"], reply["skipped"]) == (3, {"cell_cap": 2})
+
+
+@pytest.mark.parametrize("later", [False, True])
+def test_a_direct_reception_replaces_the_newest_relayed_one_in_a_full_cell(
+    client: TestClient, connection: sqlite3.Connection, later: bool
+) -> None:
+    at = now_ms() - DAY_MS
+    relayed = [measurement(seq, relay_byte=0x1A, heard_at_ms=at) for seq in (1, 2, 3)]
+    heard = direct(4, RELAY, heard_at_ms=at)
+    batches = [relayed, [heard]] if later else [[*relayed, heard]]
+    replies = [upload(client, *batch) for batch in batches]
+
+    assert sum(reply["skipped"].get("cell_cap", 0) for reply in replies) == (0 if later else 1)
+    assert sorted(saved_seqs(connection)) == [1, 2, 4]
+    # It names the relayed ones left.
+    assert links(connection) == [(1, RELAY), (2, RELAY)]
+    for batch in batches:
+        assert upload(client, *batch)["saved"] == 0
+    assert sorted(saved_seqs(connection)) == [1, 2, 4]
+
+
+def test_a_full_cell_of_direct_receptions_keeps_them(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    upload(client, *(direct(seq, RELAY) for seq in (1, 2, 3)))
+    assert upload(client, direct(4, RELAY))["skipped"] == {"cell_cap": 1}
+    assert sorted(saved_seqs(connection)) == [1, 2, 3]
 
 
 def test_rederive_keeps_survey_links(client: TestClient, connection: sqlite3.Connection) -> None:
@@ -2033,7 +2103,7 @@ def opt_outs(connection: sqlite3.Connection) -> list[int]:
     return [int(row[0]) for row in connection.execute("SELECT node_id FROM node_opt_out")]
 
 
-def unknown_relays(detail: dict[str, Any]) -> list[tuple[int, int]]:
+def unknown_relays(detail: dict[str, Any]) -> list[tuple[int | None, int]]:
     return [(relay["relay_byte"], relay["measurements"]) for relay in detail["unknown_relays"]]
 
 
@@ -2058,23 +2128,37 @@ def test_a_node_that_turns_ok_to_mqtt_off_reads_as_an_unknown_relay(
     detail = fine_cell_detail(client, *PHONE)
     assert [n["node_id"] for n in detail["heard_nodes"]] == [UNDECODED]
     assert unknown_relays(detail) == [(OPTED_OUT & 0xFF, 2)]
-    newest = [
-        (row["relay_byte"], row["heard_node_id"], row["heard_how"]) for row in detail["newest"]
-    ]
-    assert sorted(newest, key=lambda row: row[0]) == [
-        (0x01, None, "unknown"),
-        (0x01, None, "unknown"),
-        (0x02, UNDECODED, "direct"),
-    ]
-    assert "opted_out" not in detail and "opted_out" not in detail["newest"][0]
+    assert "opted_out" not in detail
 
     # Turned back on, it is named again; an older upload arriving later does
     # not override the newest bit.
-    upload(client, direct(4, OPTED_OUT, ok_to_mqtt=True, heard_at_ms=now - 60_000))
-    upload(client, direct(5, OPTED_OUT, ok_to_mqtt=False, heard_at_ms=now - 3 * DAY_MS))
+    upload(client, direct(4, OPTED_OUT, ok_to_mqtt=True, heard_at_ms=now - 60_000), session=LATER)
+    upload(
+        client, direct(5, OPTED_OUT, ok_to_mqtt=False, heard_at_ms=now - 3 * DAY_MS), session=LATER
+    )
     assert opt_outs(connection) == []
     assert cell_measurements(client, node=OPTED_OUT) == 4
     assert unknown_relays(fine_cell_detail(client, *PHONE)) == []
+
+
+def test_skipped_measurements_still_tell_the_senders_bit(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    close, unplaced, old, ahead = 0x0E0E0E11, 0x0E0E0E12, 0x0E0E0E13, 0x0E0E0E14
+    now = now_ms()
+    reply = upload(
+        client,
+        # Relayed packets heard beside the relay, and one without a fix.
+        measurement(1, sender_node_id=close, ok_to_mqtt=False, rx_rssi=-50),
+        measurement(2, sender_node_id=unplaced, ok_to_mqtt=False, latitude=None),
+        # Times that cannot be trusted to be the newest bit.
+        measurement(3, sender_node_id=old, ok_to_mqtt=False, heard_at_ms=now - 100 * DAY_MS),
+        measurement(4, sender_node_id=ahead, ok_to_mqtt=False, heard_at_ms=now + DAY_MS),
+    )
+
+    assert reply["saved"] == 0
+    assert set(reply["skipped"]) == {"too_close", "no_position", "too_old", "in_future"}
+    assert sorted(opt_outs(connection)) == [close, unplaced]
 
 
 def test_relayed_packets_follow_the_relays_own_bit(
@@ -2102,28 +2186,6 @@ def test_relayed_packets_follow_the_relays_own_bit(
     detail = fine_cell_detail(client, *PHONE)
     assert detail["heard_nodes"] == []
     assert unknown_relays(detail) == [(0x1A, 3), (0x01, 1)]
-
-
-def test_a_packet_from_a_sender_that_opted_out_is_not_linked(
-    client: TestClient, connection: sqlite3.Connection
-) -> None:
-    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
-    at = now_ms() - 60_000
-    upload(
-        client,
-        measurement(1, sender_node_id=SENDER, packet_id=77, heard_at_ms=at),
-        direct(2, RELAY, heard_at_ms=at),
-    )
-
-    def relayed() -> tuple[Any, ...]:
-        newest = fine_cell_detail(client, *PHONE)["newest"]
-        row = next(r for r in newest if r["heard_how"] == "survey_link")
-        return (row["heard_node_id"], row["packet_row_id"] is not None)
-
-    assert relayed() == (RELAY, True)
-    # The relay is still named, but the packet page would name the sender.
-    upload(client, direct(3, SENDER, ok_to_mqtt=False, heard_at_ms=at))
-    assert relayed() == (RELAY, False)
 
 
 @pytest.mark.usefixtures("known_nodes")
@@ -2168,6 +2230,48 @@ def test_retention_and_rederive_refill_opt_outs(
     assert sorted(opt_outs(connection)) == [OPTED_OUT, UNDECODED]
 
 
+def test_retention_drops_a_bit_told_only_by_skipped_measurements(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    now = datetime.now(UTC)
+    at = int((now - timedelta(days=3)).timestamp() * 1000)
+    upload(
+        client,
+        measurement(1, sender_node_id=OPTED_OUT, ok_to_mqtt=False, rx_rssi=-50, heard_at_ms=at),
+    )
+    assert opt_outs(connection) == [OPTED_OUT]
+
+    # No current node and no kept measurement: the bit goes once it is older
+    # than measurements are kept, as upload takes a skipped one's until then.
+    apply_retention(connection, retention_days=2, coverage_retention_days=7, now=now)
+    apply_retention(connection, retention_days=2, coverage_retention_days=0, now=now)
+    assert opt_outs(connection) == [OPTED_OUT]
+    apply_retention(connection, retention_days=2, now=now)
+    assert opt_outs(connection) == []
+    assert connection.execute("SELECT count(*) FROM node_reported").fetchone()[0] == 0
+
+
+def test_retention_keeps_the_bit_of_a_relay_heard_in_a_kept_measurement(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    now = datetime.now(UTC)
+    told_at = int((now - timedelta(days=5)).timestamp() * 1000)
+    relayed_at = int((now - timedelta(days=1)).timestamp() * 1000)
+    upload(
+        client,
+        measurement(
+            1, sender_node_id=OPTED_OUT, ok_to_mqtt=False, rx_rssi=-50, heard_at_ms=told_at
+        ),
+        measurement(2, heard_at_ms=relayed_at),
+    )
+    connection.execute(
+        "UPDATE coverage_measurement SET heard_node_id = ?, heard_how = 'near_link'", (OPTED_OUT,)
+    )
+
+    apply_retention(connection, retention_days=2, coverage_retention_days=3, now=now)
+    assert opt_outs(connection) == [OPTED_OUT]
+
+
 @pytest.mark.usefixtures("known_nodes")
 def test_the_nodes_heard_in_view_most_cells_first(
     client: TestClient, connection: sqlite3.Connection
@@ -2210,6 +2314,18 @@ def test_the_nodes_heard_in_view_most_cells_first(
     assert client.get("/api/v1/coverage/nodes", params={**view, "west": 3}).status_code == 400
 
 
+def test_a_0_relay_byte_is_a_missing_one(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    upload(client, measurement(1, relay_byte=0), measurement(2, relay_byte=None))
+    saved = connection.execute("SELECT relay_byte FROM coverage_measurement")
+    assert [row[0] for row in saved] == [None, None]
+
+    # Saved as 0 by an older server: still one relay without a byte.
+    connection.execute("UPDATE coverage_measurement SET relay_byte = 0 WHERE seq = 2")
+    assert unknown_relays(fine_cell_detail(client, *PHONE)) == [(None, 2)]
+
+
 def test_unknown_relay_extent_matches_the_count_in_view(client: TestClient) -> None:
     upload(
         client,
@@ -2242,7 +2358,6 @@ def test_unknown_relay_extent_matches_the_count_in_view(client: TestClient) -> N
     assert detail["measurements"] == 1
     assert detail["heard_nodes"] == []
     assert unknown_relays(detail) == [(0x91, 1)]
-    assert len(detail["newest"]) == 1
 
 
 def test_an_upload_named_by_a_near_link_names_the_partner_and_its_km(

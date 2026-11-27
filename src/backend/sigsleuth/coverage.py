@@ -9,11 +9,14 @@ MAX_UPLOAD_MEASUREMENTS measurements (POST /api/v1/coverage/uploads).
 - Retries are harmless: a (session, seq) already saved is ignored, and the
   reply's last_seq tells the phone where to continue.
 - Unusable rows are skipped and counted by reason, never fatal: no position,
-  a fix worse than MAX_ACCURACY_M or older than MAX_FIX_AGE_MS, or a time
-  outside the age limit or more than MAX_FUTURE_MS ahead.
+  a fix worse than MAX_ACCURACY_M or older than MAX_FIX_AGE_MS, a time
+  outside the age limit or more than MAX_FUTURE_MS ahead, a signal of
+  MAX_RSSI_DBM or stronger, or past a session's cap per fine cell and
+  relay byte (_cell_cap).
 - Everything is read before the write transaction opens, so it holds the
   write lock, which capture also needs, only to insert, to save its senders'
-  OK to MQTT bits (reported.save_bit) and to refresh their opt-outs
+  OK to MQTT bits (reported.save_bit; skipped rows' too, unless their time
+  is unsound) and to refresh their opt-outs
   (opt_out.refresh_opt_outs), a few seeks each.
 - Each measurement is saved with its cell, its SNR margin and the node it
   heard (heard_node), decided at upload (schema.sql says why). Direct
@@ -35,10 +38,10 @@ from bisect import bisect_left
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from sigsleuth import relays
 from sigsleuth.db import (
@@ -46,7 +49,6 @@ from sigsleuth.db import (
     from_epoch_ms,
     nodes_by_id,
     now_ms,
-    optional_from_epoch_ms,
     transaction,
 )
 from sigsleuth.decode import known_hop_start
@@ -89,6 +91,17 @@ MAX_UPLOAD_MEASUREMENTS = 1_000
 MAX_ACCURACY_M = 100
 MAX_FIX_AGE_MS = 10_000
 MAX_FUTURE_MS = 60 * 60 * 1_000
+# A reception this strong was heard beside the node heard (its sender, or
+# the relay of a relayed copy): skipped so a survey does not pinpoint where
+# a node stands. The sender's OK to MQTT bit still counts (save_upload).
+# Chosen 2026-11-27, not measured. Revisit once surveys are saved: the share
+# skipped, and how far from the node heard a -60 dBm reception was.
+MAX_RSSI_DBM = -60
+# Measurements a session keeps per fine cell and relay byte, so a phone left
+# in one place does not mark it out. Chosen 2026-11-27, not measured.
+# Revisit once surveys are saved: how many cells lose measurements, and
+# whether their margin or named relays change with more.
+MAX_PER_SESSION_CELL = 3
 # An MQTT report of the same sender and packet ID within this long of the
 # phone hearing it is the same transmission.
 MQTT_MATCH_MS = HOUR_MS
@@ -197,7 +210,9 @@ class UploadSession(BaseModel):
 
 class UploadMeasurement(BaseModel):
     """One packet the survey node heard. Times are epoch milliseconds on the
-    phone's clock. A missing SNR or RSSI is null; 0 is a real reading."""
+    phone's clock. A missing SNR or RSSI is null; a 0 SNR is a real reading,
+    while a 0 RSSI or relay byte is missing, as in MQTT packets, and is saved
+    as null."""
 
     seq: int = Field(ge=0)
     heard_at_ms: int
@@ -215,6 +230,11 @@ class UploadMeasurement(BaseModel):
     relay_byte: int | None = Field(default=None, ge=0, le=255)
     ok_to_mqtt: bool | None = None
     default_key: bool | None = None
+
+    @field_validator("rx_rssi", "relay_byte")
+    @classmethod
+    def _zero_is_missing(cls, value: int | None) -> int | None:
+        return value or None
 
 
 class Upload(BaseModel):
@@ -302,12 +322,20 @@ def skip_reason(measurement: UploadMeasurement, *, now: int, max_age_days: int) 
         return "inaccurate"
     if m.fix_age_ms is not None and m.fix_age_ms > MAX_FIX_AGE_MS:
         return "old_fix"
-    if max_age_days and m.heard_at_ms < now - max_age_days * DAY_MS:
-        return "too_old"
-    if m.heard_at_ms > now + MAX_FUTURE_MS:
-        return "in_future"
+    if (time_reason := _time_reason(m, now=now, max_age_days=max_age_days)) is not None:
+        return time_reason
     if not m.sender_node_id:
         return "no_sender"
+    if m.rx_rssi is not None and m.rx_rssi >= MAX_RSSI_DBM:
+        return "too_close"
+    return None
+
+
+def _time_reason(measurement: UploadMeasurement, *, now: int, max_age_days: int) -> str | None:
+    if max_age_days and measurement.heard_at_ms < now - max_age_days * DAY_MS:
+        return "too_old"
+    if measurement.heard_at_ms > now + MAX_FUTURE_MS:
+        return "in_future"
     return None
 
 
@@ -323,24 +351,34 @@ def save_upload(
     usable = []
     bits = []
     for m in upload.measurements:
+        # The sender's bit counts whether or not the measurement is kept: a
+        # skipped packet may be the only one telling that a node opted out.
+        # Only its time must be sound, as the newest bit decides.
+        if (
+            m.ok_to_mqtt is not None
+            and m.sender_node_id
+            and _time_reason(m, now=now, max_age_days=max_age_days) is None
+        ):
+            bits.append((m.sender_node_id, m.ok_to_mqtt, m.heard_at_ms))
         reason = skip_reason(m, now=now, max_age_days=max_age_days)
         if reason is not None:
             skipped[reason] += 1
             continue
         usable.append(m)
-        if m.ok_to_mqtt is not None and m.sender_node_id:
-            bits.append((m.sender_node_id, m.ok_to_mqtt, m.heard_at_ms))
         # As capture reads MQTT headers: an unknown hop start leaves both
         # hop fields unknown.
         hop_start = None
         if m.hop_start is not None and m.sender_node_id is not None:
             hop_start = known_hop_start(m.hop_start, m.hop_limit, m.relay_byte, m.sender_node_id)
+        # Saved at its cell's centre: the map shows no finer place.
+        assert m.latitude is not None and m.longitude is not None
+        latitude, longitude = tile_centre(FINE_LEVEL, *fine_cell(m.latitude, m.longitude))
         rows.append(
             {
                 "seq": m.seq,
                 "heard_at": m.heard_at_ms,
-                "latitude": m.latitude,
-                "longitude": m.longitude,
+                "latitude": latitude,
+                "longitude": longitude,
                 "accuracy_m": m.accuracy_m,
                 "fix_age_ms": m.fix_age_ms,
                 "sender_node_id": m.sender_node_id,
@@ -360,9 +398,17 @@ def save_upload(
             }
         )
     measured = _as_saved(connection, session.id, rows)
+    keep, replaced = _cell_cap(connection, session.id, measured)
+    if len(keep) < len(measured):
+        skipped["cell_cap"] += len(measured) - len(keep)
+        measured = [measured[index] for index in keep]
+        usable = [usable[index] for index in keep]
     points = coverage_points(connection, measured)
     saved = 0
     with transaction(connection):
+        connection.executemany(
+            "DELETE FROM coverage_measurement WHERE id = ?", [(id_,) for id_ in replaced]
+        )
         connection.execute(
             """
             INSERT INTO coverage_session (
@@ -504,6 +550,67 @@ def _as_saved(
         )
     }
     return [{**row, **saved.get(row["seq"], {})} for row in rows]
+
+
+def _cell_cap(
+    connection: sqlite3.Connection, session_uuid: str, rows: Sequence[Mapping[str, Any]]
+) -> tuple[list[int], list[int]]:
+    """The indices of the rows to save, and the IDs of the session's saved
+    measurements they replace: MAX_PER_SESSION_CELL per cell and relay byte,
+    a direct reception in a full one replacing its newest relayed one. Rows
+    already saved stay, so a resent batch gets the same answer."""
+    cells = [fine_cell(row["latitude"], row["longitude"]) for row in rows]
+    # (seq, direct, saved ID, index in rows) by cell and relay byte.
+    buckets: dict[tuple[int, int, int], list[tuple[int, bool, int | None, int | None]]] = (
+        defaultdict(list)
+    )
+    saved_seqs = set()
+    session = connection.execute(
+        "SELECT id FROM coverage_session WHERE uuid = ?", (session_uuid,)
+    ).fetchone()
+    if session is not None:
+        for x, y in sorted(set(cells)):
+            for id_, seq, byte, how in connection.execute(
+                """
+                SELECT id, seq, coalesce(relay_byte, 0), heard_how
+                FROM coverage_measurement INDEXED BY coverage_measurement_cell
+                WHERE cell_x = ? AND cell_y = ? AND session_row_id = ?
+                """,
+                (x, y, session[0]),
+            ):
+                saved_seqs.add(int(seq))
+                buckets[(x, y, int(byte))].append((int(seq), how == "direct", int(id_), None))
+    keep = set()
+    replaced = []
+    first: dict[int, int] = {}
+    repeated = []
+    for index in sorted(range(len(rows)), key=lambda index: int(rows[index]["seq"])):
+        row = rows[index]
+        seq = int(row["seq"])
+        if seq in saved_seqs:
+            keep.add(index)
+            continue
+        if seq in first:
+            repeated.append((index, first[seq]))
+            continue
+        first[seq] = index
+        bucket = buckets[(*cells[index], int(row["relay_byte"] or 0))]
+        direct = is_direct(row)
+        if len(bucket) >= MAX_PER_SESSION_CELL:
+            relayed = [entry for entry in bucket if not entry[1]]
+            if not direct or not relayed:
+                continue
+            newest = max(relayed)
+            bucket.remove(newest)
+            if newest[3] is None:
+                assert newest[2] is not None
+                replaced.append(newest[2])
+            else:
+                keep.discard(newest[3])
+        bucket.append((seq, direct, None, index))
+        keep.add(index)
+    keep.update(index for index, original in repeated if original in keep)
+    return sorted(keep), replaced
 
 
 def saved_heard(
@@ -1235,7 +1342,6 @@ def _heard_near(
 CELL_ZOOM_OFFSET = 6
 MIN_CELL_LEVEL = 8
 MAX_CELLS = 5_000
-CELL_NEWEST = 20
 CELL_MAX_NODES = 50
 CELL_CANDIDATES = 3
 # A cell lists candidates for its commonest unknown relays only: each byte
@@ -1590,10 +1696,9 @@ class CoverageHeardNode:
     """A node heard in a cell. how is the most certain way it was identified
     there. The map draws lines to it from its own nodes' positions, which
     include estimates. average_snr is the survey nodes' SNR as radios show
-    it; a node transmits on one network, so it mixes no radio settings. average_margin is the SNR
-    above the survey node's floor, as cells average it. average_rssi is in
-    dBm, from the measurements that recorded one. channel is the node's
-    latest channel, None when unknown."""
+    it; a node transmits on one network, so it mixes no radio settings.
+    average_margin is the SNR above the survey node's floor, as cells average
+    it. channel is the node's latest channel, None when unknown."""
 
     node_id: int
     long_name: str | None
@@ -1602,9 +1707,7 @@ class CoverageHeardNode:
     measurements: int
     average_snr: float | None
     average_margin: float | None
-    average_rssi: int | None
     channel: str | None
-    last_heard_at: datetime
 
 
 @dataclass(frozen=True)
@@ -1616,24 +1719,6 @@ class CoverageUnknownRelay:
     relay_byte: int | None
     measurements: int
     candidates: tuple[CoverageCandidate, ...]
-
-
-@dataclass(frozen=True)
-class CoverageMeasurementRow:
-    """One measurement in a cell, named by the node heard, not the sender.
-    packet_row_id is the packet MQTT saved with the same sender and packet
-    ID, when there is one that pages show (opt_out.SHOWN_PACKET). margin is
-    rx_snr above the survey node's floor, None when either is unknown."""
-
-    heard_at: datetime
-    heard_node_id: int | None
-    heard_name: str | None
-    heard_how: HeardHow
-    relay_byte: int | None
-    rx_snr: float | None
-    rx_rssi: int | None
-    margin: float | None
-    packet_row_id: int | None
 
 
 @dataclass(frozen=True)
@@ -1656,9 +1741,10 @@ class CoverageCellNetwork:
 @dataclass(frozen=True)
 class CoverageCellDetail:
     """One cell: its centre and approximate width (size_m), its totals, the
-    nodes heard there (at most CELL_MAX_NODES, most measurements first), the
-    unknown relays and the newest CELL_NEWEST measurements. networks totals
-    the SNR per radio settings, most measurements first."""
+    nodes heard there (at most CELL_MAX_NODES, most measurements first) and
+    the unknown relays. networks totals the SNR per radio settings, most
+    measurements first. first_heard_on and last_heard_on are UTC dates; no
+    page shows the time of day."""
 
     level: int
     x: int
@@ -1668,11 +1754,10 @@ class CoverageCellDetail:
     size_m: float
     measurements: int
     networks: tuple[CoverageCellNetwork, ...]
-    first_heard_at: datetime | None
-    last_heard_at: datetime | None
+    first_heard_on: date | None
+    last_heard_on: date | None
     heard_nodes: tuple[CoverageHeardNode, ...]
     unknown_relays: tuple[CoverageUnknownRelay, ...]
-    newest: tuple[CoverageMeasurementRow, ...]
 
 
 def coverage_cell(
@@ -1686,8 +1771,8 @@ def coverage_cell(
     unknown: bool = False,
     alive_days: int,
 ) -> CoverageCellDetail:
-    """One cell's totals, heard nodes, unknown relays and newest measurements,
-    from the measurements still true and filtered by node and channel as in
+    """One cell's totals, heard nodes and unknown relays, from the
+    measurements still true and filtered by node and channel as in
     coverage_cells."""
     shift = FINE_LEVEL - level
     where = """
@@ -1724,7 +1809,6 @@ def coverage_cell(
         f"""
         SELECT {_HEARD} AS heard_node_id, count(*) AS measurements,
                avg(m.rx_snr) AS average_snr, avg(m.margin_db) AS average_margin,
-               avg(nullif(m.rx_rssi, 0)) AS average_rssi, max(m.heard_at) AS last_heard_at,
                min(CASE {_HOW} {how_rank} END) AS how_rank,
                (SELECT channel FROM node_current WHERE node_id = {_HEARD}) AS channel
         FROM {_MEASUREMENTS}
@@ -1737,30 +1821,16 @@ def coverage_cell(
     ).fetchall()
     unknown_rows = connection.execute(
         f"""
-        SELECT m.relay_byte, count(*) AS measurements, max(m.heard_at) AS last_heard_at
+        SELECT nullif(m.relay_byte, 0) AS relay_byte, count(*) AS measurements,
+               max(m.heard_at) AS last_heard_at
         FROM {_MEASUREMENTS}
         WHERE {where} AND {_SHOWN} IS NULL
-        GROUP BY m.relay_byte ORDER BY measurements DESC, m.relay_byte
+        -- Rows saved before upload stored a 0 byte as missing may hold 0.
+        GROUP BY 1 ORDER BY measurements DESC, 1
         """,
         values,
     ).fetchall()
-    newest = connection.execute(
-        f"""
-        SELECT m.heard_at, m.sender_node_id, {_SHOWN} AS heard_node_id,
-               {_SHOWN_HOW} AS heard_how, m.packet_id, m.relay_byte, m.rx_snr, m.rx_rssi,
-               m.margin_db
-        FROM {_MEASUREMENTS}
-        WHERE {where}
-        ORDER BY m.heard_at DESC LIMIT {CELL_NEWEST}
-        """,
-        values,
-    ).fetchall()
-    heard_ids = {int(row["heard_node_id"]) for row in heard_rows}
-    names = nodes_by_id(
-        connection,
-        heard_ids
-        | {int(row["heard_node_id"]) for row in newest if row["heard_node_id"] is not None},
-    )
+    names = nodes_by_id(connection, {int(row["heard_node_id"]) for row in heard_rows})
     latitude, longitude = tile_centre(level, x, y)
     relayed = [row for row in unknown_rows[:CELL_CANDIDATE_RELAYS] if row["relay_byte"]]
     radios = {radio for row in networks if (radio := session_radio(row)) is not None}
@@ -1795,8 +1865,8 @@ def coverage_cell(
             )
             for row in networks
         ),
-        first_heard_at=optional_from_epoch_ms(totals["first_heard_at"]),
-        last_heard_at=optional_from_epoch_ms(totals["last_heard_at"]),
+        first_heard_on=_utc_date(totals["first_heard_at"]),
+        last_heard_on=_utc_date(totals["last_heard_at"]),
         heard_nodes=tuple(
             _heard_node(row, names.get(int(row["heard_node_id"]))) for row in heard_rows
         ),
@@ -1808,7 +1878,6 @@ def coverage_cell(
             )
             for row in unknown_rows
         ),
-        newest=tuple(_measurement_row(connection, row, names) for row in newest),
     )
 
 
@@ -2003,9 +2072,7 @@ def _heard_node(row: sqlite3.Row, summary: NodeSummary | None) -> CoverageHeardN
         measurements=int(row["measurements"]),
         average_snr=_round(row["average_snr"]),
         average_margin=_round(row["average_margin"]),
-        average_rssi=None if row["average_rssi"] is None else round(row["average_rssi"]),
         channel=row["channel"],
-        last_heard_at=from_epoch_ms(row["last_heard_at"]),
     )
 
 
@@ -2034,25 +2101,8 @@ def shown_packet(
     return None if packet is None else int(packet[0])
 
 
-def _measurement_row(
-    connection: sqlite3.Connection, row: sqlite3.Row, names: Mapping[int, NodeSummary]
-) -> CoverageMeasurementRow:
-    heard = row["heard_node_id"]
-    return CoverageMeasurementRow(
-        heard_at=from_epoch_ms(row["heard_at"]),
-        heard_node_id=heard,
-        heard_name=None if heard is None else _name(names.get(int(heard))),
-        heard_how=row["heard_how"],
-        relay_byte=row["relay_byte"],
-        rx_snr=row["rx_snr"],
-        rx_rssi=row["rx_rssi"],
-        margin=_round(row["margin_db"]),
-        packet_row_id=shown_packet(connection, row),
-    )
-
-
-def _name(summary: NodeSummary | None) -> str | None:
-    return None if summary is None else summary.long_name or summary.short_name
+def _utc_date(value: int | None) -> date | None:
+    return None if value is None else from_epoch_ms(value).date()
 
 
 def _round(value: float | None) -> float | None:

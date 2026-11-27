@@ -4,12 +4,22 @@ import type {
   CoverageCellDetail,
   CoverageCellNetwork,
   CoverageHeardNode,
-  CoverageMeasurementRow,
 } from "./api";
-import { heardHowText, isCertain, marginColor } from "./coverageLayer";
-import { formatNodeId, nodeLabel, relayByteText } from "./nodeDisplay";
-import { DataItem, LegendLine, ShortTime } from "./ui";
+import { heardHowText, marginColor } from "./coverageLayer";
+import { nodeLabel, relayByteText } from "./nodeDisplay";
+import { DataItem, LegendLine } from "./ui";
 import type { ApiState } from "./useApi";
+
+const dayFormat = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/** A UTC date such as "2026-09-25", as the backend sends it. */
+function Day({ value }: { value: string }) {
+  return <time dateTime={value}>{dayFormat.format(new Date(value))}</time>;
+}
 
 function snr(value: number | null): string {
   return value === null ? "no SNR" : `${value.toFixed(1)} dB`;
@@ -27,8 +37,8 @@ function networkLabel(network: CoverageCellNetwork): string {
 
 /**
  * The card for a clicked coverage cell: its size and totals, the nodes heard
- * there and how each was identified, unknown relays and the newest
- * measurements. Choosing a heard node selects it on the map.
+ * there and how each was identified, and unknown relays. Choosing a heard
+ * node selects it on the map.
  *
  * It shows average SNR as radios report it. SNR means different things at
  * different spreading factors, so each radio setting surveyed in the cell
@@ -81,15 +91,19 @@ export function CoverageCellDetails({
                 }
               />
             ))}
-            {cell.first_heard_at === null ||
-            cell.last_heard_at === null ? null : (
+            {cell.first_heard_on === null ||
+            cell.last_heard_on === null ? null : (
               <DataItem
                 label="Heard"
                 value={
-                  <>
-                    <ShortTime value={cell.first_heard_at} /> to{" "}
-                    <ShortTime value={cell.last_heard_at} />
-                  </>
+                  cell.first_heard_on === cell.last_heard_on ? (
+                    <Day value={cell.first_heard_on} />
+                  ) : (
+                    <>
+                      <Day value={cell.first_heard_on} /> to{" "}
+                      <Day value={cell.last_heard_on} />
+                    </>
+                  )
                 }
               />
             )}
@@ -142,14 +156,6 @@ export function CoverageCellDetails({
               ))}
             </ul>
           )}
-          <details className="hop-observations-toggle">
-            <summary>Latest {cell.newest.length} measurements</summary>
-            <ul className="hop-observations" aria-label="Latest measurements">
-              {cell.newest.map((row, index) => (
-                <MeasurementItem key={index} row={row} />
-              ))}
-            </ul>
-          </details>
           <ul
             className="coverage-line-legend"
             aria-label="Lines to heard nodes"
@@ -236,48 +242,10 @@ function HeardNodeItem({
         {node.measurements.toLocaleString()} ·{" "}
         <MarginDot margin={node.average_margin} />
         {snr(node.average_snr)} SNR
-        {node.average_rssi === null ? null : ` ${node.average_rssi} dBm`}
       </span>
       <span className="muted coverage-how">
         {heardHowText(node)}
         {node.channel === null ? null : ` · ${node.channel}`}
-      </span>
-    </li>
-  );
-}
-
-/** A measurement, by the node the survey node heard: the sender or a relay. */
-function MeasurementItem({ row }: { row: CoverageMeasurementRow }) {
-  const time = <ShortTime value={row.heard_at} />;
-  return (
-    <li>
-      {row.packet_row_id === null ? (
-        time
-      ) : (
-        <a className="text-button" href={`#packets/${row.packet_row_id}`}>
-          {time}
-        </a>
-      )}
-      <span className="number">
-        <MarginDot margin={row.margin} />
-        {row.rx_snr === null ? "? dB" : `${row.rx_snr.toFixed(1)} dB`}
-        {row.rx_rssi === null ? null : ` ${row.rx_rssi} dBm`}
-      </span>
-      <span className="hop-observation-run">
-        {row.heard_node_id !== null ? (
-          <>
-            {row.heard_name ?? formatNodeId(row.heard_node_id)}
-            {!isCertain(row.heard_how) ? (
-              <span className="muted"> (guess)</span>
-            ) : null}
-          </>
-        ) : (
-          <span className="muted">
-            {row.relay_byte === null || row.relay_byte === 0
-              ? "No relay byte"
-              : `Unknown relay ending in ${relayByteText(row.relay_byte)}`}
-          </span>
-        )}
       </span>
     </li>
   );

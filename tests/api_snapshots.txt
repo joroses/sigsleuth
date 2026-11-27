@@ -3216,11 +3216,10 @@ longitude: 21.7969
 size_m: 94409
 measurements: 0
 networks: []
-first_heard_at: null
-last_heard_at: null
+first_heard_on: null
+last_heard_on: null
 heard_nodes: []
 unknown_relays: []
-newest: []
 
 ## GET /api/v1/map/text-reach/1128132236?since=2026-10-10T16:25:30.812000Z
 

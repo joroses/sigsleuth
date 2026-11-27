@@ -92,8 +92,10 @@ CREATE TABLE coverage_session (
     last_uploaded_at INTEGER NOT NULL CHECK (last_uploaded_at >= first_uploaded_at)
 ) STRICT;
 
--- One packet the survey node heard, with where the phone was. Not a reception.
--- A 0 SNR or RSSI is a real reading here (the phone sends NULL when missing).
+-- One packet the survey node heard, with where the phone was: its fine cell's
+-- centre (older rows keep the exact place). Not a reception.
+-- A 0 SNR is a real reading; a missing SNR or RSSI is NULL (rows saved
+-- before may hold 0).
 -- cell_x/cell_y, heard_node_id, heard_how, candidates and margin_db are
 -- decided at upload: the MQTT reports, links and positions they read age
 -- out, so a changed rule applies only to new or re-sent uploads. A later
@@ -167,8 +169,9 @@ CREATE TABLE map_report (
 -- its last sent packet, newest NodeInfo, and newest OK to MQTT bit told by a
 -- packet or a survey measurement. Each part only moves to newer data, and
 -- the packet IDs may name packets retention has deleted. Retention removes
--- a row with the node's node_current row, or with its last survey
--- measurement.
+-- a row once the node has no node_current row, sent or was heard in no kept
+-- survey measurement, and its bit, if any, is older than measurements are
+-- kept.
 CREATE TABLE node_reported (
     node_id INTEGER PRIMARY KEY CHECK (node_id BETWEEN 1 AND 4294967295),
     last_sent_at INTEGER,

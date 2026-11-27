@@ -197,3 +197,25 @@ def test_survey_checks_name_no_node_that_opted_out(
     detail = client.get(f"{CHECKS}/{check['measurement_id']}")
     for response in (client.get(CHECKS), detail):
         assert str(LINKED_TO_GATEWAY) not in json.dumps(response.json())
+
+
+def test_a_packet_from_a_sender_that_opted_out_is_not_linked(
+    client: TestClient, connection: sqlite3.Connection
+) -> None:
+    mqtt_report(connection, GATEWAY, hop_limit=1, relay_byte=0x1A)
+    at = now_ms() - 60_000
+    upload(
+        client,
+        measurement(1, sender_node_id=SENDER, packet_id=77, heard_at_ms=at),
+        direct(2, RELAY, heard_at_ms=at),
+    )
+
+    def linked() -> tuple[Any, ...]:
+        [check] = checks(client)
+        detail = client.get(f"{CHECKS}/{check['measurement_id']}").json()
+        return (node_id(check["shown_node"]), detail["packet_row_id"] is not None)
+
+    assert linked() == (RELAY, True)
+    # The relay is still named, but the packet page would name the sender.
+    upload(client, direct(3, SENDER, ok_to_mqtt=False, heard_at_ms=at))
+    assert linked() == (RELAY, False)

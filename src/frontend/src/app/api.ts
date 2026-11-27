@@ -97,7 +97,6 @@ export type CoverageViewNode = Schemas["CoverageViewNode"];
 export type CoverageCellDetail = Schemas["CoverageCellDetail"];
 export type CoverageCellNetwork = Schemas["CoverageCellNetwork"];
 export type CoverageHeardNode = Schemas["CoverageHeardNode"];
-export type CoverageMeasurementRow = Schemas["CoverageMeasurementRow"];
 
 // Matches the backend default, so the truncation notice names the real cap.
 export const MAP_NODE_LIMIT = 10_000;

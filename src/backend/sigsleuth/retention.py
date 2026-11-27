@@ -79,12 +79,11 @@ def apply_retention(
     coverage_cutoff = (
         to_epoch_ms(current_time - timedelta(days=coverage_days)) if coverage_days else None
     )
-    return RetentionResult(
-        packets=packets,
-        measurements=0
-        if coverage_cutoff is None
-        else _delete_old_measurements(connection, coverage_cutoff),
+    measurements = (
+        0 if coverage_cutoff is None else _delete_old_measurements(connection, coverage_cutoff)
     )
+    _delete_unused_reported(connection, coverage_cutoff)
+    return RetentionResult(packets=packets, measurements=measurements)
 
 
 def _delete_old_measurements(connection: sqlite3.Connection, cutoff: int) -> int:
@@ -93,29 +92,10 @@ def _delete_old_measurements(connection: sqlite3.Connection, cutoff: int) -> int
     never be repeated, so measurements have a longer limit than packets.
     Uploads are a few thousand a day, so one transaction is short."""
     with transaction(connection):
-        senders = [
-            int(row[0])
-            for row in connection.execute(
-                "DELETE FROM coverage_measurement WHERE heard_at < ? RETURNING sender_node_id",
-                (cutoff,),
-            )
-        ]
-        deleted = len(senders)
+        deleted = connection.execute(
+            "DELETE FROM coverage_measurement WHERE heard_at < ?", (cutoff,)
+        ).rowcount
         if deleted:
-            # A sender no longer known leaves no reported state.
-            connection.execute(
-                """
-                DELETE FROM node_reported
-                WHERE node_id IN (SELECT value FROM json_each(?))
-                  AND node_id NOT IN (SELECT node_id FROM node_current)
-                  AND NOT EXISTS (
-                      SELECT 1 FROM coverage_measurement
-                      WHERE sender_node_id = node_reported.node_id
-                  )
-                """,
-                (json.dumps(sorted(set(senders))),),
-            )
-            refresh_opt_outs(connection, set(senders))
             connection.execute(
                 """
                 DELETE FROM coverage_session WHERE NOT EXISTS (
@@ -124,6 +104,35 @@ def _delete_old_measurements(connection: sqlite3.Connection, cutoff: int) -> int
                 """
             )
     return int(deleted)
+
+
+def _delete_unused_reported(connection: sqlite3.Connection, cutoff: int | None) -> None:
+    """Delete the reported state of nodes neither current nor the sender or
+    node heard of a kept survey measurement, once any OK to MQTT bit it
+    holds is from before cutoff, the measurements' limit (None: never). A
+    skipped measurement tells a bit without saving a row, so its sender may
+    be neither, and upload takes its bit while measurements are kept."""
+    with transaction(connection):
+        deleted = [
+            int(row[0])
+            for row in connection.execute(
+                """
+                DELETE FROM node_reported AS r
+                WHERE NOT EXISTS (SELECT 1 FROM node_current WHERE node_id = r.node_id)
+                  AND NOT EXISTS (
+                      SELECT 1 FROM coverage_measurement WHERE sender_node_id = r.node_id
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM coverage_measurement WHERE heard_node_id = r.node_id
+                  )
+                  AND (r.ok_to_mqtt_at IS NULL OR r.ok_to_mqtt_at < ?)
+                RETURNING node_id
+                """,
+                (cutoff,),
+            )
+        ]
+        if deleted:
+            refresh_opt_outs(connection, deleted)
 
 
 def database_used_bytes(connection: sqlite3.Connection) -> int:
@@ -137,11 +146,11 @@ def database_used_bytes(connection: sqlite3.Connection) -> int:
 
 def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
     """Delete the current state last updated before the age limit: nodes last
-    seen before it with their reported state and map report, positions from
+    seen before it with their map report, positions from
     before it except each node's newest then, and hourly link, hop cost and
     node activity totals. Totals go by whole hours, so the
-    hour holding the limit stays. A node still sending survey measurements
-    keeps its OK to MQTT bit."""
+    hour holding the limit stays. Reported state goes later
+    (_delete_unused_reported)."""
     hour = cutoff - cutoff % HOUR_MS
     with transaction(connection):
         gone = json.dumps(
@@ -158,15 +167,6 @@ def _prune_current_state(connection: sqlite3.Connection, cutoff: int) -> None:
             connection.execute(
                 f"DELETE FROM {table} WHERE node_id IN (SELECT value FROM json_each(?))", (gone,)
             )
-        connection.execute(
-            """
-            DELETE FROM node_reported WHERE node_id IN (SELECT value FROM json_each(?))
-              AND NOT EXISTS (
-                  SELECT 1 FROM coverage_measurement WHERE sender_node_id = node_reported.node_id
-              )
-            """,
-            (gone,),
-        )
         # Kept rows still place a node at the limit: as-of lookups from it on
         # find its newest position before it.
         connection.execute(

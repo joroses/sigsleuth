@@ -613,8 +613,8 @@ function SurveyScores({ detail }: { detail: SurveyCheckDetail }) {
         <div className="section-intro compact">
           <h3 id="survey-map-heading">Where they are</h3>
           <p>
-            R is the phone where it heard the packet; candidates and sender at
-            current or estimated positions.
+            R is the centre of the square where the phone heard the packet;
+            candidates and sender at current or estimated positions.
           </p>
         </div>
         <RelayCheckMap

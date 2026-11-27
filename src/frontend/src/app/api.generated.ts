@@ -750,8 +750,8 @@ export interface paths {
     };
     /**
      * Coverage Cell Detail Page
-     * @description One coverage cell's totals, the nodes heard there with how each
-     *     was identified, unknown relay bytes and the newest 20 measurements,
+     * @description One coverage cell's totals and the days it was measured, the nodes
+     *     heard there with how each was identified, and unknown relay bytes,
      *     filtered by node, channel and unknown as in the cell list.
      */
     get: operations["coverage_cell_detail_page_api_v1_coverage_cells__level___x___y__get"];
@@ -1112,9 +1112,10 @@ export interface components {
     /**
      * CoverageCellDetail
      * @description One cell: its centre and approximate width (size_m), its totals, the
-     *     nodes heard there (at most CELL_MAX_NODES, most measurements first), the
-     *     unknown relays and the newest CELL_NEWEST measurements. networks totals
-     *     the SNR per radio settings, most measurements first.
+     *     nodes heard there (at most CELL_MAX_NODES, most measurements first) and
+     *     the unknown relays. networks totals the SNR per radio settings, most
+     *     measurements first. first_heard_on and last_heard_on are UTC dates; no
+     *     page shows the time of day.
      */
     CoverageCellDetail: {
       level: number;
@@ -1125,11 +1126,10 @@ export interface components {
       size_m: number;
       measurements: number;
       networks: components["schemas"]["CoverageCellNetwork"][];
-      first_heard_at: string | null;
-      last_heard_at: string | null;
+      first_heard_on: string | null;
+      last_heard_on: string | null;
       heard_nodes: components["schemas"]["CoverageHeardNode"][];
       unknown_relays: components["schemas"]["CoverageUnknownRelay"][];
-      newest: components["schemas"]["CoverageMeasurementRow"][];
     };
     /**
      * CoverageCellList
@@ -1174,10 +1174,9 @@ export interface components {
      * @description A node heard in a cell. how is the most certain way it was identified
      *     there. The map draws lines to it from its own nodes' positions, which
      *     include estimates. average_snr is the survey nodes' SNR as radios show
-     *     it; a node transmits on one network, so it mixes no radio settings. average_margin is the SNR
-     *     above the survey node's floor, as cells average it. average_rssi is in
-     *     dBm, from the measurements that recorded one. channel is the node's
-     *     latest channel, None when unknown.
+     *     it; a node transmits on one network, so it mixes no radio settings.
+     *     average_margin is the SNR above the survey node's floor, as cells average
+     *     it. channel is the node's latest channel, None when unknown.
      */
     CoverageHeardNode: {
       node_id: number;
@@ -1196,38 +1195,7 @@ export interface components {
       measurements: number;
       average_snr: number | null;
       average_margin: number | null;
-      average_rssi: number | null;
       channel: string | null;
-      /** Format: date-time */
-      last_heard_at: string;
-    };
-    /**
-     * CoverageMeasurementRow
-     * @description One measurement in a cell, named by the node heard, not the sender.
-     *     packet_row_id is the packet MQTT saved with the same sender and packet
-     *     ID, when there is one that pages show (opt_out.SHOWN_PACKET). margin is
-     *     rx_snr above the survey node's floor, None when either is unknown.
-     */
-    CoverageMeasurementRow: {
-      /** Format: date-time */
-      heard_at: string;
-      heard_node_id: number | null;
-      heard_name: string | null;
-      /** @enum {string} */
-      heard_how:
-        | "direct"
-        | "reported"
-        | "gateway_link"
-        | "near_link"
-        | "sender_link"
-        | "survey_link"
-        | "only_candidate"
-        | "unknown";
-      relay_byte: number | null;
-      rx_snr: number | null;
-      rx_rssi: number | null;
-      margin: number | null;
-      packet_row_id: number | null;
     };
     /**
      * CoverageNodeList
@@ -3149,7 +3117,9 @@ export interface components {
     /**
      * UploadMeasurement
      * @description One packet the survey node heard. Times are epoch milliseconds on the
-     *     phone's clock. A missing SNR or RSSI is null; 0 is a real reading.
+     *     phone's clock. A missing SNR or RSSI is null; a 0 SNR is a real reading,
+     *     while a 0 RSSI or relay byte is missing, as in MQTT packets, and is saved
+     *     as null.
      */
     UploadMeasurement: {
       seq: number;

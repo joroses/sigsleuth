@@ -24,8 +24,8 @@ const cell: CoverageCellDetail = {
       average_margin: null,
     },
   ],
-  first_heard_at: "2026-09-25T09:00:00Z",
-  last_heard_at: "2026-09-25T10:00:00Z",
+  first_heard_on: "2026-09-25",
+  last_heard_on: "2026-09-25",
   heard_nodes: [
     {
       node_id: 0x0100001a,
@@ -35,9 +35,7 @@ const cell: CoverageCellDetail = {
       measurements: 2,
       average_snr: 3.5,
       average_margin: null,
-      average_rssi: null,
       channel: null,
-      last_heard_at: "2026-09-25T10:00:00Z",
     },
     {
       node_id: 7,
@@ -47,13 +45,10 @@ const cell: CoverageCellDetail = {
       measurements: 1,
       average_snr: 12.8,
       average_margin: null,
-      average_rssi: -97,
       channel: "LongFast",
-      last_heard_at: "2026-09-25T09:00:00Z",
     },
   ],
   unknown_relays: [],
-  newest: [],
 };
 
 describe("Coverage here", () => {
@@ -116,18 +111,5 @@ describe("Coverage here", () => {
     expect(
       screen.getByRole("link", { name: "Far away" }).getAttribute("href"),
     ).toBe("#nodes/7");
-  });
-
-  it("shows a heard node's average RSSI when its radios recorded one", () => {
-    render(
-      <CoverageCellDetails
-        detail={{ data: cell, error: null, loading: false }}
-        isDrawn={() => true}
-        onChooseNode={() => {}}
-      />,
-    );
-
-    expect(screen.getByText(/12\.8 dB SNR -97 dBm/)).toBeTruthy();
-    expect(screen.queryByText(/3\.5 dB SNR .*dBm/)).toBeNull();
   });
 });

@@ -22,9 +22,7 @@ const heard = (
   measurements: 1,
   average_snr: 10,
   average_margin: null,
-  average_rssi: null,
   channel: null,
-  last_heard_at: "2026-09-25T09:00:00Z",
 });
 
 describe("coverage cells", () => {

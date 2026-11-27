@@ -854,8 +854,8 @@ for (const width of [1280, 390]) {
               longitude: center[0],
               size_m: 227,
               measurements: 3,
-              first_heard_at: null,
-              last_heard_at: null,
+              first_heard_on: null,
+              last_heard_on: null,
               networks: [],
               heard_nodes: [],
               unknown_relays: [
@@ -865,7 +865,6 @@ for (const width of [1280, 390]) {
                   candidates: [{ ...node, km: 15 }],
                 },
               ],
-              newest: [],
             },
           }),
       );

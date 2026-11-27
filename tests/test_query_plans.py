@@ -173,8 +173,10 @@ def test_query_plans_match_the_saved_ones(
     settings = Settings(path, upload_password="survey")
     client = TestClient(create_app(settings), headers={"Authorization": "Basic cGhvbmU6c3VydmV5"})
     statements.section = "POST /api/v1/coverage/uploads"
-    response = client.post("/api/v1/coverage/uploads", json=survey_upload(now))
-    assert response.status_code == 200, response.text
+    # Sent again, as a phone does after a lost reply: the session's saved cells are read.
+    for _ in range(2):
+        response = client.post("/api/v1/coverage/uploads", json=survey_upload(now))
+        assert response.status_code == 200, response.text
     subjects = Subjects(
         REQUESTER,
         RELAY,

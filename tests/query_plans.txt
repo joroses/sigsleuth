@@ -102,6 +102,8 @@ db.rederive_pending
 coverage._as_saved
   SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
   SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+coverage._cell_cap
+  SEARCH coverage_session USING INDEX sqlite_autoindex_coverage_session_1
 coverage._direct_rows
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
   SEARCH coverage_session USING PRIMARY KEY
@@ -194,6 +196,8 @@ opt_out.opted_out
 coverage._link_receptions
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
   SEARCH coverage_session USING PRIMARY KEY
+coverage._cell_cap
+  SEARCH coverage_measurement USING INDEX coverage_measurement_cell
 
 ## GET /api/v1/packets?limit=50
 
@@ -2738,8 +2742,6 @@ coverage.coverage_cell
 db.nodes_by_id
   SEARCH node_current USING PRIMARY KEY
   SEARCH node_estimate USING PRIMARY KEY
-coverage.shown_packet
-  SEARCH packet USING INDEX packet_identity_time
 
 ## GET /api/v1/coverage/cells/17/67320/43265?node=168430090
 
@@ -2886,9 +2888,6 @@ retention._prune_current_state
 retention._prune_current_state
   SEARCH map_report USING PRIMARY KEY
 retention._prune_current_state
-  SEARCH node_reported USING PRIMARY KEY
-  SEARCH coverage_measurement USING INDEX coverage_measurement_sender
-retention._prune_current_state
   SCAN node_position
   SEARCH node_position USING PRIMARY KEY
 retention._prune_current_state
@@ -2916,17 +2915,19 @@ retention._delete_oldest_packets
 retention._delete_old_measurements
   SEARCH coverage_measurement USING INDEX coverage_measurement_time
 retention._delete_old_measurements
-  SEARCH node_reported USING PRIMARY KEY
+  SCAN coverage_session
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
+retention._delete_unused_reported
+  SCAN node_reported
+  SEARCH node_current USING PRIMARY KEY
   SEARCH coverage_measurement USING INDEX coverage_measurement_sender
+  SEARCH coverage_measurement USING INDEX coverage_measurement_heard
 opt_out.refresh_opt_outs
   SEARCH node_opt_out USING PRIMARY KEY
 opt_out.refresh_opt_outs
   SEARCH node_reported USING PRIMARY KEY
   SEARCH node_current USING PRIMARY KEY
-retention._delete_old_measurements
-  SCAN coverage_session
-  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
-  SEARCH coverage_measurement USING INDEX sqlite_autoindex_coverage_measurement_1
 shared_numbers.refresh_shared_numbers
   SCAN node_device
 shared_numbers.shared_nodes

@@ -250,13 +250,19 @@ h3 {
   outline-offset: -4px;
 }
 
-.source-link {
+.bar-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.bar-links a {
   display: flex;
   align-items: center;
   color: var(--muted);
 }
 
-.source-link:hover {
+.bar-links a:hover {
   color: var(--accent);
 }
 

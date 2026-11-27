@@ -31,6 +31,8 @@ class Settings:
     database_path: Path
     # Shown beside "SigSleuth" in the page, to tell instances for different networks apart.
     name: str | None = None
+    # A Telegram group the page's header links to.
+    telegram_url: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     log_level: str = "INFO"
@@ -95,6 +97,9 @@ def settings_from_environment(environment: Mapping[str, str], *, capture: bool) 
     return Settings(
         database_path=Path(environment.get("SIGSLEUTH_DATABASE_PATH", "./data/sigsleuth.db")),
         name=_optional(environment.get("SIGSLEUTH_NAME", "").strip()),
+        telegram_url=_https_url(
+            environment.get("SIGSLEUTH_TELEGRAM_URL", ""), "SIGSLEUTH_TELEGRAM_URL"
+        ),
         api_host=api_host,
         api_port=_port(environment.get("SIGSLEUTH_API_PORT", "8000"), "SIGSLEUTH_API_PORT"),
         log_level=log_level,
@@ -148,6 +153,13 @@ def _topic_filter(value: str) -> str:
 
 def _optional(value: str | None) -> str | None:
     return value if value else None
+
+
+def _https_url(value: str, name: str) -> str | None:
+    url = value.strip()
+    if url and not url.startswith("https://"):
+        raise ConfigurationError(f"{name} must start with https://")
+    return url or None
 
 
 def _port(value: str, name: str) -> int:

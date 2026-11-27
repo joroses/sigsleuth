@@ -1028,21 +1028,22 @@ def create_app(
             requested_file.is_relative_to(frontend_root) and requested_file.is_file()
         ):
             return FileResponse(requested_file)
-        return HTMLResponse(_named_page(index_path.read_text(encoding="utf-8"), settings.name))
+        return HTMLResponse(_configured_page(index_path.read_text(encoding="utf-8"), settings))
 
     return app
 
 
-def _named_page(page: str, name: str | None) -> str:
-    """Put the configured instance name in the page title and a meta tag the page reads."""
-    if name is None:
-        return page
-    escaped = html.escape(name)
-    return page.replace(
-        "<title>SigSleuth</title>",
-        f'<title>{escaped} · SigSleuth</title><meta name="sigsleuth-name" content="{escaped}">',
-        1,
-    )
+def _configured_page(page: str, settings: Settings) -> str:
+    """Put the instance name in the title, and the settings the page reads in meta tags."""
+    title = "SigSleuth"
+    tags = ""
+    if settings.name is not None:
+        escaped = html.escape(settings.name)
+        title = f"{escaped} · SigSleuth"
+        tags += f'<meta name="sigsleuth-name" content="{escaped}">'
+    if settings.telegram_url is not None:
+        tags += f'<meta name="sigsleuth-telegram" content="{html.escape(settings.telegram_url)}">'
+    return page.replace("<title>SigSleuth</title>", f"<title>{title}</title>{tags}", 1)
 
 
 def _error_response(

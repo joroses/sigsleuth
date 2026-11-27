@@ -127,6 +127,18 @@ def test_hide_opted_out_is_on_unless_turned_off() -> None:
         hide("maybe")
 
 
+def test_telegram_url_must_be_https() -> None:
+    def url(value: str) -> str | None:
+        environment = {"SIGSLEUTH_TELEGRAM_URL": value}
+        return settings_from_environment(environment, capture=False).telegram_url
+
+    assert url("") is None
+    assert url(" https://t.me/mymesh ") == "https://t.me/mymesh"
+    for value in ("t.me/mymesh", "javascript:alert(1)"):
+        with pytest.raises(ConfigurationError, match="SIGSLEUTH_TELEGRAM_URL"):
+            url(value)
+
+
 def test_radio_channels_are_declared_on_a_preset() -> None:
     def declared(value: str) -> dict[str, tuple[int, float | None, float | None]]:
         settings = settings_from_environment({"SIGSLEUTH_RADIO_CHANNELS": value}, capture=False)

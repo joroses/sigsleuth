@@ -415,7 +415,7 @@ def test_api_serves_built_frontend_and_history_fallback(tmp_path: Path) -> None:
         assert client.get("/api/v1/status").status_code == 200
 
 
-def test_built_frontend_shows_the_configured_name_and_telegram_group(tmp_path: Path) -> None:
+def test_page_and_status_give_the_configured_name_and_telegram_group(tmp_path: Path) -> None:
     path = tmp_path / "history.db"
     frontend = tmp_path / "dist"
     frontend.mkdir()
@@ -434,6 +434,7 @@ def test_built_frontend_shows_the_configured_name_and_telegram_group(tmp_path: P
         text = client.get("/").text
         assert "<title>SigSleuth</title>" in text
         assert '<meta name="sigsleuth-telegram" content="https://t.me/gaulix">' in text
+        assert client.get("/api/v1/status").json()["telegram_url"] == "https://t.me/gaulix"
 
 
 def test_missing_frontend_build_returns_instructions_without_hiding_api(tmp_path: Path) -> None:

@@ -159,6 +159,8 @@ class Status:
 
     capture: CaptureStatus | None
     revision: str | None
+    # SIGSLEUTH_TELEGRAM_URL, which the survey app links to.
+    telegram_url: str | None
     status: Literal["ok"] = "ok"
 
 
@@ -289,7 +291,9 @@ def create_app(
 
     @app.get("/api/v1/status")
     def status() -> Status:
-        return Status(capture=capture_status(), revision=revision)
+        return Status(
+            capture=capture_status(), revision=revision, telegram_url=settings.telegram_url
+        )
 
     @app.get("/api/v1/packets")
     def packet_list_page(

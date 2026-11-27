@@ -2795,6 +2795,7 @@ export interface components {
     Status: {
       capture: components["schemas"]["CaptureStatus"] | null;
       revision: string | null;
+      telegram_url: string | null;
       /**
        * @default ok
        * @constant

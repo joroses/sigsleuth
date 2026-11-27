@@ -31,7 +31,7 @@ class Settings:
     database_path: Path
     # Shown beside "SigSleuth" in the page, to tell instances for different networks apart.
     name: str | None = None
-    # A Telegram group the page's header links to.
+    # A Telegram group the page's header and the survey app link to.
     telegram_url: str | None = None
     api_host: str = "127.0.0.1"
     api_port: int = 8000
